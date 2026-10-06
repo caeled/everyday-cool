@@ -12,4 +12,4 @@ downloads=root/'downloads';downloads.mkdir(exist_ok=True)
 for project in catalog['projects']:
  if project['bundled']: archive(root/project['download'],root/'projects'/project['id'],project['id'])
 archive(root.parent/'everyday-cool.zip',root,'everyday-cool')
-print('Built four individual packages and',root.parent/'everyday-cool.zip')
+print('Built',sum(p['bundled'] for p in catalog['projects']),'individual packages and',root.parent/'everyday-cool.zip')

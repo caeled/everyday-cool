@@ -15,7 +15,7 @@ for project in catalog:
  note=(folder/'COLLECTION.md').read_text(encoding='utf-8')
  for name,sha in source['files'].items():
   b=(folder/name).read_bytes();lf=b.replace(b'\r\n',b'\n');count+=1
-  if sha not in {blob(b),blob(lf),blob(lf+b'\n')}:
+  if sha not in ({hashlib.sha256(b).hexdigest(),hashlib.sha256(lf).hexdigest(),hashlib.sha256(lf+b'\n').hexdigest()} if source.get('format')=='sha256' else {blob(b),blob(lf),blob(lf+b'\n')}):
    assert f'`{name}`' in note and 'Local changes to imported files: none.' not in note,'Unrecorded change: '+name
  with zipfile.ZipFile(root/project['download']) as z:
   assert z.testzip() is None
@@ -34,4 +34,4 @@ for link in c.links:
  if link.startswith('#'): assert link=='#' or link[1:] in c.ids,link
  elif not re.match(r'^[a-z]+:',link):assert (root/link.split('#')[0]).is_file(),link
 for p in catalog:assert p['title'] in (root/'index.html').read_text(encoding='utf-8')
-print(f'Collection verified: {len(catalog)} entries, {count} imported files, all four ZIPs, hub links, licenses, and provenance.')
+print(f'Collection verified: {len(catalog)} entries, {count} imported files, all project ZIPs, hub links, licenses, and provenance.')
