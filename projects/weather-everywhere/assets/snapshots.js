@@ -1,0 +1,1 @@
+window.WEATHER_SNAPSHOTS = {};
