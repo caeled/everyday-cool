@@ -18,7 +18,6 @@ These are independent source snapshots inside one collection, rather than GitHub
 | Secret Squares | [QR and information workshop](projects/secret-squares/index.html) | [Repository](https://github.com/caeled/secret-squares) · [Website](https://caeled.github.io/secret-squares/) |
 | Space Camp / For Christa | [Space workshop and tribute](projects/space-camp/space-camp.html) | [Original website](https://caeled.neocities.org/EveryDayCool/space-camp) |
 | A Library | [35-link reference shelf](projects/a-library/a-library.html) | Author-supplied shelf, maintained in this collection |
-
 | Roman Numerals & Numbers in the Wild | [Math and number theory](projects/numbers-in-the-wild/index.html) | Expanded from Steven’s local Roman numeral converter |
 
 Space Camp and A Library were supplied by Steven as files on 6 October 2026. Their SHA-256 origin records and documented collection changes accompany the copies; no original Git history is claimed for those uploads.
