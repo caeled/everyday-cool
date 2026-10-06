@@ -43,3 +43,7 @@ MIT and CC BY 4.0 permit commercial reuse. Our free-access policy governs what *
 ## Verify
 
 Run `python tools/check-collection.py` to validate catalog links, bundled licenses, individual ZIP contents, and snapshot provenance. Existing workshop tests remain in their original project folders. Root checks inspect files and never execute contributed scripts. No automated publishing from pull requests is configured.
+
+## Internet Detective
+
+Check before you trust: six fictional case files, local URL anatomy, recovery-scam guidance, and a searchable official lookup shelf. Open projects/internet-detective/index.html or download downloads/internet-detective.zip.
