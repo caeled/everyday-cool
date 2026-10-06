@@ -1,5 +1,5 @@
 """Inspect catalog, provenance, local links, and ZIP contents. Execute no workshops."""
-import pathlib,json,hashlib,zipfile,re
+import pathlib,json,hashlib,zipfile,re,html
 from html.parser import HTMLParser
 root=pathlib.Path(__file__).resolve().parents[1]
 catalog=json.loads((root/'catalog.json').read_text(encoding='utf-8'))['projects']
@@ -33,5 +33,5 @@ c=Check();c.feed((root/'index.html').read_text(encoding='utf-8'));assert len(c.i
 for link in c.links:
  if link.startswith('#'): assert link=='#' or link[1:] in c.ids,link
  elif not re.match(r'^[a-z]+:',link):assert (root/link.split('#')[0]).is_file(),link
-for p in catalog:assert p['title'] in (root/'index.html').read_text(encoding='utf-8')
+for p in catalog:assert p['title'] in html.unescape((root/'index.html').read_text(encoding='utf-8'))
 print(f'Collection verified: {len(catalog)} entries, {count} imported files, all project ZIPs, hub links, licenses, and provenance.')
