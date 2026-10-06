@@ -7,3 +7,5 @@ Open `space-camp.html` in a browser or double-click `Launch.cmd`. No installatio
 Five illustrated teaching activities and a tribute to Christa McAuliffe. Activities and the included NASA portrait work offline. External references and videos need internet. The tribute remains the opening page. Models are simplified teaching sketches, not flight plans or live satellite predictions. Orbit animation can be paused and respects reduced-motion preferences.
 
 Original code: MIT. Original educational text: CC BY 4.0. External materials retain their own rights; see THIRD-PARTY.md.
+
+Collection navigation and relative download links work when this folder is part of the complete Everyday Cool package. The opening page and core local content also work when this project ZIP is extracted on its own.
