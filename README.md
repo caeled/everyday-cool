@@ -16,11 +16,15 @@ These are independent source snapshots inside one collection, rather than GitHub
 | Java for Young Robot Builders | [Java robotics](projects/java-young-robot-builders/index.html) | [Repository](https://github.com/caeled/java-young-robot-builders) · [Website](https://caeled.github.io/java-young-robot-builders/) |
 | Weather Everywhere | [Weather exploration](projects/weather-everywhere/index.html) | [Repository](https://github.com/caeled/weather-everywhere) · [Website](https://caeled.github.io/weather-everywhere/) |
 | Secret Squares | [QR and information workshop](projects/secret-squares/index.html) | [Repository](https://github.com/caeled/secret-squares) · [Website](https://caeled.github.io/secret-squares/) |
-| Space Camp / For Christa | Linked project; source is not bundled | [Original website](https://caeled.neocities.org/EveryDayCool/space-camp) |
+| Space Camp / For Christa | [Space workshop and tribute](projects/space-camp/space-camp.html) | [Original website](https://caeled.neocities.org/EveryDayCool/space-camp) |
+
+| A Library | [35-link reference shelf](projects/a-library/a-library.html) | Author-supplied shelf, maintained in this collection |
+
+Space Camp and A Library were supplied by Steven as files on 6 October 2026. Their SHA-256 origin records and documented collection changes accompany the copies; no original Git history is claimed for those uploads.
 
 ## Take it with you
 
-Download the collection ZIP, extract it, and open `index.html` or double-click `Launch.cmd`. The four bundled workshops include their source and offline core activities. Videos, reference websites, live weather, and the linked Space Camp need internet. Some cryptography features require HTTPS or localhost: `Serve.cmd` uses an existing Python 3 installation on port 8004. Optional media helpers belong to their projects; review each project's guide before using them.
+Download the collection ZIP, extract it, and open `index.html` or double-click `Launch.cmd`. The five bundled workshops include their source and offline core activities, including Space Camp and its portrait. A Library is also packaged as an offline reference shelf. Videos, external reading destinations, and live weather need internet. Some cryptography features require HTTPS or localhost: `Serve.cmd` uses an existing Python 3 installation on port 8004. Optional media helpers belong to their projects; review each project's guide before using them.
 
 The front page works without JavaScript. With JavaScript, its search and topic filters work locally, without accounts or tracking. `downloads/` contains individual project ZIPs. Run `python tools/build-packages.py` after changes to refresh them and create a complete portable ZIP beside this folder.
 

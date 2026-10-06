@@ -2,7 +2,7 @@
 
 ## Add or edit a listing
 
-`catalog.json` is the source of truth. Each entry has a unique `id`, title, topic, description, starter activity, source address, original live address, and either a bundled entry point or a clearly marked external link. Bundled entries carry their imported commit and file hashes in `provenance/`.
+`catalog.json` is the source of truth. Each entry has a unique `id`, title, topic, description, starter activity, source address, original live address, and either a bundled entry point or a clearly marked external link. Bundled entries carry their source commit and Git blob hashes, or author-supplied filename and SHA-256 hashes, in `provenance/`.
 
 1. Review the learning experience and its sources, licenses, accessibility, privacy, and internet requirements.
 2. Add a self-contained folder under `projects/`, or list an external resource without claiming its source is bundled.
@@ -20,7 +20,7 @@ There is deliberately no network sync or automatic upstream replacement. Include
 
 ## Source records
 
-`provenance/<id>.json` records original Git blob hashes and the source commit. Newline differences from browser publication are recognized during the initial validation. If you modify a copied file, record the intentional change in its `COLLECTION.md`; the checker reports modified snapshot files and requires them to be listed there. A source record is an origin record, not a claim that future changes are byte-identical.
+`provenance/<id>.json` records original Git blob hashes and the source commit for repository imports. Author-supplied files use `format: sha256`, a source-file digest, and individual file digests, with no Git commit claimed. Newline differences from browser publication are recognized during the initial validation. If you modify a copied file, record the intentional change in its `COLLECTION.md`; the checker reports modified snapshot files and requires them to be listed there. A source record is an origin record, not a claim that future changes are byte-identical.
 
 ## Downloads
 
