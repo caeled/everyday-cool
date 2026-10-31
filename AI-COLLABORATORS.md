@@ -203,6 +203,16 @@ Before proposing or merging any change:
   files, but it fails identically on a pristine checkout of upstream, so
   it predates the 2026-10-31 change set; the provenance records were left
   untouched pending a deliberate reconciliation (see "Copies, not moves").
+- **2026-10-31 — Decisions Everywhere added as a flagship workshop.**
+  Steven Powell authored the workshop from a design brief prepared by
+  Copilot; the full brief is preserved as
+  `projects/decisions-everywhere/DESIGN.md`, and the workshop was
+  implemented by Muse. Eight interactive rooms teach the decision cycle
+  (SEE → QUESTION → TEST → DECIDE → REVIEW) that the rest of the
+  collection quietly uses, with field missions and an educator guide. It
+  enters the catalog under the new topic "Thinking & decisions" (with a
+  matching hub filter) and leads the Beginner learning path, because
+  decision skills are the entry skill for every other workshop.
 
 ## Known Future Goals
 
