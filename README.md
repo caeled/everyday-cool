@@ -1,6 +1,8 @@
 # Everyday Cool
 
-**Free tools for children, curious adults, and anyone who likes finding out how things work.** Curated by Steven Powell. Built with AI assistance, human curiosity, and review.
+## Portable Workshops for Curious Minds
+
+**Free tools for children, curious adults, and anyone who likes finding out how things work.** One theme runs through every workshop: teaching how systems work — taking something apart, trying it, and seeing the moving parts. Curated by Steven Powell. Built with AI assistance, human curiosity, and review.
 
 [Open Everyday Cool](https://caeled.github.io/everyday-cool/) · [Download the complete collection](https://github.com/caeled/everyday-cool/archive/refs/heads/main.zip) · [Suggest an idea](https://github.com/caeled/everyday-cool/issues/new/choose)
 
@@ -34,7 +36,7 @@ The front page works without JavaScript. With JavaScript, its search and topic f
 
 Our official collection is free to access, with no subscriptions, prompt-pack sales, ads, affiliate funnels, or required paid AI accounts. Additions should teach something through exploration, explanation, or practice. We welcome corrections, translations, accessibility improvements, experiments, and new subjects.
 
-Fork this repository to develop your own ideas. Open a pull request when you want a change considered for the official collection. Steven decides what is included; a submission is a proposal, not automatic publication. See [CONTRIBUTING.md](CONTRIBUTING.md), [GOVERNANCE.md](GOVERNANCE.md), and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+Fork this repository to develop your own ideas. Open a pull request when you want a change considered for the official collection. Steven decides what is included; a submission is a proposal, not automatic publication. See [CONTRIBUTING.md](CONTRIBUTING.md), [GOVERNANCE.md](GOVERNANCE.md), and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md). Writing a workshop of your own? Start with the [Workshop Author Guide](WORKSHOP-AUTHOR-GUIDE.md). Human and AI collaborators share one briefing: [AI-COLLABORATORS.md](AI-COLLABORATORS.md).
 
 ## Free licenses, honest boundaries
 

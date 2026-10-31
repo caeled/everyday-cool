@@ -8,7 +8,7 @@ Open an idea issue. Describe the curiosity hook, who it is for, what someone can
 
 ## Develop independently
 
-Fork this repository, create a branch, and work in your own copy. For a new workshop, start from `templates/workshop/README.md` and place it in `projects/your-short-name/`. Keep it portable where practical. A simple browser activity is welcome; complexity should earn its place.
+Fork this repository, create a branch, and work in your own copy. For a new workshop, start from `templates/workshop/README.md`, follow the [Workshop Author Guide](WORKSHOP-AUTHOR-GUIDE.md), and place it in `projects/your-short-name/`. Keep it portable where practical. A simple browser activity is welcome; complexity should earn its place.
 
 You can publish your own fork under its applicable licenses without waiting for inclusion here. Clearly identify your changes and authorship; do not imply endorsement by Steven or the official collection.
 
