@@ -24,6 +24,7 @@ These are independent source snapshots inside one collection, rather than GitHub
 | Internet Detective | [Verification practice](projects/internet-detective/index.html) | Original collection workshop |
 | Packet Playground | [Networking benches](projects/packet-playground/index.html) | Original collection workshop |
 | Decisions Everywhere | [Decision-making rooms](projects/decisions-everywhere/index.html) | Original collection workshop |
+| AI-Delivery | [Project home](https://github.com/caeled/AI-Delivery) | Linked project · a shared desk for AI assistants (MIT) |
 
 Space Camp and A Library were supplied by Steven as files on 6 October 2026. Their SHA-256 origin records and documented collection changes accompany the copies; no original Git history is claimed for those uploads.
 
