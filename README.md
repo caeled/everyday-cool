@@ -19,7 +19,7 @@ These are independent source snapshots inside one collection, rather than GitHub
 | Weather Everywhere | [Weather exploration](projects/weather-everywhere/index.html) | [Repository](https://github.com/caeled/weather-everywhere) · [Website](https://caeled.github.io/weather-everywhere/) |
 | Secret Squares | [QR and information workshop](projects/secret-squares/index.html) | [Repository](https://github.com/caeled/secret-squares) · [Website](https://caeled.github.io/secret-squares/) |
 | Space Camp / For Christa | [Space workshop and tribute](projects/space-camp/space-camp.html) | [Original website](https://caeled.neocities.org/EveryDayCool/space-camp) |
-| Everyday Cool Library App | Windows desktop app (no web copy) | [Repository](https://github.com/caeled/everyday-cool-library-app) |
+| Everyday Cool Library App | [Web edition](projects/everyday-cool-library-app/index.html) (desktop app in the repo) | [Repository](https://github.com/caeled/everyday-cool-library-app) |
 | A Library | [35-link reference shelf](projects/a-library/a-library.html) | Author-supplied shelf, maintained in this collection |
 | Roman Numerals & Numbers in the Wild | [Math and number theory](projects/numbers-in-the-wild/index.html) | Expanded from Steven’s local Roman numeral converter |
 | Internet Detective | [Verification practice](projects/internet-detective/index.html) | Original collection workshop |
