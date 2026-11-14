@@ -35,3 +35,23 @@ Open-Meteo: https://open-meteo.com/en/docs and https://open-meteo.com/en/pricing
 NWS official forecasts and radar are external links, not silently mixed into Open-Meteo data. API reference for future expansion: https://www.weather.gov/documentation/services-web-api. NASA Worldview and Earth Nullschool are links to external interfaces; their imagery/model layers need internet and retain their own terms.
 
 Selection checked October 5, 2026. External services can change. There are no analytics, accounts, embedded ads, or automatic location permissions in this workshop.
+
+## Sun & tilt room
+
+The workshop constant for Earth's axial tilt is 23.44 degrees, shown rounded as 23.5 degrees. Solar declination for day of year N and tilt epsilon: delta = epsilon * sin(2 * pi * (284 + N) / 365). This is the same mid-year approximation the daylight map layer uses, generalized so the tilt can change. Day length uses the sunrise hour angle: cos(H) = -tan(latitude) * tan(delta); day length = 24 * acos(cos H) / pi hours, clamped to 0 (polar night) and 24 (polar day). Sunrise and sunset in the Sun slider are 12 - L/2 and 12 + L/2, where L is the day length: local solar time, with the sun highest at noon. No equation-of-time correction, time zone, atmospheric refraction, horizon elevation, or twilight is included, so displayed times are teaching approximations that can differ from clock sunrise tables by tens of minutes. The tilt control spans 0 to 45 degrees; the move-your-town control keeps Earth's real tilt and varies only latitude. All values are computed locally from these formulas. They describe sunlight geometry, never weather.
+
+## Look back: weather on a past day
+
+Past-day values come from the Open-Meteo archive API (https://archive-api.open-meteo.com/v1/archive), which serves the ERA5 reanalysis produced by the European Centre for Medium-Range Weather Forecasts (ECMWF) and distributed through the Copernicus Climate Data Store. A reanalysis is a single weather model run again over historical observations, so the whole record is described in one consistent way; it is a reconstruction, not a reading from a thermometer at the selected point. Requested daily variables: maximum and minimum temperature (2 m), precipitation total, and maximum wind speed (10 m), in UTC. ERA5 coverage in this service begins in 1940. The archive lags real time by about five days; dates inside that gap return no values and the workshop says so instead of substituting anything. Results are cached only in page memory for the session, keyed by coordinates and date. Requests are sent only when the reader clicks the Look back button.
+
+## Opposite points
+
+The antipode of (latitude, longitude) is (-latitude, longitude + 180 degrees, wrapped into the range -180 to 180). The mirror point is (-latitude, longitude). Land or ocean at a point is decided by an even-odd point-in-polygon test against the bundled Natural Earth polygons described above; coastlines at 1:110m scale are approximate, so a point very near a coast can be classified either way. A point is labeled with a named place only when it lies within 250 km of one of the 16 built-in places, by great-circle (haversine) distance; otherwise it is labeled as land or open ocean with its coordinates. The point is never moved to a nearer city. Current conditions for both points come from the same Open-Meteo forecast endpoint as Look live, fetched only on a click.
+
+## Beaufort scale
+
+Wind descriptions use the Beaufort scale as standardized by the World Meteorological Organization. Bands in km/h, with the land descriptions used in the workshop: 0 calm (under 1), 1 light air (1-5), 2 light breeze (6-11), 3 gentle breeze (12-19), 4 moderate breeze (20-28), 5 fresh breeze (29-38), 6 strong breeze (39-49), 7 near gale (50-61), 8 gale (62-74), 9 strong gale (75-88), 10 storm (89-102), 11 violent storm (103-117), 12 hurricane force (118 and above). The scale itself has no units; the numeric wind speed beside it follows the workshop unit choice (km/h as delivered by the provider; only temperature displays convert).
+
+## Weather words
+
+The glossary definitions are original plain-language explanations written for this workshop (CC BY 4.0, like the other educational content). They aim for a correct first understanding a child can act on, not a technical definition; SCIENCE.md remains the precise reference for the models. No external dictionary text is used.
