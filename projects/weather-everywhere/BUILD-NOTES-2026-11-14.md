@@ -65,3 +65,49 @@ Steven built this workshop for his son **Flynn (12)**, and it now runs on Flynn'
 | `tests/science.test.cjs` | 10 new tests appended; original 11 untouched | 2,658 → 6,143 |
 
 Untouched, as required: `assets/land.js`, `assets/places.js`, `assets/snapshots.js`, the notebook storage format, and every existing feature's behavior.
+
+## Location search — "Find a place" (added later on 2026-11-14, at Steven's request)
+
+Steven's note: the workshop "only goes to certain locations." This adds a real place-name search to the Map room. State: working tree on top of commit 4691afc, uncommitted, nothing pushed or published. The everyday-cool copy and the app repos were not touched.
+
+### What was built
+- **Find a place card** (Map room, directly under the map and place card): a place-name input and a Search button. Searching happens **only** when Search is tapped (the form's submit action). There is no as-you-type lookup and no autocomplete: no keystroke ever leaves the device, which the smoke suite asserts directly.
+- **Provider:** Open-Meteo's geocoding API (`geocoding-api.open-meteo.com/v1/search`, count 8, language en), the same provider family the workshop already uses and discloses, no API key. The card discloses in the project's style that place names and coordinates come from Open-Meteo's place database and that tapping Search sends the typed name to Open-Meteo. With no network, the card's status line says the search needs internet and everything else still works offline.
+- **Results:** a plain list of large tappable rows (≥52px, like the glossary rows; the Search button and input are ≥44px). Each row shows the place name, its region/state and country, and its coordinates, because same-name towns are common and the list is the disambiguation. Nothing is fetched, guessed, or relocated while browsing results.
+- **Choosing a result** states it in plain words in the status line ("Found place: Springfield, Illinois, United States. It is your selected place now: …") and makes it the app's selected place.
+
+### How the found place flows into the other features
+- The found place **is** a custom-coordinate selection: `foundPlace()` in `assets/science.js` converts a geocoding result into exactly the place-object shape a map pin already produces (`id:'custom'`, composed name label, the database's latitude/longitude untouched, `kind:'Found place'`), and choosing it calls the existing `choose()`. So with no parallel system: the map pin moves to it, the place card renders it (with the honest "no example temperature profile is invented for it" line, since it has no `base`), Look live, Look back, and Opposite weather use its coordinates, and glossary annotation applies to the new status output via the existing `markWords()` the same way as the other features.
+- **Sun & tilt room:** a `sunRoomPlace()` resolver lets all three place controls (tilt, town, sun) offer the found place as an added option labeled with its full name, while one exists. The renderers' place lookups were switched to the resolver; built-in behavior is unchanged.
+- **Saving:** unchanged notebook/snapshot mechanisms carry it — Save forecast and Save to notebook record the found place's full name in their existing note titles and its coordinates in the note body, exactly as for a named place. No storage format change, no new persisted store.
+- **One integration fix:** the place dropdown's change handler now falls back to the current custom selection. Before this, re-selecting the custom entry ("My map pin", or a found place) from the dropdown after choosing a built-in place passed `undefined` into `choose()` — a latent fault in the shipped pin flow that the found place would have made easy to hit. Map pins and found places now both survive being re-chosen from the dropdown; the smoke suite covers the found-place round trip.
+- **Deliberately out of scope, kept:** the Compare room stays with the 16 built-in places (a found place has no hand-written profile and none is fabricated; "Compare this place" keeps its existing custom-pin message). No geolocation, no autocomplete.
+
+### Pure helpers (`assets/science.js`, tested)
+`geocodeUrl(name)` builds the search URL with the name URL-encoded; `placeLabel(result)` composes "Name, Region, Country", skipping missing parts and never repeating a part (Singapore stays "Singapore"); `foundPlace(result)` validates name and coordinates (finite, in range) and returns the selection object or `null` — an unusable result can never become a place.
+
+### Verification (all run 2026-11-14, all green)
+- `node --test tests/science.test.cjs` — **24/24 pass** (21 existing untouched + 3 new): geocoding URL target and parameters, special-character encoding; label composition and de-duplication; found-place shape with coordinates untouched and rejection of NaN / out-of-range / nameless results.
+- `python tests/check-package.py` — **pass**: 113 unique IDs (6 new: find-card, search-form, place-search, search-place, search-status, search-results), 30 links/assets resolve.
+- **jsdom smoke suite — pass, 46 assertions** (`tests/smoke.test.cjs`, **new file**: the Nov 14 smoke pass was run ad hoc and never saved into the tree, so the suite was recreated in the same style — page loaded from disk, canvas/matchMedia/fetch stubbed — and extended). It covers the originals (zero page errors, eight rooms, nine missions, 12-row season table, glossary rows open by tap, tilt-0 readout, too-recent Look back refused with no fetch, opposite cards render) plus the five required search checks: (1) typing/input/key events fire **zero** fetches until Search is tapped, then exactly one geocoding request carrying the typed name; (2) a stubbed two-result search (two Springfields) renders both rows with region, country, and their own coordinates; (3) tapping a result sets the found place, and subsequent Look back **and** Look live requests carry the found coordinates (fetch URLs asserted), with the archive labeled by the found name, and all three Sun & tilt selects offering it by name; (4) a stubbed empty result set renders the plain no-results message and neither the selection nor the pin coordinates move; (5) the original-feature checks above still pass. Also covered: unreachable search and empty input get plain messages and empty input sends nothing. Run with jsdom installed outside the project: `NODE_PATH=<scratch>/node_modules node --test tests/smoke.test.cjs`.
+- Static audit: still zero hover handlers in `assets/app.js`.
+
+### Honest partials and limits
+- **The smoke suite is a recreation, not the original Nov 14 file** (which was never committed); its original-feature coverage is a faithful subset in the same style, not the identical 44 checks.
+- Geocoding results are whatever Open-Meteo's database holds: a place missing from that database cannot be found by name, and the card says to tap the map instead. Coordinates are the database's, shown on every row so a wrong same-name pick is visible before choosing.
+- The found place exists for the session only, like a map pin; it is not added to the 16 built-in places and does not persist across restarts (saving its weather to the notebook does persist, as before).
+- Search results are capped at 8 by the request; for a very common name, a more specific name (town plus region) is the way to narrow the list, and the results status line says same-name places are common.
+
+### Files changed for this feature
+| File | Change | Size |
+|---|---|---|
+| `assets/science.js` | + `geocodeUrl`, `placeLabel`, `foundPlace` (pure, tested); existing functions untouched | 3,626 → 4,417 |
+| `assets/app.js` | search wiring block before the Sun & tilt section; `sunRoomPlace()` resolver adopted by the three Sun-room renderers and town handlers; `choose()` records the current custom selection; place-dropdown fallback fix | 45,193 → 48,155 |
+| `index.html` | Find a place card in the Map room | 20,937 → 22,166 |
+| `assets/style.css` | appended rules only: 44px search targets, result rows ≥52px | 9,977 → 10,309 |
+| `README.md` | one Explore bullet for Find a place | 6,331 → 6,672 |
+| `SCIENCE.md` | one "Place search" provenance section | 8,651 → 9,285 |
+| `tests/science.test.cjs` | 3 new tests appended; existing 21 untouched | 6,143 → 7,873 |
+| `tests/smoke.test.cjs` | **new**: jsdom smoke suite (recreated + search checks) | 10,318 (new) |
+
+Untouched, as required: `assets/land.js`, `assets/places.js`, `assets/snapshots.js`, `assets/glossary.js`, the notebook storage format, and the Compare room's place set.

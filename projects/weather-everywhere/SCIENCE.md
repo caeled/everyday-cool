@@ -36,6 +36,10 @@ NWS official forecasts and radar are external links, not silently mixed into Ope
 
 Selection checked October 5, 2026. External services can change. There are no analytics, accounts, embedded ads, or automatic location permissions in this workshop.
 
+## Place search
+
+Place names and coordinates come from Open-Meteo's geocoding service (https://open-meteo.com/en/docs/geocoding-api), a database of named places. A search sends only the typed name, and only when the reader clicks Search; nothing is sent while typing, and there is no autocomplete. Results are shown with region and country so same-name places can be told apart, and a result is never moved or adjusted: choosing one selects exactly the coordinates the database returned. A found place has no teaching temperature profile, and none is invented for it; the Compare room keeps its 16 hand-written example profiles.
+
 ## Sun & tilt room
 
 The workshop constant for Earth's axial tilt is 23.44 degrees, shown rounded as 23.5 degrees. Solar declination for day of year N and tilt epsilon: delta = epsilon * sin(2 * pi * (284 + N) / 365). This is the same mid-year approximation the daylight map layer uses, generalized so the tilt can change. Day length uses the sunrise hour angle: cos(H) = -tan(latitude) * tan(delta); day length = 24 * acos(cos H) / pi hours, clamped to 0 (polar night) and 24 (polar day). Sunrise and sunset in the Sun slider are 12 - L/2 and 12 + L/2, where L is the day length: local solar time, with the sun highest at noon. No equation-of-time correction, time zone, atmospheric refraction, horizon elevation, or twilight is included, so displayed times are teaching approximations that can differ from clock sunrise tables by tens of minutes. The tilt control spans 0 to 45 degrees; the move-your-town control keeps Earth's real tilt and varies only latitude. All values are computed locally from these formulas. They describe sunlight geometry, never weather.

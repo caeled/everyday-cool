@@ -13,6 +13,7 @@ On Windows, double-click **Launch.cmd**. It opens the workshop in your default b
 ## Explore
 
 - **Map room:** bundled Natural Earth world geography, click any coordinate, pan/zoom, enlarged map, 16 named places, exact-coordinate input, three layers, °C/°F, and a month slider.
+- **Find a place:** search Open-Meteo's place database by name and choose from the matches, each shown with its region, country, and coordinates, so same-name towns can be told apart. A found place then works like a map pin everywhere coordinates are used, and the Sun & tilt room can choose it too. Nothing is sent until you click Search.
 - **Compare places:** twelve-month illustrative temperature profiles, a readable table, and computed day length. These are teaching examples, not station climate normals. No invented profile is supplied for custom coordinates.
 - **Antarctica expedition:** jump straight to coast versus South Pole in southern summer. Distinguish seasons from warmth and coast from high interior.
 - **Look live:** current model conditions and seven-day model forecasts from Open-Meteo. Explicit source, retrieval time, valid time in UTC, cache labels, error handling, and save to notebook. No live request is sent until you click the button. Coordinates go to the provider; no location permissions are requested. Wind speeds are also described in Beaufort words, next to the numbers.
