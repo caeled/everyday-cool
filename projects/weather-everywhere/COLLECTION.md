@@ -7,3 +7,5 @@ The [original project](https://github.com/caeled/weather-everywhere) and [origin
 Original files, licenses, and third-party credits are preserved. Local changes to imported files: none. This notice is an additional collection file. Use the collection root tools to build or publish the collection; project publishing helpers still target their original repository.
 
 [Back to the collection](../../index.html) · [Contribution guide](../../CONTRIBUTING.md)
+
+Banner added November 15, 2026: weather-banner.jpg (AI/robots theme), part of the collection-wide banner pass.

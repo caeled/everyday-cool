@@ -9,3 +9,5 @@ Added at Steven's request during the same session: SpaceX satellite tracking (St
 Author-supplied file: `downloads/backyard-radio-telescope-plan.pdf`, supplied by Steven Powell on 14 November 2026 and shipped byte-for-byte unchanged (SHA-256 in `../../provenance/tonights-sky.json`). It is a 4-page staged plan (Stage 0 inventory; Stage 1 hydrogen-line first light with a 1420 MHz feed, SAWbird+ H1 LNA, RTL-SDR Blog V4, ezRA/VIRGO/SDR++; Stage 2 baselines and logging; Stage 3 OnStep/stepper tracking with hamlib rotctld; Stage 4 stretch goals; safety; budget about $200–$420). Plan prepared November 4, 2026, with Muse. The dish, the mount, and the idea are the family's. The workshop links a related Facebook post, "See the dish coming down": https://www.facebook.com/photo?fbid=10244026378851229&set=a.1174251832908 (external; may require a Facebook login).
 
 Third-party data and code are listed in `THIRD-PARTY.md`. The page sends nothing and stores nothing; the only network request is the optional "Refresh orbits" button (CelesTrak).
+
+Banner added November 15, 2026: tonights-sky-banner.jpg (AI/robots theme), part of the collection-wide banner pass.
