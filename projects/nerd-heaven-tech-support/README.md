@@ -14,6 +14,16 @@ Right-click the ZIP, choose **Extract All**, then open **START-HERE.html** in th
 
 On Windows, **Download-Media.bat** adds optional publisher recordings beside the course. Choose four videos (~3.3 GB), the full collection (~3.7 GB), the two-hour starting route (~195 MB), or reading material only. It needs internet during the download; saved recordings then play offline. No administrator account or extra installation is needed on current Windows 10/11.
 
+## Install it as an app
+
+The course is also a web app: open it where it is hosted
+([Neocities](https://caeled.neocities.org/learn/) or the
+[Everyday Cool collection copy](https://caeled.github.io/everyday-cool/projects/nerd-heaven-tech-support/))
+in Chrome or Edge and choose **Install** — it then runs offline like a program.
+Prefer a real installer? **Nerd Heaven v1.0.0** for Windows (setup .exe or .msi)
+and macOS (universal .dmg) is on the
+[app releases page](https://github.com/caeled/nerd-heaven-app/releases).
+
 ## Start learning
 
 Download this repository as a ZIP, extract it, and open `index.html` in a current browser. Keep `app.js`, `course.js` and `style.css` beside the index. You can also clone the repository.
