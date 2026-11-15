@@ -4,6 +4,6 @@ This is an independent source copy in the [Everyday Cool collection](https://git
 
 The [original project](https://github.com/caeled/secret-squares) and [original website](https://caeled.github.io/secret-squares/) remain at their current addresses and continue to be maintained. Everyday Cool is the curated home for the current collection and future additions. Copies are updated through deliberate review, not automatic synchronization.
 
-Original files, licenses, and third-party credits are preserved. Local changes to imported files: none. This notice is an additional collection file. Use the collection root tools to build or publish the collection; project publishing helpers still target their original repository.
+Original files, licenses, and third-party credits are preserved. Local changes to imported files: `index.html`, `assets/app.js`, `assets/core.js`, `assets/style.css`, `README.md`, `SCIENCE.md`, and `tests/core.test.cjs` carry Room 07, the UPC Barcodes studio (November 14, 2026), and the November 15, 2026 banner, synced from the maintained original. This notice is an additional collection file. Use the collection root tools to build or publish the collection; project publishing helpers still target their original repository.
 
 [Back to the collection](../../index.html) · [Contribution guide](../../CONTRIBUTING.md)

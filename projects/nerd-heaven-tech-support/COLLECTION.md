@@ -4,6 +4,6 @@ This is an independent source copy in the [Everyday Cool collection](https://git
 
 The [original project](https://github.com/caeled/nerd-heaven-tech-support) and [original website](https://caeled.neocities.org/learn/) remain at their current addresses and continue to be maintained. Everyday Cool is the curated home for the current collection and future additions. Copies are updated through deliberate review, not automatic synchronization.
 
-Original files, licenses, and third-party credits are preserved. Local changes to imported files: none. This notice is an additional collection file. Use the collection root tools to build or publish the collection; project publishing helpers still target their original repository.
+Original files, licenses, and third-party credits are preserved. Local changes to imported files: `index.html` (PWA wiring, the DiskPilot strip, and the Tech Bench banner, November 14, 2026, in step with the original project), `README.md` (PWA and install notes, same sync), and `.gitignore` (a collection-side ignore list for media and progress files). This notice is an additional collection file. Use the collection root tools to build or publish the collection; project publishing helpers still target their original repository.
 
 [Back to the collection](../../index.html) · [Contribution guide](../../CONTRIBUTING.md)
