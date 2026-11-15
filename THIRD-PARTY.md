@@ -7,3 +7,5 @@ Space Camp / For Christa and A Library were supplied by Steven and are now bundl
 The hub uses system fonts, original inline SVG artwork, and local browser code. It does not load external fonts, analytics, or scripts. Search and filtering stay on the device. Opening an external resource connects to that destination.
 
 Roman Numerals & Numbers in the Wild expands Steven’s local converter with original lessons and benches. Its original file is preserved for reference, with SHA-256 provenance. NRICH and OpenStax resources are linked for further exploration, not copied; see the workshop’s THIRD-PARTY.md.
+
+Tonight's Sky (proposed 14 November 2026) is an original collection workshop whose math is ported from Steven's Skywatch. It bundles a reduced Yale Bright Star Catalogue extract (via NASA HEASARC), d3-celestial constellation data (BSD 3-Clause), satellite.js (MIT), a dated CelesTrak orbit snapshot, and Steven's author-supplied backyard radio telescope plan (prepared with Muse; the dish, the mount, and the idea are the family's). Its optional "Refresh orbits" button contacts celestrak.org only when pressed. See the workshop's THIRD-PARTY.md.
