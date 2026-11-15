@@ -1,6 +1,6 @@
 # Secret Squares
 
-An Everyday Cool workshop by Steven Powell. Make real QR codes, investigate information, and share an invented secret. Free, portable, and built for curious kids and adults.
+An Everyday Cool workshop by Steven Powell. Make real QR codes and barcodes, investigate information, and share an invented secret. Free, portable, and built for curious kids and adults.
 
 [Open the workshop](https://caeled.github.io/secret-squares/) · [Open project on GitHub](https://github.com/caeled/secret-squares) · [Download the complete ZIP](https://github.com/caeled/secret-squares/archive/refs/heads/main.zip)
 
@@ -10,7 +10,7 @@ Open **index.html** in a modern browser, or double-click **Launch.cmd** on Windo
 
 Cryptography and packet checksums need Web Crypto. Modern browsers may allow it for local files; if yours does not, run **Serve.cmd**, which uses Python 3 already installed to serve only this folder at localhost:8003. A hosted copy must use HTTPS. Do not disable browser security settings. Close the server window to stop it.
 
-## Eight rooms
+## Nine rooms
 
 1. **Make a code:** messages, URLs, Unicode, four correction levels, three dark inks, downloadable SVG/PNG, destination preview, and local image decoding.
 2. **Inside the squares:** actual structural reservation map, finder/timing/format/alignment regions, all eight masks, and the encoding pipeline. Colored anatomy views are diagrams; plain views scan.
@@ -18,8 +18,9 @@ Cryptography and packet checksums need Web Crypto. Modern browsers may allow it 
 4. **Bytes & packing:** code points, UTF-8, binary bytes, real gzip, and base64url overhead. Gzip is measured separately; ordinary studio codes do not automatically compress text.
 5. **Secret messages:** AES-256-GCM with fresh random nonces and random shared keys; hybrid RSA-OAEP/SHA-256 public-key experiments. Export/import receiving keys to try two devices. Public QR codes never include private/shared secret keys.
 6. **Transfer station:** custom numbered text packets with a whole-message SHA-256 checksum, reverse ordering, duplicate handling, and missing-piece detection. Not QR Structured Append.
-7. **Field missions:** nine experiments and a downloadable printable treasure-hunt sheet.
-8. **Go deeper:** primary sources, portable guide, scientific notes, and an ASL fingerspelling introduction with real hand-position references and a real signing demonstration. ASL is a language with its own grammar; fingerspelling is one part of it.
+7. **Barcodes:** make a real UPC-A from 11 digits (the bench adds the check digit) or all 12 (it checks your math); bar anatomy and parity, the check digit worked by hand, and a pocket catalog that teaches the real lesson — the name and price live in a catalog, not in the bars. An optional labeled link leads out to Open Food Facts; the workshop itself still sends nothing.
+8. **Field missions:** nine experiments and a downloadable printable treasure-hunt sheet.
+9. **Go deeper:** primary sources, portable guide, scientific notes, and an ASL fingerspelling introduction with real hand-position references and a real signing demonstration. ASL is a language with its own grammar; fingerspelling is one part of it.
 
 ## Compatibility
 

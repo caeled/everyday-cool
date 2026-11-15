@@ -46,6 +46,12 @@ We split at most 4096 UTF-8 bytes into chunks of at most 220 bytes. Each QR cont
 
 This is not QR Structured Append and does not implement automatic camera sequencing. A QR reader reveals each packet as text; the receiving bench performs reassembly. The checksum detects inconsistency but is not authentication: an attacker can change the entire message and calculate a new checksum. Packets are not encrypted. Transmission uses light from a display or print to a camera; decoding the contained URL does not load its website unless the user then opens it.
 
+## A barcode is a key, not a container
+
+A UPC-A encodes twelve digits in 95 modules: guard patterns at the start, middle, and end; six left digits in L parity; six right digits in R parity, the mirror set, so a reader can tell the symbol's orientation. The final digit is a modulo-10 check: digits in odd positions are weighted by 3, and the check digit makes the total a multiple of 10. It detects every single-digit error and most adjacent transpositions, but it authenticates nothing — anyone can compute a valid check digit, just as anyone can recompute a packet checksum.
+
+Unlike a QR code, which usually carries its payload inside the pattern, a UPC carries only an identifier. Names, prices, and stock live in a database the number indexes. The workshop's pocket catalog is deliberately tiny, invented, and local; it demonstrates the lookup without sending codes to a server. Following the labeled link to an external catalog is the reader's choice, like every other external link in the workshop.
+
 ## Trust before navigation
 
 URLs are parsed with the browser URL API. Only http/https destinations receive an explicit opening link; no decoded content opens automatically. A domain mentioned in a path is not the host. HTTPS protects transport but does not establish that a site is trustworthy. No URL reputation service is used, and destination preview is not a security certification.
