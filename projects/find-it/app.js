@@ -196,7 +196,7 @@ async function findCategory(cat, btn) {
       if (map) { const m = L.marker([r.lat, r.lon]).addTo(resultLayer); m.bindPopup(''); m.on('popupopen', () => { const el = m.getPopup().getElement(); if (el) el.textContent = r.name + ' — ' + F.formatDistance(r.distanceKm) + ' away'; }); bounds.push([r.lat, r.lon]); }
       const li = document.createElement('li');
       const strong = document.createElement('strong'); strong.textContent = r.name; li.appendChild(strong);
-      li.appendChild(document.createTextNode(' — ' + F.formatDistance(r.distanceKm) + ' away' + (r.address ? ' · ' + r.address : '')));
+      li.appendChild(document.createTextNode(' — ' + F.formatDistance(r.distanceKm) + ' away' + (r.address ? ' · ' + r.address : '') + (r.note ? ' · ' + r.note : '')));
       li.appendChild(document.createElement('br'));
       const a = document.createElement('a'); a.href = F.directionsUrl(r.lat, r.lon); a.target = '_blank'; a.rel = 'noopener'; a.className = 'directions'; a.textContent = 'Directions ↗'; li.appendChild(a);
       const a2 = document.createElement('a'); a2.href = F.osmDirectionsUrl(r.lat, r.lon); a2.target = '_blank'; a2.rel = 'noopener'; a2.textContent = 'Directions via OpenStreetMap ↗'; li.appendChild(a2);

@@ -97,3 +97,69 @@ console.log('Find It rules passed: categories, Overpass query building, distance
   for (const c of f.CATEGORIES) if (!['salad', 'diner'].includes(c.id)) a.ok(c.phrase, c.id);
   console.log('Find It backup search and place links passed.');
 }
+
+// Public laundry covers laundromats and stand-alone washers, and the
+// backup search covers it too; self-service is marked.
+{
+  const lc = f.byId('laundromat');
+  a.equal(lc.label, 'Public laundry');
+  const q = f.buildQuery(lc, 41.65, -83.54, 8000);
+  for (const t of ['"shop"="laundry"', '"amenity"="washing_machine"', '"amenity"="laundry"']) a.ok(q.includes(t), t);
+  a.ok(f.nominatimCategoryUrl('laundromat', 41.65, -83.54, 8000).includes(encodeURIComponent('[laundry]')));
+  const t = f.tidyResults([{ lat: 41.66, lon: -83.55, tags: { name: 'Suds', shop: 'laundry', self_service: 'yes' } }, { lat: 41.67, lon: -83.56, tags: { amenity: 'washing_machine' } }], 41.65, -83.54, 'Public laundry');
+  a.equal(t[0].note, 'self-service'); a.equal(t[1].note, 'washing machines');
+  console.log('Find It public laundry passed.');
+}
+
+// Flight tracker rules.
+{
+  const fl = require('./flights.js');
+  const p = s => fl.parseFlightNumber(s);
+  a.equal(p('UA123').callsign, 'UAL123');
+  a.equal(p('ua 123').callsign, 'UAL123');
+  a.equal(p('UA0123').callsign, 'UAL123');
+  a.equal(p('DL-1234').callsign, 'DAL1234');
+  a.equal(p('UAL123').iata, 'UA123');
+  a.equal(p('B6 815').callsign, 'JBU815');
+  a.equal(p('9E3290').callsign, 'EDV3290');
+  a.equal(p('N10023').callsign, 'N10023');            // tail numbers keep their zeros
+  a.equal(p('hello'), null); a.equal(p('123'), null); a.equal(p(''), null); a.equal(p('<script>'), null);
+  for (const [iata, icao] of Object.entries(fl.AIRLINES)) { a.ok(/^[A-Z0-9]{2}$/.test(iata), iata); a.ok(/^[A-Z]{3}$/.test(icao), icao); }
+  a.ok(fl.LIVE_PROVIDERS.every(x => x.url('UAL1').startsWith('https://')));
+  a.ok(fl.LIVE_PROVIDERS[0].url('UAL1').startsWith(fl.RELAY));
+  // Provider answers: callsign padding, freshest position, ground.
+  const plane = fl.tidyAircraft({ ac: [
+    { flight: 'UAL1836 ', hex: 'a5dcde', lat: 42.7, lon: -90.7, alt_baro: 30300, gs: 453.7, track: 86.8, baro_rate: -1344, seen_pos: 3, r: 'N477UA', t: 'A320' },
+    { flight: 'UAL1836 ', hex: 'a5dcde', lat: 42.6, lon: -90.9, alt_baro: 30500, gs: 450, track: 86, seen_pos: 0.5 },
+    { flight: 'SWA1', lat: 1, lon: 1 },
+  ] }, 'UAL1836');
+  a.equal(plane.lat, 42.6); a.equal(plane.altFt, 30500); a.equal(plane.onGround, false);
+  a.equal(fl.tidyAircraft({ aircraft: [{ flight: 'DAL5', lat: 1, lon: 2, alt_baro: 'ground', gs: 12 }] }, 'DAL5').onGround, true);
+  a.equal(fl.tidyAircraft({ ac: [] }, 'UAL1'), null);
+  a.equal(fl.tidyAircraft({ ac: [{ flight: 'UAL1', lat: null, lon: null }] }, 'UAL1'), null);
+  // Route answers.
+  const route = fl.tidyRoute({ response: { flightroute: { callsign_icao: 'UAL1836', callsign_iata: 'UA1836', airline: { name: 'United Airlines' }, origin: { iata_code: 'SEA', icao_code: 'KSEA', municipality: 'Seattle', country_iso_name: 'US', latitude: 47.449, longitude: -122.309 }, destination: { iata_code: 'ORD', icao_code: 'KORD', municipality: 'Chicago', country_iso_name: 'US', latitude: 41.97, longitude: -87.9 } } } });
+  a.equal(route.origin.iata, 'SEA'); a.equal(fl.faaCode(route.destination), 'ORD');
+  a.equal(fl.tidyRoute({ response: 'unknown callsign' }), null);
+  // A plane over Iowa matches SEA->ORD, not San Jose->Boise.
+  a.ok(fl.routeMatches(route, { lat: 42.7, lon: -90.7 }));
+  a.ok(!fl.routeMatches({ origin: { lat: 37.36, lon: -121.93 }, destination: { lat: 43.56, lon: -116.22 } }, { lat: 40.26, lon: -91.4 }));
+  a.ok(fl.routeMatches(null, { lat: 0, lon: 0 }));
+  a.equal(fl.faaCode({ iata: 'LHR', country: 'GB' }), '');
+  // FAA NAS status XML.
+  const xml = '<AIRPORT_STATUS_INFORMATION><Delay_type><Name>Ground Stop Programs</Name><Ground_Stop_List><Program><ARPT>LGA</ARPT><Reason>airspace volume</Reason><End_Time>2:45 pm EST</End_Time></Program></Ground_Stop_List></Delay_type><Delay_type><Name>Ground Delay Programs</Name><Ground_Delay_List><Ground_Delay><ARPT>SFO</ARPT><Reason>low ceilings</Reason><Avg>1 hour</Avg><Max>2 hours</Max></Ground_Delay></Ground_Delay_List></Delay_type><Delay_type><Name>Airport Closures</Name><Airport_Closure_List><Airport><ARPT>LAX</ARPT><Reason>!LAX 05/277 LAX AD AP CLSD TO NON SKED TRANSIENT GA ACFT</Reason><Reopen>May 28</Reopen></Airport></Airport_Closure_List></Delay_type></AIRPORT_STATUS_INFORMATION>';
+  const notes = fl.faaNotes(xml, ['LGA', 'SFO', 'LAX', 'ORD']);
+  a.equal(notes.length, 2);
+  a.equal(notes[0].airport, 'LGA'); a.ok(notes[0].detail.includes('2:45 pm'));
+  a.ok(notes[1].detail.includes('1 hour'));
+  a.deepEqual(fl.faaNotes('', ['ORD']), []);
+  // Words.
+  a.equal(fl.compass(86.8), 'E'); a.equal(fl.compass(359), 'N');
+  a.equal(fl.describeAltitude({ altFt: 30300 }), '30,300 ft');
+  a.equal(fl.describeAltitude({ onGround: true }), 'on the ground');
+  a.equal(fl.describeSpeed(450), '450 kt (518 mph)');
+  a.equal(fl.describeClimb(-1344), 'descending 1,340 ft/min'); a.equal(fl.describeClimb(100), 'level');
+  const links = fl.flightLinks(p('UA1836'), 'a5dcde');
+  a.ok(links[0].url.endsWith('/UAL1836') && links[1].url.endsWith('/ua1836') && links[2].url.includes('a5dcde'));
+  console.log('Find It flight tracker rules passed: flight numbers, airline table, providers, plane and route tidying, FAA notes, words, links.');
+}
