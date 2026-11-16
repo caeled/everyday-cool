@@ -11,3 +11,5 @@ Author-supplied file: `downloads/backyard-radio-telescope-plan.pdf`, supplied by
 Third-party data and code are listed in `THIRD-PARTY.md`. The page sends nothing and stores nothing; the only network request is the optional "Refresh orbits" button (CelesTrak).
 
 Banner added November 15, 2026: tonights-sky-banner.jpg (AI/robots theme), part of the collection-wide banner pass.
+
+Link added November 16, 2026: the satellite explainer points to the sister room Satellite Watch (general satellite tracking), which reuses this room's satpass.js, astro.js and satellite.js and links back here and to the radio telescope plan.
