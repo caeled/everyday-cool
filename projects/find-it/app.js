@@ -35,10 +35,15 @@ function setCentre(lat, lon, label, zoom) {
 document.getElementById('find-me').addEventListener('click', () => {
   if (!navigator.geolocation) { say('This device will not say where it is. Type a ZIP code or town name instead.'); return; }
   say('Asking your device where you are…');
-  navigator.geolocation.getCurrentPosition(
-    pos => { setCentre(pos.coords.latitude, pos.coords.longitude, 'You are here, as close as your device can tell.', 15); say('Found you. Now tap a category and Find It will look around you.'); },
-    () => say('Your device would not share its location. That is a fair choice — the ZIP box does the same job.'),
-    { timeout: 12000 });
+  const found = pos => { setCentre(pos.coords.latitude, pos.coords.longitude, 'You are here, as close as your device can tell.', 15); say('Found you. Now tap a category and Find It will look around you.'); };
+  const refused = () => say('Your device would not share its location. That is a fair choice — the ZIP box does the same job.');
+  // Fast first: a recent fix the device already has (up to 5 minutes
+  // old) comes back at once. Only if that fails do we wait on a
+  // fresh, precise fix, which is the slow path on most computers.
+  navigator.geolocation.getCurrentPosition(found, () => {
+    say('No quick answer — asking for a fresh, precise fix. This is the slow way, hang on…');
+    navigator.geolocation.getCurrentPosition(found, refused, { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
+  }, { enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 });
 });
 
 document.getElementById('place-form').addEventListener('submit', async ev => {
@@ -47,7 +52,8 @@ document.getElementById('place-form').addEventListener('submit', async ev => {
   if (!q) { say('Type a ZIP code or a town name first, then press Go there.'); return; }
   say('Looking up “' + q + '”…');
   try {
-    const res = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&q=' + encodeURIComponent(q), { headers: { Accept: 'application/json' } });
+    const ctl = new AbortController(); const timer = setTimeout(() => ctl.abort(), 10000);
+    const res = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&q=' + encodeURIComponent(q), { headers: { Accept: 'application/json' }, signal: ctl.signal }).finally(() => clearTimeout(timer));
     const hits = await res.json();
     if (!hits.length) { say('No place by that name came back. Check the spelling, or try the ZIP code.'); return; }
     setCentre(parseFloat(hits[0].lat), parseFloat(hits[0].lon), hits[0].display_name, /^\d{5}$/.test(q) ? 13 : 12);
@@ -77,11 +83,12 @@ async function findCategory(cat, btn) {
   document.querySelectorAll('.cat-btn').forEach(x => x.classList.toggle('active', x === btn));
   say('Looking for ' + cat.label.toLowerCase() + ' near ' + (centre.label || 'the map centre') + '…');
   resultsEl.hidden = false; listEl.innerHTML = '';
+  // If the map service is being slow, say so — a search that talks
+  // while it works feels shorter than a silent one.
+  const slowTimer = setTimeout(() => say('Still looking for ' + cat.label.toLowerCase() + ' — the map service is slow today. Hang on…'), 7000);
   try {
     const query = F.buildQuery(cat, centre.lat, centre.lon, 8000);
-    const res = await fetch('https://overpass-api.de/api/interpreter', { method: 'POST', body: 'data=' + encodeURIComponent(query), headers: { 'Content-Type': 'application/x-www-form-urlencoded' } });
-    if (!res.ok) throw new Error('overpass ' + res.status);
-    const data = await res.json();
+    const data = await F.queryOverpass(query);
     const results = F.tidyResults(data.elements, centre.lat, centre.lon, cat.label).slice(0, 20);
     if (resultLayer) resultLayer.clearLayers();
     if (!results.length) { say('No ' + cat.label.toLowerCase() + ' found within about 5 miles of here on OpenStreetMap. Try a bigger town, or a different category.'); return; }
@@ -99,4 +106,5 @@ async function findCategory(cat, btn) {
     }
     if (map && bounds.length) map.fitBounds(bounds, { padding: [30, 30], maxZoom: 15 });
   } catch { say('The place search could not get through. Check the connection and try again; OpenStreetMap sometimes asks busy visitors to wait a minute.'); }
+  finally { clearTimeout(slowTimer); }
 }

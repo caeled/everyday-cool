@@ -9,7 +9,7 @@ All lesson/Help text and code are original work written for this workshop (code 
 - **Leaflet 1.9.4** — the map library, loaded from the unpkg CDN with pinned integrity hashes. BSD 2-Clause license, © Vladimir Agafonkin and contributors. https://leafletjs.com
 - **OpenStreetMap tiles** — map pictures served by the OpenStreetMap Foundation's tile servers. Map data © OpenStreetMap contributors, available under the Open Database License (ODbL). https://www.openstreetmap.org/copyright
 - **Nominatim** — OpenStreetMap's search service, used for ZIP code and town lookups: one search per button press, no bulk lookups. https://nominatim.openstreetmap.org
-- **Overpass API** — the OpenStreetMap query service (overpass-api.de) used for category searches: one user-tapped category at a time, around the map centre. https://wiki.openstreetmap.org/wiki/Overpass_API
+- **Overpass API** — the OpenStreetMap query service used for category searches: one user-tapped category at a time, around the map centre. The main instance (overpass-api.de) is tried first; if it stalls or refuses, the community mirrors overpass.kumi.systems and overpass.private.coffee are tried in turn, each with its own time limit. https://wiki.openstreetmap.org/wiki/Overpass_API
 - **Google Maps directions** — linked, not loaded: Directions buttons open a Google Maps directions URL in a new tab, under Google's own terms. OpenStreetMap directions are offered as the alternative on every result.
 
 ## Limitations

@@ -34,6 +34,35 @@ const CATEGORIES = [
 
 const GROUPS = ['Eat & drink', 'Health', 'Car & road', 'Sleep & outdoors', 'Everyday needs'];
 
+// Public Overpass endpoints, tried in order. The main instance is a
+// shared service: when it is busy it can stall or refuse, so Find It
+// falls through to community mirrors instead of giving up.
+const OVERPASS_ENDPOINTS = [
+  'https://overpass-api.de/api/interpreter',
+  'https://overpass.kumi.systems/api/interpreter',
+  'https://overpass.private.coffee/api/interpreter',
+];
+
+// Ask Overpass for a query's results, trying each endpoint in turn.
+// Each attempt gets its own time limit (an AbortController), so one
+// stalled server cannot hang the search forever. fetchFn can be
+// injected so the rules can be tested without the network.
+async function queryOverpass(query, fetchFn, timeoutMs) {
+  const doFetch = fetchFn || ((...a) => fetch(...a));
+  const limit = timeoutMs || 15000;
+  let lastErr = null;
+  for (const url of OVERPASS_ENDPOINTS) {
+    const ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timer = ctl ? setTimeout(() => ctl.abort(), limit) : null;
+    try {
+      const res = await doFetch(url, { method: 'POST', body: 'data=' + encodeURIComponent(query), headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, signal: ctl ? ctl.signal : undefined });
+      if (!res.ok) throw new Error('overpass ' + res.status);
+      return await res.json();
+    } catch (e) { lastErr = e; } finally { if (timer) clearTimeout(timer); }
+  }
+  throw lastErr || new Error('overpass unreachable');
+}
+
 function byId(id) { return CATEGORIES.find(c => c.id === id) || null; }
 
 // Build an Overpass QL query that finds a category around a centre.
@@ -90,6 +119,6 @@ function osmDirectionsUrl(lat, lon) {
   return 'https://www.openstreetmap.org/directions?to=' + lat + '%2C' + lon;
 }
 
-const api = { CATEGORIES, GROUPS, byId, buildQuery, haversineKm, formatDistance, tidyResults, directionsUrl, osmDirectionsUrl };
+const api = { CATEGORIES, GROUPS, OVERPASS_ENDPOINTS, queryOverpass, byId, buildQuery, haversineKm, formatDistance, tidyResults, directionsUrl, osmDirectionsUrl };
 if (typeof module !== 'undefined' && module.exports) module.exports = api;
 if (typeof window !== 'undefined') window.FindItRules = api;

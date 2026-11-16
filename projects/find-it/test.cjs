@@ -30,3 +30,19 @@ a.ok(tidy[0].distanceKm < tidy[1].distanceKm);
 a.equal(f.directionsUrl(41.3, -84.3), 'https://www.google.com/maps/dir/?api=1&destination=41.3,-84.3');
 a.ok(f.osmDirectionsUrl(41.3, -84.3).startsWith('https://www.openstreetmap.org/directions'));
 console.log('Find It rules passed: categories, Overpass query building, distances, result tidying, and directions links.');
+
+// Endpoint failover: a stalled or refusing first server must not sink
+// the search — the next mirror gets its turn, and a good answer from
+// any of them is the answer.
+(async () => {
+  a.ok(Array.isArray(f.OVERPASS_ENDPOINTS) && f.OVERPASS_ENDPOINTS.length >= 2);
+  a.ok(f.OVERPASS_ENDPOINTS[0].includes('overpass-api.de'));
+  const tried = [];
+  const flaky = async url => { tried.push(url); if (tried.length === 1) return { ok: false, status: 504 }; if (tried.length === 2) throw new Error('stalled'); return { ok: true, json: async () => ({ elements: [1, 2] }) }; };
+  const data = await f.queryOverpass('query', flaky, 1000);
+  a.deepEqual(data.elements, [1, 2]);
+  a.equal(tried.length, 3);
+  const dead = async () => { throw new Error('down'); };
+  await a.rejects(() => f.queryOverpass('query', dead, 1000));
+  console.log('Find It failover passed: mirrors tried in order, first good answer wins, all-down rejects.');
+})().catch(e => { console.error(e); process.exit(1); });
