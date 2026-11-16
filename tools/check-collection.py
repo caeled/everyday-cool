@@ -22,6 +22,24 @@ for project in catalog:
   expected={p.relative_to(folder).as_posix():p.read_bytes() for p in folder.rglob('*') if p.is_file() and not any(s in {'.git','__pycache__','media','node_modules','.venv'} for s in p.relative_to(folder).parts) and p.name!='asl-chart.jpg' and p.suffix not in {'.pyc','.mp4','.webm','.mkv'}}
   actual={n.split('/',1)[1]:z.read(n) for n in z.namelist()}
   assert actual==expected,'Stale or incorrect project ZIP: '+project['id']
+# Room pages: every relative link inside a bundled room must resolve in the
+# collection (sister-room links such as Satellite Watch -> Tonight's Sky and
+# its radio telescope plan PDF). Nerd Heaven's optional-media templates are
+# filled in after download, so that room is skipped.
+class Refs(HTMLParser):
+ def __init__(self):super().__init__();self.refs=[]
+ def handle_starttag(self,tag,attrs):
+  for k,v in attrs:
+   if k in ('href','src') and v:self.refs.append(v)
+room_links=0
+for project in catalog:
+ if not project['bundled'] or project['id']=='nerd-heaven-tech-support':continue
+ for page in (root/'projects'/project['id']).rglob('*.html'):
+  r=Refs();r.feed(page.read_text(encoding='utf-8',errors='ignore'))
+  for ref in r.refs:
+   path=ref.split('#')[0].split('?')[0]
+   if not path or re.match(r'^[a-z]+:',ref) or ref.startswith('//'):continue
+   assert (page.parent/path).exists(),f'Broken room link in {page.relative_to(root)}: {ref}';room_links+=1
 class Check(HTMLParser):
  def __init__(self):super().__init__();self.ids=[];self.links=[]
  def handle_starttag(self,tag,attrs):
@@ -34,4 +52,4 @@ for link in c.links:
  if link.startswith('#'): assert link=='#' or link[1:] in c.ids,link
  elif not re.match(r'^[a-z]+:',link):assert (root/link.split('#')[0]).is_file(),link
 for p in catalog:assert p['title'] in html.unescape((root/'index.html').read_text(encoding='utf-8'))
-print(f'Collection verified: {len(catalog)} entries, {count} imported files, all project ZIPs, hub links, licenses, and provenance.')
+print(f'Collection verified: {len(catalog)} entries, {count} imported files, all project ZIPs, hub links, {room_links} room-page links, licenses, and provenance.')

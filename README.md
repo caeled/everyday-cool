@@ -26,6 +26,7 @@ These are independent source snapshots inside one collection, rather than GitHub
 | Packet Playground | [Networking benches](projects/packet-playground/index.html) | Original collection workshop |
 | Decisions Everywhere | [Decision-making rooms](projects/decisions-everywhere/index.html) | Original collection workshop |
 | Tonight's Sky | [Interactive sky, satellites and radio astronomy](projects/tonights-sky/index.html) | Original collection workshop (math ported from Steven's Skywatch) |
+| Satellite Watch | [Every kind of satellite live on a world map, with passes over you](projects/satellite-watch/index.html) | Original collection workshop (reuses Tonight's Sky's orbit code) |
 | AI-Delivery | [Project home](https://github.com/caeled/AI-Delivery) | Linked project · a shared desk for AI assistants (MIT) |
 
 Space Camp and A Library were supplied by Steven as files on 6 October 2026. Their SHA-256 origin records and documented collection changes accompany the copies; no original Git history is claimed for those uploads.
