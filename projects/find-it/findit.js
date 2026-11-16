@@ -25,7 +25,9 @@ const CATEGORIES = [
   { id: 'library', label: 'Library', group: 'Sleep & outdoors', emoji: '📚', selectors: ['"amenity"="library"'], phrase: 'library' },
   { id: 'park', label: 'Park / playground', group: 'Sleep & outdoors', emoji: '🌳', selectors: ['"leisure"="park"', '"leisure"="playground"'], phrase: 'park' },
   { id: 'fitness', label: 'Fitness center', group: 'Everyday needs', emoji: '🏋️', selectors: ['"leisure"="fitness_centre"', '"amenity"="gym"'], phrase: 'gym' },
-  { id: 'laundromat', label: 'Laundromat', group: 'Everyday needs', emoji: '🧺', selectors: ['"shop"="laundry"'], phrase: 'laundry' },
+  // Public laundry: laundromats (shop=laundry; self-service ones are marked)
+  // plus coin washers mapped on their own (campgrounds, marinas, hostels).
+  { id: 'laundromat', label: 'Public laundry', group: 'Everyday needs', emoji: '🧺', selectors: ['"shop"="laundry"', '"amenity"="washing_machine"', '"amenity"="laundry"'], phrase: 'laundry' },
   { id: 'atm-bank', label: 'ATM / bank', group: 'Everyday needs', emoji: '🏧', selectors: ['"amenity"="atm"', '"amenity"="bank"'], phrase: 'bank' },
   { id: 'post-office', label: 'Post office', group: 'Everyday needs', emoji: '📮', selectors: ['"amenity"="post_office"'], phrase: 'post office' },
   { id: 'hardware', label: 'Hardware store', group: 'Everyday needs', emoji: '🪛', selectors: ['"shop"="hardware"', '"shop"="doityourself"'], phrase: 'hardware store' },
@@ -239,6 +241,7 @@ function tidyResults(elements, centreLat, centreLon, categoryLabel) {
       address: [tags['addr:housenumber'], tags['addr:street'], tags['addr:city']].filter(Boolean).join(' '),
       distanceKm: haversineKm(centreLat, centreLon, lat, lon),
       ...placeLinks(tags),
+      note: tags.self_service === 'yes' ? 'self-service' : (tags.self_service === 'no' ? 'staffed / drop-off' : (tags.amenity === 'washing_machine' ? 'washing machines' : '')),
     });
   }
   return out.sort((a, b) => a.distanceKm - b.distanceKm);
