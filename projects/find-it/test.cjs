@@ -44,5 +44,56 @@ console.log('Find It rules passed: categories, Overpass query building, distance
   a.equal(tried.length, 3);
   const dead = async () => { throw new Error('down'); };
   await a.rejects(() => f.queryOverpass('query', dead, 1000));
+  // A stalled main server: the next mirror is asked after the hedge delay
+  // and its answer wins, well before the stalled one's time limit.
+  const t0 = Date.now(); const order = [];
+  const stall = (url, opts) => { order.push(url); if (order.length === 1) return new Promise((_, rej) => opts.signal.addEventListener('abort', () => rej(new Error('aborted')))); return Promise.resolve({ ok: true, json: async () => ({ elements: ['mirror'] }) }); };
+  const hedged = await f.queryOverpass('query', stall, 5000, 50);
+  a.deepEqual(hedged.elements, ['mirror']); a.ok(Date.now() - t0 < 1000, 'hedge took ' + (Date.now() - t0));
+  // An Overpass timeout remark with no elements is a failure, not "none here".
+  const remarkThenOk = (() => { let n = 0; return async () => (++n === 1 ? { ok: true, json: async () => ({ elements: [], remark: 'runtime error: Query timed out' }) } : { ok: true, json: async () => ({ elements: [3] }) }); })();
+  a.deepEqual((await f.queryOverpass('query', remarkThenOk, 1000, 0)).elements, [3]);
   console.log('Find It failover passed: mirrors tried in order, first good answer wins, all-down rejects.');
 })().catch(e => { console.error(e); process.exit(1); });
+
+// Find-me layers: better fixes win, device beats a network guess, the
+// accuracy decides the zoom, saved fixes expire, IP answers are parsed.
+{
+  const dev = (m) => ({ lat: 41.28, lon: -84.35, accuracyM: m, source: 'device' });
+  const net = { lat: 41.3, lon: -84.4, accuracyM: 10000, source: 'network' };
+  a.equal(f.betterFix(null, dev(900)).accuracyM, 900);
+  a.equal(f.betterFix(dev(900), dev(40)).accuracyM, 40);
+  a.equal(f.betterFix(dev(40), dev(900)).accuracyM, 40);
+  a.equal(f.betterFix(net, dev(3000)).source, 'device');
+  a.equal(f.betterFix(dev(3000), net).source, 'device');
+  a.equal(f.betterFix(dev(50), { lat: NaN, lon: 1 }).accuracyM, 50);
+  a.ok(f.goodEnough(dev(80)) && !f.goodEnough(dev(400)) && !f.goodEnough(net));
+  a.ok(f.zoomForAccuracy(50) > f.zoomForAccuracy(5000));
+  a.equal(f.zoomForAccuracy(undefined), 12);
+  const now = 1000000000;
+  const saved = JSON.stringify({ lat: 41.28, lon: -84.35, accuracyM: 30, source: 'device', at: now - 60000 });
+  a.equal(f.readSavedFix(saved, now, 600000).source, 'saved');
+  a.equal(f.readSavedFix(saved, now + 3600000, 600000), null);
+  a.equal(f.readSavedFix('not json', now, 600000), null);
+  a.equal(f.parseIpGeo({ latitude: '41.28', longitude: '-84.35', city: 'Defiance', region: 'Ohio' }).place, 'Defiance, Ohio');
+  a.equal(f.parseIpGeo({ success: false }), null);
+  a.ok(f.IP_GEO_SERVICES.every(u => u.startsWith('https://')));
+  console.log('Find It find-me rules passed: fix ranking, good-enough, zoom, saved-fix expiry, IP guess parsing.');
+}
+
+// Backup search and place links.
+{
+  a.ok(f.nominatimCategoryUrl('coffee', 41.28, -84.35, 8000).includes(encodeURIComponent('[cafe]')));
+  a.equal(f.nominatimCategoryUrl('salad', 41.28, -84.35, 8000), null);
+  const b = f.boxAround(41.28, -84.35, 8000); a.ok(b.west < -84.35 && b.east > -84.35 && b.south < 41.28 && b.north > 41.28);
+  const t = f.tidyNominatim([{ lat: '41.29', lon: '-84.36', name: 'Biggby Coffee', display_name: 'Biggby Coffee, 1, Main Street, Defiance', extratags: { website: 'https://biggby.example' } }], 41.28, -84.35, 'Coffee');
+  a.equal(t[0].name, 'Biggby Coffee'); a.equal(t[0].links[0].label, 'Website');
+  const L = f.placeLinks({ 'contact:instagram': '@cafe', website: 'cafe.example', 'contact:facebook': 'javascript:alert(1)', phone: '+1 419 555 0100;+1 419 555 0101', opening_hours: 'Mo-Fr 07:00-15:00' });
+  a.ok(L.links.every(l => l.url.startsWith('https://')));
+  a.equal(L.links.find(l => l.label === 'Instagram').url, 'https://www.instagram.com/cafe');
+  a.equal(L.phone, '+1 419 555 0100'); a.equal(L.hours, 'Mo-Fr 07:00-15:00');
+  a.equal(f.safeHttpUrl('javascript:alert(1)'), null);
+  a.deepEqual(f.placeLinks({}).links, []);
+  for (const c of f.CATEGORIES) if (!['salad', 'diner'].includes(c.id)) a.ok(c.phrase, c.id);
+  console.log('Find It backup search and place links passed.');
+}

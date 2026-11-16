@@ -8,8 +8,9 @@ All lesson/Help text and code are original work written for this workshop (code 
 
 - **Leaflet 1.9.4** — the map library, loaded from the unpkg CDN with pinned integrity hashes. BSD 2-Clause license, © Vladimir Agafonkin and contributors. https://leafletjs.com
 - **OpenStreetMap tiles** — map pictures served by the OpenStreetMap Foundation's tile servers. Map data © OpenStreetMap contributors, available under the Open Database License (ODbL). https://www.openstreetmap.org/copyright
-- **Nominatim** — OpenStreetMap's search service, used for ZIP code and town lookups: one search per button press, no bulk lookups. https://nominatim.openstreetmap.org
+- **Nominatim** — OpenStreetMap's search service, used for ZIP code and town lookups, and as a one-request backup category search when Overpass is slow: one search per button press, no bulk lookups. https://nominatim.openstreetmap.org
 - **Overpass API** — the OpenStreetMap query service used for category searches: one user-tapped category at a time, around the map centre. The main instance (overpass-api.de) is tried first; if it stalls or refuses, the community mirrors overpass.kumi.systems and overpass.private.coffee are tried in turn, each with its own time limit. https://wiki.openstreetmap.org/wiki/Overpass_API
+- **geojs.io / ipwho.is** — free, keyless "where is this internet connection" services, asked only when the device cannot give a location (or the visitor presses Use a rough guess). They return a town-level guess and see the visitor's internet address, as any website does. https://www.geojs.io · https://ipwho.is
 - **Google Maps directions** — linked, not loaded: Directions buttons open a Google Maps directions URL in a new tab, under Google's own terms. OpenStreetMap directions are offered as the alternative on every result.
 
 ## Limitations
