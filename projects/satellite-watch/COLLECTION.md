@@ -6,4 +6,4 @@ Reused within the collection (copied unchanged, so this room's ZIP works on its 
 
 At Steven's request the room links to Tonight's Sky and to the existing backyard radio telescope plan PDF in `projects/tonights-sky/downloads/` (the same file Space Camp links; it is not duplicated here). Tonight's Sky and Space Camp link back to this room.
 
-Local changes to imported files: none (no files were imported; all files originate in this collection).
+Local changes: `index.html` gained the room's banner figure on 16 November 2026, when the AI-watercolor banner (`satellite-watch-banner.jpg`, a robot at a brass telescope under the satellites, Steven's art direction) was added at Steven's request; the banner file was added the same day. Provenance hashes for both were refreshed on 17 November 2026 while adding The Radio Room, after the collection check flagged the banner commit's unrecorded change.
