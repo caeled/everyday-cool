@@ -1,0 +1,13 @@
+# Collection origin
+
+Original Everyday Cool workshop, added 18 November 2026 at Steven Powell's request. In the Everyday Cool ideas side chat that day he named "Everyday Electronics" as a future room and seeded its spec in his own words: "electronics can also show how simple radio works (with the 3penny or a crystal radio plan) and a link to from radio room :)" — then, while out, told Muse to start on it and that he would look at it when he got home. Built by Muse (AI assistant) and added directly to the collection at his direction; this folder is the maintained original, and there is no upstream copy.
+
+The room follows the Games Room / Radio Room shape (a verified shelf of legitimate places, things that work right on the page, a short workshop underneath) and the Find It / Radio Room pattern (Help ▾ menu with full documentation, banner verified on the page and inside the desktop app). The updated Everyday Cool desktop app ships as app v1.0.13 through the app repo's existing build workflow.
+
+Steven's cross-link request runs both ways, as he asked: this room links to The Radio Room ("hear the stations this radio would catch"), and The Radio Room's Keep Going list gained the reciprocal link to this room the same day (recorded in its COLLECTION.md). While the build was underway Steven added one more spec item — simple chemical batteries, "like the one that uses an orange to run an LED" — which is the fruit battery card: an orange front and centre, copper and galvanized-nail electrodes, an honest ≈0.9 V per cell, and the series lesson (one fruit will not light a normal LED; three or four in series will light a red one).
+
+Everything interactive is computed in the visitor's browser from the rules in `elec.js` — the page sends nothing anywhere. The crystal radio explanation stays physically honest: tuning is coil-and-capacitor resonance, detection is keeping half the wave, and there is no battery because the transmitter supplies the energy. The build cards' safety lines are part of the lessons, not boilerplate: antenna wires never near power lines, no antenna work or long-wire listening during thunderstorms, coin cells and small magnets away from small children, and mains electricity never a material.
+
+The rules live in `elec.js` (no DOM), checked by `test.cjs`.
+
+Banner: `everyday-electronics-banner.jpg`, AI-generated watercolor — a friendly robot with safety goggles pushed up on its head, building a crystal radio at a workbench: a coil of copper wire wound on a cardboard tube, a crystal detector with its cat's whisker, an old-fashioned earpiece, tools and a warm lamp — generated 18 November 2026 as part of adding this room, in the style and dimensions (2736×912) of the collection's other banners.
