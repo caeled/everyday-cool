@@ -62,7 +62,6 @@ function dialReadout(station) {
 
 const BROADCASTIFY_BROWSE = "https://www.broadcastify.com/listen/";
 const BROADCASTIFY_OHIO = "https://www.broadcastify.com/listen/stid/39";
-const HOME_COUNTY = "Defiance"; /* Steven's home county, the panel preset */
 
 /* Ohio county name (as Nominatim reports it, without the word "County")
    -> the county number in its Broadcastify page address. All 88 counties. */
@@ -91,7 +90,7 @@ const OHIO_COUNTY_IDS = {
  "Wayne": 2124, "Williams": 2125, "Wood": 2126, "Wyandot": 2127
 };
 
-/* Nominatim names a county "Defiance County"; the map above keys on the
+/* Nominatim names a county "Lucas County"; the map above keys on the
    bare name. Returns "" for anything unusable. */
 function tidyCountyName(name) {
  if (typeof name !== "string") return "";
@@ -105,19 +104,29 @@ function ohioCountyUrl(county) {
  return id ? "https://www.broadcastify.com/listen/ctid/" + id : null;
 }
 
+/* True for Nominatim's "Ohio" and the usual "OH" abbreviation. */
+function isOhio(state) {
+ if (typeof state !== "string") return false;
+ const s = state.trim().toLowerCase();
+ return s === "ohio" || s === "oh";
+}
+
 /* Where the tuner sends a listener, given the county and state the lookup
-   found (either may be ""). County page when we have the county's link;
-   Ohio's state page for anywhere else in Ohio; Broadcastify's front door
-   for everywhere else. */
+   found (either may be ""). A baked county page only when the state is
+   Ohio and this room has that county's link; Ohio's state page for
+   anywhere else in Ohio; Broadcastify's front door for everywhere else
+   — including a county name that also exists in Ohio, when the place is
+   not in Ohio. Never guess. */
 function scannerTarget(county, state) {
- const url = ohioCountyUrl(county);
- if (url) return { url, level: "county" };
- if (typeof state === "string" && state.trim().toLowerCase() === "ohio")
+ if (isOhio(state)) {
+  const url = ohioCountyUrl(county);
+  if (url) return { url, level: "county" };
   return { url: BROADCASTIFY_OHIO, level: "state" };
+ }
  return { url: BROADCASTIFY_BROWSE, level: "browse" };
 }
 
 if (typeof module !== "undefined" && module.exports) {
  module.exports = { PRESETS, DIAL_MIN, DIAL_MAX, needlePercent, stationById, nextStation, dialReadout,
-  BROADCASTIFY_BROWSE, BROADCASTIFY_OHIO, HOME_COUNTY, OHIO_COUNTY_IDS, tidyCountyName, ohioCountyUrl, scannerTarget };
+  BROADCASTIFY_BROWSE, BROADCASTIFY_OHIO, OHIO_COUNTY_IDS, tidyCountyName, ohioCountyUrl, isOhio, scannerTarget };
 }

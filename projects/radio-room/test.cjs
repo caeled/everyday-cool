@@ -36,21 +36,34 @@ assert.strictEqual(R.nextStation("nope").id, R.PRESETS[0].id);
 assert.strictEqual(R.dialReadout(R.stationById("lush")), "92.3 · Lush");
 assert.ok(R.dialReadout(null).includes("pick a station"));
 
-/* The Scanner Tuner: a finder with baked Ohio county links, no API */
+/* The Scanner Tuner: a finder with baked Ohio county links, no API.
+   A baked county link is used only when the state is Ohio — a shared
+   county name in another state must not open an Ohio page. */
 assert.strictEqual(Object.keys(R.OHIO_COUNTY_IDS).length, 88, "all 88 Ohio counties are baked in");
 for (const [name, id] of Object.entries(R.OHIO_COUNTY_IDS))
  assert.ok(Number.isInteger(id) && id > 0, "county id is a plain number: " + name);
-assert.strictEqual(R.HOME_COUNTY, "Defiance");
-assert.strictEqual(R.ohioCountyUrl("Defiance"), "https://www.broadcastify.com/listen/ctid/2059");
-assert.strictEqual(R.ohioCountyUrl("Defiance County"), "https://www.broadcastify.com/listen/ctid/2059",
+assert.strictEqual(R.ohioCountyUrl("Lucas"), "https://www.broadcastify.com/listen/ctid/2087");
+assert.strictEqual(R.ohioCountyUrl("Lucas County"), "https://www.broadcastify.com/listen/ctid/2087",
  "Nominatim's 'X County' wording resolves too");
 assert.strictEqual(R.ohioCountyUrl("Cook"), null, "a county outside the baked map has no link");
 assert.strictEqual(R.tidyCountyName("Van Wert County"), "Van Wert");
 assert.strictEqual(R.tidyCountyName(42), "");
+assert.ok(R.isOhio("Ohio") && R.isOhio("OH") && R.isOhio(" ohio "), "Ohio and OH both count");
+assert.ok(!R.isOhio("Illinois") && !R.isOhio("PA") && !R.isOhio(""), "other states are not Ohio");
 assert.deepStrictEqual(R.scannerTarget("Lucas", "Ohio"),
  { url: "https://www.broadcastify.com/listen/ctid/2087", level: "county" });
+assert.deepStrictEqual(R.scannerTarget("Lucas", "OH"),
+ { url: "https://www.broadcastify.com/listen/ctid/2087", level: "county" },
+ "the OH abbreviation is accepted");
 assert.deepStrictEqual(R.scannerTarget("", "Ohio"),
  { url: R.BROADCASTIFY_OHIO, level: "state" }, "Ohio without a known county falls back to the state page");
+assert.deepStrictEqual(R.scannerTarget("Washington", "Pennsylvania"),
+ { url: R.BROADCASTIFY_BROWSE, level: "browse" },
+ "a county name that also exists in Ohio does not open the Ohio page when the state is not Ohio");
+assert.deepStrictEqual(R.scannerTarget("Franklin", "Indiana"),
+ { url: R.BROADCASTIFY_BROWSE, level: "browse" });
+assert.deepStrictEqual(R.scannerTarget("Lake", "Illinois"),
+ { url: R.BROADCASTIFY_BROWSE, level: "browse" });
 assert.deepStrictEqual(R.scannerTarget("Cook", "Illinois"),
  { url: R.BROADCASTIFY_BROWSE, level: "browse" }, "anywhere else falls back to Broadcastify's front door");
 assert.deepStrictEqual(R.scannerTarget("", ""),

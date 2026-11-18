@@ -98,7 +98,7 @@
  }
 
  function lookupFailed() {
-  say("That lookup did not answer just now. Place lookups are a shared public service (OpenStreetMap's Nominatim) and it can be busy — wait a moment and try again, or use the Defiance County button above, which needs no lookup at all.");
+  say("That lookup did not answer just now. Place lookups are a shared public service (OpenStreetMap's Nominatim) and it can be busy — wait a moment and try again, or type a ZIP or town below.");
  }
 
  function placeFromAddress(address) {
@@ -127,7 +127,7 @@
 
  function findPlace() {
   const q = placeInput.value.trim();
-  if (!q) { say("Type a ZIP code or a town first — Defiance, 43512, Toledo, wherever you are — then press Find my county."); placeInput.focus(); return; }
+  if (!q) { say("Type a ZIP code or a town first, then press Find my county."); placeInput.focus(); return; }
   say("Looking up " + q + "…");
   goLink.hidden = true;
   fetch("https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=1&countrycodes=us&q=" +
