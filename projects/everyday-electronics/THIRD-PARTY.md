@@ -14,7 +14,7 @@ All lesson/Help text and code are original work written for this workshop (code 
 
 ## Linked, not loaded (each opens in a new tab, under its own terms)
 
-PhET Circuit Construction Kit (phet.colorado.edu) · Falstad Circuit Simulator (falstad.com) · All About Circuits (allaboutcircuits.com) · Adafruit Learn (learn.adafruit.com) · SparkFun Learn (learn.sparkfun.com) · Khan Academy electrical engineering (khanacademy.org). Every link was checked live on 18 November 2026 and returned HTTP 200. Two candidates were checked the same day and deliberately dropped: Science Buddies' electronics project index answered a direct request with an HTTP 403 bot-check, and electronics-tutorials.ws did not answer at all — a dead or gated door is not shipped on the shelf.
+PhET Circuit Construction Kit (phet.colorado.edu) · Falstad Circuit Simulator (falstad.com) · All About Circuits (allaboutcircuits.com) · Adafruit Learn (learn.adafruit.com) · SparkFun Learn (learn.sparkfun.com) · Khan Academy electrical engineering (khanacademy.org) · Wikipedia articles on Electronics, Radio, Crystal radio, and Electrical engineering (en.wikipedia.org), added 18 November 2026 at Steven's suggestion as the shelf's "read deeper" group. Every link was checked live on 18 November 2026 and returned HTTP 200. Two candidates were checked the same day and deliberately dropped: Science Buddies' electronics project index answered a direct request with an HTTP 403 bot-check, and electronics-tutorials.ws did not answer at all — a dead or gated door is not shipped on the shelf.
 
 ## Nothing is called at view time
 
