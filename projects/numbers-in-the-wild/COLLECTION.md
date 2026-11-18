@@ -5,3 +5,5 @@ Original converter found in Steven Powell’s Downloads with his authorization o
 The expanded workshop is a new collection version: bounded canonical conversion in both directions, step explanations, notation comparison, illustrated clock arithmetic, GCD/equal packs, proportional recipe scaling, classroom connections, practice challenges, accessibility labels and source/license notices. The original reference file is unchanged and is not used as executable workshop code.
 
 Banner added November 15, 2026: numbers-banner.jpg (AI/robots theme), part of the collection-wide banner pass.
+
+Local change (18 November 2026, when Everyday Chemistry joined the collection): one reciprocal link added to this room's Keep Going list, pointing to Everyday Chemistry — the counting cousin in the other direction. Changed file: `index.html` (the one added list item) and this `COLLECTION.md` (this note).
