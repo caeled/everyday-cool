@@ -247,6 +247,29 @@ Before proposing or merging any change:
   reproductive organs appear in scenarios but are not selectable organs in
   v1. Authorship is recorded where it belongs: ChatGPT built the room,
   Steven directed it, Muse integrated it.
+- **2026-11-18 — Everyday Language added as the twenty-second workshop,
+  built by Muse.** Steven's founding line in the ideas side chat —
+  "language is a code too (ala secret squares)" — makes the room Secret
+  Squares' sibling, and he named its contents: a map of language families
+  ("people always get tripped out when they learn English is Germanic"),
+  common cognates, a mini translator, and STEM articles; the build brief
+  added a "where language lives" brain section. The room carries an
+  explorable Indo-European family tree with English's Germanic line
+  (PIE → Germanic → West Germanic → Anglo-Frisian → English) drawn in
+  gold and the French layer stated as borrowing, not ancestry; eleven
+  cognate families with genuine descendants only and the known traps
+  (Russian отец, Spanish hermano, Latin aqua) carried as false-friend
+  warnings; an honestly labelled phrasebook (ten phrases × six
+  languages); a schematic brain bench (Broca, Wernicke, arcuate
+  fasciculus, visual word form area) cross-linked to Everyday Body; and
+  a "Language is a code" section cross-linked with Secret Squares both
+  ways (Secret Squares' "Go deeper" section gained the reciprocal card,
+  recorded as a collection-only local change in its COLLECTION.md and
+  provenance). Beside the phrasebook, a "Take it traveling" card links
+  Steven's separate Travel Kit app releases — framed on the card as a
+  separate download, not a collection room. It enters the catalog under
+  "Codes & communication," immediately after Secret Squares. The hub's
+  fixed top block is untouched.
 
 ## Known Future Goals
 
