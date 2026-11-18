@@ -36,4 +36,25 @@ assert.strictEqual(R.nextStation("nope").id, R.PRESETS[0].id);
 assert.strictEqual(R.dialReadout(R.stationById("lush")), "92.3 · Lush");
 assert.ok(R.dialReadout(null).includes("pick a station"));
 
-console.log("radio-room tests: all passed (" + R.PRESETS.length + " presets)");
+/* The Scanner Tuner: a finder with baked Ohio county links, no API */
+assert.strictEqual(Object.keys(R.OHIO_COUNTY_IDS).length, 88, "all 88 Ohio counties are baked in");
+for (const [name, id] of Object.entries(R.OHIO_COUNTY_IDS))
+ assert.ok(Number.isInteger(id) && id > 0, "county id is a plain number: " + name);
+assert.strictEqual(R.HOME_COUNTY, "Defiance");
+assert.strictEqual(R.ohioCountyUrl("Defiance"), "https://www.broadcastify.com/listen/ctid/2059");
+assert.strictEqual(R.ohioCountyUrl("Defiance County"), "https://www.broadcastify.com/listen/ctid/2059",
+ "Nominatim's 'X County' wording resolves too");
+assert.strictEqual(R.ohioCountyUrl("Cook"), null, "a county outside the baked map has no link");
+assert.strictEqual(R.tidyCountyName("Van Wert County"), "Van Wert");
+assert.strictEqual(R.tidyCountyName(42), "");
+assert.deepStrictEqual(R.scannerTarget("Lucas", "Ohio"),
+ { url: "https://www.broadcastify.com/listen/ctid/2087", level: "county" });
+assert.deepStrictEqual(R.scannerTarget("", "Ohio"),
+ { url: R.BROADCASTIFY_OHIO, level: "state" }, "Ohio without a known county falls back to the state page");
+assert.deepStrictEqual(R.scannerTarget("Cook", "Illinois"),
+ { url: R.BROADCASTIFY_BROWSE, level: "browse" }, "anywhere else falls back to Broadcastify's front door");
+assert.deepStrictEqual(R.scannerTarget("", ""),
+ { url: R.BROADCASTIFY_BROWSE, level: "browse" });
+
+console.log("radio-room tests: all passed (" + R.PRESETS.length + " presets, " +
+ Object.keys(R.OHIO_COUNTY_IDS).length + " scanner counties)");
