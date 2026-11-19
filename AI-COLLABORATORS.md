@@ -270,6 +270,29 @@ Before proposing or merging any change:
   separate download, not a collection room. It enters the catalog under
   "Codes & communication," immediately after Secret Squares. The hub's
   fixed top block is untouched.
+- **2026-11-19 — Everyday Measure added as the twenty-third workshop,
+  built by Muse.** Steven proposed it in the ideas side chat in his own
+  words — "The metric system (for most Americans) and how it compares to
+  English system. Converters examples stem articles. Weights and volume
+  comparison tools" — named it "Everyday Measure" from the options
+  offered, and set the banner's art direction: a robot with scales and a
+  chart behind it showing what each prefix means. The room teaches the
+  metric system to Americans as one staircase of tens: an interactive
+  prefix ladder (nine prefixes plus the base unit, each with its meaning
+  in words), four converter benches that show their working from the
+  exact legal definitions (1 in = 2.54 cm, 1 lb = 0.45359237 kg, 1 US
+  gallon = 3.785411784 L — all exact, because US units have been defined
+  from metric standards since the Mendenhall Order of 1893), seven
+  "feel it" anchors (the US Mint's exactly-5-gram nickel among them), a
+  comparison shelf that reads six familiar things in both systems at
+  once with approximate values marked, three trap cards (tonne/US
+  ton/long ton, US vs Imperial gallon, fluid ounce vs ounce), the two
+  breakage stories (Mars Climate Orbiter, Gimli Glider), and a short
+  honest history ending at the voluntary 1975 Metric Conversion Act.
+  The first banner generation was rejected — its chart duplicated DECI
+  and swapped DEKA and HECTO — and regenerated with the step order
+  spelled out; the shipped banner's staircase reads correctly. It
+  enters the catalog under "Science," immediately after Everyday Body.
 
 ## Known Future Goals
 
