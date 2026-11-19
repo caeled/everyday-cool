@@ -4,7 +4,7 @@ One self-contained room of the Everyday Cool collection: the other rooms' knowle
 
 ## The design rule
 
-Every card in the room carries **two lines**: a **safety line** (how the thing can hurt you, and what keeps it from doing so) and an **honesty line** (what the tip can and cannot do, and how strong the evidence or the clue is). The direction section grades its clues out loud — North Star A, phone compass A−, shadow stick B, satellite dish C, moss D. The remedies shelf writes each card in three parts: traditional use / what the evidence says / limits and when to get real help. The water section states its rule in the biggest type on the page: filtering clears grit and improves taste; it does **not** make water safe — boiling does (rolling boil, 1 minute; 3 minutes above 6,500 feet).
+Every card in the room carries **two lines**: a **safety line** (how the thing can hurt you, and what keeps it from doing so) and an **honesty line** (what the tip can and cannot do, and how strong the evidence or the clue is). The direction section grades its clues out loud — North Star A, phone compass A−, shadow stick B, satellite dish B, moss D. The remedies shelf writes each card in three parts: traditional use / what the evidence says / limits and when to get real help. The water section states its rule in the biggest type on the page: filtering clears grit and improves taste; it does **not** make water safe — boiling does (rolling boil, 1 minute; 3 minutes above 6,500 feet).
 
 ## Sections
 
