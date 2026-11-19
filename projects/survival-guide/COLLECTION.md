@@ -4,7 +4,7 @@ Preservation note for the portable collection. This room is an original Everyday
 
 ## What was preserved
 
-- `index.html` — the whole room as one page: fire from little (lays, ferro rod, flint & steel, bow drill, dead-out), the layered water filter with diagram and the big honesty callout, soap & oil (rendering, wood-ash lye, saponification), pantry batteries and the series lesson, direction clues graded A/B/D, the four-card remedies shelf, the first-aid anchor section with the kit checklist, the links shelf, and the in-page Help docs.
+- `index.html` — the whole room as one page: fire from little (lays, ferro rod, flint & steel, bow drill, dead-out), the layered water filter with diagram and the big honesty callout, soap & oil (rendering, wood-ash lye, saponification), pantry batteries and the series lesson, direction clues graded A/B/D, the four-card remedies shelf, the first-aid anchor section with the kit checklist, the links shelf, the take-it-with-you section (a Travel Kit card — this room is one of the app's five rooms — and links to the other four Travel Kit rooms), and the in-page Help docs.
 - `app.js` — the kit checklist counter, deliberately memoryless: it counts in the page and forgets on close.
 - `style.css` — the room's styles on the collection's shared base, including the amber safety line, the teal honesty line, the big water-rule callout, the filter diagram, and the kit checklist.
 - `survival-guide-banner.jpg` — the room's banner (see disclosure below).

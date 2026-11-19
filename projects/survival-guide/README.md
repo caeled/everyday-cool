@@ -16,10 +16,11 @@ Every card in the room carries **two lines**: a **safety line** (how the thing c
 - **The remedies shelf** — banana slug slime (mild, studied numbing; look-and-learn only — wild slugs can carry parasites), willow bark (salicin, aspirin's ancestor, with aspirin's full cautions), broadleaf plantain (modest evidence, low risk, identification is the rule), oak bark (astringent tannins — and not the headache bark; that's willow). The shelf's rule: last resort, not first.
 - **First Aid (the anchor)** — severe bleeding (pressure first; tourniquet per current Red Cross guidance), burns (cool running water; no ice, no butter), sprains (RICE), choking (5 back blows, 5 abdominal thrusts), heat exhaustion vs heat stroke (stroke = call 911, cool fast), hypothermia (gentle warming), CPR presented as "learn this in a class" with a link to Red Cross training, and a build-your-own first-aid kit with a tick-off checklist. Every card states when to call 911 or get help.
 - **Links out** — six authoritative links, each checked live on 19 November 2026 (see `THIRD-PARTY.md`).
+- **Take it with you** — the Travel Kit card: this room is one of the five rooms the free Travel Kit app (Windows & Mac, works offline) carries, with a link to the app's releases page — plus links to the other four Travel Kit rooms (Tonight's Sky, Find It, Weather Everywhere, The Radio Room).
 
 ## Cross-links
 
-Outgoing only: Everyday Chemistry (soap), Everyday Electronics (batteries), Tonight's Sky (direction), Everyday Body (first aid). The reciprocal cards in those rooms are a recorded later add in `COLLECTION.md` — this room links out; it does not reach back and edit its neighbours.
+Outgoing only: Everyday Chemistry (soap), Everyday Electronics (batteries), Tonight's Sky (direction), Everyday Body (first aid). The Take It With You section also links to the Travel Kit app's releases page and to the other four rooms the kit carries (Tonight's Sky, Find It, Weather Everywhere, The Radio Room). The reciprocal cards in those rooms are a recorded later add in `COLLECTION.md` — this room links out; it does not reach back and edit its neighbours.
 
 ## Files
 
