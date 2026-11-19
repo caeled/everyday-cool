@@ -15,6 +15,7 @@ art=[
 art.append('<path d="M42 44h156M42 136h156M65 44v92m51-92 15 92 18-92M166 44v92"/><circle cx="120" cy="89" r="70"/>')
 cards=[]
 for i,p in enumerate(data['projects']):
+ if p.get('hubParent'): continue # gathered behind a landing room's card (the six STEM workshops behind The STEM Room)
  links=f'<a class="open" href="{esc(p["entry"] or p["original"])}">'+('Open reference shelf' if p.get('kind')=='reference shelf' else 'Open workshop' if p['bundled'] else 'Visit project')+' <span aria-hidden="true">↗</span></a>'
  if p['download']: links+=f'<a href="{esc(p["download"])}" download>Download ZIP</a>'
  original=f'<a href="{esc(p["original"])}">'+p.get('originLabel', 'Shelf source' if p.get('kind')=='reference shelf' else 'Original website')+' ↗</a>'
