@@ -115,12 +115,53 @@ function projectileAt(speed, angleDeg, t) {
 
 /* ---------- The pendulum ---------- */
 
-/* T = 2π√(L/g). Length in metres. Weight and swing width do not appear —
-   that absence is the lesson, and the page says so. */
-function pendulumPeriod(lengthM) {
+/* T0 = 2π√(L/g). Length in metres. Weight does not appear. For a swing
+   of amplitude angleDeg, the period is lengthened by the standard
+   large-angle factor: T / T0 = (2/π) K(k) with k = sin(θ/2), computed
+   from the series for the complete elliptic integral of the first kind.
+   Omit the angle (or pass 0) and you get the small-swing formula alone.
+   The page uses this so a wide swing honestly runs a little long. */
+function pendulumPeriodFactor(angleDeg) {
+ const a = Number(angleDeg);
+ if (!Number.isFinite(a) || a < 0 || a >= 180) return null;
+ if (a === 0) return 1;
+ const k = Math.sin((a * Math.PI / 180) / 2);
+ /* K(k) / (π/2) = Σ [((2n-1)!!/(2n)!!)]² k^{2n} */
+ let sum = 1, coeff = 1, kpow = 1;
+ for (let n = 1; n <= 12; n++) {
+  coeff *= (2 * n - 1) / (2 * n);
+  kpow *= k * k;
+  sum += coeff * coeff * kpow;
+ }
+ return sum;
+}
+function pendulumPeriod(lengthM, angleDeg) {
  const L = Number(lengthM);
  if (!Number.isFinite(L) || L <= 0) return { ok: false, error: "The string length needs to be a number bigger than zero." };
- return { ok: true, length: L, period: round2(2 * Math.PI * Math.sqrt(L / GRAVITY)) };
+ const ang = (angleDeg === undefined || angleDeg === null || angleDeg === "") ? 0 : Number(angleDeg);
+ const factor = pendulumPeriodFactor(ang);
+ if (factor === null) return { ok: false, error: "The swing width needs to be an angle between 0 and 180 degrees, short of a full flip." };
+ const smallPeriod = 2 * Math.PI * Math.sqrt(L / GRAVITY);
+ return { ok: true, length: L, angle: ang, smallPeriod: round2(smallPeriod),
+  period: round2(smallPeriod * factor), factor: round2(factor) };
+}
+
+/* Animation timing: convert a frame's elapsed milliseconds into a
+   clamped dt, then into a whole number of fixed simulation steps.
+   A large dt (a tab coming back to the foreground) is capped so the
+   simulation does not leap. */
+function clampedElapsed(prevNow, now, maxMs) {
+ if (prevNow == null || prevNow === undefined) return 0;
+ const dt = now - prevNow;
+ if (!Number.isFinite(dt) || dt < 0) return 0;
+ return Math.min(dt, maxMs);
+}
+function consumeSteps(accMs, stepMs, maxSteps) {
+ let steps = 0, acc = accMs;
+ if (!Number.isFinite(acc) || !Number.isFinite(stepMs) || stepMs <= 0 || maxSteps <= 0) return { steps: 0, acc: 0 };
+ while (acc >= stepMs && steps < maxSteps) { acc -= stepMs; steps++; }
+ if (steps === maxSteps) acc = 0; /* drop leftover after a clamped burst */
+ return { steps, acc };
 }
 
 /* ---------- The seesaw ---------- */
@@ -149,5 +190,7 @@ function seesawBalanceDistance(heavyKg, heavyDist, lightKg) {
 
 if (typeof module !== "undefined" && module.exports) {
  module.exports = { reflectVelocity, angleToSurface, poolStep, collideEqualMass, totalMomentum,
-  GRAVITY, projectileRange, projectileFlight, projectileAt, pendulumPeriod, seesaw, seesawBalanceDistance };
+  GRAVITY, projectileRange, projectileFlight, projectileAt,
+  pendulumPeriodFactor, pendulumPeriod, seesaw, seesawBalanceDistance,
+  clampedElapsed, consumeSteps };
 }

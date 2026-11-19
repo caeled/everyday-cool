@@ -11,3 +11,4 @@ Everything interactive is computed in the visitor's browser from the rules in `e
 The rules live in `elec.js` (no DOM), checked by `test.cjs`.
 
 Banner: `everyday-electronics-banner.jpg`, AI-generated watercolor — a friendly robot with safety goggles pushed up on its head, building a crystal radio at a workbench: a coil of copper wire wound on a cardboard tube, a crystal detector with its cat's whisker, an old-fashioned earpiece, tools and a warm lamp — generated 18 November 2026 as part of adding this room, in the style and dimensions (2736×912) of the collection's other banners.
+Local change (18 November 2026, later): Keep Going gained a link to Everyday Physics, the third room in the science trio, so the Science benches point at each other.

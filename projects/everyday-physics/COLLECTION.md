@@ -11,3 +11,5 @@ Everything interactive is computed in the visitor's browser from the rules in `p
 The rules live in `phys.js` (no DOM), checked by `test.cjs`.
 
 Banner: `everyday-physics-banner.jpg`, AI-generated watercolor — a friendly robot with safety goggles pushed up on its head, lining up a pool shot on a small green pool table, dotted trajectory lines and angle marks over the felt, a little wooden ballistics launcher beside the table with a dotted arc over it — generated 18 November 2026 as part of adding this room, in the style and dimensions (2736×912) of the collection's other banners.
+
+Local change (18 November 2026, later): review fixes — the pool table and launcher now advance on a fixed 1/60 s timestep from elapsed time (large dt clamped when a tab resumes); the pendulum gained a swing-width slider whose wide swings use the standard large-angle period correction, defaulting to a 12° swing; Keep Going gained Satellite Watch (Radio was already linked); reduced-motion preferences pause the always-running canvases. Recorded here as part of the same-day review pass.

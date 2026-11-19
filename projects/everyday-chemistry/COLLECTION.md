@@ -9,3 +9,4 @@ Everything interactive is computed in the visitor's browser from data baked into
 The rules live in `chem.js` (no DOM), checked by `test.cjs`.
 
 Banner: `everyday-chemistry-banner.jpg`, AI-generated watercolor to Steven's approved concept — a friendly robot with safety goggles pushed up on its head, working a chemistry set (test-tube rack, bubbling flask, beakers) at a kitchen counter, a small atom model beside a mug — generated 18 November 2026 as part of adding this room, in the style and dimensions (2736×912) of the collection's other banners.
+Local change (18 November 2026, later): Keep Going gained a link to Everyday Physics, the third room in the science trio, so the Science benches point at each other.

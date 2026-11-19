@@ -52,12 +52,33 @@ assert.ok(near(mid.y, fl.apex, 0.05), "halfway through the flight the ball is at
 assert.ok(near(P.projectileAt(20, 45, fl.flightTime).y, 0, 0.05), "at the flight time the ball is back at ground height");
 assert.ok(!P.projectileFlight(0, 45).ok && !P.projectileFlight(20, 120).ok, "bad speed and bad angle are refused");
 
-/* Pendulum: T = 2π√(L/g) */
+/* Pendulum: T = 2π√(L/g) for a small swing; wider swings run long */
 let p = P.pendulumPeriod(1);
 assert.ok(p.ok && near(p.period, 2.01, 0.011), "a 1 m pendulum swings with a period of about 2.01 s");
 assert.ok(near(P.pendulumPeriod(0.25).period, 1.0, 0.011), "a quarter of the length, half the period (about 1.00 s)");
 assert.ok(P.pendulumPeriod(4).period > P.pendulumPeriod(1).period, "a longer string swings slower");
 assert.ok(!P.pendulumPeriod(0).ok, "zero length is refused");
+assert.ok(near(P.pendulumPeriodFactor(0), 1, 1e-12), "zero amplitude is the small-swing factor of 1");
+assert.ok(near(P.pendulumPeriodFactor(60), 1.07318, 0.0002), "a 60° swing's period factor is about 1.0732");
+assert.ok(P.pendulumPeriod(1, 60).period > P.pendulumPeriod(1, 12).period,
+ "a 60° swing runs longer than a 12° swing on the same string");
+assert.ok(P.pendulumPeriod(1, 12).period >= P.pendulumPeriod(1).period,
+ "a 12° swing is at least as long as the small-swing formula");
+assert.ok(near(P.pendulumPeriod(1, 60).period, 2.15, 0.02), "1 m at 60° is about 2.15 s");
+assert.ok(!P.pendulumPeriod(1, 180).ok && !P.pendulumPeriod(1, -5).ok, "flip-or-past and negative angles are refused");
+
+/* Animation timestep: large dt is clamped; leftover after a burst is dropped */
+assert.strictEqual(P.clampedElapsed(null, 5000, 100), 0, "the first frame has no elapsed time");
+assert.strictEqual(P.clampedElapsed(0, 40, 100), 40, "a short frame passes through");
+assert.strictEqual(P.clampedElapsed(0, 5000, 100), 100, "a tab-resume gap is clamped");
+assert.strictEqual(P.clampedElapsed(200, 100, 100), 0, "a backwards clock is ignored");
+const stepMs = 1000 / 60;
+let stepped = P.consumeSteps(6 * stepMs + 10, stepMs, 6);
+assert.strictEqual(stepped.steps, 6, "a burst longer than six steps runs at most six 1/60 s steps");
+assert.strictEqual(stepped.acc, 0, "leftover time after a burst is dropped so the sim does not catch up in a leap");
+stepped = P.consumeSteps(20, stepMs, 6);
+assert.strictEqual(stepped.steps, 1, "20 ms is one 1/60 s step");
+assert.ok(near(stepped.acc, 20 - stepMs, 1e-9), "the leftover stays in the accumulator");
 
 /* Seesaw: torque = weight × distance */
 let s = P.seesaw(40, 1, 20, 2);
@@ -68,4 +89,4 @@ assert.strictEqual(P.seesawBalanceDistance(40, 1, 20), 2, "the light weight bala
 assert.strictEqual(P.seesawBalanceDistance(60, 1, 20), 3, "three times the weight needs three times the distance");
 assert.ok(!P.seesaw(-1, 1, 20, 2).ok, "negative weights are refused");
 
-console.log("everyday-physics tests: all passed (reflection, equal-mass collisions, ballistics, pendulum, seesaw)");
+console.log("everyday-physics tests: all passed (reflection, equal-mass collisions, ballistics, pendulum, seesaw, timestep)");

@@ -2,7 +2,11 @@
 /* Everyday Physics — page wiring. The rules live in phys.js. */
 (function () {
  const TAU = Math.PI * 2;
+ const STEP_MS = 1000 / 60, MAX_FRAME_MS = 100, MAX_STEPS = 6;
  function $(id) { return document.getElementById(id); }
+ function reduceMotion() {
+  return !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+ }
 
  /* ================= The pool table ================= */
  const poolCv = $("pool-canvas"), pctx = poolCv.getContext("2d");
@@ -174,10 +178,27 @@
    }
   }
  }
- function poolFrame() {
-  if (!poolPaused) stepPool();
+ let poolRaf = null, poolLast = null, poolAcc = 0;
+ function poolLoop(now) {
+  poolRaf = null;
+  const dt = clampedElapsed(poolLast, now, MAX_FRAME_MS);
+  poolLast = now;
+  if (!poolPaused) {
+   const run = consumeSteps(poolAcc + dt, STEP_MS, MAX_STEPS);
+   poolAcc = run.acc;
+   for (let i = 0; i < run.steps; i++) stepPool();
+  }
   drawPool();
-  requestAnimationFrame(poolFrame);
+  if (!allStopped() && !poolPaused) {
+   poolRaf = requestAnimationFrame(poolLoop);
+  } else {
+   poolLast = null; poolAcc = 0;
+  }
+ }
+ function startPoolLoop() {
+  if (poolRaf != null) return;
+  poolLast = null; poolAcc = 0;
+  poolRaf = requestAnimationFrame(poolLoop);
  }
  $("pool-angle").addEventListener("input", () => { $("pool-angle-val").textContent = $("pool-angle").value + "°"; });
  $("pool-power").addEventListener("input", () => { $("pool-power-val").textContent = $("pool-power").value; });
@@ -186,10 +207,12 @@
   const cue = cueBall(), d = aim(), p = Number($("pool-power").value);
   cue.vx = d.x * p; cue.vy = d.y * p; lastEvent = ""; lastBounceMark = null;
   poolOut.innerHTML = "<p>The cue ball is away at power " + p + ". Watch the arrows: speed is a direction as well as a size.</p>";
+  startPoolLoop();
  });
  $("pool-pause").addEventListener("click", () => {
   poolPaused = !poolPaused;
   $("pool-pause").textContent = poolPaused ? "Resume" : "Pause";
+  if (!poolPaused && !allStopped()) startPoolLoop();
  });
  $("pool-step").addEventListener("click", () => {
   if (!poolPaused) { poolPaused = true; $("pool-pause").textContent = "Resume"; }
@@ -208,7 +231,7 @@
   $("pool-angle-val").textContent = Math.round(deg) + "°";
   drawPool();
  });
- requestAnimationFrame(poolFrame);
+ drawPool();
 
  /* ================= The ballistics launcher ================= */
  const balCv = $("bal-canvas"), bctx = balCv.getContext("2d");
@@ -263,29 +286,42 @@
    if (last) { const p = balXY(last.x, last.y); bctx.beginPath(); bctx.arc(p.x, p.y, 8, 0, TAU); bctx.fillStyle = "#d94f3d"; bctx.fill(); bctx.strokeStyle = "#14202b"; bctx.stroke(); }
   }
  }
- function balFrame() {
-  if (balFlight) {
-   const f = balFlight, info = projectileFlight(f.speed, f.angle);
-   f.t += 0.045;
-   const pos = projectileAt(f.speed, f.angle, f.t);
-   if (pos.y <= 0 && f.t > 0) {
-    const landed = projectileAt(f.speed, f.angle, info.flightTime);
-    f.points.push({ x: info.range, y: 0 });
-    const hit = Math.abs(info.range - (BAL.targetM + 1.1)) <= 1.6;
-    if (hit) targetHit = true;
-    balShots.push({ points: f.points, color: balColors[balShots.length % balColors.length], hit });
-    if (balShots.length > 4) balShots.shift();
-    balOut.innerHTML = "<p><strong>Landed at " + info.range + " m</strong> after " + info.flightTime + " s in the air, highest point " + info.apex + " m. " +
-     (hit ? "<strong>Target hit!</strong> The stack is down — that arc threaded the whole range and arrived at the target's doorstep." :
-      "The target stands at " + BAL.targetM + " m. " + (info.range < BAL.targetM ? "Too short: more speed, or an angle closer to 45°." : "Too long: less speed, or a steeper angle to trade distance for height.")) + "</p>";
-    balFlight = null;
-   } else {
-    f.points.push(pos);
-    balOut.innerHTML = "<p>Flying: " + pos.x + " m out, " + Math.max(0, pos.y) + " m up. Gravity is bending the path down the whole way — the dots are the same curve every throw makes.</p>";
-   }
+ let balRaf = null, balLast = null, balAcc = 0;
+ function balAdvance(dtSec) {
+  if (!balFlight) return;
+  const f = balFlight, info = projectileFlight(f.speed, f.angle);
+  f.t += dtSec;
+  const pos = projectileAt(f.speed, f.angle, f.t);
+  if (pos.y <= 0 && f.t > 0) {
+   f.points.push({ x: info.range, y: 0 });
+   const hit = Math.abs(info.range - (BAL.targetM + 1.1)) <= 1.6;
+   if (hit) targetHit = true;
+   balShots.push({ points: f.points, color: balColors[balShots.length % balColors.length], hit });
+   if (balShots.length > 4) balShots.shift();
+   balOut.innerHTML = "<p><strong>Landed at " + info.range + " m</strong> after " + info.flightTime + " s in the air, highest point " + info.apex + " m. " +
+    (hit ? "<strong>Target hit!</strong> The stack is down — that arc threaded the whole range and arrived at the target's doorstep." :
+     "The target stands at " + BAL.targetM + " m. " + (info.range < BAL.targetM ? "Too short: more speed, or an angle closer to 45°." : "Too long: less speed, or a steeper angle to trade distance for height.")) + "</p>";
+   balFlight = null;
+  } else {
+   f.points.push(pos);
+   balOut.innerHTML = "<p>Flying: " + pos.x + " m out, " + Math.max(0, pos.y) + " m up. Gravity is bending the path down the whole way — the dots are the same curve every throw makes.</p>";
   }
+ }
+ function balLoop(now) {
+  balRaf = null;
+  const dt = clampedElapsed(balLast, now, MAX_FRAME_MS);
+  balLast = now;
+  const run = consumeSteps(balAcc + dt, STEP_MS, MAX_STEPS);
+  balAcc = run.acc;
+  for (let i = 0; i < run.steps; i++) balAdvance(STEP_MS / 1000);
   drawBal();
-  requestAnimationFrame(balFrame);
+  if (balFlight) balRaf = requestAnimationFrame(balLoop);
+  else { balLast = null; balAcc = 0; }
+ }
+ function startBalLoop() {
+  if (balRaf != null) return;
+  balLast = null; balAcc = 0;
+  balRaf = requestAnimationFrame(balLoop);
  }
  function launch(speed, angle, quiet) {
   const info = projectileFlight(speed, angle);
@@ -293,6 +329,7 @@
   targetHit = false;
   balFlight = { speed, angle, t: 0, points: [{ x: 0, y: 0 }] };
   if (!quiet) balOut.innerHTML = "<p>Launched at " + angle + "° and " + speed + " m/s. The sums promise: highest point " + info.apex + " m, flight time " + info.flightTime + " s, range " + info.range + " m. Watch whether the dots agree.</p>";
+  startBalLoop();
  }
  $("bal-angle").addEventListener("input", () => { $("bal-angle-val").textContent = $("bal-angle").value + "°"; if (!balFlight) drawBal(); });
  $("bal-speed").addEventListener("input", () => { $("bal-speed-val").textContent = $("bal-speed").value + " m/s"; });
@@ -312,11 +349,11 @@
   drawBal();
  });
  $("bal-clear").addEventListener("click", () => { balShots = []; balFlight = null; targetHit = false; balOut.innerHTML = "<p>Range cleared. Set the angle and speed, and launch.</p>"; drawBal(); });
- requestAnimationFrame(balFrame);
+ drawBal();
 
  /* ================= The pendulum ================= */
  const penCv = $("pen-canvas"), nctx = penCv.getContext("2d");
- let penWeight = 0.5, penStart = performance.now();
+ let penWeight = 0.5, penStart = performance.now(), penRaf = null;
  const PEN_W = [{ kg: 0.1, r: 13, label: "Light bob · 0.1 kg" }, { kg: 0.5, r: 19, label: "Middle bob · 0.5 kg" }, { kg: 2, r: 27, label: "Heavy bob · 2 kg" }];
  for (const w of PEN_W) {
   const b = document.createElement("button");
@@ -328,33 +365,46 @@
   });
   $("pen-weights").appendChild(b);
  }
+ function penAngle() { return Number($("pen-angle").value); }
  function penReadout() {
-  const L = Number($("pen-length").value), info = pendulumPeriod(L);
+  const L = Number($("pen-length").value), ang = penAngle(), info = pendulumPeriod(L, ang);
   $("pen-length-val").textContent = L.toFixed(2) + " m";
+  $("pen-angle-val").textContent = ang + "°";
   if (!info.ok) { $("pen-result").textContent = info.error; return; }
-  $("pen-result").innerHTML = "<p><strong>Period: " + info.period + " s</strong> — one full swing out and back — for a " + L.toFixed(2) + " m string. The bob right now weighs " + penWeight + " kg, and the period does not care: swap the bob, widen the swing, the count stays " + info.period + " s. Only the length is in the sum: T = 2 × π × √(" + L.toFixed(2) + " ÷ 9.8).</p>";
+  const wide = ang >= 20;
+  $("pen-result").innerHTML = "<p><strong>Period: " + info.period + " s</strong> — one full swing out and back — for a " + L.toFixed(2) + " m string at a " + ang + "° swing. The bob right now weighs " + penWeight + " kg, and the period does not care: swap the bob, the count stays " + info.period + " s. " +
+   (wide
+    ? "A wide swing runs a little long: the small-swing sum T = 2 × π × √(" + L.toFixed(2) + " ÷ 9.8) would be " + info.smallPeriod + " s, and the standard large-angle correction stretches that to " + info.period + " s."
+    : "For this small, honest swing, width hardly changes the count: T = 2 × π × √(" + L.toFixed(2) + " ÷ 9.8) is " + info.smallPeriod + " s, and the large-angle correction leaves it at " + info.period + " s. Widen the swing and the period creeps longer.") + "</p>";
+  if (reduceMotion()) drawPen(performance.now());
  }
- function penFrame(now) {
-  const L = Number($("pen-length").value), info = pendulumPeriod(L);
+ function drawPen(now) {
+  const L = Number($("pen-length").value), ang = penAngle(), info = pendulumPeriod(L, ang);
   const W = penCv.width, H = penCv.height, px = 230, py = 34, pxPerM = 128;
   nctx.clearRect(0, 0, W, H);
   nctx.fillStyle = "#6d4a2f"; nctx.fillRect(px - 90, py - 12, 180, 12);
   if (info.ok) {
-   const t = (now - penStart) / 1000;
-   const th = 0.55 * Math.cos(TAU * t / info.period);
+   const amp = ang * Math.PI / 180;
+   const th = reduceMotion() ? 0 : amp * Math.cos(TAU * ((now - penStart) / 1000) / info.period);
    const bx = px + Math.sin(th) * L * pxPerM, by = py + Math.cos(th) * L * pxPerM;
    const bob = PEN_W.find(w => w.kg === penWeight) || PEN_W[1];
    nctx.strokeStyle = "#d9e5ed"; nctx.lineWidth = 2.5;
    line(nctx, px, py, bx, by);
    nctx.beginPath(); nctx.arc(bx, by, bob.r, 0, TAU); nctx.fillStyle = "#b0824f"; nctx.fill(); nctx.strokeStyle = "#5d4326"; nctx.stroke();
    nctx.fillStyle = "#9db4c0"; nctx.font = "13px system-ui"; nctx.textAlign = "center";
-   nctx.fillText(L.toFixed(2) + " m of string", px, H - 12); nctx.textAlign = "left";
+   nctx.fillText(L.toFixed(2) + " m of string · " + ang + "° swing", px, H - 12); nctx.textAlign = "left";
   }
-  requestAnimationFrame(penFrame);
+ }
+ function penLoop(now) {
+  penRaf = null;
+  drawPen(now);
+  if (!reduceMotion()) penRaf = requestAnimationFrame(penLoop);
  }
  $("pen-length").addEventListener("input", penReadout);
+ $("pen-angle").addEventListener("input", penReadout);
  penReadout();
- requestAnimationFrame(penFrame);
+ if (reduceMotion()) drawPen(performance.now());
+ else penRaf = requestAnimationFrame(penLoop);
 
  /* ================= The seesaw ================= */
  const seeCv = $("see-canvas"), sctx = seeCv.getContext("2d");
