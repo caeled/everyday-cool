@@ -19,3 +19,5 @@ Documentation update, 20 November 2026: `index.html`, `style.css`, `README.md`, 
 The same documentation update also added a Steve's Profile link (Steven Powell's LinkedIn) at the foot of the Help section — `index.html` and `style.css`.
 
 Cross-link added, 20 November 2026: the Keep Going section gained an Everyday Time card — the day and the year are this room's motions, counted — `index.html` and `COLLECTION.md`. Everyday Time links back from its own sister rooms. No bench, lesson, or behaviour changed.
+
+Cross-link added, 20 November 2026: the Keep Going section gained an Everyday Food card — the new room's plant section grows out of this room's soil and seasons, and Everyday Food links back here from its plants and sister rooms — `index.html` and `COLLECTION.md`. No bench, lesson, or behaviour changed.

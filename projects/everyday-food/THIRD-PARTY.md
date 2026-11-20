@@ -1,0 +1,29 @@
+# Sources & limitations
+
+## Bundled material
+
+All lesson/Help text and code are original work written for this workshop (code MIT, lessons CC BY 4.0). The banner image is AI-generated art made for this room. No third-party code, fonts, or data files are bundled in this folder.
+
+## Data sources (facts, not files)
+
+- **The tongue map and its audit** — the history as documented in Wikipedia's "Tongue map" (verified live 20 November 2026): David P. Hänig's 1901 dissertation measured taste thresholds around the tongue's edge and found small regional differences; Edwin G. Boring's 1942 replotting of those numbers produced the graph whose shape hardened into the territorial map. The modern position — all five tastes sensed across the whole tongue wherever taste buds are present, with mild regional variation — is the consensus summarised there and in Wikipedia's "Taste." The sensitivity table in `food.js` is a teaching summary of that position (relative values chosen to show the leans honestly), not a transcription of Hänig's or anyone's laboratory thresholds.
+- **Taste buds and papillae** — counts ("several thousand") and the roughly one-to-two-week replacement cycle of taste receptor cells are the standard textbook figures as summarised in Wikipedia's "Taste" and "Taste bud."
+- **Retronasal smell and flavour** — the mechanism (aroma compounds travelling from the mouth up the back of the throat to the olfactory epithelium) as documented in Wikipedia's "Retronasal smell." The often-quoted claim that a specific percentage of flavour is smell has no single measured source; the room calls it a slogan and demonstrates the fact with the pinch test instead.
+- **Bitter, sweet, and the mediators** — the evolutionary framing (bitter as the alkaloid alarm, sweet as the safe-energy signal) and salt's suppression of bitter perception are the standard accounts in the taste literature, summarised in Wikipedia's "Taste" and "Supertaster." The dish profiles in `food.js` are the room's own teaching estimates on a 0–10 scale, written to be argued with, not instrument data.
+- **Supertasters** — the PTC/PROP paper test, the TAS2R38 gene's role, and the rough quarter non-taster / half medium / quarter supertaster population split (in the populations most studied; proportions vary by ancestry) follow Wikipedia's "Supertaster."
+- **The Dutch-oven coal chart** — the counts in `food.js` are the chart as published from J. Wayne Fears' *The Complete Book of Dutch Oven Cooking* and reproduced by Chuckwagon Supply (chuckwagonsupply.com/faqs.html, verified live 20 November 2026): at 325 °F, diameter + 3 briquettes on top and diameter − 3 underneath; each +25 °F adds one briquette per side. The same table circulates in scout cookbooks (e.g. district cookbook compilations). **Published charts disagree:** Lodge Cast Iron's own chart for a 12-inch oven at 325 °F totals 23 briquettes split 16 top / 7 bottom, against this chart's 24 split 15/9 — the room prints both figures and treats every count as a starting point that wind, weather, and coal condition adjust. All temperatures are °F and approximate by the sources' own framing.
+- **Food plants** — the identification marks, seasons, and look-alikes are the standard field-guide consensus for temperate North America, cross-checked against the plants' Wikipedia articles and the identification discipline taught at Eat The Weeds (eattheweeds.com, verified live 20 November 2026): several independent marks, all agreeing, before a name is earned. Poisonous-look-alike claims (lily-of-the-valley beside plantain; blue flag iris beside young cattail) are the well-documented confusion pairs in that literature. **This room is not a field guide and certifies nothing:** it teaches how identification works and where it fails, under the standing rule printed at the section's head.
+- **Camp methods** — foil-packet, stick-cooking, and one-pot practice follow the scout and camp-cooking tradition (Kephart's *Camp Cookery*, 1910, public domain — the Internet Archive copy at archive.org/details/b28087240, verified live 20 November 2026; Project Gutenberg also carries Kephart's works but answered automated checks with HTTP 503 on the day, so the Archive copy carries the shelf link). The kidney-bean note is the standard food-safety guidance: dried kidney beans require a hard boil of at least ten minutes to destroy their lectin (phytohaemagglutinin); a gentle simmer alone is insufficient.
+- **Cooking chemistry** — Maillard onset around 285 °F / 140 °C and the need for a dry surface follow Wikipedia's "Maillard reaction"; caramelisation of sucrose from about 320 °F / 160 °C follows Wikipedia's "Caramelization" (onset varies by sugar — fructose starts lower). Both are onsets of a gradual process, and the room says so.
+
+## Linked, not loaded (each opens in a new tab, under its own terms)
+
+Internet Archive — Kephart, *Camp Cookery* (archive.org) · Chuckwagon Supply FAQs (chuckwagonsupply.com) · Eat The Weeds (eattheweeds.com) · Wikipedia: Tongue map, Taste, Retronasal smell, Supertaster, Maillard reaction, Caramelization (wikipedia.org). Every link was checked live on 20 November 2026 and returned HTTP 200 to a browser-style request.
+
+## Nothing is called at view time
+
+This page makes no network calls at all: the benches run entirely in the browser from code in this folder. The shelf links are only followed when a visitor presses one.
+
+## Limitations
+
+The tongue table is a summary, and individual variation (age, genetics, smoking, medication) moves real thresholds well beyond it. The plant section's seasons are temperate North America's; the same plant fruits earlier or later elsewhere, and local law and land rules govern picking anywhere. The coal chart assumes standard charcoal briquettes in calm weather. Descriptions were written on 20 November 2026; each linked site's own pages are the authority.

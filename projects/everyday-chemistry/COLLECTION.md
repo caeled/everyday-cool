@@ -14,3 +14,5 @@ Local change (18 November 2026, later): Keep Going gained a link to Everyday Phy
 Documentation update, 20 November 2026: `index.html`, `style.css`, `README.md`, and `COLLECTION.md` gained a professional documentation treatment — a Source on GitHub link in the Help menu, a documentation lede and action bar in the Help section, matching styles, and a Documentation section in the README — at Steven Powell's direction ('the documentation section is the only part that doesn't look like a real program'). No bench, lesson, or behaviour changed.
 
 The same documentation update also added a Steve's Profile link (Steven Powell's LinkedIn) at the foot of the Help section — `index.html` and `style.css`.
+
+Cross-link added, 20 November 2026: the Keep Going list gained an Everyday Food entry — the new room's balance bench runs on this room's compounds (the alkaloids behind the bitter alarm, the acids, Maillard browning, caramelisation), and Everyday Food links back here from its balance and cooking sections — `index.html` and `COLLECTION.md`. No bench, lesson, or behaviour changed.
