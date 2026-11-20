@@ -1,0 +1,2023 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>TENSOR-TRIS — AI Token Packing &amp; Context Window Tetris</title>
+<style>
+  :root {
+    --bg: #080b12;
+    --panel: rgba(15, 21, 34, 0.88);
+    --panel-solid: #101726;
+    --border: rgba(99, 130, 185, 0.24);
+    --border-bright: rgba(56, 189, 248, 0.55);
+    --text: #e8f0fe;
+    --muted: #8b9ec0;
+    --cyan: #22d3ee;
+    --purple: #c084fc;
+    --green: #34d399;
+    --amber: #fbbf24;
+    --rose: #fb7185;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background:
+      radial-gradient(circle at 18% 15%, rgba(56, 189, 248, 0.12), transparent 40%),
+      radial-gradient(circle at 82% 85%, rgba(192, 132, 252, 0.12), transparent 42%),
+      var(--bg);
+    color: var(--text);
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 14px;
+    overflow-x: hidden;
+    user-select: none;
+  }
+
+  #bgCanvas {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 0;
+    pointer-events: none;
+    opacity: 0.55;
+  }
+
+  .app-shell {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    max-width: 1040px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  /* Top Bar */
+  .topbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 10px 16px;
+    backdrop-filter: blur(12px);
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+  }
+
+  .logo-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 9px;
+    background: linear-gradient(135deg, #06b6d4, #8b5cf6);
+    display: grid;
+    place-items: center;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-weight: 900;
+    font-size: 14px;
+    color: #fff;
+    box-shadow: 0 0 18px rgba(34, 211, 238, 0.4);
+  }
+
+  .logo h1 {
+    margin: 0;
+    font-size: 17px;
+    font-weight: 800;
+    letter-spacing: 1.4px;
+    background: linear-gradient(90deg, #67e8f9, #e879f9);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .logo small {
+    display: block;
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.3px;
+  }
+
+  .toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+    align-items: center;
+  }
+
+  .pill-btn {
+    background: rgba(25, 35, 56, 0.9);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    padding: 6px 11px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .pill-btn:hover {
+    border-color: var(--border-bright);
+    background: rgba(34, 49, 78, 0.95);
+  }
+  .pill-btn.active-cyan {
+    background: rgba(34, 211, 238, 0.16);
+    border-color: var(--cyan);
+    color: #67e8f9;
+    box-shadow: 0 0 14px rgba(34, 211, 238, 0.22);
+  }
+  .pill-btn.active-green {
+    background: rgba(52, 211, 153, 0.18);
+    border-color: var(--green);
+    color: #6ee7b7;
+    box-shadow: 0 0 14px rgba(52, 211, 153, 0.22);
+  }
+  .pill-btn.active-amber {
+    background: rgba(251, 191, 36, 0.16);
+    border-color: var(--amber);
+    color: #fde68a;
+  }
+
+  /* Main 3-Column Arena */
+  .arena {
+    display: grid;
+    grid-template-columns: 235px minmax(300px, 360px) 280px;
+    justify-content: center;
+    gap: 14px;
+    align-items: start;
+  }
+
+  @media (max-width: 920px) {
+    .arena {
+      grid-template-columns: 1fr;
+      max-width: 420px;
+      margin: 0 auto;
+    }
+  }
+
+  .side-col {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 12px 13px;
+    backdrop-filter: blur(12px);
+  }
+
+  .card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.9px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 9px;
+  }
+  .card-header code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: var(--cyan);
+    font-size: 10px;
+    background: rgba(34, 211, 238, 0.1);
+    padding: 2px 5px;
+    border-radius: 5px;
+  }
+
+  /* Center Board Wrapper */
+  .board-wrap {
+    position: relative;
+    background: linear-gradient(180deg, rgba(16, 24, 40, 0.96), rgba(9, 13, 22, 0.98));
+    border: 1.5px solid rgba(56, 189, 248, 0.35);
+    border-radius: 16px;
+    padding: 10px;
+    box-shadow:
+      0 22px 60px rgba(0, 0, 0, 0.65),
+      0 0 36px rgba(34, 211, 238, 0.1);
+    transition: border-color 0.25s ease, box-shadow 0.25s ease;
+  }
+  .board-wrap.danger {
+    border-color: rgba(251, 113, 133, 0.78);
+    box-shadow:
+      0 22px 60px rgba(0, 0, 0, 0.65),
+      0 0 36px rgba(251, 113, 133, 0.3);
+  }
+
+  #gameCanvas {
+    width: 100%;
+    aspect-ratio: 1 / 2;
+    display: block;
+    border-radius: 10px;
+    background: #060910;
+  }
+
+  /* Overlay on Board (Start / Pause / Game Over) */
+  .board-overlay {
+    position: absolute;
+    inset: 10px;
+    border-radius: 10px;
+    background: rgba(6, 10, 18, 0.82);
+    backdrop-filter: blur(6px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 24px;
+    gap: 12px;
+    z-index: 5;
+    transition: opacity 0.2s ease;
+  }
+  .board-overlay.hidden {
+    opacity: 0;
+    pointer-events: none;
+  }
+  .overlay-tag {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px;
+    letter-spacing: 1.4px;
+    color: var(--cyan);
+    background: rgba(34, 211, 238, 0.12);
+    border: 1px solid rgba(34, 211, 238, 0.3);
+    padding: 3px 9px;
+    border-radius: 999px;
+  }
+  .overlay-tag.err {
+    color: var(--rose);
+    background: rgba(251, 113, 133, 0.14);
+    border-color: rgba(251, 113, 133, 0.38);
+  }
+  .board-overlay h2 {
+    margin: 0;
+    font-size: 24px;
+    font-weight: 800;
+    letter-spacing: 0.6px;
+  }
+  .board-overlay p {
+    margin: 0;
+    font-size: 13px;
+    color: var(--muted);
+    line-height: 1.45;
+    max-width: 260px;
+  }
+  .primary-btn {
+    background: linear-gradient(135deg, #06b6d4, #6366f1);
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    padding: 11px 22px;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    cursor: pointer;
+    box-shadow: 0 6px 24px rgba(99, 102, 241, 0.45);
+    transition: transform 0.1s ease, filter 0.15s ease;
+  }
+  .primary-btn:hover { filter: brightness(1.12); }
+  .primary-btn:active { transform: scale(0.97); }
+
+  /* Preview Canvases */
+  #holdCanvas {
+    width: 100%;
+    height: 82px;
+    display: block;
+    background: rgba(6, 9, 16, 0.72);
+    border-radius: 9px;
+    border: 1px solid rgba(99, 130, 185, 0.16);
+  }
+  #nextCanvas {
+    width: 100%;
+    height: 238px;
+    display: block;
+    background: rgba(6, 9, 16, 0.72);
+    border-radius: 9px;
+    border: 1px solid rgba(99, 130, 185, 0.16);
+  }
+
+  /* Stats */
+  .stat-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .stat-box {
+    background: rgba(7, 11, 20, 0.75);
+    border: 1px solid rgba(99, 130, 185, 0.15);
+    border-radius: 10px;
+    padding: 8px 10px;
+  }
+  .stat-box.wide { grid-column: span 2; }
+  .stat-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.7px;
+    color: var(--muted);
+  }
+  .stat-val {
+    font-size: 20px;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    margin-top: 2px;
+    color: #fff;
+  }
+  .stat-val.cyan { color: var(--cyan); }
+  .stat-val.amber { color: var(--amber); }
+
+  /* Context Window Utilization Bar */
+  .ctx-meter-track {
+    height: 8px;
+    background: #070a12;
+    border-radius: 999px;
+    overflow: hidden;
+    border: 1px solid rgba(99, 130, 185, 0.22);
+    margin-top: 6px;
+  }
+  .ctx-meter-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #34d399, #22d3ee, #fbbf24, #fb7185);
+    transition: width 0.2s ease;
+  }
+  .ctx-sub {
+    display: flex;
+    justify-content: space-between;
+    font-size: 10.5px;
+    color: var(--muted);
+    margin-top: 4px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+
+  /* AI Piece Legend */
+  .piece-legend {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 5px;
+    font-size: 11px;
+  }
+  .piece-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 7px;
+    border-radius: 7px;
+    background: rgba(7, 11, 20, 0.55);
+    border: 1px solid rgba(99, 130, 185, 0.1);
+  }
+  .piece-left {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+  .chip-dot {
+    width: 11px;
+    height: 11px;
+    border-radius: 3px;
+    flex-shrink: 0;
+  }
+  .piece-glyph {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 10px;
+    color: var(--muted);
+  }
+
+  /* AI System Terminal Log */
+  .terminal {
+    background: #060911;
+    border: 1px solid rgba(56, 189, 248, 0.2);
+    border-radius: 10px;
+    padding: 8px 10px;
+    height: 136px;
+    overflow-y: auto;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px;
+    line-height: 1.48;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .log-line { color: #9fb3d1; }
+  .log-line.hi { color: #67e8f9; }
+  .log-line.gold { color: #fde68a; }
+  .log-line.purple { color: #e879f9; }
+  .log-line.warn { color: #fda4af; }
+  .log-line.green { color: #6ee7b7; }
+
+  /* Controls Guide */
+  .keys-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 5px 10px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .key-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  kbd {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 10px;
+    background: #1a2438;
+    border: 1px solid rgba(148, 163, 184, 0.3);
+    border-bottom-width: 2px;
+    color: #e2e8f0;
+    border-radius: 5px;
+    padding: 1px 5px;
+  }
+
+  /* Touch / Quick Buttons below board */
+  .touch-pad {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 6px;
+    margin-top: 8px;
+  }
+  .touch-btn {
+    background: rgba(20, 30, 48, 0.9);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 8px;
+    padding: 7px 0;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .touch-btn:active { background: rgba(34, 211, 238, 0.2); border-color: var(--cyan); }
+</style>
+</head>
+<body>
+
+<canvas id="bgCanvas"></canvas>
+
+<div class="app-shell">
+  <!-- Header -->
+  <header class="topbar">
+    <div class="logo">
+      <div class="logo-icon">T4</div>
+      <div>
+        <h1>TENSOR-TRIS</h1>
+        <small>Pack AI Token Blocks • Optimize Context Window • Avoid OOM</small>
+      </div>
+    </div>
+
+    <div class="toolbar">
+      <button class="pill-btn active-green" id="copilotBtn" title="Show AI suggested optimal placement (Key: A)">
+        ✦ AI Copilot: ON
+      </button>
+      <button class="pill-btn" id="autopilotBtn" title="Let the built-in heuristic AI play automatically (Key: B)">
+        🤖 Auto-Pilot: OFF
+      </button>
+      <button class="pill-btn" id="soundBtn" title="Toggle synthesized audio (Key: M)">
+        🔊 SFX: ON
+      </button>
+      <button class="pill-btn" id="pauseBtn" title="Pause / Resume (Key: P)">
+        ⏸ Pause
+      </button>
+      <button class="pill-btn" id="restartBtn" title="Start a fresh training run">
+        ↺ New Run
+      </button>
+    </div>
+  </header>
+
+  <!-- Main 3-Column Arena -->
+  <main class="arena">
+    <!-- LEFT COLUMN: KV-Cache Hold + Stats + Piece Glossary -->
+    <aside class="side-col">
+      <div class="card">
+        <div class="card-header">
+          <span>KV-Cache (Hold)</span>
+          <code>C / SHIFT</code>
+        </div>
+        <canvas id="holdCanvas" width="210" height="82"></canvas>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <span>Training Telemetry</span>
+          <code id="epochBadge">EPOCH 1</code>
+        </div>
+        <div class="stat-grid">
+          <div class="stat-box wide">
+            <div class="stat-label">Score (FLOPs)</div>
+            <div class="stat-val cyan" id="scoreVal">0</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Best FLOPs</div>
+            <div class="stat-val amber" id="bestVal">0</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Rows Flushed</div>
+            <div class="stat-val" id="linesVal">0</div>
+          </div>
+        </div>
+
+        <div style="margin-top:10px;">
+          <div class="stat-label">Context Window Load</div>
+          <div class="ctx-meter-track">
+            <div class="ctx-meter-fill" id="ctxFill"></div>
+          </div>
+          <div class="ctx-sub">
+            <span id="ctxPct">0%</span>
+            <span id="ctxStatus">OPTIMAL</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <span>AI Tetrominoes</span>
+          <code>7-BAG</code>
+        </div>
+        <div class="piece-legend">
+          <div class="piece-row"><span class="piece-left"><span class="chip-dot" style="background:#22d3ee"></span>Token Stream (I)</span><span class="piece-glyph">TOK</span></div>
+          <div class="piece-row"><span class="piece-left"><span class="chip-dot" style="background:#fbbf24"></span>Weight Matrix (O)</span><span class="piece-glyph">W</span></div>
+          <div class="piece-row"><span class="piece-left"><span class="chip-dot" style="background:#c084fc"></span>Transformer (T)</span><span class="piece-glyph">ATTN</span></div>
+          <div class="piece-row"><span class="piece-left"><span class="chip-dot" style="background:#34d399"></span>Gradient (S)</span><span class="piece-glyph">∇L</span></div>
+          <div class="piece-row"><span class="piece-left"><span class="chip-dot" style="background:#fb7185"></span>Hallucination (Z)</span><span class="piece-glyph">?!</span></div>
+          <div class="piece-row"><span class="piece-left"><span class="chip-dot" style="background:#60a5fa"></span>Prompt (J)</span><span class="piece-glyph">&gt;_</span></div>
+          <div class="piece-row"><span class="piece-left"><span class="chip-dot" style="background:#fb923c"></span>Loss Curve (L)</span><span class="piece-glyph">L</span></div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- CENTER COLUMN: 10x20 Tensor Core Board -->
+    <section>
+      <div class="board-wrap" id="boardWrap">
+        <canvas id="gameCanvas" width="340" height="680"></canvas>
+
+        <!-- Start / Pause / Game Over Overlay -->
+        <div class="board-overlay" id="overlay">
+          <div class="overlay-tag" id="overlayTag">GPU CONTEXT WINDOW READY</div>
+          <h2 id="overlayTitle">TENSOR-TRIS</h2>
+          <p id="overlayDesc">
+            Pack incoming AI tokens cleanly into the 10×20 context window. Clear rows to flush memory, land <strong>Attention T-Spins</strong>, or toggle <strong>Auto-Pilot</strong> to watch the built-in heuristic AI play!
+          </p>
+          <button class="primary-btn" id="startBtn">Initialize Training Run</button>
+        </div>
+      </div>
+
+      <!-- Compact Click/Touch Action Row -->
+      <div class="touch-pad">
+        <button class="touch-btn" id="btnLeft" title="Move Left (←)">◀</button>
+        <button class="touch-btn" id="btnRotCCW" title="Rotate CCW (Z)">↺</button>
+        <button class="touch-btn" id="btnDrop" title="Hard Drop (Space)">⤓</button>
+        <button class="touch-btn" id="btnRotCW" title="Rotate CW (↑)">↻</button>
+        <button class="touch-btn" id="btnRight" title="Move Right (→)">▶</button>
+      </div>
+    </section>
+
+    <!-- RIGHT COLUMN: Next Token Queue + AI System Log + Keys -->
+    <aside class="side-col">
+      <div class="card">
+        <div class="card-header">
+          <span>Token Queue (Next 4)</span>
+          <code>STREAM</code>
+        </div>
+        <canvas id="nextCanvas" width="250" height="238"></canvas>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <span>AI System Log</span>
+          <code id="comboBadge">COMBO 0x</code>
+        </div>
+        <div class="terminal" id="terminalLog"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <span>Controls</span>
+          <code>SRS + KICKS</code>
+        </div>
+        <div class="keys-grid">
+          <div class="key-item"><span>Move</span><span><kbd>←</kbd> <kbd>→</kbd></span></div>
+          <div class="key-item"><span>Hard Drop</span><kbd>Space</kbd></div>
+          <div class="key-item"><span>Rotate CW</span><span><kbd>↑</kbd> <kbd>X</kbd></span></div>
+          <div class="key-item"><span>Soft Drop</span><kbd>↓</kbd></div>
+          <div class="key-item"><span>Rotate CCW</span><kbd>Z</kbd></div>
+          <div class="key-item"><span>KV-Cache</span><kbd>C</kbd></div>
+          <div class="key-item"><span>AI Copilot</span><kbd>A</kbd></div>
+          <div class="key-item"><span>Auto-Pilot</span><kbd>B</kbd></div>
+        </div>
+      </div>
+    </aside>
+  </main>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // =========================================================================
+  // CONSTANTS & AI TETROMINO DEFINITIONS (Standard SRS)
+  // =========================================================================
+  const COLS = 10;
+  const ROWS = 20;
+  const CELL = 34; // logical pixels per cell (340 x 680)
+
+  const PIECES = {
+    I: {
+      name: 'Token Stream',
+      glyph: 'TOK',
+      color: '#22d3ee',
+      dark: '#0e7490',
+      glow: 'rgba(34, 211, 238, 0.55)',
+      matrix: [
+        [0,0,0,0],
+        [1,1,1,1],
+        [0,0,0,0],
+        [0,0,0,0]
+      ]
+    },
+    O: {
+      name: 'Weight Matrix',
+      glyph: 'W',
+      color: '#fbbf24',
+      dark: '#b45309',
+      glow: 'rgba(251, 191, 36, 0.55)',
+      matrix: [
+        [1,1],
+        [1,1]
+      ]
+    },
+    T: {
+      name: 'Transformer',
+      glyph: 'ATTN',
+      color: '#c084fc',
+      dark: '#7e22ce',
+      glow: 'rgba(192, 132, 252, 0.6)',
+      matrix: [
+        [0,1,0],
+        [1,1,1],
+        [0,0,0]
+      ]
+    },
+    S: {
+      name: 'Gradient',
+      glyph: '∇L',
+      color: '#34d399',
+      dark: '#047857',
+      glow: 'rgba(52, 211, 153, 0.55)',
+      matrix: [
+        [0,1,1],
+        [1,1,0],
+        [0,0,0]
+      ]
+    },
+    Z: {
+      name: 'Hallucination',
+      glyph: '?!',
+      color: '#fb7185',
+      dark: '#be123c',
+      glow: 'rgba(251, 113, 133, 0.55)',
+      matrix: [
+        [1,1,0],
+        [0,1,1],
+        [0,0,0]
+      ]
+    },
+    J: {
+      name: 'Prompt',
+      glyph: '>_',
+      color: '#60a5fa',
+      dark: '#1d4ed8',
+      glow: 'rgba(96, 165, 250, 0.55)',
+      matrix: [
+        [1,0,0],
+        [1,1,1],
+        [0,0,0]
+      ]
+    },
+    L: {
+      name: 'Loss Curve',
+      glyph: 'L',
+      color: '#fb923c',
+      dark: '#c2410c',
+      glow: 'rgba(251, 146, 60, 0.55)',
+      matrix: [
+        [0,0,1],
+        [1,1,1],
+        [0,0,0]
+      ]
+    }
+  };
+
+  const PIECE_KEYS = ['I', 'O', 'T', 'S', 'Z', 'J', 'L'];
+
+  // Authentic SRS Wall Kick Tables (in screen coords: +y is DOWN)
+  const KICKS_JLSTZ = {
+    '0>1': [[0,0], [-1,0], [-1,-1], [0,2], [-1,2]],
+    '1>0': [[0,0], [1,0],  [1,1],   [0,-2], [1,-2]],
+    '1>2': [[0,0], [1,0],  [1,1],   [0,-2], [1,-2]],
+    '2>1': [[0,0], [-1,0], [-1,-1], [0,2], [-1,2]],
+    '2>3': [[0,0], [1,0],  [1,-1],  [0,2], [1,2]],
+    '3>2': [[0,0], [-1,0], [-1,1],  [0,-2], [-1,-2]],
+    '3>0': [[0,0], [-1,0], [-1,1],  [0,-2], [-1,-2]],
+    '0>3': [[0,0], [1,0],  [1,-1],  [0,2], [1,2]]
+  };
+
+  const KICKS_I = {
+    '0>1': [[0,0], [-2,0], [1,0],  [-2,1],  [1,-2]],
+    '1>0': [[0,0], [2,0],  [-1,0], [2,-1],  [-1,2]],
+    '1>2': [[0,0], [-1,0], [2,0],  [-1,-2], [2,1]],
+    '2>1': [[0,0], [1,0],  [-2,0], [1,2],   [-2,-1]],
+    '2>3': [[0,0], [2,0],  [-1,0], [2,-1],  [-1,2]],
+    '3>2': [[0,0], [-2,0], [1,0],  [-2,1],  [1,-2]],
+    '3>0': [[0,0], [1,0],  [-2,0], [1,2],   [-2,-1]],
+    '0>3': [[0,0], [-1,0], [2,0],  [-1,-2], [2,1]]
+  };
+
+  // =========================================================================
+  // PROCEDURAL WEB AUDIO SYNTH SFX
+  // =========================================================================
+  const AudioFX = (() => {
+    let ctx = null;
+    let enabled = true;
+
+    function ensure() {
+      if (!enabled) return null;
+      if (!ctx) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (AC) ctx = new AC();
+      }
+      if (ctx && ctx.state === 'suspended') ctx.resume();
+      return ctx;
+    }
+
+    function tone(freq, dur, type = 'triangle', vol = 0.08, delay = 0, slideTo = null) {
+      const c = ensure();
+      if (!c) return;
+      const t0 = c.currentTime + delay;
+      const osc = c.createOscillator();
+      const gain = c.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, t0);
+      if (slideTo) osc.frequency.exponentialRampToValueAtTime(slideTo, t0 + dur);
+      gain.gain.setValueAtTime(vol, t0);
+      gain.gain.exponentialRampToValueAtTime(0.0008, t0 + dur);
+      osc.connect(gain);
+      gain.connect(c.destination);
+      osc.start(t0);
+      osc.stop(t0 + dur + 0.01);
+    }
+
+    return {
+      isEnabled: () => enabled,
+      toggle: () => { enabled = !enabled; return enabled; },
+      move: () => tone(290, 0.032, 'triangle', 0.045),
+      rotate: () => tone(440, 0.055, 'sine', 0.06, 0, 580),
+      hold: () => { tone(360, 0.05, 'sine', 0.055); tone(510, 0.06, 'sine', 0.055, 0.045); },
+      softDrop: () => tone(190, 0.025, 'triangle', 0.035),
+      hardDrop: () => {
+        tone(150, 0.09, 'sawtooth', 0.075, 0, 58);
+        tone(95, 0.11, 'sine', 0.09, 0, 42);
+      },
+      lock: () => tone(180, 0.05, 'triangle', 0.05, 0, 110),
+      clear: (count, isTSpin) => {
+        const notes = count >= 4
+          ? [523.25, 659.25, 783.99, 1046.5, 1318.5]
+          : isTSpin
+            ? [440, 554.37, 659.25, 880]
+            : [440, 554.37, 659.25].slice(0, count + 1);
+        notes.forEach((f, i) => tone(f, 0.16, 'triangle', 0.085, i * 0.055));
+      },
+      levelUp: () => {
+        [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => tone(f, 0.14, 'sine', 0.075, i * 0.065));
+      },
+      gameOver: () => {
+        [330, 293.66, 246.94, 174.61].forEach((f, i) => tone(f, 0.22, 'sawtooth', 0.065, i * 0.11, f * 0.86));
+      }
+    };
+  })();
+
+  // =========================================================================
+  // DOM ELEMENTS & CANVAS SETUP (HiDPI)
+  // =========================================================================
+  const gameCanvas = document.getElementById('gameCanvas');
+  const gctx = gameCanvas.getContext('2d');
+  const holdCanvas = document.getElementById('holdCanvas');
+  const hctx = holdCanvas.getContext('2d');
+  const nextCanvas = document.getElementById('nextCanvas');
+  const nctx = nextCanvas.getContext('2d');
+  const bgCanvas = document.getElementById('bgCanvas');
+  const bctx = bgCanvas.getContext('2d');
+
+  const boardWrap = document.getElementById('boardWrap');
+  const overlay = document.getElementById('overlay');
+  const overlayTag = document.getElementById('overlayTag');
+  const overlayTitle = document.getElementById('overlayTitle');
+  const overlayDesc = document.getElementById('overlayDesc');
+  const startBtn = document.getElementById('startBtn');
+
+  const scoreVal = document.getElementById('scoreVal');
+  const bestVal = document.getElementById('bestVal');
+  const linesVal = document.getElementById('linesVal');
+  const epochBadge = document.getElementById('epochBadge');
+  const comboBadge = document.getElementById('comboBadge');
+  const ctxFill = document.getElementById('ctxFill');
+  const ctxPct = document.getElementById('ctxPct');
+  const ctxStatus = document.getElementById('ctxStatus');
+  const terminalLog = document.getElementById('terminalLog');
+
+  const copilotBtn = document.getElementById('copilotBtn');
+  const autopilotBtn = document.getElementById('autopilotBtn');
+  const soundBtn = document.getElementById('soundBtn');
+  const pauseBtn = document.getElementById('pauseBtn');
+  const restartBtn = document.getElementById('restartBtn');
+
+  function setupHiDPI(canvas, logicalW, logicalH) {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = logicalW * dpr;
+    canvas.height = logicalH * dpr;
+    const c = canvas.getContext('2d');
+    c.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  setupHiDPI(gameCanvas, COLS * CELL, ROWS * CELL);
+  setupHiDPI(holdCanvas, 210, 82);
+  setupHiDPI(nextCanvas, 250, 238);
+
+  // =========================================================================
+  // GAME STATE
+  // =========================================================================
+  const BEST_KEY = 'tensor_tris_best_v1';
+  const state = {
+    grid: [],
+    bag: [],
+    queue: [],
+    active: null,       // { type, matrix, rot, x, y, lastActionWasRotate }
+    hold: null,
+    holdUsed: false,
+    score: 0,
+    best: Number(localStorage.getItem(BEST_KEY) || 0),
+    lines: 0,
+    epoch: 1,
+    combo: -1,
+    b2b: false,         // Back-to-back difficult clear flag
+    status: 'idle',     // 'idle' | 'playing' | 'paused' | 'gameover'
+    dropTimer: 0,
+    lockTimer: 0,
+    lockResets: 0,
+    copilotOn: true,
+    autopilotOn: false,
+    aiTarget: null,     // { x, rot, matrix, y, useHold }
+    aiActionTimer: 0,
+    particles: [],
+    flashes: [],        // { rows: [], alpha: 1 }
+    popups: [],         // { text, sub, x, y, color, life }
+    shake: 0
+  };
+
+  bestVal.textContent = state.best.toLocaleString();
+
+  // =========================================================================
+  // MATRIX & BOARD UTILITIES
+  // =========================================================================
+  function createGrid() {
+    return Array.from({ length: ROWS }, () => Array(COLS).fill(null));
+  }
+
+  function cloneMatrix(m) {
+    return m.map(r => r.slice());
+  }
+
+  function rotateMatrix(m, dir) {
+    const N = m.length;
+    const out = Array.from({ length: N }, () => Array(N).fill(0));
+    for (let r = 0; r < N; r++) {
+      for (let c = 0; c < N; c++) {
+        if (dir === 1) out[c][N - 1 - r] = m[r][c];
+        else out[N - 1 - c][r] = m[r][c];
+      }
+    }
+    return out;
+  }
+
+  function collides(grid, matrix, px, py) {
+    for (let r = 0; r < matrix.length; r++) {
+      for (let c = 0; c < matrix[r].length; c++) {
+        if (!matrix[r][c]) continue;
+        const gx = px + c;
+        const gy = py + r;
+        if (gx < 0 || gx >= COLS || gy >= ROWS) return true;
+        if (gy >= 0 && grid[gy][gx]) return true;
+      }
+    }
+    return false;
+  }
+
+  function ghostY(grid, matrix, px, py) {
+    let y = py;
+    while (!collides(grid, matrix, px, y + 1)) y++;
+    return y;
+  }
+
+  function refillBag() {
+    const b = PIECE_KEYS.slice();
+    for (let i = b.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [b[i], b[j]] = [b[j], b[i]];
+    }
+    state.bag.push(...b);
+  }
+
+  function pullFromQueue() {
+    while (state.queue.length < 5) {
+      if (state.bag.length === 0) refillBag();
+      state.queue.push(state.bag.shift());
+    }
+    const nextType = state.queue.shift();
+    while (state.queue.length < 4) {
+      if (state.bag.length === 0) refillBag();
+      state.queue.push(state.bag.shift());
+    }
+    return nextType;
+  }
+
+  function logTerm(msg, cls = '') {
+    const line = document.createElement('div');
+    line.className = `log-line ${cls}`;
+    line.textContent = `> ${msg}`;
+    terminalLog.appendChild(line);
+    while (terminalLog.children.length > 26) {
+      terminalLog.removeChild(terminalLog.firstChild);
+    }
+    terminalLog.scrollTop = terminalLog.scrollHeight;
+  }
+
+  // =========================================================================
+  // HEURISTIC AI EVALUATOR (Powers both AI Copilot Hint & Auto-Pilot!)
+  // =========================================================================
+  function evaluatePlacement(baseGrid, type, matrix, px, py) {
+    // Copy grid lightly and place piece
+    const g = baseGrid.map(row => row.slice());
+    let overflow = false;
+    for (let r = 0; r < matrix.length; r++) {
+      for (let c = 0; c < matrix[r].length; c++) {
+        if (!matrix[r][c]) continue;
+        const gy = py + r;
+        if (gy < 0) overflow = true;
+        else g[gy][px + c] = type;
+      }
+    }
+    if (overflow) return -1e9;
+
+    // Count & clear completed lines
+    let cleared = 0;
+    const kept = [];
+    for (let r = 0; r < ROWS; r++) {
+      if (g[r].every(Boolean)) cleared++;
+      else kept.push(g[r]);
+    }
+    while (kept.length < ROWS) kept.unshift(Array(COLS).fill(null));
+
+    // Compute heights, holes, bumpiness, and covered wells
+    const heights = new Array(COLS).fill(0);
+    let holes = 0;
+    let aggHeight = 0;
+    let maxHeight = 0;
+
+    for (let c = 0; c < COLS; c++) {
+      let seenBlock = false;
+      for (let r = 0; r < ROWS; r++) {
+        if (kept[r][c]) {
+          if (!seenBlock) {
+            heights[c] = ROWS - r;
+            seenBlock = true;
+          }
+        } else if (seenBlock) {
+          holes++;
+        }
+      }
+      aggHeight += heights[c];
+      if (heights[c] > maxHeight) maxHeight = heights[c];
+    }
+
+    let bumpiness = 0;
+    for (let c = 0; c < COLS - 1; c++) {
+      bumpiness += Math.abs(heights[c] - heights[c + 1]);
+    }
+
+    // Score formula (well-balanced Tetris heuristic)
+    const lineBonus = cleared === 4 ? 4.4 : cleared === 3 ? 2.4 : cleared === 2 ? 1.45 : cleared * 0.72;
+    const highStackPenalty = maxHeight > 13 ? (maxHeight - 13) * 0.9 : 0;
+    return lineBonus - 0.51 * aggHeight - 0.86 * holes - 0.21 * bumpiness - highStackPenalty;
+  }
+
+  function findBestPlacementForType(type) {
+    let mat = cloneMatrix(PIECES[type].matrix);
+    const maxRots = type === 'O' ? 1 : (type === 'I' || type === 'S' || type === 'Z') ? 2 : 4;
+    let best = null;
+
+    for (let rot = 0; rot < maxRots; rot++) {
+      for (let x = -2; x < COLS + 2; x++) {
+        if (collides(state.grid, mat, x, 0)) {
+          // Try spawning slightly above top row if needed
+          if (collides(state.grid, mat, x, -1)) continue;
+        }
+        const startY = collides(state.grid, mat, x, 0) ? -1 : 0;
+        const y = ghostY(state.grid, mat, x, startY);
+        const score = evaluatePlacement(state.grid, type, mat, x, y);
+        if (!best || score > best.score) {
+          best = { type, rot, x, y, matrix: cloneMatrix(mat), score, useHold: false };
+        }
+      }
+      mat = rotateMatrix(mat, 1);
+    }
+    return best;
+  }
+
+  function recomputeAIHint() {
+    if (!state.active || state.status !== 'playing') {
+      state.aiTarget = null;
+      return;
+    }
+    const currBest = findBestPlacementForType(state.active.type);
+    if (state.autopilotOn && !state.holdUsed) {
+      const altType = state.hold || state.queue[0];
+      if (altType && altType !== state.active.type) {
+        const altBest = findBestPlacementForType(altType);
+        if (altBest && currBest && altBest.score > currBest.score + 0.65) {
+          state.aiTarget = { ...altBest, useHold: true };
+          return;
+        }
+      }
+    }
+    state.aiTarget = currBest;
+  }
+
+  // =========================================================================
+  // GAME ACTIONS (SPAWN, MOVE, ROTATE, HOLD, LOCK, CLEAR)
+  // =========================================================================
+  function spawnPiece(explicitType = null) {
+    const type = explicitType || pullFromQueue();
+    const mat = cloneMatrix(PIECES[type].matrix);
+    const x = Math.floor((COLS - mat[0].length) / 2);
+    const y = type === 'I' ? -1 : 0;
+
+    state.active = {
+      type,
+      matrix: mat,
+      rot: 0,
+      x,
+      y,
+      lastActionWasRotate: false
+    };
+    state.dropTimer = 0;
+    state.lockTimer = 0;
+    state.lockResets = 0;
+
+    if (collides(state.grid, mat, x, y)) {
+      triggerGameOver();
+      return false;
+    }
+    recomputeAIHint();
+    drawPreviews();
+    return true;
+  }
+
+  function moveActive(dx, dy, isSoftDrop = false) {
+    if (!state.active || state.status !== 'playing') return false;
+    const p = state.active;
+    if (!collides(state.grid, p.matrix, p.x + dx, p.y + dy)) {
+      p.x += dx;
+      p.y += dy;
+      p.lastActionWasRotate = false;
+      if (dx !== 0) {
+        AudioFX.move();
+        resetLockIfGrounded();
+      } else if (isSoftDrop) {
+        state.score += 1;
+        AudioFX.softDrop();
+        updateHUD();
+      }
+      return true;
+    }
+    return false;
+  }
+
+  function rotateActive(dir) {
+    if (!state.active || state.status !== 'playing') return false;
+    const p = state.active;
+    if (p.type === 'O') return false;
+
+    const nextRot = (p.rot + dir + 4) % 4;
+    const nextMat = rotateMatrix(p.matrix, dir);
+    const key = `${p.rot}>${nextRot}`;
+    const kicks = (p.type === 'I' ? KICKS_I : KICKS_JLSTZ)[key] || [[0, 0]];
+
+    for (const [kx, ky] of kicks) {
+      if (!collides(state.grid, nextMat, p.x + kx, p.y + ky)) {
+        p.matrix = nextMat;
+        p.rot = nextRot;
+        p.x += kx;
+        p.y += ky;
+        p.lastActionWasRotate = true;
+        AudioFX.rotate();
+        resetLockIfGrounded();
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function resetLockIfGrounded() {
+    if (!state.active) return;
+    if (collides(state.grid, state.active.matrix, state.active.x, state.active.y + 1)) {
+      if (state.lockResets < 15) {
+        state.lockTimer = 0;
+        state.lockResets++;
+      }
+    }
+  }
+
+  function holdActive() {
+    if (!state.active || state.status !== 'playing' || state.holdUsed) return;
+    const prevType = state.active.type;
+    const swapType = state.hold;
+    state.hold = prevType;
+    state.holdUsed = true;
+    AudioFX.hold();
+    logTerm(`Cached [${PIECES[prevType].name}] in KV-Cache.`, 'hi');
+    spawnPiece(swapType || null);
+    drawPreviews();
+  }
+
+  function hardDrop() {
+    if (!state.active || state.status !== 'playing') return;
+    const p = state.active;
+    const destY = ghostY(state.grid, p.matrix, p.x, p.y);
+    const dist = destY - p.y;
+    p.y = destY;
+    if (dist > 0) {
+      state.score += dist * 2;
+      p.lastActionWasRotate = false;
+    }
+    AudioFX.hardDrop();
+    state.shake = Math.min(6, 2.2 + dist * 0.14);
+    spawnDropParticles(p);
+    lockActivePiece();
+  }
+
+  function detectTSpin(p) {
+    if (p.type !== 'T' || !p.lastActionWasRotate) return false;
+    // Check 4 diagonal corners around T center (p.x + 1, p.y + 1)
+    const cx = p.x + 1, cy = p.y + 1;
+    const corners = [
+      [cx - 1, cy - 1], [cx + 1, cy - 1],
+      [cx - 1, cy + 1], [cx + 1, cy + 1]
+    ];
+    let filled = 0;
+    for (const [x, y] of corners) {
+      if (x < 0 || x >= COLS || y >= ROWS || (y >= 0 && state.grid[y][x])) filled++;
+    }
+    return filled >= 3;
+  }
+
+  function lockActivePiece() {
+    const p = state.active;
+    if (!p) return;
+
+    const isTSpin = detectTSpin(p);
+    let toppedOut = false;
+
+    for (let r = 0; r < p.matrix.length; r++) {
+      for (let c = 0; c < p.matrix[r].length; c++) {
+        if (!p.matrix[r][c]) continue;
+        const gy = p.y + r;
+        const gx = p.x + c;
+        if (gy < 0) {
+          toppedOut = true;
+        } else {
+          state.grid[gy][gx] = p.type;
+        }
+      }
+    }
+
+    if (toppedOut) {
+      triggerGameOver();
+      return;
+    }
+
+    // Check completed rows
+    const fullRows = [];
+    for (let r = 0; r < ROWS; r++) {
+      if (state.grid[r].every(Boolean)) fullRows.push(r);
+    }
+
+    if (fullRows.length > 0) {
+      state.combo++;
+      // Emit particles & flash
+      for (const r of fullRows) {
+        for (let c = 0; c < COLS; c++) {
+          const type = state.grid[r][c];
+          spawnClearParticles(c, r, PIECES[type].color);
+        }
+      }
+      state.flashes.push({ rows: fullRows.slice(), alpha: 1.0 });
+
+      // Remove cleared rows
+      for (let i = fullRows.length - 1; i >= 0; i--) {
+        state.grid.splice(fullRows[i], 1);
+      }
+      while (state.grid.length < ROWS) {
+        state.grid.unshift(Array(COLS).fill(null));
+      }
+
+      // Check Perfect Clear (empty board)
+      const isPerfect = state.grid.every(row => row.every(cell => !cell));
+
+      // Scoring (Guideline-inspired)
+      const count = fullRows.length;
+      const isDifficult = count === 4 || isTSpin;
+      let basePts = 0;
+      let label = '';
+      let popColor = '#67e8f9';
+
+      if (isTSpin) {
+        basePts = [0, 800, 1200, 1600][count] || 1200;
+        label = count === 2 ? 'ATTENTION T-SPIN DOUBLE!' : count === 3 ? 'ATTENTION T-SPIN TRIPLE!' : 'ATTENTION T-SPIN!';
+        popColor = '#e879f9';
+        logTerm(`✦ ${label} (+${basePts * state.epoch} FLOPs)`, 'purple');
+      } else if (count === 4) {
+        basePts = 800;
+        label = 'CONTEXT FLUSH (TETRIS!)';
+        popColor = '#fbbf24';
+        state.shake = 7.5;
+        logTerm(`⚡ 4-LINE CONTEXT FLUSH! Zero perplexity!`, 'gold');
+      } else if (count === 3) {
+        basePts = 500;
+        label = 'TRIPLE DISTILLATION';
+        logTerm(`Distilled 3 rows cleanly — loss plummeting.`, 'hi');
+      } else if (count === 2) {
+        basePts = 300;
+        label = 'DUAL BATCH CLEAR';
+        logTerm(`Batched 2 rows — tensor throughput boosted.`, 'green');
+      } else {
+        basePts = 100;
+        label = 'LAYER PRUNED';
+        logTerm(`Pruned 1 redundant token layer.`);
+      }
+
+      if (isDifficult && state.b2b) {
+        basePts = Math.round(basePts * 1.5);
+        label = 'B2B ' + label;
+        logTerm(`🔁 Back-to-Back 1.5× multiplier applied!`, 'gold');
+      }
+      state.b2b = isDifficult;
+
+      let totalGain = basePts * state.epoch;
+      if (state.combo > 0) {
+        totalGain += 50 * state.combo * state.epoch;
+        logTerm(`🔥 ${state.combo + 1}× Chain-of-Thought Combo!`, 'gold');
+      }
+      if (isPerfect) {
+        totalGain += 2500 * state.epoch;
+        label = 'PERFECT ZERO-LOSS CLEAR!';
+        popColor = '#34d399';
+        logTerm(`🌟 ZERO-LOSS PERFECT CLEAR! +${2500 * state.epoch}`, 'green');
+      }
+
+      state.score += totalGain;
+      state.lines += count;
+      AudioFX.clear(count, isTSpin);
+
+      const midRow = fullRows[Math.floor(fullRows.length / 2)];
+      addPopup(label, `+${totalGain.toLocaleString()}`, COLS * CELL * 0.5, midRow * CELL, popColor);
+
+      // Level / Epoch progression every 10 lines
+      const nextEpoch = Math.floor(state.lines / 10) + 1;
+      if (nextEpoch > state.epoch) {
+        state.epoch = nextEpoch;
+        AudioFX.levelUp();
+        addPopup(`EPOCH ${state.epoch}`, 'LEARNING RATE ↑', COLS * CELL * 0.5, ROWS * CELL * 0.35, '#34d399');
+        logTerm(`🚀 EPOCH ${state.epoch} REACHED — Gravity speed increased!`, 'green');
+      }
+    } else {
+      state.combo = -1;
+      AudioFX.lock();
+    }
+
+    state.holdUsed = false;
+    updateHUD();
+    spawnPiece();
+  }
+
+  function triggerGameOver() {
+    state.status = 'gameover';
+    state.active = null;
+    AudioFX.gameOver();
+    if (state.score > state.best) {
+      state.best = state.score;
+      localStorage.setItem(BEST_KEY, String(state.best));
+    }
+    updateHUD();
+    logTerm(`💀 CUDA OUT OF MEMORY — Context window exceeded.`, 'warn');
+    showOverlay('err', 'CUDA OUT OF MEMORY', 'CONTEXT OVERFLOW',
+      `Final Score: ${state.score.toLocaleString()} FLOPs across Epoch ${state.epoch} (${state.lines} rows flushed).`,
+      'Restart Training Run');
+  }
+
+  function showOverlay(tagStyle, tagText, title, desc, btnText) {
+    overlayTag.className = 'overlay-tag' + (tagStyle === 'err' ? ' err' : '');
+    overlayTag.textContent = tagText;
+    overlayTitle.textContent = title;
+    overlayDesc.innerHTML = desc;
+    startBtn.textContent = btnText;
+    overlay.classList.remove('hidden');
+  }
+
+  function startNewGame() {
+    state.grid = createGrid();
+    state.bag = [];
+    state.queue = [];
+    state.hold = null;
+    state.holdUsed = false;
+    state.score = 0;
+    state.lines = 0;
+    state.epoch = 1;
+    state.combo = -1;
+    state.b2b = false;
+    state.particles = [];
+    state.flashes = [];
+    state.popups = [];
+    state.shake = 0;
+    state.status = 'playing';
+
+    overlay.classList.add('hidden');
+    pauseBtn.textContent = '⏸ Pause';
+    pauseBtn.classList.remove('active-amber');
+    terminalLog.innerHTML = '';
+    logTerm('Initialized 10×20 Tensor Context Window.', 'hi');
+    logTerm('Loaded 7-Bag AI Tetromino stream (SRS enabled).', 'green');
+    if (state.copilotOn) logTerm('AI Copilot active: dashed emerald outline = optimal fit.', 'green');
+
+    spawnPiece();
+    updateHUD();
+  }
+
+  function togglePause() {
+    if (state.status === 'playing') {
+      state.status = 'paused';
+      pauseBtn.textContent = '▶ Resume';
+      pauseBtn.classList.add('active-amber');
+      showOverlay('', 'TRAINING PAUSED', 'CHECKPOINT SAVED',
+        'Press P or click below to resume token packing.', 'Resume Run');
+    } else if (state.status === 'paused') {
+      state.status = 'playing';
+      pauseBtn.textContent = '⏸ Pause';
+      pauseBtn.classList.remove('active-amber');
+      overlay.classList.add('hidden');
+      recomputeAIHint();
+    }
+  }
+
+  // =========================================================================
+  // HUD & CONTEXT WINDOW METRICS
+  // =========================================================================
+  function updateHUD() {
+    if (state.score > state.best) {
+      state.best = state.score;
+      localStorage.setItem(BEST_KEY, String(state.best));
+    }
+    scoreVal.textContent = state.score.toLocaleString();
+    bestVal.textContent = state.best.toLocaleString();
+    linesVal.textContent = String(state.lines);
+    epochBadge.textContent = `EPOCH ${state.epoch}`;
+    comboBadge.textContent = `COMBO ${Math.max(0, state.combo + 1)}x`;
+
+    // Calculate highest occupied row & total tokens filled
+    let filled = 0;
+    let highestRow = ROWS;
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        if (state.grid[r][c]) {
+          filled++;
+          if (r < highestRow) highestRow = r;
+        }
+      }
+    }
+    const stackPct = Math.round(((ROWS - highestRow) / ROWS) * 100);
+    ctxFill.style.width = `${stackPct}%`;
+    ctxPct.textContent = `${filled}/${ROWS * COLS} tok (${stackPct}% ht)`;
+
+    const isDanger = stackPct >= 70;
+    boardWrap.classList.toggle('danger', isDanger && state.status === 'playing');
+    if (stackPct >= 75) {
+      ctxStatus.textContent = '⚠ OOM RISK!';
+      ctxStatus.style.color = '#fb7185';
+    } else if (stackPct >= 50) {
+      ctxStatus.textContent = 'HIGH LOAD';
+      ctxStatus.style.color = '#fbbf24';
+    } else {
+      ctxStatus.textContent = 'OPTIMAL';
+      ctxStatus.style.color = '#34d399';
+    }
+  }
+
+  // =========================================================================
+  // PARTICLES & FLOATING POPUPS
+  // =========================================================================
+  function spawnClearParticles(col, row, color) {
+    const cx = (col + 0.5) * CELL;
+    const cy = (row + 0.5) * CELL;
+    for (let i = 0; i < 6; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 70 + Math.random() * 190;
+      state.particles.push({
+        x: cx, y: cy,
+        vx: Math.cos(ang) * spd,
+        vy: Math.sin(ang) * spd - 40,
+        size: 2.5 + Math.random() * 3.5,
+        color,
+        life: 0.45 + Math.random() * 0.3,
+        maxLife: 0.75
+      });
+    }
+  }
+
+  function spawnDropParticles(p) {
+    const col = PIECES[p.type].color;
+    for (let r = 0; r < p.matrix.length; r++) {
+      for (let c = 0; c < p.matrix[r].length; c++) {
+        if (!p.matrix[r][c]) continue;
+        const cx = (p.x + c + 0.5) * CELL;
+        const cy = (p.y + r + 1) * CELL;
+        for (let k = 0; k < 2; k++) {
+          state.particles.push({
+            x: cx + (Math.random() - 0.5) * 18,
+            y: cy,
+            vx: (Math.random() - 0.5) * 70,
+            vy: -25 - Math.random() * 55,
+            size: 2 + Math.random() * 2,
+            color: col,
+            life: 0.28 + Math.random() * 0.16,
+            maxLife: 0.44
+          });
+        }
+      }
+    }
+  }
+
+  function addPopup(text, sub, x, y, color) {
+    state.popups.push({ text, sub, x, y, color, life: 1.15, maxLife: 1.15 });
+  }
+
+  // =========================================================================
+  // RENDERING (MAIN BOARD + PREVIEWS + NEURAL BACKGROUND)
+  // =========================================================================
+  function drawBlock(ctx, x, y, size, type, alpha = 1, isGhost = false) {
+    const info = PIECES[type];
+    const pad = 1.5;
+    const bx = x + pad;
+    const by = y + pad;
+    const bs = size - pad * 2;
+    const rad = Math.max(3, size * 0.16);
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+
+    if (isGhost) {
+      ctx.strokeStyle = info.color;
+      ctx.lineWidth = 1.8;
+      ctx.fillStyle = info.glow.replace(/[\d.]+\)$/, '0.13)');
+      roundRect(ctx, bx + 1, by + 1, bs - 2, bs - 2, rad);
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+      return;
+    }
+
+    // Main neon gradient body
+    const grad = ctx.createLinearGradient(bx, by, bx, by + bs);
+    grad.addColorStop(0, info.color);
+    grad.addColorStop(1, info.dark);
+    ctx.fillStyle = grad;
+    roundRect(ctx, bx, by, bs, bs, rad);
+    ctx.fill();
+
+    // Inner glass top bevel highlight
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.24)';
+    roundRect(ctx, bx + 2, by + 2, bs - 4, bs * 0.34, rad * 0.6);
+    ctx.fill();
+
+    // Crisp rim border
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.34)';
+    ctx.lineWidth = 1;
+    roundRect(ctx, bx + 0.5, by + 0.5, bs - 1, bs - 1, rad);
+    ctx.stroke();
+
+    // AI Token Glyph centered in cell
+    if (size >= 22) {
+      ctx.fillStyle = 'rgba(7, 11, 20, 0.78)';
+      ctx.font = `800 ${size >= 30 ? (info.glyph.length > 2 ? 8.5 : 10.5) : 7.5}px ui-monospace, SFMono-Regular, Menlo, monospace`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(info.glyph, bx + bs * 0.5, by + bs * 0.56);
+    }
+
+    ctx.restore();
+  }
+
+  function roundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  function drawPreviews() {
+    // Hold (KV-Cache)
+    hctx.clearRect(0, 0, 210, 82);
+    if (state.hold) {
+      drawMiniPiece(hctx, state.hold, 105, 41, 22, state.holdUsed ? 0.38 : 1);
+    } else {
+      hctx.fillStyle = 'rgba(139, 158, 192, 0.35)';
+      hctx.font = '600 11px ui-monospace, monospace';
+      hctx.textAlign = 'center';
+      hctx.textBaseline = 'middle';
+      hctx.fillText('CACHE EMPTY', 105, 41);
+    }
+
+    // Next 4 Queue
+    nctx.clearRect(0, 0, 250, 238);
+    for (let i = 0; i < Math.min(4, state.queue.length); i++) {
+      const type = state.queue[i];
+      const cy = 32 + i * 56;
+      drawMiniPiece(nctx, type, 56, cy, 18, 1);
+
+      nctx.fillStyle = PIECES[type].color;
+      nctx.font = '700 11.5px Inter, system-ui, sans-serif';
+      nctx.textAlign = 'left';
+      nctx.textBaseline = 'middle';
+      nctx.fillText(PIECES[type].name, 110, cy - 6);
+
+      nctx.fillStyle = '#6e82a8';
+      nctx.font = '600 9.5px ui-monospace, monospace';
+      nctx.fillText(`TOKEN [${PIECES[type].glyph}]`, 110, cy + 9);
+
+      if (i < 3) {
+        nctx.strokeStyle = 'rgba(99, 130, 185, 0.14)';
+        nctx.beginPath();
+        nctx.moveTo(14, cy + 28);
+        nctx.lineTo(236, cy + 28);
+        nctx.stroke();
+      }
+    }
+  }
+
+  function drawMiniPiece(ctx, type, cx, cy, size, alpha) {
+    const m = PIECES[type].matrix;
+    let minR = 99, maxR = -1, minC = 99, maxC = -1;
+    for (let r = 0; r < m.length; r++) {
+      for (let c = 0; c < m[r].length; c++) {
+        if (m[r][c]) {
+          minR = Math.min(minR, r); maxR = Math.max(maxR, r);
+          minC = Math.min(minC, c); maxC = Math.max(maxC, c);
+        }
+      }
+    }
+    const w = (maxC - minC + 1) * size;
+    const h = (maxR - minR + 1) * size;
+    const ox = cx - w * 0.5 - minC * size;
+    const oy = cy - h * 0.5 - minR * size;
+
+    for (let r = 0; r < m.length; r++) {
+      for (let c = 0; c < m[r].length; c++) {
+        if (m[r][c]) drawBlock(ctx, ox + c * size, oy + r * size, size, type, alpha);
+      }
+    }
+  }
+
+  function renderBoard(timeMs) {
+    const W = COLS * CELL;
+    const H = ROWS * CELL;
+    gctx.save();
+    gctx.clearRect(0, 0, W, H);
+
+    // Subtle micro-shake on hard drop / 4-line flush
+    if (state.shake > 0.1) {
+      const sx = (Math.random() - 0.5) * state.shake;
+      const sy = (Math.random() - 0.5) * state.shake;
+      gctx.translate(sx, sy);
+    }
+
+    // Background tensor grid lines
+    gctx.strokeStyle = 'rgba(56, 189, 248, 0.065)';
+    gctx.lineWidth = 1;
+    for (let c = 1; c < COLS; c++) {
+      gctx.beginPath();
+      gctx.moveTo(c * CELL + 0.5, 0);
+      gctx.lineTo(c * CELL + 0.5, H);
+      gctx.stroke();
+    }
+    for (let r = 1; r < ROWS; r++) {
+      gctx.beginPath();
+      gctx.moveTo(0, r * CELL + 0.5);
+      gctx.lineTo(W, r * CELL + 0.5);
+      gctx.stroke();
+    }
+
+    // Subtle top danger threshold line (row 4)
+    gctx.strokeStyle = 'rgba(251, 113, 133, 0.22)';
+    gctx.setLineDash([4, 5]);
+    gctx.beginPath();
+    gctx.moveTo(0, 4 * CELL);
+    gctx.lineTo(W, 4 * CELL);
+    gctx.stroke();
+    gctx.setLineDash([]);
+
+    // Locked blocks
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        const type = state.grid[r][c];
+        if (type) drawBlock(gctx, c * CELL, r * CELL, CELL, type, 1);
+      }
+    }
+
+    // AI Copilot Optimal Placement Hint (pulsing emerald dashed outline)
+    if (state.copilotOn && state.aiTarget && state.active && !state.aiTarget.useHold && state.status === 'playing') {
+      const t = state.aiTarget;
+      const pulse = 0.55 + 0.35 * Math.sin(timeMs * 0.007);
+      gctx.save();
+      gctx.strokeStyle = `rgba(52, 211, 153, ${pulse.toFixed(2)})`;
+      gctx.fillStyle = `rgba(52, 211, 153, ${(pulse * 0.14).toFixed(2)})`;
+      gctx.lineWidth = 2;
+      gctx.setLineDash([5, 3]);
+      for (let r = 0; r < t.matrix.length; r++) {
+        for (let c = 0; c < t.matrix[r].length; c++) {
+          if (!t.matrix[r][c]) continue;
+          const bx = (t.x + c) * CELL + 3;
+          const by = (t.y + r) * CELL + 3;
+          roundRect(gctx, bx, by, CELL - 6, CELL - 6, 5);
+          gctx.fill();
+          gctx.stroke();
+        }
+      }
+      gctx.restore();
+    }
+
+    // Active Piece + Ghost Landing Projection
+    if (state.active && state.status !== 'gameover') {
+      const p = state.active;
+      const gy = ghostY(state.grid, p.matrix, p.x, p.y);
+      if (gy > p.y) {
+        for (let r = 0; r < p.matrix.length; r++) {
+          for (let c = 0; c < p.matrix[r].length; c++) {
+            if (p.matrix[r][c] && gy + r >= 0) {
+              drawBlock(gctx, (p.x + c) * CELL, (gy + r) * CELL, CELL, p.type, 0.72, true);
+            }
+          }
+        }
+      }
+
+      // Active piece subtle lock-delay brightness pulse
+      const lockPulse = state.lockTimer > 0 ? 0.75 + 0.25 * Math.cos(state.lockTimer * 28) : 1;
+      for (let r = 0; r < p.matrix.length; r++) {
+        for (let c = 0; c < p.matrix[r].length; c++) {
+          if (p.matrix[r][c] && p.y + r >= 0) {
+            drawBlock(gctx, (p.x + c) * CELL, (p.y + r) * CELL, CELL, p.type, lockPulse);
+          }
+        }
+      }
+    }
+
+    // Line-clear laser flashes
+    for (const fl of state.flashes) {
+      gctx.fillStyle = `rgba(255, 255, 255, ${(fl.alpha * 0.85).toFixed(2)})`;
+      for (const r of fl.rows) {
+        gctx.fillRect(0, r * CELL, W, CELL);
+      }
+    }
+
+    // Particles
+    for (const pt of state.particles) {
+      const a = Math.max(0, pt.life / pt.maxLife);
+      gctx.save();
+      gctx.globalAlpha = a;
+      gctx.fillStyle = pt.color;
+      gctx.shadowColor = pt.color;
+      gctx.shadowBlur = 8;
+      gctx.fillRect(pt.x - pt.size * 0.5, pt.y - pt.size * 0.5, pt.size, pt.size);
+      gctx.restore();
+    }
+
+    // Floating Score / Action Popups
+    for (const pop of state.popups) {
+      const a = Math.min(1, (pop.life / pop.maxLife) * 1.6);
+      gctx.save();
+      gctx.globalAlpha = a;
+      gctx.textAlign = 'center';
+      gctx.font = '800 14px Inter, system-ui, sans-serif';
+      gctx.fillStyle = '#060910';
+      gctx.fillText(pop.text, pop.x + 1, pop.y + 1);
+      gctx.fillStyle = pop.color;
+      gctx.fillText(pop.text, pop.x, pop.y);
+      if (pop.sub) {
+        gctx.font = '700 11px ui-monospace, monospace';
+        gctx.fillStyle = '#ffffff';
+        gctx.fillText(pop.sub, pop.x, pop.y + 16);
+      }
+      gctx.restore();
+    }
+
+    gctx.restore();
+  }
+
+  // Subtle Ambient Neural-Net Background Canvas
+  const nodes = Array.from({ length: 34 }, () => ({
+    x: Math.random(),
+    y: Math.random(),
+    vx: (Math.random() - 0.5) * 0.015,
+    vy: (Math.random() - 0.5) * 0.015
+  }));
+
+  function resizeBg() {
+    bgCanvas.width = window.innerWidth;
+    bgCanvas.height = window.innerHeight;
+  }
+  resizeBg();
+  window.addEventListener('resize', resizeBg);
+
+  function renderBg(dt) {
+    const w = bgCanvas.width, h = bgCanvas.height;
+    bctx.clearRect(0, 0, w, h);
+    for (const n of nodes) {
+      n.x = (n.x + n.vx * dt + 1) % 1;
+      n.y = (n.y + n.vy * dt + 1) % 1;
+    }
+    bctx.lineWidth = 1;
+    for (let i = 0; i < nodes.length; i++) {
+      const a = nodes[i];
+      const ax = a.x * w, ay = a.y * h;
+      for (let j = i + 1; j < nodes.length; j++) {
+        const b = nodes[j];
+        const bx = b.x * w, by = b.y * h;
+        const d = Math.hypot(ax - bx, ay - by);
+        if (d < 155) {
+          bctx.strokeStyle = `rgba(56, 189, 248, ${((1 - d / 155) * 0.14).toFixed(3)})`;
+          bctx.beginPath();
+          bctx.moveTo(ax, ay);
+          bctx.lineTo(bx, by);
+          bctx.stroke();
+        }
+      }
+      bctx.fillStyle = 'rgba(192, 132, 252, 0.32)';
+      bctx.beginPath();
+      bctx.arc(ax, ay, 2, 0, Math.PI * 2);
+      bctx.fill();
+    }
+  }
+
+  // =========================================================================
+  // MAIN LOOP (GRAVITY, LOCK DELAY, DAS/ARR INPUT, AUTO-PILOT AI)
+  // =========================================================================
+  const keysHeld = { left: false, right: false, down: false };
+  let dasDir = 0;
+  let dasTimer = 0;
+  let arrTimer = 0;
+  let softDropTimer = 0;
+  const DAS_MS = 0.145;
+  const ARR_MS = 0.036;
+
+  function gravityIntervalSec() {
+    // Smooth authentic Tetris acceleration per Epoch
+    return Math.max(0.055, Math.pow(0.8 - (state.epoch - 1) * 0.007, state.epoch - 1));
+  }
+
+  function stepAutoPilot(dt) {
+    if (!state.autopilotOn || !state.active || state.status !== 'playing') return;
+    if (!state.aiTarget) recomputeAIHint();
+    const target = state.aiTarget;
+    if (!target) return;
+
+    state.aiActionTimer += dt;
+    const stepSpeed = Math.max(0.045, 0.095 - state.epoch * 0.003);
+    if (state.aiActionTimer < stepSpeed) return;
+    state.aiActionTimer = 0;
+
+    if (target.useHold) {
+      holdActive();
+      return;
+    }
+
+    const p = state.active;
+    if (p.rot !== target.rot) {
+      rotateActive(1);
+    } else if (p.x < target.x) {
+      if (!moveActive(1, 0)) hardDrop();
+    } else if (p.x > target.x) {
+      if (!moveActive(-1, 0)) hardDrop();
+    } else {
+      hardDrop();
+    }
+  }
+
+  let lastFrame = 0;
+  function loop(ts) {
+    if (!lastFrame) lastFrame = ts;
+    const dt = Math.min(0.05, (ts - lastFrame) / 1000);
+    lastFrame = ts;
+
+    renderBg(dt);
+
+    if (state.status === 'playing' && state.active) {
+      // Auto-Pilot
+      if (state.autopilotOn) {
+        stepAutoPilot(dt);
+      } else {
+        // Crisp DAS/ARR horizontal movement
+        const desiredDir = keysHeld.left ? -1 : keysHeld.right ? 1 : 0;
+        if (desiredDir !== 0) {
+          if (desiredDir !== dasDir) {
+            dasDir = desiredDir;
+            dasTimer = 0;
+            arrTimer = 0;
+          } else {
+            dasTimer += dt;
+            if (dasTimer >= DAS_MS) {
+              arrTimer += dt;
+              while (arrTimer >= ARR_MS) {
+                arrTimer -= ARR_MS;
+                moveActive(dasDir, 0);
+              }
+            }
+          }
+        } else {
+          dasDir = 0;
+          dasTimer = 0;
+          arrTimer = 0;
+        }
+
+        // Soft drop
+        if (keysHeld.down) {
+          softDropTimer += dt;
+          while (softDropTimer >= 0.042) {
+            softDropTimer -= 0.042;
+            if (!moveActive(0, 1, true)) break;
+          }
+        } else {
+          softDropTimer = 0;
+        }
+      }
+
+      // Gravity & Lock Delay
+      const grounded = collides(state.grid, state.active.matrix, state.active.x, state.active.y + 1);
+      if (grounded) {
+        state.lockTimer += dt;
+        if (state.lockTimer >= 0.5) {
+          lockActivePiece();
+        }
+      } else {
+        state.lockTimer = 0;
+        state.dropTimer += dt;
+        const grav = gravityIntervalSec();
+        if (state.dropTimer >= grav) {
+          state.dropTimer -= grav;
+          moveActive(0, 1, false);
+        }
+      }
+    }
+
+    // Update FX
+    if (state.shake > 0) state.shake = Math.max(0, state.shake - dt * 28);
+
+    for (let i = state.flashes.length - 1; i >= 0; i--) {
+      state.flashes[i].alpha -= dt * 5.2;
+      if (state.flashes[i].alpha <= 0) state.flashes.splice(i, 1);
+    }
+
+    for (let i = state.particles.length - 1; i >= 0; i--) {
+      const pt = state.particles[i];
+      pt.x += pt.vx * dt;
+      pt.y += pt.vy * dt;
+      pt.vy += 420 * dt;
+      pt.life -= dt;
+      if (pt.life <= 0) state.particles.splice(i, 1);
+    }
+
+    for (let i = state.popups.length - 1; i >= 0; i--) {
+      const pop = state.popups[i];
+      pop.y -= 34 * dt;
+      pop.life -= dt;
+      if (pop.life <= 0) state.popups.splice(i, 1);
+    }
+
+    renderBoard(ts);
+    requestAnimationFrame(loop);
+  }
+
+  // =========================================================================
+  // INPUT & UI EVENT LISTENERS
+  // =========================================================================
+  function toggleCopilot() {
+    state.copilotOn = !state.copilotOn;
+    copilotBtn.textContent = `✦ AI Copilot: ${state.copilotOn ? 'ON' : 'OFF'}`;
+    copilotBtn.classList.toggle('active-green', state.copilotOn);
+    logTerm(`AI Copilot ${state.copilotOn ? 'enabled' : 'disabled'}.`, state.copilotOn ? 'green' : '');
+  }
+
+  function toggleAutoPilot() {
+    state.autopilotOn = !state.autopilotOn;
+    autopilotBtn.textContent = `🤖 Auto-Pilot: ${state.autopilotOn ? 'ON' : 'OFF'}`;
+    autopilotBtn.classList.toggle('active-cyan', state.autopilotOn);
+    if (state.autopilotOn) {
+      if (state.status === 'idle' || state.status === 'gameover') startNewGame();
+      else if (state.status === 'paused') togglePause();
+      recomputeAIHint();
+      logTerm('🤖 Autonomous Heuristic Agent took control!', 'hi');
+    } else {
+      logTerm('Manual control restored to human operator.', 'gold');
+    }
+  }
+
+  window.addEventListener('keydown', e => {
+    const code = e.code;
+    if (['ArrowLeft', 'ArrowRight', 'ArrowDown', 'ArrowUp', 'Space'].includes(code)) {
+      e.preventDefault();
+    }
+
+    if (code === 'KeyP') { togglePause(); return; }
+    if (code === 'KeyA') { toggleCopilot(); return; }
+    if (code === 'KeyB') { toggleAutoPilot(); return; }
+    if (code === 'KeyM') {
+      const on = AudioFX.toggle();
+      soundBtn.textContent = on ? '🔊 SFX: ON' : '🔇 SFX: OFF';
+      return;
+    }
+
+    if (state.status === 'idle' || state.status === 'gameover') {
+      if (code === 'Space' || code === 'Enter') startNewGame();
+      return;
+    }
+    if (state.status !== 'playing' || state.autopilotOn) return;
+
+    if (e.repeat) return;
+
+    if (code === 'ArrowLeft') { keysHeld.left = true; moveActive(-1, 0); }
+    else if (code === 'ArrowRight') { keysHeld.right = true; moveActive(1, 0); }
+    else if (code === 'ArrowDown') { keysHeld.down = true; moveActive(0, 1, true); }
+    else if (code === 'ArrowUp' || code === 'KeyX') { rotateActive(1); }
+    else if (code === 'KeyZ') { rotateActive(-1); }
+    else if (code === 'Space') { hardDrop(); }
+    else if (code === 'KeyC' || code === 'ShiftLeft' || code === 'ShiftRight') { holdActive(); }
+  });
+
+  window.addEventListener('keyup', e => {
+    if (e.code === 'ArrowLeft') keysHeld.left = false;
+    else if (e.code === 'ArrowRight') keysHeld.right = false;
+    else if (e.code === 'ArrowDown') keysHeld.down = false;
+  });
+
+  startBtn.addEventListener('click', () => {
+    if (state.status === 'paused') togglePause();
+    else startNewGame();
+  });
+  restartBtn.addEventListener('click', startNewGame);
+  pauseBtn.addEventListener('click', togglePause);
+  copilotBtn.addEventListener('click', toggleCopilot);
+  autopilotBtn.addEventListener('click', toggleAutoPilot);
+  soundBtn.addEventListener('click', () => {
+    const on = AudioFX.toggle();
+    soundBtn.textContent = on ? '🔊 SFX: ON' : '🔇 SFX: OFF';
+  });
+
+  // On-screen buttons
+  document.getElementById('btnLeft').addEventListener('click', () => moveActive(-1, 0));
+  document.getElementById('btnRight').addEventListener('click', () => moveActive(1, 0));
+  document.getElementById('btnRotCW').addEventListener('click', () => rotateActive(1));
+  document.getElementById('btnRotCCW').addEventListener('click', () => rotateActive(-1));
+  document.getElementById('btnDrop').addEventListener('click', () => hardDrop());
+
+  // Initial empty state draw
+  state.grid = createGrid();
+  drawPreviews();
+  logTerm('System idle. Click "Initialize Training Run" or press Space.', 'hi');
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
