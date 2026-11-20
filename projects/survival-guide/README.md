@@ -1,6 +1,6 @@
 # The Survival Guide — full documentation
 
-One self-contained room of the Everyday Cool collection: the other rooms' knowledge, used all at once, outdoors. Fire from little, water you can trust, soap from ash and fat, batteries from the pantry, direction clues graded honestly, a remedies shelf with the evidence printed on it, and a first-aid anchor section written against the American Red Cross and Scouts BSA. Open `index.html`; the kit checklist in the First Aid section runs from `app.js`; everything except the Links Out shelf works offline.
+One self-contained room of the Everyday Cool collection: the other rooms' knowledge, used all at once, outdoors. Fire from little, water you can trust, soap from ash and fat, batteries from the pantry, knots and rope work with their tested strength printed on the cards, direction clues graded honestly, a remedies shelf with the evidence printed on it, and a first-aid anchor section written against the American Red Cross and Scouts BSA. Open `index.html`; the kit checklist in the First Aid section and the which-knot bench in the Knots section run from `app.js`; everything except the Links Out shelf works offline.
 
 ## Documentation
 
@@ -18,6 +18,7 @@ Every card in the room carries **two lines**: a **safety line** (how the thing c
 - **Water** — a layered filter (cloth → charcoal → sand → gravel) with a diagram, the boiling rule, and the backup methods ranked honestly.
 - **Soap & oil** — rendering fat; wood-ash lye (a grown-up job: caustic, gloves, no shortcuts); saponification in plain words; the four-week cure. Cross-links to Everyday Chemistry.
 - **Batteries from what's around** — one copper/zinc cell (~0.9 V), the series lesson, a red LED lit by three or four lemons or potatoes. Cross-links to Everyday Electronics' fruit battery card.
+- **Knots** — Steven's framing heads the section: "Knots are scout engineering tools." A rope card first (paracord, manila, polypropylene; breaking strength vs working load), then eight knots with numbered tie steps — square (reef) knot, bowline, figure-eight on a bight / follow-through, taut-line hitch, clove hitch, two half hitches, sheet bend, trucker's hitch — plus a square-lashing card, three schematic diagrams, and a "Which knot for this job?" bench that names the knot, the why, and the classic wrong choice for six camp jobs. Every honesty line carries the knot's tested strength as an "about" range from published break tests (see `THIRD-PARTY.md`), and the section's standing rule stands at its head: no knot here makes a rope safe for climbing or holding a person. Cross-links to Everyday Engineering's pulley and frames benches run both ways.
 - **Direction** — the North Star via the Big Dipper's pointer stars, the phone compass (a hardware magnetometer — it works with no signal at all), the shadow stick, the satellite-dish clue (geostationary TV dishes aim roughly south), and moss graded as the weakest clue. Cross-links to Tonight's Sky.
 - **Reading signs** — the world's own status reports, read with an operator's eye: a sodium streetlight cycling at the end of its life, house lights breathing with a cycling motor load, dark grass over nitrogen, the utility paint code decoded, snow-melt patterns, the rotten-egg gas alarm and its dead-grass circle, a streetlight burning at noon, water running on a dry day, a transformer humming wrong, and reading an outage's shape.
 - **The remedies shelf** — banana slug slime (mild, studied numbing; look-and-learn only — wild slugs can carry parasites), willow bark (salicin, aspirin's ancestor, with aspirin's full cautions), broadleaf plantain (modest evidence, low risk, identification is the rule), oak bark (astringent tannins — and not the headache bark; that's willow). The shelf's rule: last resort, not first.
@@ -27,12 +28,12 @@ Every card in the room carries **two lines**: a **safety line** (how the thing c
 
 ## Cross-links
 
-Outgoing only: Everyday Chemistry (soap), Everyday Electronics (batteries), Tonight's Sky (direction), Everyday Body (first aid). The Take It With You section also links to the Travel Kit app's releases page and to the other four rooms the kit carries (Tonight's Sky, Find It, Weather Everywhere, The Radio Room). The reciprocal cards in those rooms are a recorded later add in `COLLECTION.md` — this room links out; it does not reach back and edit its neighbours.
+Outgoing only: Everyday Chemistry (soap), Everyday Electronics (batteries), Tonight's Sky (direction), Everyday Body (first aid). Both ways: Everyday Engineering — the Links Out "machine shop" shelf card and this room's Knots section (the trucker's hitch is its pulley bench tied in rope; the square lashing is its frames bench built outdoors), and Engineering's pulley bench and "Out in the field" card link back to `#knots`. The Take It With You section also links to the Travel Kit app's releases page and to the other four rooms the kit carries (Tonight's Sky, Find It, Weather Everywhere, The Radio Room). The reciprocal cards in those rooms are a recorded later add in `COLLECTION.md` — this room links out; it does not reach back and edit its neighbours.
 
 ## Files
 
 - `index.html` — the whole room: all sections, the filter diagram, the kit checklist.
-- `app.js` — the kit checklist counter; runs entirely in the page, stores nothing.
+- `app.js` — the kit checklist counter and the which-knot bench (its job-to-knot mapping is plain data at the top of the bench code, checkable without a browser); runs entirely in the page, stores nothing.
 - `style.css` — the room's styles, on the collection's shared base.
 - `survival-guide-banner.jpg` — the room's banner: a robot in Scout gear by a campfire under the Big Dipper (AI-generated artwork, disclosed in `COLLECTION.md`).
 - `README.md` — this file.

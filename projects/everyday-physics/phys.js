@@ -11,7 +11,9 @@
    - The ballistics launcher works in metres and seconds with g = 9.8 m/s^2,
      on a range drawn 60 metres wide. No air resistance — stated on the page.
    - The pendulum uses T = 2π√(L/g) with real metres and g = 9.8.
-   - The seesaw balances when weight × distance matches on both sides. */
+   - The seesaw balances when weight × distance matches on both sides.
+   - Flight's wing loading is grams ÷ square decimetres of wing, from
+     the room's own estimated wing areas and about-value paper weights. */
 
 function round2(n) { return Math.round(n * 100) / 100; }
 
@@ -188,9 +190,43 @@ function seesawBalanceDistance(heavyKg, heavyDist, lightKg) {
  return round2(hk * hd / lk);
 }
 
+/* ---------- Flight: paper planes ---------- */
+
+/* Wing loading: the plane's weight spread over its wing area, in grams
+   per square decimetre (1 dm² = 100 cm²). It does not predict distance;
+   it predicts character — lightly loaded planes fly slowly and float,
+   heavily loaded ones must keep their speed up or fall out of the air.
+   The bands are this room's rules of thumb for paper planes: under
+   2.5 g/dm² slow and floaty, 2.5–4 the steady middle, over 4 fast and
+   demanding. Wing areas are the room's own planform estimates for the
+   three folds as built from one Letter/A4 sheet, and paper weights are
+   the standard basis-weight sums — both stated as about-values on the
+   page and in THIRD-PARTY.md. */
+const FLIGHT_PLANES = {
+ dart: { name: "The Dart", areaDm2: 1.05 },
+ glider: { name: "The Glider", areaDm2: 2.7 },
+ stunt: { name: "The Stunt plane", areaDm2: 1.1 }
+};
+const FLIGHT_PAPERS = {
+ letter: { name: "US Letter copy paper", grams: 4.5 },
+ a4: { name: "A4 copy paper", grams: 5 },
+ cardstock: { name: "Cardstock", grams: 10 }
+};
+function wingLoading(planeKey, paperKey) {
+ const plane = FLIGHT_PLANES[planeKey], paper = FLIGHT_PAPERS[paperKey];
+ if (!plane) return { ok: false, error: "That plane is not one of this room's three folds." };
+ if (!paper) return { ok: false, error: "That paper is not on this bench's shelf." };
+ const loading = round2(paper.grams / plane.areaDm2);
+ const band = loading < 2.5 ? "floaty" : (loading <= 4 ? "steady" : "fast");
+ const character = band === "floaty" ? "slow and floaty" : (band === "steady" ? "the steady middle" : "fast and demanding");
+ return { ok: true, plane: plane.name, paper: paper.name, grams: paper.grams,
+  areaDm2: plane.areaDm2, loading, band, character };
+}
+
 if (typeof module !== "undefined" && module.exports) {
  module.exports = { reflectVelocity, angleToSurface, poolStep, collideEqualMass, totalMomentum,
   GRAVITY, projectileRange, projectileFlight, projectileAt,
   pendulumPeriodFactor, pendulumPeriod, seesaw, seesawBalanceDistance,
+  FLIGHT_PLANES, FLIGHT_PAPERS, wingLoading,
   clampedElapsed, consumeSteps };
 }

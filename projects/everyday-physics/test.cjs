@@ -89,4 +89,19 @@ assert.strictEqual(P.seesawBalanceDistance(40, 1, 20), 2, "the light weight bala
 assert.strictEqual(P.seesawBalanceDistance(60, 1, 20), 3, "three times the weight needs three times the distance");
 assert.ok(!P.seesaw(-1, 1, 20, 2).ok, "negative weights are refused");
 
-console.log("everyday-physics tests: all passed (reflection, equal-mass collisions, ballistics, pendulum, seesaw, timestep)");
+/* Flight: wing loading = the sheet's grams ÷ the fold's wing area in dm² */
+let w = P.wingLoading("glider", "letter");
+assert.ok(w.ok && near(w.loading, 1.67, 0.011), "the Glider on US Letter: 4.5 g over 2.7 dm² loads at 1.67 g/dm²");
+assert.strictEqual(w.band, "floaty", "1.67 g/dm² is in the slow-and-floaty band");
+assert.ok(near(P.wingLoading("dart", "letter").loading, 4.29, 0.011), "the Dart on US Letter: 4.5 g over 1.05 dm² loads at 4.29 g/dm²");
+assert.strictEqual(P.wingLoading("dart", "letter").band, "fast", "4.29 g/dm² is in the fast-and-demanding band");
+assert.ok(near(P.wingLoading("glider", "cardstock").loading, 3.7, 0.011), "the Glider on cardstock: 10 g over 2.7 dm² loads at 3.70 g/dm²");
+assert.strictEqual(P.wingLoading("glider", "cardstock").band, "steady", "3.70 g/dm² is in the steady-middle band");
+assert.ok(P.wingLoading("dart", "cardstock").loading > P.wingLoading("dart", "letter").loading,
+ "heavier paper loads the same wings more");
+assert.ok(P.wingLoading("glider", "a4").loading > P.wingLoading("glider", "letter").loading,
+ "an A4 sheet is a touch heavier than US Letter, so the loading rises");
+assert.ok(!P.wingLoading("rocket", "letter").ok && !P.wingLoading("dart", "tissue").ok,
+ "an unknown plane and an unknown paper are refused");
+
+console.log("everyday-physics tests: all passed (reflection, equal-mass collisions, ballistics, pendulum, seesaw, flight, timestep)");

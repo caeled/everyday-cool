@@ -445,4 +445,36 @@
  $("see-heavy").addEventListener("input", drawSeesaw);
  $("see-light").addEventListener("input", drawSeesaw);
  drawSeesaw();
+
+ /* ================= Flight: the wing-loading bench ================= */
+ const FLIGHT_CHARACTER = {
+  floaty: "Low loading: slow and floaty. It can fly slowly without stalling, so it stays up a long time — and every breath of room air is weather to it.",
+  steady: "The steady middle: loaded enough to hold a line through room air, light enough to arrive gently.",
+  fast: "High loading: fast and demanding. It has to keep its speed up to keep flying, so it crosses the room quickly, turns wide, and arrives hot."
+ };
+ function flightReadout() {
+  const r = wingLoading($("flight-plane").value, $("flight-paper").value);
+  if (!r.ok) { $("flight-result").textContent = r.error; return; }
+  $("flight-result").innerHTML = "<p><strong>Wing loading: " + r.loading + " g/dm²</strong> — " + r.paper + " at about " + r.grams + " g, spread over " + r.plane + "'s estimated " + r.areaDm2 + " dm² of wing. " + FLIGHT_CHARACTER[r.band] +
+   " However it is loaded, the plane is a glider: it pays for every metre forward out of its height, so more loading also means a faster, steeper ride down.</p>";
+ }
+ $("flight-plane").addEventListener("change", flightReadout);
+ $("flight-paper").addEventListener("change", flightReadout);
+ flightReadout();
+
+ /* ================= Flight: the trim doctor ================= */
+ /* One symptom, one change — the test-throw ritual, prescribed. */
+ const TRIM_FIXES = {
+  dive: "<strong>One change:</strong> bend the back edge of both wings up — a hair, the width of a fingernail paring — the same on both sides. Bent-up edges push the tail down and the nose up. Three gentle throws. Still diving after two hair-bends? Then it is balance, not trim: check for weight you forgot at the nose, or move a nose clip one step back. Change the trim OR the balance — never both in the same round.",
+  stall: "<strong>One change:</strong> first the free one — throw softer and flatter; most stalls are the throw, not the plane. Still climbing and flopping? Bring the balance forward: a paper clip on the nose, or, on the Glider, fold the nose down one more time. If you bent the tail edges up in an earlier round, flatten half of that bend instead. One change, three throws.",
+  veer: "<strong>One change:</strong> don't touch the trim yet. Sight down the plane from nose to tail: a veer is almost always a fold that doesn't match — one wing bigger, flatter, or bent differently. Even the wings up with your thumbs and throw again. Only if the wings truly match, bend the back edge of the wing on the side it veers <em>away</em> from up a hair — the extra drag there pulls the nose back toward straight.",
+  "loop-wont": "<strong>One change:</strong> deepen the up-bend on both back edges by another hair — evenly — and throw a touch harder, aimed a little above level. If it rolls instead of looping, the bends have stopped matching; even them up before adding any more bend.",
+  "loop-tight": "<strong>One change:</strong> flatten half the bend out of both back edges, and throw softer. A loop spends speed the whole way around; a plane that runs out at the top falls out of the sky, so give it a gentler throw and let the loop be lazy."
+ };
+ function trimReadout() {
+  const fix = TRIM_FIXES[$("trim-symptom").value];
+  $("trim-result").innerHTML = fix ? "<p>" + fix + "</p>" : "<p>Pick a symptom.</p>";
+ }
+ $("trim-symptom").addEventListener("change", trimReadout);
+ trimReadout();
 })();
