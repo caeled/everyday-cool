@@ -34,3 +34,5 @@ The six outbound links (Red Cross ×3, Scouting America, Smokey Bear, CDC) are p
 Documentation update, 20 November 2026: `index.html`, `style.css`, `README.md`, and `COLLECTION.md` gained a professional documentation treatment — a Source on GitHub link in the Help menu, a documentation lede and action bar in the Help section, matching styles, and a Documentation section in the README — at Steven Powell's direction ('the documentation section is the only part that doesn't look like a real program'). No bench, lesson, or behaviour changed.
 
 The same documentation update also added a Steve's Profile link (Steven Powell's LinkedIn) at the foot of the Help section — `index.html` and `style.css`.
+
+Cross-link added, 20 November 2026: the shadow-stick card in the direction section now links to Everyday Time's sundial bench (the same geometry, read as a clock), and the Keep Going list gained an Everyday Time entry — `index.html` and `COLLECTION.md`. Everyday Time links back from its sundial section's sister rooms. No lesson, safety line, or behaviour changed.
