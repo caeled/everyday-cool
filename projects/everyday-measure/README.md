@@ -2,6 +2,12 @@
 
 An Everyday Cool workshop about the two measuring systems an American lives between: US customary units and the metric system. An interactive prefix ladder, four converter benches that show their working, a shelf of "feel it" anchors, a comparison tool that reads familiar things in both systems at once, three trap cards, two famous breakage stories, a short honest history, and a verified links shelf.
 
+## Documentation
+
+- **In-page Help:** The Help ▾ menu and Help section explain the workshop's parts, simplifications, limits, and sources.
+- **Full README:** This file is the complete manual for Everyday Measure.
+- **Online:** [Collection documentation](https://caeled.github.io/everyday-cool/documentation.html) · [Source on GitHub](https://github.com/caeled/everyday-cool/tree/main/projects/everyday-measure)
+
 ## What's inside
 
 - **The prefix ladder** — the room's centrepiece: ten steps (mega, kilo, hecto, deka, the base unit, deci, centi, milli, micro, nano), each with its symbol, its power of ten, and what the prefix means in plain words ("kilo = a thousand of them"). Press a step, type a quantity, pick metres, litres, or grams, and climb to any other step — the bench shows the climb through the base unit in numbered steps. The ladder honestly skips from milli to micro: the powers between have no everyday prefix names.

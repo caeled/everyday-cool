@@ -13,3 +13,5 @@ Third-party data and code are listed in `THIRD-PARTY.md`. The page sends nothing
 Banner added November 15, 2026: tonights-sky-banner.jpg (AI/robots theme), part of the collection-wide banner pass.
 
 Link added November 16, 2026: the satellite explainer points to the sister room Satellite Watch (general satellite tracking), which reuses this room's satpass.js, astro.js and satellite.js and links back here and to the radio telescope plan.
+
+Documentation update (20 November 2026): at Steven Powell's direction, `index.html` gained a professional Documentation & source panel with the room README, GitHub source, sources and limitations, workshop download, collection documentation index, and curator profile link. Changed files: `index.html`, `COLLECTION.md`. The addition is documentation and navigation only; no lesson content or workshop behaviour was changed.

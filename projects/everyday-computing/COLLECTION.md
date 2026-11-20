@@ -13,3 +13,7 @@ Everything interactive is computed in the visitor's browser from rules baked int
 The rules live in `computing.js` (no DOM), checked by `test.cjs`.
 
 Banner: `everyday-computing-banner.jpg`, AI-generated watercolor generated 19 November 2026 as part of adding this room, in the style and dimensions (2736×912) of the collection's other banners: the plush-style robot — stitched seams, blue button eyes — at a wooden workbench, wiring a small circuit board where three brass-and-glass gates stand (a D-shaped AND gate, a curved OR gate, a triangle gate) joined by copper wires to a small round lamp glowing amber, while the digits 1 and 0 drift up from the board like sparks. The prompt allowed no lettering beyond the single digits 1 and 0, and the first generation shipped: those drifting digits are the only characters in the image.
+
+Documentation update, 20 November 2026: `index.html`, `style.css`, `README.md`, and `COLLECTION.md` gained a professional documentation treatment — a Source on GitHub link in the Help menu, a documentation lede and action bar in the Help section, matching styles, and a Documentation section in the README — at Steven Powell's direction ('the documentation section is the only part that doesn't look like a real program'). No bench, lesson, or behaviour changed.
+
+The same documentation update also added a Steve's Profile link (Steven Powell's LinkedIn) at the foot of the Help section — `index.html` and `style.css`.

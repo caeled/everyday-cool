@@ -7,3 +7,5 @@ The expanded workshop is a new collection version: bounded canonical conversion 
 Banner added November 15, 2026: numbers-banner.jpg (AI/robots theme), part of the collection-wide banner pass.
 
 Local change (18 November 2026, when Everyday Chemistry joined the collection): one reciprocal link added to this room's Keep Going list, pointing to Everyday Chemistry — the counting cousin in the other direction. Changed file: `index.html` (the one added list item) and this `COLLECTION.md` (this note).
+
+Documentation update (20 November 2026): at Steven Powell's direction, `index.html` gained a professional Documentation & source panel with the room README, GitHub source, sources and limitations, workshop download, collection documentation index, and curator profile link. Changed files: `index.html`, `COLLECTION.md`. The addition is documentation and navigation only; no lesson content or workshop behaviour was changed.

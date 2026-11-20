@@ -2,6 +2,12 @@
 
 An Everyday Cool workshop about the six simple machines and the building sense that grows out of them: five playable benches (lever, pulley, ramp, frames, and the pocket log table), the wedge and the screw taken apart, the one rule no machine can break, and the field half of the room cross-linked with The Survival Guide both ways.
 
+## Documentation
+
+- **In-page Help:** The Help ▾ menu and Help section explain the workshop's parts, simplifications, limits, and sources.
+- **Full README:** This file is the complete manual for Everyday Engineering.
+- **Online:** [Collection documentation](https://caeled.github.io/everyday-cool/documentation.html) · [Source on GitHub](https://github.com/caeled/everyday-cool/tree/main/projects/everyday-engineering)
+
 ## What's inside
 
 - **The six simple machines** — one card each, each with its everyday disguises: the lever (bottle opener, crowbar, forearm), the wheel & axle (doorknob, jar lid, screwdriver), the pulley (flag pole, crane, blinds), the inclined plane (ramps, switchbacks), the wedge (axe, doorstop, front teeth — two ramps back to back), and the screw (a ramp wrapped around a pole, in those words: jar lids, wood screws, car jacks).

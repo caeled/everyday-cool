@@ -9,3 +9,5 @@ Original files, licenses, and third-party credits are preserved. Local changes t
 [Back to the collection](../../index.html) · [Contribution guide](../../CONTRIBUTING.md)
 
 Banner added November 15, 2026: weather-banner.jpg (AI/robots theme), part of the collection-wide banner pass.
+
+Documentation update (20 November 2026): at Steven Powell's direction, `index.html` gained a professional Documentation & source panel with the room README, GitHub source, sources and limitations, workshop download, collection documentation index, and curator profile link. Changed files: `index.html`, `COLLECTION.md`. The addition is documentation and navigation only; no lesson content or workshop behaviour was changed.

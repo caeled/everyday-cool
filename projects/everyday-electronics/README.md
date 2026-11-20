@@ -2,6 +2,12 @@
 
 An Everyday Cool workshop about the electricity already running your house's smallest things: a live circuit bench, Ohm's law and LED resistor benches that show their working, a virtual solderless breadboard you can build real circuits on, a plain-language walk-through of how a crystal radio works with an interactive tuner and a one-transistor amplifier, and four bench builds — a crystal radio, a fruit battery, a paper circuit, and an LED throwie.
 
+## Documentation
+
+- **In-page Help:** The Help ▾ menu and Help section explain the workshop's parts, simplifications, limits, and sources.
+- **Full README:** This file is the complete manual for Everyday Electronics.
+- **Online:** [Collection documentation](https://caeled.github.io/everyday-cool/documentation.html) · [Source on GitHub](https://github.com/caeled/everyday-cool/tree/main/projects/everyday-electronics)
+
 ## What's inside
 
 - **The circuit bench** — an SVG battery, switch, and bulb. Sliders set the battery voltage (1.5–12 V) and the bulb's resistance; the bulb's brightness follows the computed power, flow dots follow the current, the arithmetic is printed in words, and opening the switch breaks the loop and puts the bulb out. The page states its simplifications plainly: brightness is a picture scale (≈3 W reads as fully bright) and the bulb's resistance is held at the set value.

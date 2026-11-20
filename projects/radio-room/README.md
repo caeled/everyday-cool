@@ -2,6 +2,12 @@
 
 An Everyday Cool workshop about online radio: a retro wooden radio that really plays, a shelf of everywhere radio lives on the internet, and a short workshop on how the different kinds of listening work.
 
+## Documentation
+
+- **In-page Help:** The Help ▾ menu and Help section explain the workshop's parts, simplifications, limits, and sources.
+- **Full README:** This file is the complete manual for The Radio Room.
+- **Online:** [Collection documentation](https://caeled.github.io/everyday-cool/documentation.html) · [Source on GitHub](https://github.com/caeled/everyday-cool/tree/main/projects/radio-room)
+
 ## What's inside
 
 - **The radio** — an old wooden cabinet set, styled in pure CSS: wood, a glowing amber tuning dial with a sliding needle, cream push-button presets, a speaker grille, a tuning knob, and a volume knob. It plays **SomaFM** live streams in a plain HTML5 audio element inside the cabinet. Six presets (Groove Salad, Lush, Secret Agent, Illinois Street Lounge, Left Coast 70s, Boot Liquor), each laid out on a make-believe FM dial (88–108); selecting one slides the needle, updates the dial-window readout, and plays. Stop button, plain error reporting if a stream fails, and nothing is saved — no station, volume, or listening record is kept. Every stream address was verified live (HTTP 200 from SomaFM's Icecast servers) on 17 November 2026.

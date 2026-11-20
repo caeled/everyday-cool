@@ -2,6 +2,12 @@
 
 An Everyday Cool workshop for travellers: set a place, tap one big category button, and get the nearest matches on a live map, each with directions.
 
+## Documentation
+
+- **In-page Help:** The Help ▾ menu and Help section explain the workshop's parts, simplifications, limits, and sources.
+- **Full README:** This file is the complete manual for Find It.
+- **Online:** [Collection documentation](https://caeled.github.io/everyday-cool/documentation.html) · [Source on GitHub](https://github.com/caeled/everyday-cool/tree/main/projects/find-it)
+
 ## What's inside
 
 - **Where are you?** — a working OpenStreetMap map (drawn by Leaflet) that opens on Defiance, Ohio. A **Find me** button centres it on the visitor's own location with the device's permission, and a ZIP code / town box geocodes through OpenStreetMap's Nominatim service — the same pattern as the Map Room. The footer states plainly what each step does with location data.

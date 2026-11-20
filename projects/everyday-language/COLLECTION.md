@@ -11,3 +11,7 @@ Accuracy, and what was checked: the tree's classifications follow the standard c
 Everything interactive is computed in the visitor's browser from the data in `lang.js` — the page sends nothing anywhere. The data lives in `lang.js` (no DOM), checked by `test.cjs`.
 
 Banner: `everyday-language-banner.jpg`, AI-generated watercolor — a friendly robot in a warm lamplit study, pointing at a glowing family tree drawn on a large chalkboard, speech bubbles around it holding different scripts (Latin ABC, Greek letters, Cyrillic letters, Arabic script, Chinese characters) — generated 18 November 2026 as part of adding this room, in the style and dimensions (2736×912) of the collection's other banners.
+
+Documentation update, 20 November 2026: `index.html`, `style.css`, `README.md`, and `COLLECTION.md` gained a professional documentation treatment — a Source on GitHub link in the Help menu, a documentation lede and action bar in the Help section, matching styles, and a Documentation section in the README — at Steven Powell's direction ('the documentation section is the only part that doesn't look like a real program'). No bench, lesson, or behaviour changed.
+
+The same documentation update also added a Steve's Profile link (Steven Powell's LinkedIn) at the foot of the Help section — `index.html` and `style.css`.

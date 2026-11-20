@@ -9,3 +9,5 @@ Banner: `games-banner.jpg`, AI-generated watercolor (robots at an arcade cabinet
 The eleven game shelves and three learning links were each verified live on 15 November 2026 (HTTP 200; lichess.org answers 200 to a browser user agent and 403 to a bare script, a bot wall rather than a dead link). Their terms notes (ads, accounts, subscriptions) are as observed that day and are re-stated in `THIRD-PARTY.md`.
 
 Local changes to imported files: none (no files were imported; all files originate here).
+
+Documentation update (20 November 2026): at Steven Powell's direction, `index.html` gained a professional Documentation & source panel with the room README, GitHub source, sources and limitations, workshop download, collection documentation index, and curator profile link. Changed files: `index.html`, `COLLECTION.md`. The addition is documentation and navigation only; no lesson content or workshop behaviour was changed.

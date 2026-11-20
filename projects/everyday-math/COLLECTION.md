@@ -13,3 +13,7 @@ Everything interactive is computed in the visitor's browser from rules baked int
 The rules live in `math.js` (no DOM), checked by `test.cjs`.
 
 Banner: `everyday-math-banner.jpg`, AI-generated watercolor generated 19 November 2026 as part of adding this room, in the style and dimensions (2736×912) of the collection's other banners: the plush-style robot holding a chalk at a green chalkboard in a warm classroom, drawing the two columns of the nines trick — 0 to 9 counting down one column, 9 to 0 up the other — beside a chalk multiplication grid and a right triangle with its square corner; a wooden abacus with amber beads on the desk. The chalk digits are digits, not words; the image shipped on its first generation.
+
+Documentation update, 20 November 2026: `index.html`, `style.css`, `README.md`, and `COLLECTION.md` gained a professional documentation treatment — a Source on GitHub link in the Help menu, a documentation lede and action bar in the Help section, matching styles, and a Documentation section in the README — at Steven Powell's direction ('the documentation section is the only part that doesn't look like a real program'). No bench, lesson, or behaviour changed.
+
+The same documentation update also added a Steve's Profile link (Steven Powell's LinkedIn) at the foot of the Help section — `index.html` and `style.css`.

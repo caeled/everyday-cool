@@ -10,3 +10,7 @@ The rules live in `chem.js` (no DOM), checked by `test.cjs`.
 
 Banner: `everyday-chemistry-banner.jpg`, AI-generated watercolor to Steven's approved concept — a friendly robot with safety goggles pushed up on its head, working a chemistry set (test-tube rack, bubbling flask, beakers) at a kitchen counter, a small atom model beside a mug — generated 18 November 2026 as part of adding this room, in the style and dimensions (2736×912) of the collection's other banners.
 Local change (18 November 2026, later): Keep Going gained a link to Everyday Physics, the third room in the science trio, so the Science benches point at each other.
+
+Documentation update, 20 November 2026: `index.html`, `style.css`, `README.md`, and `COLLECTION.md` gained a professional documentation treatment — a Source on GitHub link in the Help menu, a documentation lede and action bar in the Help section, matching styles, and a Documentation section in the README — at Steven Powell's direction ('the documentation section is the only part that doesn't look like a real program'). No bench, lesson, or behaviour changed.
+
+The same documentation update also added a Steve's Profile link (Steven Powell's LinkedIn) at the foot of the Help section — `index.html` and `style.css`.

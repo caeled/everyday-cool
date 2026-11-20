@@ -2,6 +2,12 @@
 
 An Everyday Cool workshop built around two playable games with the physics drawn on top: a pool table that shows reflection angles and momentum hand-over as they happen, and a ballistics launcher that draws every flight as gravity's one curve. Underneath: a pendulum bench, a seesaw bench, four kitchen-table experiments, and a verified links shelf with a Wikipedia "read deeper" group.
 
+## Documentation
+
+- **In-page Help:** The Help ▾ menu and Help section explain the workshop's parts, simplifications, limits, and sources.
+- **Full README:** This file is the complete manual for Everyday Physics.
+- **Online:** [Collection documentation](https://caeled.github.io/everyday-cool/documentation.html) · [Source on GitHub](https://github.com/caeled/everyday-cool/tree/main/projects/everyday-physics)
+
 ## What's inside
 
 - **The pool table** — a top-down canvas table with a cue ball and four object balls. Aim by slider or by tapping the table; a power slider sets the shot. While the balls rest, a ghost line draws the shot in advance: at a cushion, the reflected path with the incoming and outgoing angles measured (from the cushion's face) and labelled equal; at a ball, the struck ball's direction along the line of centres (gold) and the cue ball's leftover sideways path (faint). Balls roll with a steady friction slow-down, cushion bounces mirror the velocity component, and ball-to-ball collisions are elastic between equal masses — the components along the line of centres are exchanged, so momentum visibly hands over. A readout names what just happened after each bounce or hit; speed arrows are toggleable; Pause and Step-one-frame let you watch a collision happen slowly. Balls can be potted (a scratched cue ball returns to the head spot), but there are no turns or scoring — the overlays are the game. Simplifications are stated on the page: no spin, no throw, steady-share friction, equal masses, and speeds in the table's own pixel-per-frame units.

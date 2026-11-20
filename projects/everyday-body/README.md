@@ -4,6 +4,12 @@ An Everyday Cool workshop about the body you carry around: a working atlas of tw
 
 The workshop was designed and built by **ChatGPT** at Steven Powell's direction (see COLLECTION.md) and integrated into the collection by Muse with the house wiring described below. It ships as a single self-contained HTML file: every diagram is inline SVG drawn for this room, and there are no external images, stylesheets, scripts, or fonts.
 
+## Documentation
+
+- **In-page Help:** The Help ▾ menu and Help section explain the workshop's parts, simplifications, limits, and sources.
+- **Full README:** This file is the complete manual for Everyday Body.
+- **Online:** [Collection documentation](https://caeled.github.io/everyday-cool/documentation.html) · [Source on GitHub](https://github.com/caeled/everyday-cool/tree/main/projects/everyday-body)
+
 ## What's inside
 
 - **The body atlas** — a simplified front-view figure (not to scale; some organs are drawn through others so they can be selected). Filter chips fade the organs outside one system — Nervous, Circulatory, Respiratory, Digestive, Urinary, Sensory, Musculoskeletal — and tapping an organ on the figure, or its button below, opens its story in the Discover panel: a summary, what it does, one thing to notice, and an "Explore further" shelf of OpenStax, Wikipedia, and NINDS reading.

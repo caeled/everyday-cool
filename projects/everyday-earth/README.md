@@ -2,6 +2,12 @@
 
 An Everyday Cool workshop about the planet under the bench: the water cycle as one endless loop, the three rock families and the rocks you actually meet, soil in its five horizons, the Earth's layers at their true depths, and weather read from the ground — fronts, clouds, and a barometer — with doors out to Wikipedia, the USGS, NOAA, UC Davis's Earth Day, and the pocket Weather Everywhere.
 
+## Documentation
+
+- **In-page Help:** The Help ▾ menu and Help section explain the workshop's parts, simplifications, limits, and sources.
+- **Full README:** This file is the complete manual for Everyday Earth.
+- **Online:** [Collection documentation](https://caeled.github.io/everyday-cool/documentation.html) · [Source on GitHub](https://github.com/caeled/everyday-cool/tree/main/projects/everyday-earth)
+
 ## What's inside
 
 - **The water cycle bench** — one drawn landscape (lake, mountain, cloud) with the four stages tappable: evaporation (with the USGS's ~90% ocean share and transpiration beside it), condensation (why clouds have flat bottoms), precipitation, and collection & runoff (groundwater as the slow lane). Each stage names the next, because the loop is the lesson. The honesty card keeps the headline claim's edges showing: the water is older than the dinosaurs; individual molecules are not immortal.

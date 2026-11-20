@@ -9,3 +9,7 @@ The rules live in `findit.js` (no DOM), checked by `test.cjs`.
 Banner: `find-it-banner.jpg`, AI-generated watercolor to the room's concept — to Steven's art direction — a robot/AI looking at a map with an eyepiece: a friendly robot with a brass magnifying eyepiece (jeweler's loupe) over one eye, bending over a big paper street map covered in colourful pins, with a steaming coffee cup and a small green pharmacy-cross sign on the table — generated 16 November 2026 as part of adding this room, in the style and dimensions (2736×912) of the collection's other banners.
 
 Local changes to imported files: none (no files were imported; all files originate here).
+
+Documentation update, 20 November 2026: `index.html`, `style.css`, `README.md`, and `COLLECTION.md` gained a professional documentation treatment — a Source on GitHub link in the Help menu, a documentation lede and action bar in the Help section, matching styles, and a Documentation section in the README — at Steven Powell's direction ('the documentation section is the only part that doesn't look like a real program'). No bench, lesson, or behaviour changed.
+
+The same documentation update also added a Steve's Profile link (Steven Powell's LinkedIn) at the foot of the Help section — `index.html` and `style.css`.

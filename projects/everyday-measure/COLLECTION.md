@@ -9,3 +9,7 @@ Everything interactive is computed in the visitor's browser from data baked into
 The rules live in `measure.js` (no DOM), checked by `test.cjs`.
 
 Banner: `everyday-measure-banner.jpg`, AI-generated watercolor to Steven's concept — a friendly robot beside a large brass balance scale with brass weights in its pans, and on the wall behind it a framed chart drawn as a staircase labelled with what the prefixes are: KILO, HECTO, DEKA, METRE, DECI, CENTI, MILLI — generated 19 November 2026 as part of adding this room, in the style and dimensions (2736×912) of the collection's other banners. The first generation was rejected: its staircase duplicated DECI and swapped DEKA and HECTO — a chart about prefixes cannot ship with the prefixes wrong. The second generation, with the step order spelled out in the prompt, reads correctly top to bottom, each word once, and that is the banner that ships.
+
+Documentation update, 20 November 2026: `index.html`, `style.css`, `README.md`, and `COLLECTION.md` gained a professional documentation treatment — a Source on GitHub link in the Help menu, a documentation lede and action bar in the Help section, matching styles, and a Documentation section in the README — at Steven Powell's direction ('the documentation section is the only part that doesn't look like a real program'). No bench, lesson, or behaviour changed.
+
+The same documentation update also added a Steve's Profile link (Steven Powell's LinkedIn) at the foot of the Help section — `index.html` and `style.css`.

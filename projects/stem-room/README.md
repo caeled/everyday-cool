@@ -2,6 +2,12 @@
 
 An Everyday Cool landing room: the collection's science workshops gathered behind one card on the main hub. The STEM Room holds no benches of its own — it is the shared front door for Everyday Physics, Everyday Chemistry, Everyday Electronics, Everyday Measure, Everyday Engineering, Everyday Math, Everyday Earth, Everyday Computing, Everyday Body, and The Radio Room, each of which keeps its own page, its own files, and its own web address, unchanged. It opened with six doors on 19 November 2026; Everyday Engineering became the seventh the same evening, Everyday Math the eighth, Everyday Earth the ninth, and Everyday Computing the tenth — the last of the four queued STEM rooms Steven ordered that night.
 
+## Documentation
+
+- **In-page Help:** The Help ▾ menu and Help section explain the workshop's parts, simplifications, limits, and sources.
+- **Full README:** This file is the complete manual for The STEM Room.
+- **Online:** [Collection documentation](https://caeled.github.io/everyday-cool/documentation.html) · [Source on GitHub](https://github.com/caeled/everyday-cool/tree/main/projects/stem-room)
+
 ## What's inside
 
 - **The ten doors** — one card per workshop, in the order Physics, Chemistry, Electronics, Measure, Engineering, Math, Earth, Computing, Body, Radio Room, each carrying the same hook, description, and "start here" line the main hub used to show, and linking to the workshop's existing page.

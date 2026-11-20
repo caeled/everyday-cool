@@ -7,3 +7,5 @@ The [original project](https://github.com/caeled/java-young-robot-builders) and 
 Original files, licenses, and third-party credits are preserved. Local changes to imported files: `index.html` and `assets/styles.css` carry the robots-building-robots banner and the PWA wiring (manifest.json, sw.js, icons/), added November 15, 2026, in step with the original project. This notice is an additional collection file. Use the collection root tools to build or publish the collection; project publishing helpers still target their original repository.
 
 [Back to the collection](../../index.html) · [Contribution guide](../../CONTRIBUTING.md)
+
+Documentation update (20 November 2026): at Steven Powell's direction, `index.html` gained a professional Documentation & source panel with the room README, GitHub source, sources and limitations, workshop download, collection documentation index, and curator profile link. Changed files: `index.html`, `COLLECTION.md`. The addition is documentation and navigation only; no lesson content or workshop behaviour was changed.

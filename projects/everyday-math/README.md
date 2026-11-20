@@ -2,6 +2,12 @@
 
 An Everyday Cool workshop about the numbers themselves: the classic tricks, each shown with its reason; the fractions and percents people actually freeze on; the formulas people actually meet, each with a worked example; huge and tiny numbers in scientific notation, with Avogadro's number as the bridge to Everyday Chemistry; the full log table with proportional parts; a printable sheet carrying the 16×16 times grid and the log table; and a scientific calculator that admits its last digit lies.
 
+## Documentation
+
+- **In-page Help:** The Help ▾ menu and Help section explain the workshop's parts, simplifications, limits, and sources.
+- **Full README:** This file is the complete manual for Everyday Math.
+- **Online:** [Collection documentation](https://caeled.github.io/everyday-cool/documentation.html) · [Source on GitHub](https://github.com/caeled/everyday-cool/tree/main/projects/everyday-math)
+
 ## What's inside
 
 - **The nines bench** — Steven's lead exhibit: write 0 to 9 down one column and 9 to 0 up the other and the whole nines table appears (09, 18, 27 … 90), every answer's digits summing to 9, because 9 = 10 − 1. A slider builds the table row by row; companion cards give the finger version of the same trick and the number-theory bite behind it (in base eight, 7 wears the crown).

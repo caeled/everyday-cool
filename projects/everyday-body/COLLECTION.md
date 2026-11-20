@@ -11,3 +11,7 @@ What v1 contains, against the proposal: twelve selectable organs (brain, heart, 
 The room carries its limits on its face: the atlas is a simplified schematic, not to scale; the deep brain structures are explored by labelled buttons because a side view cannot show their positions; descriptions are educational simplifications; and the workshop does not diagnose conditions or give medical advice.
 
 Banner: `everyday-body-banner.jpg`, AI-generated watercolor — a friendly robot with goggles pushed up on its head, pointing to the glowing brain on a large anatomical atlas chart of the human body, heart and lungs lit in soft colour, in a warm lamplit study — generated 18 November 2026 as part of integrating this room, in the style and dimensions (2736×912) of the collection's other banners.
+
+Documentation update, 20 November 2026: `index.html` (its CSS is inline), `README.md`, and `COLLECTION.md` gained a professional documentation treatment — a Source on GitHub link in the Help menu, a documentation lede and action bar in the Help section, matching styles, and a Documentation section in the README — at Steven Powell's direction ('the documentation section is the only part that doesn't look like a real program'). No bench, lesson, or behaviour changed.
+
+The same documentation update also added a Steve's Profile link (Steven Powell's LinkedIn) at the foot of the Help section — `index.html` only.

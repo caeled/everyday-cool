@@ -30,3 +30,7 @@ The Links Out section gained a second shelf, "The machine shop behind the field 
 ## Preservation boundary
 
 The six outbound links (Red Cross ×3, Scouting America, Smokey Bear, CDC) are pointers to living authorities, not preserved content: they were verified live on 2026-11-19 and are recorded in `THIRD-PARTY.md`, but their pages belong to their publishers and will change on their schedules. The room's own text stands on its own if every one of them moves.
+
+Documentation update, 20 November 2026: `index.html`, `style.css`, `README.md`, and `COLLECTION.md` gained a professional documentation treatment — a Source on GitHub link in the Help menu, a documentation lede and action bar in the Help section, matching styles, and a Documentation section in the README — at Steven Powell's direction ('the documentation section is the only part that doesn't look like a real program'). No bench, lesson, or behaviour changed.
+
+The same documentation update also added a Steve's Profile link (Steven Powell's LinkedIn) at the foot of the Help section — `index.html` and `style.css`.

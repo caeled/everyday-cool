@@ -2,6 +2,12 @@
 
 An Everyday Cool workshop about how a computer is built out of almost nothing: counting in twos on eight switches, the six logic gates with truth tables that fill in as you play, two gates wired into a half adder, a three-gate toy net that recognises one pattern in eight and reports its near misses, a free-form logic builder for wiring circuits of your own, the bit-to-terabyte ladder with the honest 1000-versus-1024 split, and algorithms as recipes — bubble sort you can watch think, and the tea test for exact instructions.
 
+## Documentation
+
+- **In-page Help:** The Help ▾ menu and Help section explain the workshop's parts, simplifications, limits, and sources.
+- **Full README:** This file is the complete manual for Everyday Computing.
+- **Online:** [Collection documentation](https://caeled.github.io/everyday-cool/documentation.html) · [Source on GitHub](https://github.com/caeled/everyday-cool/tree/main/projects/everyday-computing)
+
 ## What's inside
 
 - **The binary bench** — eight switches with places worth 128 down to 1; flip them to build a number, or type 0–255 and watch the switches set themselves. Companion cards count to 31 on one hand (your fingers are bits) and explain why the places double — the same rule as ordinary counting, with two symbols instead of ten.

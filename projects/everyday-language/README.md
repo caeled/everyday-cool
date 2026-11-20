@@ -2,6 +2,12 @@
 
 An Everyday Cool workshop about the code you already speak. Language is a code too — that is Steven Powell's founding line for the room, and it makes Everyday Language the sibling of Secret Squares: that room hides messages in little squares, this one examines the encoding, keys, compression, and error correction built into human language itself. The room was proposed by Steven in the Everyday Cool ideas side chat on 18 November 2026 ("You know language is a code too — ala secret squares"), with its contents named by him: a map of language families ("people always get tripped out when they learn English is Germanic"), some common cognates, a mini translator, and STEM article links.
 
+## Documentation
+
+- **In-page Help:** The Help ▾ menu and Help section explain the workshop's parts, simplifications, limits, and sources.
+- **Full README:** This file is the complete manual for Everyday Language.
+- **Online:** [Collection documentation](https://caeled.github.io/everyday-cool/documentation.html) · [Source on GitHub](https://github.com/caeled/everyday-cool/tree/main/projects/everyday-language)
+
 ## What's inside
 
 - **The family tree** — the Indo-European family drawn as an explorable tree, from the reconstructed Proto-Indo-European root down through its main branches. Tapping a branch shows its main languages, one accurate fact, and its line back to the root. English's line is outlined in gold and states the room's headline on the page: *English is a Germanic language* — Proto-Indo-European → Germanic → West Germanic → Anglo-Frisian → English. French and Spanish are cousins on the Romance branch; the French layer in English is borrowing (a loanword layer, mostly post-1066), not ancestry. Below the tree, five "other great families" cards (Sino-Tibetan, Niger-Congo, Afroasiatic, Austronesian, Trans-New Guinea) carry speaker/language counts labelled approximate.

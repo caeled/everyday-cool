@@ -2,6 +2,12 @@
 
 An Everyday Cool workshop about the chemistry already happening in your kitchen: a visual atom bench, a numbers bench that counts and weighs chemical formulas, and a shelf of eight kitchen experiments that each show a real idea about atoms and molecules.
 
+## Documentation
+
+- **In-page Help:** The Help ▾ menu and Help section explain the workshop's parts, simplifications, limits, and sources.
+- **Full README:** This file is the complete manual for Everyday Chemistry.
+- **Online:** [Collection documentation](https://caeled.github.io/everyday-cool/documentation.html) · [Source on GitHub](https://github.com/caeled/everyday-cool/tree/main/projects/everyday-chemistry)
+
 ## What's inside
 
 - **The atom bench** — a picker of 30 elements (the first twenty, plus iron, copper, zinc, silver, gold, mercury, lead, iodine, bromine, and tin). Pressing one draws its Bohr-model atom as SVG: shells with the correct textbook electron counts, a nucleus labelled with protons and neutrons for the most common isotope (neutrons = the rounded standard mass minus the protons, stated plainly on the page), and the three counts written out beside the picture. The page says out loud that the drawing is a map, not a photograph.

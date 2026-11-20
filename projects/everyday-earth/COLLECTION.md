@@ -13,3 +13,7 @@ Everything interactive is computed in the visitor's browser from data baked into
 The rules live in `earth.js` (no DOM), checked by `test.cjs`.
 
 Banner: `everyday-earth-banner.jpg`, AI-generated watercolor generated 19 November 2026 as part of adding this room, in the style and dimensions (2736×912) of the collection's other banners, to Steven's concept — the plush-style robot studying a globe with maps spread on the desk: the robot, stitched seams and blue button eyes, turning a large desktop globe with one hand, a topographic map and a weather map (isobars, a spiral storm) spread before it with a pencil and magnifying glass, a cut block of soil layers and a small potted plant at the desk's edge, framed landscapes on the wall. The prompt forbade lettering and the image shipped on its first generation: there is no text anywhere in it — the maps carry only lines, shapes, and symbols.
+
+Documentation update, 20 November 2026: `index.html`, `style.css`, `README.md`, and `COLLECTION.md` gained a professional documentation treatment — a Source on GitHub link in the Help menu, a documentation lede and action bar in the Help section, matching styles, and a Documentation section in the README — at Steven Powell's direction ('the documentation section is the only part that doesn't look like a real program'). No bench, lesson, or behaviour changed.
+
+The same documentation update also added a Steve's Profile link (Steven Powell's LinkedIn) at the foot of the Help section — `index.html` and `style.css`.
