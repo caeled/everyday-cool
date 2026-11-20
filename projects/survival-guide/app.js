@@ -92,3 +92,150 @@ function knotAnswer(job) {
     b.addEventListener('click', function () { show(b.getAttribute('data-knot-job')); });
   });
 })();
+
+// The knot step-throughs (Knots section). Stage diagrams are plain
+// data in knots.js (KNOT_STEPTHROUGHS) — one stage per numbered text
+// step on the card — so the counts can be checked without a browser.
+// This component only renders that data: Back/Next buttons, a step
+// counter, the card's current text step highlighted, and a
+// "Watch it tie" replay that draws the final stage's rope on. The
+// text steps carry the teaching; without this script they stand
+// exactly as written.
+(function () {
+  var mounts = Array.prototype.slice.call(document.querySelectorAll('[data-knot-steps]'));
+  if (!mounts.length || typeof KNOT_STEPTHROUGHS === 'undefined') return;
+  var COLOURS = { stand: '#7fdddb', work: '#f5c369', frap: '#79d9c9' };
+  var BG = '#0d1a29';
+
+  function colour(el) { return COLOURS[el.c] || COLOURS.work; }
+  function width(el) { return el.w || 6; }
+
+  // One drawing element -> SVG text. Rope shapes are drawn twice:
+  // first as a wider stroke in the background colour (the halo that
+  // breaks the line underneath at a crossing), then in their own
+  // colour. Draw order in the data is what tells over from under.
+  function elSvg(el) {
+    var out = '';
+    if (el.r) {
+      if (el.c === 'pole') {
+        return '<rect x="' + el.r[0] + '" y="' + el.r[1] + '" width="' + el.r[2] + '" height="' + el.r[3] +
+          '" fill="#22384c" stroke="#7fdddb" stroke-width="2"/>';
+      }
+      return '<rect x="' + el.r[0] + '" y="' + el.r[1] + '" width="' + el.r[2] + '" height="' + el.r[3] +
+        '" fill="#304354"/>';
+    }
+    if (el.b) {
+      return '<rect x="' + el.b[0] + '" y="' + el.b[1] + '" width="' + el.b[2] + '" height="' + el.b[3] +
+        '" rx="' + el.b[4] + '" fill="none" stroke="' + colour(el) + '" stroke-width="5"/>';
+    }
+    if (el.o || el.e) {
+      var shape = el.o
+        ? '<circle cx="' + el.o[0] + '" cy="' + el.o[1] + '" r="' + el.o[2] + '"'
+        : '<ellipse cx="' + el.e[0] + '" cy="' + el.e[1] + '" rx="' + el.e[2] + '" ry="' + el.e[3] + '"';
+      out = shape + ' fill="none" stroke="' + BG + '" stroke-width="' + (width(el) + 5) + '"/>' +
+            shape + ' fill="none" stroke="' + colour(el) + '" stroke-width="' + width(el) + '"/>';
+      return out;
+    }
+    if (el.p) {
+      var cls = (el.c === 'work' || el.c === 'frap') ? ' class="ks-anim"' : '';
+      return '<path d="' + el.p + '" fill="none" stroke="' + BG + '" stroke-width="' + (width(el) + 5) +
+        '" stroke-linecap="round" stroke-linejoin="round"/>' +
+        '<path' + cls + ' d="' + el.p + '" fill="none" stroke="' + colour(el) + '" stroke-width="' + width(el) +
+        '" stroke-linecap="round" stroke-linejoin="round"/>';
+    }
+    if (el.a) {
+      var dx = el.a[2] - el.a[0], dy = el.a[3] - el.a[1];
+      var len = Math.sqrt(dx * dx + dy * dy) || 1;
+      var ux = dx / len, uy = dy / len, px = -uy, py = ux;
+      var tip = el.a[2] + ',' + el.a[3];
+      var b1 = (el.a[2] - ux * 11 + px * 5) + ',' + (el.a[3] - uy * 11 + py * 5);
+      var b2 = (el.a[2] - ux * 11 - px * 5) + ',' + (el.a[3] - uy * 11 - py * 5);
+      return '<line x1="' + el.a[0] + '" y1="' + el.a[1] + '" x2="' + el.a[2] + '" y2="' + el.a[3] +
+        '" stroke="' + COLOURS.work + '" stroke-width="3.5" stroke-linecap="round"/>' +
+        '<polygon points="' + tip + ' ' + b1 + ' ' + b2 + '" fill="' + COLOURS.work + '"/>';
+    }
+    if (el.d) {
+      return '<circle cx="' + el.d[0] + '" cy="' + el.d[1] + '" r="5.5" fill="' +
+        (el.c === 'stand' ? COLOURS.stand : COLOURS.work) + '" stroke="' + BG + '" stroke-width="2"/>';
+    }
+    if (el.t) {
+      return '<text class="d-note" x="' + el.t[0] + '" y="' + el.t[1] + '" text-anchor="middle">' + el.t[2] + '</text>';
+    }
+    return '';
+  }
+
+  function cardOf(node) {
+    var n = node;
+    while (n && !(n.classList && n.classList.contains('card'))) n = n.parentNode;
+    return n;
+  }
+
+  function buildViewer(mount) {
+    var data = knotStepthrough(mount.getAttribute('data-knot-steps'));
+    if (!data) return;
+    var card = cardOf(mount);
+    var steps = card ? Array.prototype.slice.call(card.querySelectorAll('ol li')) : [];
+    var title = card && card.querySelector('h3') ? card.querySelector('h3').textContent : 'Knot';
+    var total = data.stages.length;
+    var stage = 0;
+    var timer = null;
+
+    mount.innerHTML =
+      '<svg class="knot-svg" viewBox="0 0 320 200" role="img" aria-label=""></svg>' +
+      '<div class="knot-bar">' +
+      '<button type="button" class="ks-back">&larr; Back</button>' +
+      '<span class="ks-count" role="status"></span>' +
+      '<button type="button" class="ks-next">Next &rarr;</button>' +
+      '<button type="button" class="ks-watch">Watch it tie</button>' +
+      '</div>';
+    var svg = mount.querySelector('svg');
+    var count = mount.querySelector('.ks-count');
+    var back = mount.querySelector('.ks-back');
+    var next = mount.querySelector('.ks-next');
+    var watch = mount.querySelector('.ks-watch');
+
+    function render() {
+      svg.innerHTML = data.stages[stage].map(elSvg).join('');
+      svg.setAttribute('aria-label', title + ' — step ' + (stage + 1) + ' of ' + total);
+      count.textContent = 'Step ' + (stage + 1) + ' of ' + total;
+      steps.forEach(function (li, i) { li.classList.toggle('knot-step-on', i === stage); });
+      back.disabled = stage === 0;
+      next.disabled = stage === total - 1;
+    }
+    function go(n) {
+      if (timer) { clearTimeout(timer); timer = null; }
+      stage = Math.max(0, Math.min(total - 1, n));
+      render();
+    }
+    back.addEventListener('click', function () { go(stage - 1); });
+    next.addEventListener('click', function () { go(stage + 1); });
+    watch.addEventListener('click', function () {
+      go(total - 1);
+      var paths = Array.prototype.slice.call(svg.querySelectorAll('path.ks-anim'));
+      if (!paths.length) return;
+      paths.forEach(function (p) {
+        var len = p.getTotalLength();
+        p.style.strokeDasharray = String(len);
+        p.style.strokeDashoffset = String(len);
+      });
+      // Force a layout pass so the dash state registers, then let
+      // each rope path draw itself on, staggered in draw order.
+      void svg.getBoundingClientRect();
+      paths.forEach(function (p, i) {
+        p.style.transition = 'stroke-dashoffset 1s ease ' + (i * 0.22) + 's';
+        p.style.strokeDashoffset = '0';
+      });
+      timer = setTimeout(function () {
+        paths.forEach(function (p) {
+          p.style.transition = '';
+          p.style.strokeDasharray = '';
+          p.style.strokeDashoffset = '';
+        });
+        timer = null;
+      }, 1000 + paths.length * 220 + 150);
+    });
+    render();
+  }
+
+  mounts.forEach(buildViewer);
+})();
