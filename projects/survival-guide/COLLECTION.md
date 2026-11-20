@@ -23,6 +23,10 @@ The banner is AI-generated artwork made for this room in November 2026: a plush-
 - **Reciprocal cross-link cards** in Everyday Chemistry (to the soap section), Everyday Electronics (to the batteries section), Tonight's Sky (to the direction section), and Everyday Body (to the first-aid section). This room links out to all four; the return cards belong to those rooms' next passes and were deliberately not edited in this build.
 - The kit checklist could grow a printable first-aid sheet (the Help docs already urge printing the section); left for a later pass.
 
+## Add, 19 November 2026 — the Engineering cross-link
+
+The Links Out section gained a second shelf, "The machine shop behind the field skills": one card linking to Everyday Engineering (`../everyday-engineering/index.html`), the room Steven commissioned the same evening as the workshop behind this guide's borrowed machines — splitting firewood is its wedge, hoisting food is its pulley, moving rocks is its lever, hauling is its ramp. That room's "Out in the field" section links back here, so the cross-link runs both ways, as he specified ("That links to/from survival too"). The card carries the guide's safety and honesty lines, aimed at rigging. Nothing else in the room changed.
+
 ## Preservation boundary
 
 The six outbound links (Red Cross ×3, Scouting America, Smokey Bear, CDC) are pointers to living authorities, not preserved content: they were verified live on 2026-11-19 and are recorded in `THIRD-PARTY.md`, but their pages belong to their publishers and will change on their schedules. The room's own text stands on its own if every one of them moves.
