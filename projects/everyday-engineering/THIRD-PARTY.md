@@ -20,7 +20,7 @@ The wheelchair-ramp figure — a maximum slope of **1:12** (one unit of rise per
 
 ## The links shelf
 
-Four destinations, all Wikipedia, each opened and verified live on 19 November 2026: *Simple machine*, *Mechanical advantage*, *Block and tackle*, *Inclined plane*. They are pointers to living articles, not preserved content; their text belongs to their editors and will change on their schedules.
+Twelve destinations in three groups, each opened and verified live (HTTP 200) on 19 November 2026: eleven Wikipedia articles — *Simple machine*, *Lever*, *Wheel and axle*, *Pulley*, *Block and tackle*, *Inclined plane*, *Wedge*, *Screw (simple machine)*, *Mechanical advantage*, *Logarithm*, *Slide rule* — and Explain That Stuff's *Simple machines* explainer. They are pointers to living pages, not preserved content; their text belongs to their editors and publishers and will change on their schedules. (Encyclopaedia Britannica's simple-machine article was considered and left off: it refuses automated checks with a 403, so it could not be verified the way this collection verifies a link.)
 
 ## Scope lines, stated rather than silent
 
