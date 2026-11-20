@@ -17,3 +17,5 @@ Banner: `everyday-math-banner.jpg`, AI-generated watercolor generated 19 Novembe
 Documentation update, 20 November 2026: `index.html`, `style.css`, `README.md`, and `COLLECTION.md` gained a professional documentation treatment — a Source on GitHub link in the Help menu, a documentation lede and action bar in the Help section, matching styles, and a Documentation section in the README — at Steven Powell's direction ('the documentation section is the only part that doesn't look like a real program'). No bench, lesson, or behaviour changed.
 
 The same documentation update also added a Steve's Profile link (Steven Powell's LinkedIn) at the foot of the Help section — `index.html` and `style.css`.
+
+Cross-link added, 20 November 2026: `index.html` and `COLLECTION.md` — the log table's card row gained "These logarithms sing" and the Keep Going list gained Everyday Sound, the room that spends this one's ratios, fractions, and logarithms on music, at Steven's direction ("music is basically math geometry with sound"). Sound's page links back to this room's fractions bench and log section. No bench, lesson, or behaviour changed.

@@ -17,3 +17,5 @@ Local change (18 November 2026, later): review fixes — the pool table and laun
 Documentation update, 20 November 2026: `index.html`, `style.css`, `README.md`, and `COLLECTION.md` gained a professional documentation treatment — a Source on GitHub link in the Help menu, a documentation lede and action bar in the Help section, matching styles, and a Documentation section in the README — at Steven Powell's direction ('the documentation section is the only part that doesn't look like a real program'). No bench, lesson, or behaviour changed.
 
 The same documentation update also added a Steve's Profile link (Steven Powell's LinkedIn) at the foot of the Help section — `index.html` and `style.css`.
+
+Cross-link added, 20 November 2026: `index.html` and `COLLECTION.md` — the Keep Going list gained Everyday Sound, the room that takes this one's waves to the ear: pitch, loudness weighed in decibels, echoes timed off walls, and music built from ratios, with a two-octave piano that plays and writes MIDI files. Sound's own page links back here as its first sister room. No bench, lesson, or behaviour changed.
