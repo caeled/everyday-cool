@@ -83,6 +83,48 @@ function frameLean(shape, pushM) {
  return { ok: false };
 }
 
+/* ---- The pocket log table: mantissas for 1.0 to 10, four decimals ----
+   A common logarithm splits into two parts. The characteristic is the
+   number's size — its power of ten. The mantissa comes from the digits
+   alone, read from one small table. So 5, 50, 500 and 0.05 all share the
+   mantissa .6990 and differ only in characteristic: one table of ninety
+   entries covers every number there is. The table below is rounded to
+   four decimals, exactly as printed tables were, and the lookup
+   interpolates linearly between steps (the "proportional parts" every
+   table user learned) — so this bench computes the way an engineer of
+   1900 computed, small fourth-decimal wobble included, on purpose. */
+const LOG_TABLE = [];
+for (let i = 0; i <= 90; i++) LOG_TABLE.push(Math.round(Math.log10(1 + i / 10) * 10000) / 10000);
+function logMantissa(m) {
+ if (!(m >= 1) || !(m < 10)) return { ok: false };
+ const pos = (m - 1) * 10, i = Math.min(89, Math.floor(pos)), frac = pos - i;
+ const lo = LOG_TABLE[i], hi = LOG_TABLE[i + 1];
+ return { ok: true, mantissa: lo + frac * (hi - lo), lo, hi, frac, at: 1 + i / 10 };
+}
+function log10Table(x) {
+ if (!isPos(x)) return { ok: false };
+ let m = x, characteristic = 0;
+ while (m >= 10) { m /= 10; characteristic++; }
+ while (m < 1) { m *= 10; characteristic--; }
+ const t = logMantissa(m);
+ const f4 = (v) => v.toFixed(4);
+ const steps = [
+  "Split the number into its size and its digits: " + fmt(x) + " = " + fmt(m) + " × 10" + supInt(characteristic) + ", so the characteristic is " + characteristic + " and the digits are " + fmt(m) + "."
+ ];
+ if (t.frac < 0.001) {
+  steps.push("The table gives the mantissa for " + fmt(m) + " directly: ." + f4(t.lo).slice(2) + ".");
+ } else {
+  steps.push("The table brackets the digits: " + fmt(t.at) + " → ." + f4(t.lo).slice(2) + " and " + fmt(t.at + 0.1) + " → ." + f4(t.hi).slice(2) + ", a difference of ." + f4(t.hi - t.lo).slice(2) + ".");
+  steps.push("Interpolate: " + fmt(m) + " sits " + fmt(t.frac * 10) + "/10 of the way across the step, so add " + fmt(t.frac * 10) + "/10 × ." + f4(t.hi - t.lo).slice(2) + " ≈ ." + f4(t.frac * (t.hi - t.lo)).slice(2) + " — the mantissa is ." + f4(t.mantissa).slice(2) + ".");
+ }
+ steps.push("log₁₀(" + fmt(x) + ") = characteristic + mantissa = " + characteristic + " + ." + f4(t.mantissa).slice(2) + " = " + f4(characteristic + t.mantissa) + ".");
+ return { ok: true, x, characteristic, digits: m, mantissa: t.mantissa, result: characteristic + t.mantissa, steps };
+}
+function supInt(n) {
+ const sup = { "-": "⁻", "0": "⁰", "1": "¹", "2": "²", "3": "³", "4": "⁴", "5": "⁵", "6": "⁶", "7": "⁷", "8": "⁸", "9": "⁹" };
+ return String(n).split("").map((c) => sup[c]).join("");
+}
+
 /* ---- Small helpers ---- */
 function isPos(x) { return typeof x === "number" && isFinite(x) && x > 0; }
 function fmt(n) {
@@ -91,6 +133,6 @@ function fmt(n) {
  return Number(rounded).toLocaleString("en-US", { maximumFractionDigits: 3 });
 }
 
-const api = { lever, pulley, ramp, rampStandard, frameLean, fmt, RAMP_STANDARD_RATIO };
+const api = { lever, pulley, ramp, rampStandard, frameLean, fmt, RAMP_STANDARD_RATIO, LOG_TABLE, logMantissa, log10Table };
 if (typeof module !== "undefined" && module.exports) module.exports = api;
 if (typeof window !== "undefined") Object.assign(window, api);

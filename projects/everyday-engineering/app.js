@@ -183,5 +183,24 @@
  }));
  $("frame-push").addEventListener("input", runFrames);
 
- runLever(); runPulley(); runRamp(); runFrames();
+ /* ---- The pocket log table: look it up the 300-year-old way ---- */
+ const grid = $("log-grid");
+ for (let i = 0; i < 90; i++) {
+  const cell = document.createElement("div");
+  cell.className = "log-cell";
+  const n = document.createElement("span"); n.className = "log-n"; n.textContent = (1 + i / 10).toFixed(1);
+  const v = document.createElement("span"); v.className = "log-v"; v.textContent = "." + LOG_TABLE[i].toFixed(4).slice(2);
+  cell.appendChild(n); cell.appendChild(v);
+  grid.appendChild(cell);
+ }
+ function runLog() {
+  const x = parseFloat($("log-input").value);
+  const r = log10Table(x);
+  const out = $("log-result");
+  if (!r.ok) { out.innerHTML = "<p>Type a number above zero, and the table will look it up.</p>"; return; }
+  showSteps(out, "log₁₀(" + fmt(x) + ") ≈ " + r.result.toFixed(4) + " — by the table, not the calculator", r);
+ }
+ $("log-input").addEventListener("input", runLog);
+
+ runLever(); runPulley(); runRamp(); runFrames(); runLog();
 })();

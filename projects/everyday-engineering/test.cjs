@@ -46,8 +46,26 @@ near(E.frameLean("triangle", 0.3).leanM, 0, 1e-12, "the triangle does not lean")
 near(E.frameLean("braced", 0.3).leanM, 0, 1e-12, "the braced square does not lean");
 assert.ok(!E.frameLean("hexagon", 0.3).ok, "unknown frames are refused");
 
+/* The pocket log table: spot values, characteristic + mantissa, interpolation */
+assert.strictEqual(E.LOG_TABLE.length, 91, "91 table entries: 1.0 through 10.0");
+near(E.LOG_TABLE[10], 0.3010, 1e-12, "table mantissa for 2.0 is .3010");
+near(E.LOG_TABLE[40], 0.6990, 1e-12, "table mantissa for 5.0 is .6990");
+near(E.LOG_TABLE[89], 0.9956, 1e-12, "table mantissa for 9.9 is .9956");
+near(E.log10Table(2).result, 0.3010, 1e-9, "log10(2) = 0.3010 by the table");
+const five = E.log10Table(500);
+assert.strictEqual(five.characteristic, 2, "500 has characteristic 2");
+near(five.result, 2.6990, 1e-9, "log10(500) = 2.6990 via characteristic + mantissa");
+near(E.log10Table(7).result, 0.8451, 1e-9, "log10(7) = 0.8451");
+near(E.log10Table(0.05).result, -1.3010, 1e-9, "log10(0.05) = -2 + .6990 = -1.3010");
+near(E.log10Table(1000).result, 3, 1e-9, "log10(1000) = 3 exactly");
+const interp = E.log10Table(2.53);
+near(interp.result, 0.4030, 0.00005, "log10(2.53) interpolates to .4030");
+near(interp.result, Math.log10(2.53), 0.0002, "interpolation lands within two fourth-decimal units of the true log");
+assert.ok(interp.steps.join(" ").includes("Interpolate"), "the lookup shows its interpolation");
+assert.ok(!E.log10Table(0).ok && !E.log10Table(-3).ok, "zero and negatives are refused");
+
 /* Formatting */
 assert.strictEqual(E.fmt(2500), "2,500");
 assert.strictEqual(E.fmt(4.7636), "4.764");
 
-console.log("everyday-engineering tests: all passed (lever, pulley 1-4 segments, ramp + 1:12 standard, frames)");
+console.log("everyday-engineering tests: all passed (lever, pulley 1-4 segments, ramp + 1:12 standard, frames, log table + interpolation)");
