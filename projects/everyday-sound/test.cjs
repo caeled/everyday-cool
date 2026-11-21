@@ -188,4 +188,15 @@ near(parsed2.notes[0].duration, 0.5 + 1.0, 0.005, "the note lasts 0.5 s at 120 B
 
 assert.throws(() => S.parseMidiFile(new Uint8Array([1, 2, 3, 4])), /Not a MIDI file/, "junk is refused plainly");
 
+/* Tune the String: the game file ships in this folder, self-contained, and linked */
+const fs = require("node:fs");
+const path = require("node:path");
+const gameFile = path.join(__dirname, "tune-the-string.html");
+assert.ok(fs.existsSync(gameFile), "tune-the-string.html exists in the room folder");
+const gameHtml = fs.readFileSync(gameFile, "utf8");
+assert.ok(!/https?:\/\//.test(gameHtml), "Tune the String references nothing external (no http/https URLs)");
+assert.ok(!/<(?:script|img|link)\b[^>]*\b(?:src|href)\s*=/i.test(gameHtml), "Tune the String loads no external scripts, images, or stylesheets");
+const roomPage = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
+assert.ok(roomPage.includes('href="tune-the-string.html"'), "the room page links to Tune the String");
+
 console.log("Everyday Sound: all rule tests passed.");

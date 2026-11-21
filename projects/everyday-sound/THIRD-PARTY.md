@@ -21,6 +21,12 @@ OSHA Noise (osha.gov) · OpenStax University Physics — Sound Waves (openstax.o
 
 This page makes no network calls at all: the benches, piano, MIDI player, and recorder run entirely in the browser from code in this folder, and a MIDI file the visitor opens is read from their own disk by the browser — it is never uploaded. The shelf links are only followed when a visitor presses one.
 
+## The game — Tune the String
+
+`tune-the-string.html` is an original Everyday Cool game built by Muse on 20 November 2026: match a target note with length and tension sliders under the real string formula f = (1/2L)·√(T/μ), and win by the tuner's real method — play both notes together and tune until the beating between them dies. Its simplifications, named plainly: the string is **ideal** — no stiffness, so none of the inharmonicity that stretches a real string's overtones sharp; the string's mass per unit length (μ) is **fixed within a round** rather than a third control; the targets are **equal-tempered** notes — the piano's compromise from the intervals bench, not pure ratios; and the two voices are **synthesized stand-ins**, sine-based tones chosen so the beating is easy to hear, not recordings of real strings.
+
+Its arithmetic is proven, not just asserted: the formula, cents, and beating tests all pass, and every round's target is reachable inside the shipped slider ranges — the solver's witnesses land within 1.2 cents of each target. What no test can check is the sound itself: audio cannot be verified headless, so the game's receipt is Steven's ears — the same receipt the piano bench ships on.
+
 ## Limitations
 
 The tone bench's oscillator is a pure sine; real instruments are fundamentals plus overtones, which is exactly the gap the voice recipes and the strings/skins card talk about. Playback of loaded MIDI files schedules notes through a single chosen voice and honours tempo changes, but it is a player piano, not a studio: controllers, program changes, and per-channel instruments are ignored, and very dense files may light keys approximately. Recordings keep note numbers, timing, and (where the input reports it) velocity — no pedal, no aftertouch. Displayed frequencies are rounded for reading; the underlying arithmetic in `sound.js` is unrounded and test-covered. Descriptions were written on 20 November 2026; each linked site's own pages are the authority.

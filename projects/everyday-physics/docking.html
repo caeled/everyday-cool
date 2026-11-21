@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Docking — Orbital Rendezvous</title>
+<style>
+  :root{
+    --bg:#050914; --panel:#0b1226; --panel2:#0e1730; --border:#22335c;
+    --text:#dbe7ff; --muted:#8ea1bd; --accent:#7dd3fc; --good:#4ade80;
+    --bad:#f87171; --warn:#fbbf24;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:radial-gradient(circle at 50% -10%,rgba(56,120,246,.16),transparent 55%),var(--bg);
+    color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,sans-serif;line-height:1.45}
+  .wrap{max-width:980px;margin:0 auto;padding:16px 14px 30px}
+  header.bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px;justify-content:space-between;margin-bottom:10px}
+  h1{font-size:21px;margin:0;font-weight:800;letter-spacing:-.2px}
+  h1 span{color:var(--accent)}
+  .bar .btns{display:flex;gap:8px;flex-wrap:wrap}
+  button{background:var(--panel2);color:var(--text);border:1px solid var(--border);border-radius:9px;
+    padding:7px 13px;font-size:13px;font-weight:600;cursor:pointer}
+  button:hover{border-color:var(--accent);color:#fff}
+  button.primary{background:#155e86;border-color:#2b7fb3}
+  .stage{position:relative;border:1px solid var(--border);border-radius:14px;overflow:hidden;background:#030612}
+  canvas{display:block;width:100%;height:auto}
+  .hud{display:flex;flex-wrap:wrap;gap:8px 22px;align-items:center;background:var(--panel);
+    border:1px solid var(--border);border-radius:12px;padding:9px 14px;margin-top:10px;font-size:13.5px}
+  .hud b{color:#fff;font-variant-numeric:tabular-nums}
+  .hud .lab{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.6px;display:block}
+  .fuelbar{width:130px;height:9px;background:#16223f;border-radius:99px;overflow:hidden;display:inline-block;vertical-align:middle}
+  .fuelbar i{display:block;height:100%;background:linear-gradient(90deg,#38bdf8,#4ade80)}
+  .ok{color:var(--good)} .danger{color:var(--bad)} .caution{color:var(--warn)}
+  .help{color:var(--muted);font-size:12.5px;margin-top:9px}
+  .help b{color:var(--text)}
+  .overlay{position:absolute;inset:0;background:rgba(3,6,18,.86);display:flex;align-items:center;justify-content:center;padding:18px}
+  .overlay[hidden]{display:none}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:14px;max-width:620px;width:100%;
+    max-height:100%;overflow:auto;padding:22px 24px}
+  .card h2{margin:0 0 6px;font-size:20px}
+  .card p{color:#c3d3f2;font-size:14px}
+  .card .promise{border-left:3px solid var(--accent);padding:2px 0 2px 12px;color:#e7f2ff}
+  .levels{display:grid;gap:9px;margin:14px 0}
+  .lvl{text-align:left;padding:11px 14px;border-radius:11px}
+  .lvl b{display:block;font-size:14.5px;color:#fff}
+  .lvl span{color:var(--muted);font-size:12.5px;font-weight:400}
+  .keys{font-size:12.5px;color:var(--muted);border-top:1px solid var(--border);padding-top:11px;margin-top:4px}
+  .keys b{color:var(--text)}
+  .stats{display:flex;gap:20px;flex-wrap:wrap;margin:12px 0;font-size:14px}
+  .stats b{color:#fff;font-variant-numeric:tabular-nums}
+  footer{color:var(--muted);font-size:12px;margin-top:14px;text-align:center}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="bar">
+    <h1>Docking <span>— Orbital Rendezvous</span></h1>
+    <div class="btns">
+      <button id="btnLevels" type="button">Levels</button>
+      <button id="btnSpeed" type="button">Speed ×1</button>
+      <button id="btnPause" type="button">Pause</button>
+      <button id="btnRetry" type="button">Restart (R)</button>
+    </div>
+  </header>
+
+  <div class="stage">
+    <canvas id="cv" width="920" height="640" aria-label="Orbital rendezvous playfield: your ship, the station, and the planet"></canvas>
+    <div class="overlay" id="overlay"></div>
+  </div>
+
+  <div class="hud" aria-live="off">
+    <div><span class="lab">Range</span><b id="hRange">—</b></div>
+    <div><span class="lab">Closing speed</span><b id="hClose">—</b></div>
+    <div><span class="lab">Relative speed</span><b id="hRel">—</b></div>
+    <div><span class="lab">Dock needs</span><b id="hNeed">range &lt; 7 · rel &lt; 0.90</b></div>
+    <div><span class="lab">Fuel (Δv)</span><b id="hFuel">—</b> <span class="fuelbar"><i id="hFuelBar" style="width:100%"></i></span></div>
+    <div><span class="lab">Time</span><b id="hTime">0.0 s</b></div>
+    <div><b id="hMsg"></b></div>
+  </div>
+
+  <p class="help">
+    Thrust is keyboard-only, and it points the way orbits actually work — relative to <b>your ship</b>, not the screen:
+    <b>W / ↑</b> along your motion · <b>S / ↓</b> against your motion · <b>D / →</b> away from planet · <b>A / ←</b> toward planet.
+    Menus and buttons work with mouse or touch. The pale curve ahead of your ship is where gravity alone will take you — no engine, no promises.
+  </p>
+
+  <footer>Everyday Cool · Physics Game Table — both craft fly on plain Newtonian gravity; the only engine in the simulation is yours.</footer>
+</div>
+
+<script>
+/*PHYSICS-CORE-START*/
+const DockingCore = (() => {
+  const MU = 40000;          // gravitational parameter, units^3 / s^2
+  const THRUST = 4.0;        // engine acceleration, units / s^2
+  const PLANET_R = 16;       // planet surface radius, units
+  const CRASH_R = 4.2;       // hard contact distance
+  const DOCK_R = 7.0;        // docking capture radius
+  const DOCK_V = 0.9;        // max relative speed to dock, units / s
+  const MAX_RANGE = 520;     // drift beyond this and you are lost
+  const DRIFT_LIMIT = 60;    // seconds of coasting allowed after fuel-out
+  const SUB = 0.008;         // RK4 substep, s
+
+  // Circular-orbit state at radius r, angle a (counterclockwise).
+  function circ(r, a) {
+    const v = Math.sqrt(MU / r);
+    return { x: r * Math.cos(a), y: r * Math.sin(a), vx: -v * Math.sin(a), vy: v * Math.cos(a) };
+  }
+
+  const LEVELS = [
+    {
+      name: 'Level 1 — Phasing',
+      stationR: 100, stationA: 0.0, shipR: 100, shipA: -0.55, fuel: 16,
+      brief: 'Same orbit as the station, 55 units behind it. Every instinct says speed up to catch it — but speeding up lifts your orbit and slows your lap. To catch up, slow down.',
+      win: 'You slowed down to catch up. That is phasing — the first real rendezvous trick there is.'
+    },
+    {
+      name: 'Level 2 — Radial Offset',
+      stationR: 100, stationA: 0.9, shipR: 113, shipA: 0.9, fuel: 16,
+      brief: 'You are parked 13 units outside the station\u2019s orbit, right alongside it. Burn straight at it and your path bends into an ellipse — you will cross its orbit exactly where it is not.',
+      win: 'You fixed the orbit instead of the aim. Rendezvous is matching paths, not pointing at things.'
+    },
+    {
+      name: 'Level 3 — The Real Thing',
+      stationR: 100, stationA: 0.0, shipR: 76, shipA: -2.0, fuel: 11,
+      brief: 'A lower, faster orbit, the station up above and ahead, and a fuel gauge that punishes wandering. Raise your orbit, phase in, and arrive gently.',
+      win: 'Transfer, phase, match, arrive. That is a whole rendezvous, flown in miniature.'
+    }
+  ];
+
+  function createState(i) {
+    const L = LEVELS[i];
+    return {
+      level: i, t: 0,
+      ship: circ(L.shipR, L.shipA),
+      station: circ(L.stationR, L.stationA),
+      fuel: L.fuel, fuel0: L.fuel,
+      status: 'flying', drift: 0, endRel: 0
+    };
+  }
+
+  // Thrust acceleration vector for the ship given local-frame controls.
+  function thrustAccel(ship, ctrl, fuel) {
+    if (!ctrl || fuel <= 0) return [0, 0];
+    const sp = Math.hypot(ship.vx, ship.vy) || 1;
+    const r = Math.hypot(ship.x, ship.y) || 1;
+    const ux = ship.vx / sp, uy = ship.vy / sp;   // prograde unit
+    const wx = ship.x / r, wy = ship.y / r;       // radial-out unit
+    let tx = 0, ty = 0;
+    if (ctrl.pro)   { tx += ux; ty += uy; }
+    if (ctrl.retro) { tx -= ux; ty -= uy; }
+    if (ctrl.rout)  { tx += wx; ty += wy; }
+    if (ctrl.rin)   { tx -= wx; ty -= wy; }
+    const m = Math.hypot(tx, ty);
+    if (m === 0) return [0, 0];
+    return [tx / m * THRUST, ty / m * THRUST];
+  }
+
+  // Derivative of the joint state vector [ship(4), station(4)].
+  function deriv(s, ctrl, fuel) {
+    const out = new Array(8);
+    const sx = s[0], sy = s[1];
+    const r2 = sx * sx + sy * sy, r = Math.sqrt(r2), g = -MU / (r2 * r);
+    const ta = thrustAccel({ x: sx, y: sy, vx: s[2], vy: s[3] }, ctrl, fuel);
+    out[0] = s[2]; out[1] = s[3]; out[2] = sx * g + ta[0]; out[3] = sy * g + ta[1];
+    const qx = s[4], qy = s[5];
+    const q2 = qx * qx + qy * qy, q = Math.sqrt(q2), h = -MU / (q2 * q);
+    out[4] = s[6]; out[5] = s[7]; out[6] = qx * h; out[7] = qy * h;
+    return out;
+  }
+
+  function rk4(s, dt, ctrl, fuel) {
+    const k1 = deriv(s, ctrl, fuel);
+    const s2 = s.map((v, i) => v + k1[i] * dt / 2), k2 = deriv(s2, ctrl, fuel);
+    const s3 = s.map((v, i) => v + k2[i] * dt / 2), k3 = deriv(s3, ctrl, fuel);
+    const s4 = s.map((v, i) => v + k3[i] * dt),     k4 = deriv(s4, ctrl, fuel);
+    return s.map((v, i) => v + (k1[i] + 2 * k2[i] + 2 * k3[i] + k4[i]) * dt / 6);
+  }
+
+  function relState(state) {
+    const dx = state.station.x - state.ship.x, dy = state.station.y - state.ship.y;
+    const dvx = state.station.vx - state.ship.vx, dvy = state.station.vy - state.ship.vy;
+    const range = Math.hypot(dx, dy);
+    const relSpeed = Math.hypot(dvx, dvy);
+    const closing = range > 1e-9 ? -(dx * dvx + dy * dvy) / range : 0;
+    return { range, relSpeed, closing };
+  }
+
+  // Advance the whole simulation by dt seconds (substepped RK4).
+  function stepSim(state, ctrl, dt) {
+    if (state.status !== 'flying') return state;
+    let vec = [state.ship.x, state.ship.y, state.ship.vx, state.ship.vy,
+               state.station.x, state.station.y, state.station.vx, state.station.vy];
+    const want = !!(ctrl && (ctrl.pro || ctrl.retro || ctrl.rin || ctrl.rout));
+    let remaining = dt;
+    while (remaining > 1e-9) {
+      const h = Math.min(SUB, remaining);
+      const burning = want && state.fuel > 0;
+      vec = rk4(vec, h, burning ? ctrl : null, burning ? 1 : 0);
+      if (burning) state.fuel = Math.max(0, state.fuel - THRUST * h);
+      state.t += h; remaining -= h;
+    }
+    state.ship.x = vec[0]; state.ship.y = vec[1]; state.ship.vx = vec[2]; state.ship.vy = vec[3];
+    state.station.x = vec[4]; state.station.y = vec[5]; state.station.vx = vec[6]; state.station.vy = vec[7];
+
+    const rel = relState(state);
+    const rShip = Math.hypot(state.ship.x, state.ship.y);
+    if (rShip < PLANET_R + 0.6) { state.status = 'planet'; state.endRel = rel.relSpeed; }
+    else if (rel.range < DOCK_R && rel.relSpeed <= DOCK_V) { state.status = 'docked'; state.endRel = rel.relSpeed; }
+    else if (rel.range < CRASH_R) { state.status = 'crash'; state.endRel = rel.relSpeed; }
+    else if (rel.range > MAX_RANGE) { state.status = 'lost-range'; state.endRel = rel.relSpeed; }
+    else if (state.fuel <= 0) {
+      state.drift += dt;
+      if (state.drift > DRIFT_LIMIT) { state.status = 'lost-fuel'; state.endRel = rel.relSpeed; }
+    }
+    return state;
+  }
+
+  // Gravity-only RK4 for a single body (used for orbit checks and prediction).
+  function bodyDeriv(s) {
+    const r2 = s[0] * s[0] + s[1] * s[1], r = Math.sqrt(r2), g = -MU / (r2 * r);
+    return [s[2], s[3], s[0] * g, s[1] * g];
+  }
+  function stepBody(b, dt) {
+    let s = [b.x, b.y, b.vx, b.vy];
+    let remaining = dt;
+    while (remaining > 1e-9) {
+      const h = Math.min(SUB, remaining);
+      const k1 = bodyDeriv(s);
+      const s2 = s.map((v, i) => v + k1[i] * h / 2), k2 = bodyDeriv(s2);
+      const s3 = s.map((v, i) => v + k2[i] * h / 2), k3 = bodyDeriv(s3);
+      const s4 = s.map((v, i) => v + k3[i] * h),     k4 = bodyDeriv(s4);
+      s = s.map((v, i) => v + (k1[i] + 2 * k2[i] + 2 * k3[i] + k4[i]) * h / 6);
+      remaining -= h;
+    }
+    b.x = s[0]; b.y = s[1]; b.vx = s[2]; b.vy = s[3];
+    return b;
+  }
+
+  // Where gravity alone takes this body over the next `seconds`.
+  function predict(body, seconds, step) {
+    const b = { x: body.x, y: body.y, vx: body.vx, vy: body.vy };
+    const pts = [[b.x, b.y]];
+    let t = 0;
+    while (t < seconds) {
+      stepBody(b, step);
+      pts.push([b.x, b.y]);
+      if (Math.hypot(b.x, b.y) < PLANET_R) break;
+      t += step;
+    }
+    return pts;
+  }
+
+  return { MU, THRUST, PLANET_R, CRASH_R, DOCK_R, DOCK_V, MAX_RANGE, DRIFT_LIMIT,
+           LEVELS, circ, createState, stepSim, stepBody, predict, relState, thrustAccel };
+})();
+/*PHYSICS-CORE-END*/
+</script>
+
+<script>
+(() => {
+  const C = DockingCore;
+  const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+  const overlay = document.getElementById('overlay');
+  const el = id => document.getElementById(id);
+  const hRange = el('hRange'), hClose = el('hClose'), hRel = el('hRel'),
+        hFuel = el('hFuel'), hFuelBar = el('hFuelBar'), hTime = el('hTime'), hMsg = el('hMsg');
+
+  const VIEW = 185;                       // world half-extent on screen
+  const W = cv.width, H = cv.height, CX = W / 2, CY = H / 2, SC = (H / 2) / VIEW;
+  const stars = [];
+  { let seed = 12345; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    for (let i = 0; i < 150; i++) stars.push([rnd() * W, rnd() * H, rnd() * 1.4 + 0.4, rnd() * 0.5 + 0.25]); }
+  const X = x => CX + x * SC, Y = y => CY - y * SC;
+
+  let state = null, mode = 'menu', paused = false, speed = 1, lastTs = 0;
+  const keys = {};
+  const ctrl = () => ({
+    pro:   !!(keys.KeyW || keys.ArrowUp),
+    retro: !!(keys.KeyS || keys.ArrowDown),
+    rout:  !!(keys.KeyD || keys.ArrowRight),
+    rin:   !!(keys.KeyA || keys.ArrowLeft)
+  });
+
+  function showMenu() {
+    mode = 'menu';
+    const L = C.LEVELS;
+    overlay.innerHTML =
+      '<div class="card"><h2>Docking — Orbital Rendezvous</h2>' +
+      '<p class="promise">Point at the station and burn, and you will miss. Not because the game is cruel — because orbits bend. Here is why that is real physics, playable.</p>' +
+      '<p>Both craft fly on plain Newtonian gravity from the planet. The station has no engine. Yours is small, your fuel is finite, and the only way home is to <b>match the station\u2019s orbit</b> and arrive with your relative speed under ' +
+      C.DOCK_V.toFixed(2) + ' units/s inside ' + C.DOCK_R + ' units. Arrive faster than that at contact and it is a crash, not a docking.</p>' +
+      '<div class="levels">' + L.map((l, i) =>
+        '<button type="button" class="lvl" data-lvl="' + i + '"><b>' + l.name + '</b><span>' + l.brief + '</span></button>').join('') +
+      '</div>' +
+      '<p class="keys"><b>W/↑</b> along your motion · <b>S/↓</b> against your motion · <b>D/→</b> away from planet · <b>A/←</b> toward planet · <b>R</b> restart · <b>P</b> pause. Thrust is keyboard-only; buttons and menus take mouse or touch.</p></div>';
+    overlay.hidden = false;
+    overlay.querySelectorAll('[data-lvl]').forEach(b =>
+      b.addEventListener('click', () => startLevel(+b.dataset.lvl)));
+  }
+
+  function startLevel(i) {
+    state = C.createState(i);
+    mode = 'playing'; paused = false;
+    overlay.hidden = true;
+    el('btnPause').textContent = 'Pause';
+  }
+
+  function endScreen() {
+    const L = C.LEVELS[state.level];
+    const used = (state.fuel0 - state.fuel).toFixed(1);
+    let title, body;
+    if (state.status === 'docked') {
+      title = 'Docked.';
+      body = '<p>' + L.win + '</p>';
+    } else if (state.status === 'crash') {
+      title = 'That was a collision.';
+      body = '<p>Contact at ' + state.endRel.toFixed(2) + ' units/s of relative speed. Docking is a kiss, not a hit — the capture ring is ' + C.DOCK_R + ' units, and inside it you must be slower than ' + C.DOCK_V.toFixed(2) + '.</p>';
+    } else if (state.status === 'planet') {
+      title = 'Planetfall.';
+      body = '<p>Your orbit decayed into the planet. Gravity always collects its debts.</p>';
+    } else if (state.status === 'lost-range') {
+      title = 'Lost.';
+      body = '<p>Beyond ' + C.MAX_RANGE + ' units, mission control stops pretending this is a rendezvous.</p>';
+    } else {
+      title = 'Out of fuel, out of drift.';
+      body = '<p>The tanks are dry and the coast ran out. The station sails on without you.</p>';
+    }
+    overlay.innerHTML = '<div class="card"><h2>' + title + '</h2>' + body +
+      '<div class="stats"><div>Time<br><b>' + state.t.toFixed(1) + ' s</b></div>' +
+      '<div>Fuel used<br><b>' + used + ' / ' + state.fuel0.toFixed(0) + ' Δv</b></div>' +
+      '<div>Final relative speed<br><b>' + state.endRel.toFixed(2) + ' u/s</b></div></div>' +
+      '<div class="btns" style="display:flex;gap:8px;flex-wrap:wrap">' +
+      (state.status === 'docked' && state.level < C.LEVELS.length - 1
+        ? '<button type="button" class="primary" id="ovNext">Next level</button>' : '') +
+      '<button type="button" class="primary" id="ovRetry">Fly it again</button>' +
+      '<button type="button" id="ovMenu">Levels</button></div></div>';
+    overlay.hidden = false;
+    const nx = el('ovNext'); if (nx) nx.addEventListener('click', () => startLevel(state.level + 1));
+    el('ovRetry').addEventListener('click', () => startLevel(state.level));
+    el('ovMenu').addEventListener('click', showMenu);
+  }
+
+  function drawShip(s, color, flameDir) {
+    const hx = s.vx, hy = -s.vy, m = Math.hypot(hx, hy) || 1;
+    const ux = hx / m, uy = hy / m, px = -uy, py = ux;
+    const cx = X(s.x), cy = Y(s.y);
+    ctx.beginPath();
+    ctx.moveTo(cx + ux * 7, cy + uy * 7);
+    ctx.lineTo(cx - ux * 5 + px * 4.4, cy - uy * 5 + py * 4.4);
+    ctx.lineTo(cx - ux * 2.4, cy - uy * 2.4);
+    ctx.lineTo(cx - ux * 5 - px * 4.4, cy - uy * 5 - py * 4.4);
+    ctx.closePath();
+    ctx.fillStyle = color; ctx.fill();
+    if (flameDir) {
+      ctx.beginPath();
+      ctx.moveTo(cx - ux * 5 + px * 2.4, cy - uy * 5 + py * 2.4);
+      ctx.lineTo(cx - ux * 13, cy - uy * 13);
+      ctx.lineTo(cx - ux * 5 - px * 2.4, cy - uy * 5 - py * 2.4);
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(251,191,36,.9)'; ctx.fill();
+    }
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = '#030612'; ctx.fillRect(0, 0, W, H);
+    for (const [sx, sy, r, a] of stars) {
+      ctx.globalAlpha = a; ctx.fillStyle = '#cfe4ff';
+      ctx.beginPath(); ctx.arc(sx, sy, r, 0, 7); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    if (!state) return;
+    const s = state.ship, t = state.station;
+
+    // Station orbit (a circle: the station is never perturbed)
+    ctx.beginPath(); ctx.arc(CX, CY, C.LEVELS[state.level].stationR * SC, 0, 7);
+    ctx.strokeStyle = 'rgba(142,161,189,.28)'; ctx.setLineDash([4, 6]); ctx.lineWidth = 1; ctx.stroke(); ctx.setLineDash([]);
+
+    // Predicted path for the ship (gravity only)
+    const pts = C.predict(s, 50, 0.15);
+    for (let i = 1; i < pts.length; i += 14) {
+      ctx.beginPath();
+      ctx.moveTo(X(pts[i - 1][0]), Y(pts[i - 1][1]));
+      for (let j = i; j < Math.min(i + 14, pts.length); j++) ctx.lineTo(X(pts[j][0]), Y(pts[j][1]));
+      ctx.strokeStyle = 'rgba(125,211,252,' + (0.55 * (1 - i / pts.length) + 0.08) + ')';
+      ctx.lineWidth = 1.4; ctx.stroke();
+    }
+
+    // Range line
+    ctx.beginPath(); ctx.moveTo(X(s.x), Y(s.y)); ctx.lineTo(X(t.x), Y(t.y));
+    ctx.strokeStyle = 'rgba(219,231,255,.18)'; ctx.setLineDash([2, 5]); ctx.stroke(); ctx.setLineDash([]);
+
+    // Planet
+    const pr = C.PLANET_R * SC;
+    const grad = ctx.createRadialGradient(CX - pr * 0.35, CY - pr * 0.35, pr * 0.15, CX, CY, pr);
+    grad.addColorStop(0, '#3d6db4'); grad.addColorStop(0.65, '#1d3a68'); grad.addColorStop(1, '#0d1d3a');
+    ctx.beginPath(); ctx.arc(CX, CY, pr, 0, 7); ctx.fillStyle = grad; ctx.fill();
+    ctx.strokeStyle = 'rgba(125,211,252,.35)'; ctx.stroke();
+
+    // Docking ring around station
+    const rel = C.relState(state);
+    ctx.beginPath(); ctx.arc(X(t.x), Y(t.y), C.DOCK_R * SC, 0, 7);
+    ctx.strokeStyle = rel.range < C.DOCK_R
+      ? (rel.relSpeed <= C.DOCK_V ? 'rgba(74,222,128,.95)' : 'rgba(248,113,113,.95)')
+      : 'rgba(74,222,128,.35)';
+    ctx.setLineDash([3, 4]); ctx.lineWidth = 1.2; ctx.stroke(); ctx.setLineDash([]);
+
+    // Station
+    ctx.save(); ctx.translate(X(t.x), Y(t.y));
+    ctx.rotate(Math.atan2(-t.vy, t.vx));
+    ctx.fillStyle = '#e2e8f0'; ctx.fillRect(-5, -2.4, 10, 4.8);
+    ctx.fillStyle = '#38bdf8'; ctx.fillRect(-11, -1.2, 5, 2.4); ctx.fillRect(6, -1.2, 5, 2.4);
+    ctx.restore();
+    if (Math.floor(state.t * 2) % 2 === 0) {
+      ctx.beginPath(); ctx.arc(X(t.x), Y(t.y) - 7, 1.8, 0, 7); ctx.fillStyle = '#fbbf24'; ctx.fill();
+    }
+
+    // Ship, with flame when burning
+    const c = ctrl();
+    const burning = state.status === 'flying' && state.fuel > 0 && (c.pro || c.retro || c.rin || c.rout);
+    drawShip(s, '#7dd3fc', burning);
+
+    // Off-screen pointer if the ship leaves the view
+    if (Math.abs(s.x) > VIEW || Math.abs(s.y) > VIEW) {
+      const a = Math.atan2(-s.y, s.x);
+      const ex = CX + Math.cos(a) * (W / 2 - 24), ey = CY + Math.sin(a) * (H / 2 - 24);
+      ctx.beginPath();
+      ctx.moveTo(ex + Math.cos(a) * 10, ey + Math.sin(a) * 10);
+      ctx.lineTo(ex - Math.cos(a) * 6 - Math.sin(a) * 6, ey - Math.sin(a) * 6 + Math.cos(a) * 6);
+      ctx.lineTo(ex - Math.cos(a) * 6 + Math.sin(a) * 6, ey - Math.sin(a) * 6 - Math.cos(a) * 6);
+      ctx.closePath(); ctx.fillStyle = '#f87171'; ctx.fill();
+    }
+  }
+
+  function hud() {
+    if (!state) return;
+    const rel = C.relState(state);
+    hRange.textContent = rel.range.toFixed(1) + ' u';
+    hClose.textContent = (rel.closing >= 0 ? '▼ ' : '▲ ') + Math.abs(rel.closing).toFixed(2) + ' u/s';
+    hRel.textContent = rel.relSpeed.toFixed(2) + ' u/s';
+    hRel.className = rel.relSpeed <= C.DOCK_V ? 'ok' : (rel.relSpeed <= 2.5 ? 'caution' : 'danger');
+    hFuel.textContent = state.fuel.toFixed(1);
+    hFuelBar.style.width = (100 * state.fuel / state.fuel0) + '%';
+    hTime.textContent = state.t.toFixed(1) + ' s' + (paused ? ' · paused' : '');
+    if (state.fuel <= 0 && state.status === 'flying') {
+      hMsg.textContent = 'OUT OF FUEL — coasting, ' + Math.max(0, C.DRIFT_LIMIT - state.drift).toFixed(0) + ' s of drift left';
+      hMsg.className = 'danger';
+    } else if (rel.range < C.DOCK_R && state.status === 'flying') {
+      hMsg.textContent = rel.relSpeed <= C.DOCK_V ? 'In the ring, gently — hold it…' : 'IN THE RING TOO FAST — bleed speed or you will bounce off hard';
+      hMsg.className = rel.relSpeed <= C.DOCK_V ? 'ok' : 'danger';
+    } else {
+      hMsg.textContent = C.LEVELS[state.level].name;
+      hMsg.className = '';
+    }
+  }
+
+  function frame(ts) {
+    requestAnimationFrame(frame);
+    const dtReal = Math.min(0.05, (ts - lastTs) / 1000 || 0); lastTs = ts;
+    if (mode === 'playing' && !paused && state && state.status === 'flying') {
+      C.stepSim(state, ctrl(), dtReal * speed);
+      if (state.status !== 'flying') { mode = 'over'; setTimeout(endScreen, 450); }
+    }
+    draw(); hud();
+  }
+
+  window.addEventListener('keydown', e => {
+    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
+    keys[e.code] = true;
+    if (e.code === 'KeyR' && state) startLevel(state.level);
+    if (e.code === 'KeyP' && mode === 'playing') { paused = !paused; el('btnPause').textContent = paused ? 'Resume' : 'Pause'; }
+  });
+  window.addEventListener('keyup', e => { keys[e.code] = false; });
+  el('btnRetry').addEventListener('click', () => { if (state) startLevel(state.level); });
+  el('btnLevels').addEventListener('click', showMenu);
+  el('btnPause').addEventListener('click', () => {
+    if (mode !== 'playing') return;
+    paused = !paused; el('btnPause').textContent = paused ? 'Resume' : 'Pause';
+  });
+  el('btnSpeed').addEventListener('click', () => {
+    speed = speed === 1 ? 2 : speed === 2 ? 4 : 1;
+    el('btnSpeed').textContent = 'Speed ×' + speed;
+  });
+
+  showMenu();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

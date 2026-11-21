@@ -13,6 +13,7 @@ An Everyday Cool workshop about the physics you can hear — pitch, loudness, ec
 - **The tone bench** — a WebAudio sine oscillator on a logarithmic slider (30–4000 Hz) with Play/Stop. The readout names the nearest equal-tempered note (with its error in cents) and the tone's wavelength in air. A safety line (modest volume, especially on headphones) and an honesty line (small speakers reproduce the low end as harmonics, not the fundamental) ride on the bench.
 - **The decibel ladder** — nine everyday sounds at their typical published levels, and a comparison bench: pick any two and see the dB difference, the intensity multiple (×10 per +10 dB), the rule-of-thumb loudness multiple (×2 per +10 dB), and NIOSH's safe-exposure time for the louder sound (85 dB / 8 h, halving per +3 dB). The variability of real-world levels — distance above all — is stated on the page.
 - **Strings & skins** — a string bench from an open A string (110 Hz): length and tension sliders with presets for the octave (½ length), fifth (⅔), fourth (¾), and the tension octave (×4), the frequency computed as base ÷ length × √tension and the standing wave drawn to match. A companion card explains drum skins' inharmonic overtones — why drums sound unpitched, and why bells sound like bells.
+- **Tune the String** — the strings bench as a game, on its own page (`tune-the-string.html`): a target note plays, and you match it with the length and tension sliders under the real string formula f = (1/2L)·√(T/μ). Early rounds show a tuner needle; the later rounds take it away and leave the tuner's real method — play both notes together and tune until the beating between them dies. Its simplifications (an ideal string, μ fixed within a round, equal-tempered targets, synthesized stand-in voices) and its proof are recorded in THIRD-PARTY.md.
 - **Echoes & thunder** — an echo-ranging bench (return time → wall distance, temperature-adjusted speed of sound) and a thunder bench that sets the seconds÷3 rule of thumb beside the computed distance and names the rule's small, safe error.
 - **Sound travels** — time a distance through air (343 m/s), water (1,480 m/s), and steel (5,960 m/s), with the railway-listening worked example: through the rail, the train arrives seconds early.
 - **The voice you hear** — two cards on bone conduction: why your recorded voice sounds like a stranger (you hear yourself by air *and* bone; recordings keep only the air), and bone-conduction headphones as the same channel used on purpose. Links to Everyday Body.
@@ -40,6 +41,7 @@ The rules (pitch and note naming, decibel arithmetic and the NIOSH halving rule,
 ## Files
 
 - `index.html` — the room itself
+- `tune-the-string.html` — Tune the String, the pitch-matching game (self-contained; see THIRD-PARTY.md)
 - `sound.js` — pure rules: pitch, decibels, echoes, strings, intervals, rhythm, the circle, voice recipes, the MIDI reader/writer
 - `app.js` — the wiring: WebAudio benches, the piano and its voices, Web MIDI, playback, recording
 - `style.css` — the room's styling (shared Everyday Cool room styling plus the benches, piano, measure bar, and circle)
