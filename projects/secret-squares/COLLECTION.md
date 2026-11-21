@@ -9,3 +9,5 @@ Original files, licenses, and third-party credits are preserved. Local changes t
 [Back to the collection](../../index.html) · [Contribution guide](../../CONTRIBUTING.md)
 
 Documentation update (20 November 2026): at Steven Powell's direction, `index.html` gained a professional Documentation & source panel with the room README, GitHub source, sources and limitations, workshop download, collection documentation index, and curator profile link. Changed files: `index.html`, `COLLECTION.md`. The addition is documentation and navigation only; no lesson content or workshop behaviour was changed.
+
+Cross-link (21 November 2026): at Steven Powell's direction, `index.html` gained a card in the UPC section — "The other catalog in your life" — pointing across to A Library's Dewey Decimal game (`../a-library/dewey-game.html`) and its lesson: a call number is a code that is a key into a catalog, the barcode's own trick a century older, so the game is shelved with the codes material as well as in the Library. Changed files: `index.html`, `COLLECTION.md`.

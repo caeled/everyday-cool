@@ -12,7 +12,7 @@ Build, test, observe, fix, repeat. Every activity follows **Sense → Think → 
 - [Java reference](java-reference.html): 38 searchable entries about syntax, objects, collections, robot math, timing, validation, and debugging, with filters, common mistakes, lesson links, and official documentation links.
 - [Example code](examples.html): eight complete Java programs with download/copy controls, expected output, and suggested experiments. Java 17-compatible; no SDK or dependencies.
 - [Discover](discover.html): child, teen, and adult competition videos, credited manufacturing photographs, and a Python comparison.
-- [Games that teach — and show their work](index.html#game-lessons): a home-page shelf of six Everyday Cool game lessons — Laser & Mirrors, Tune the String, Ballast, Stage It, Docking, and Shake Table. Each game keeps a back door open: a page explaining its physics and showing how it was coded. The shelf is arranged gentlest first for young builders.
+- [Games that teach — and show their work](index.html#game-lessons): a home-page shelf of ten Everyday Cool game lessons — Laser & Mirrors, Tune the String, Ballast, Stage It, Docking, Shake Table, Shelf It!, Don't Cook the LED, Wire the Adder, and Find the Fault. Each game keeps a back door open: a page explaining its physics and showing how it was coded. The shelf is arranged gentlest first for young builders.
 
 All nine introductory modules are available. These are teaching prototypes, not a classroom curriculum validated by student trials. See the [course outline](COURSE_OUTLINE.md) for outcomes and a first-pilot checklist.
 

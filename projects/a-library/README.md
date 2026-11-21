@@ -6,6 +6,8 @@ Open `a-library.html` in a browser or double-click `Launch.cmd`. No installation
 
 A reference shelf of 43 links across books, reference, science, history, Earth and sky, and images and music. The directory works offline; the linked collections need internet and retain their own access rules.
 
+The room also carries a Dewey Decimal card — the ten main classes and the system's vagaries in plain language — and **Shelf It!** (`dewey-game.html`), Steven Powell's own game for the room: here is a book, which section does it shelve in; here is a number, what lives there. Its lesson (`dewey-game-lesson.html`) prints the full catalog of the hundred divisions and walks from the screen to the shelf. Secret Squares, the codes room, links across to it — a call number is a code like any other there.
+
 Original code: MIT. Original educational text: CC BY 4.0. External materials retain their own rights; see THIRD-PARTY.md.
 
 Collection navigation and relative download links work when this folder is part of the complete Everyday Cool package. The opening page and core local content also work when this project ZIP is extracted on its own.
