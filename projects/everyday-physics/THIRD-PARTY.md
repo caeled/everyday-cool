@@ -4,6 +4,10 @@
 
 All lesson/Help text and code are original work written for this workshop (code MIT, lessons CC BY 4.0). The banner image is AI-generated art made for this room. No third-party code, fonts, or data files are bundled in this folder.
 
+## Supplied pages — the Physics Game Table (added 20 November 2026)
+
+The Game Table portal page (`physics-game-table.html`), the twelve game pages it deals to (`lunar-lander-cave.html`, `hill-climb-suspension.html`, `jelly-softbody-platformer.html`, `falling-sand-sandbox.html`, `pendulum-grapple-swinger.html`, `air-hockey-curl.html`, `ragdoll-archery-duel.html`, `siege-demolition.html`, `bridge-builder-truss.html`, `orbital-pinball.html`, `marble-run.html`, `orbital-gravity-golf.html`), and its hero image (`gravity-well-illustration.jpg`) were built with Google Antigravity and supplied by Steven Powell on 20 November 2026; he is their supplier and curator for the collection, and they are integrated as-is. The only edits are on the portal page: its Tensor-Tris card points at the Games Room copy, the illustration sits as the hero, and a footer line links back to this room, the Games Room, and the collection home. The game pages themselves were not edited. All of them are self-contained — no external scripts, fonts, or network calls — checked at integration and asserted in `test.cjs`. The expanded pool table the portal also lists was already in this folder (byte-identical in the supplied ZIP), and Tensor-Tris itself lives in the Games Room.
+
 ## Data sources (facts, not files)
 
 - **Reflection** — a bounce off a flat surface keeps the velocity component parallel to the surface and reverses the perpendicular component, so the angle to the surface is the same in and out. The standard treatment in every introductory mechanics text; the pool table computes it, and `test.cjs` re-checks the equality on both axes.
@@ -19,7 +23,7 @@ PhET Projectile Motion and PhET Collision Lab (phet.colorado.edu) · The Physics
 
 ## Nothing is called at view time
 
-This page makes no network calls at all: the games and benches run entirely in the browser from the rules in `phys.js`, and the shelf links are only followed when a visitor presses one.
+This page makes no network calls at all: the games and benches run entirely in the browser from the rules in `phys.js`, and the shelf links are only followed when a visitor presses one. The Game Table and its game pages are self-contained in the same way.
 
 ## Limitations
 

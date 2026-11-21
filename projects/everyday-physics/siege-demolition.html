@@ -1,0 +1,1043 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Siege Demolition — Rigid-Body Fracture &amp; Ballistics</title>
+<style>
+  :root {
+    --bg: #0b0e17;
+    --panel: #131a28;
+    --panel-alt: #1b2437;
+    --border: #2a3750;
+    --text: #eaf0fa;
+    --muted: #8fa1bd;
+    --accent: #38bdf8;
+    --amber: #f59e0b;
+    --emerald: #34d399;
+    --rose: #f43f5e;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: radial-gradient(circle at 40% 0%, #23223b 0%, var(--bg) 68%);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif;
+    display: flex;
+    flex-direction: column;
+    user-select: none;
+    overflow-x: hidden;
+  }
+
+  header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 9px 16px;
+    background: rgba(11, 14, 23, 0.94);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .brand-badge {
+    width: 32px; height: 32px; border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #fb923c, #991b1b 75%);
+    border: 2px solid #fdba74;
+    display: grid; place-items: center; font-size: 16px;
+    box-shadow: 0 0 12px rgba(249, 115, 22, 0.45);
+  }
+  .brand h1 { margin: 0; font-size: 15px; font-weight: 700; }
+  .brand small { display: block; font-size: 11px; color: var(--muted); }
+
+  .levels, .top-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+
+  .btn {
+    background: var(--panel-alt);
+    color: var(--text);
+    border: 1px solid var(--border);
+    padding: 6px 11px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.14s ease;
+  }
+  .btn:hover { border-color: var(--amber); background: #26314a; color: #fff; }
+  .btn.active { background: rgba(245,158,11,0.22); border-color: var(--amber); color: #fde68a; }
+  .btn.primary { background: linear-gradient(135deg, #ea580c, #dc2626); border-color: transparent; color: #fff; }
+  .btn.emerald { background: linear-gradient(135deg, #059669, #10b981); border-color: transparent; color: #fff; }
+
+  main {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 12px 16px 18px;
+    flex-wrap: wrap;
+  }
+
+  .stage-col {
+    flex: 1;
+    min-width: 320px;
+    max-width: 1020px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .canvas-frame {
+    position: relative;
+    border-radius: 14px;
+    padding: 5px;
+    background: linear-gradient(160deg, #2a334e, #0d121f);
+    border: 1px solid #324263;
+    box-shadow: 0 18px 46px rgba(0,0,0,0.62);
+  }
+
+  canvas {
+    display: block;
+    width: 100%;
+    height: auto;
+    aspect-ratio: 1000 / 580;
+    border-radius: 10px;
+    background: #0b1120;
+    cursor: crosshair;
+    touch-action: none;
+  }
+
+  .overlay {
+    position: absolute;
+    inset: 5px;
+    border-radius: 10px;
+    background: rgba(9, 13, 22, 0.78);
+    backdrop-filter: blur(4px);
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: 10px;
+  }
+  .overlay.visible { display: flex; }
+  .overlay h2 { margin: 0; font-size: 32px; }
+  .overlay p { margin: 0; color: #cbd5e1; font-size: 14px; }
+
+  .ammo-bar {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 7px;
+  }
+  .ammo-btn {
+    padding: 8px 6px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--panel);
+    color: #d6e1f2;
+    font-size: 11.5px;
+    font-weight: 700;
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.14s;
+  }
+  .ammo-btn small { display: block; font-weight: 400; font-size: 10px; color: var(--muted); margin-top: 2px; }
+  .ammo-btn:hover { border-color: var(--amber); background: #1e283c; }
+  .ammo-btn.active { background: rgba(245,158,11,0.2); border-color: var(--amber); color: #fef08a; }
+
+  .sidebar { width: 270px; display: flex; flex-direction: column; gap: 12px; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 13px; padding: 12px 13px; }
+  .card h3 {
+    margin: 0 0 9px; font-size: 11px; text-transform: uppercase;
+    letter-spacing: 0.8px; color: var(--muted); display: flex; justify-content: space-between;
+  }
+
+  .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+  .stat { background: var(--panel-alt); border: 1px solid #26334a; border-radius: 8px; padding: 7px 8px; }
+  .stat .k { font-size: 10px; color: var(--muted); text-transform: uppercase; }
+  .stat .v { font-size: 17px; font-weight: 800; font-family: ui-monospace, monospace; margin-top: 2px; }
+
+  .toggle-row { display: flex; align-items: center; justify-content: space-between; font-size: 12px; color: #d6e0f0; margin-bottom: 7px; cursor: pointer; }
+  .toggle-row input { accent-color: var(--amber); width: 15px; height: 15px; }
+
+  .mat-legend { font-size: 11.5px; line-height: 1.6; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <div class="brand-badge">💣</div>
+    <div>
+      <h1>Siege Slingshot Demolition</h1>
+      <small>Rigid-Body Impulse · Structural Fracture · Shockwaves · Wind Ballistics</small>
+    </div>
+  </div>
+
+  <div class="levels">
+    <button class="btn active" data-lvl="0">1. Outpost</button>
+    <button class="btn" data-lvl="1">2. Twin Towers</button>
+    <button class="btn" data-lvl="2">3. Glass Pyramid</button>
+    <button class="btn" data-lvl="3">4. Windy Bunker</button>
+    <button class="btn" data-lvl="4">5. Grand Keep</button>
+  </div>
+
+  <div class="top-actions">
+    <button class="btn" id="btnSound">🔊 Audio</button>
+    <button class="btn primary" id="btnReset">↺ Rebuild (R)</button>
+  </div>
+</header>
+
+<main>
+  <section class="stage-col">
+    <div class="canvas-frame">
+      <canvas id="siegeCanvas" width="1000" height="580"></canvas>
+      <div class="overlay" id="endOverlay">
+        <h2 id="endTitle" style="color:var(--emerald)">FORTRESS DEMOLISHED!</h2>
+        <p id="endBody">Score: 0</p>
+        <div style="display:flex;gap:8px;margin-top:6px;">
+          <button class="btn" id="btnReplay">↺ Replay</button>
+          <button class="btn emerald" id="btnNext">Next Fortress ▶</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="ammo-bar" id="ammoBar">
+      <button class="ammo-btn active" data-ammo="boulder">🪨 1. Iron Boulder<small>Heavy momentum smash</small></button>
+      <button class="ammo-btn" data-ammo="cluster">✨ 2. Cluster Shot<small>Tap Space mid-air to split!</small></button>
+      <button class="ammo-btn" data-ammo="bomb">💥 3. Blast Bomb<small>Space / impact shockwave</small></button>
+      <button class="ammo-btn" data-ammo="piercer">⚡ 4. Drill Lance<small>High-speed wood/glass cut</small></button>
+    </div>
+  </section>
+
+  <aside class="sidebar">
+    <div class="card">
+      <h3>Siege Telemetry <span id="windBadge" style="color:var(--accent);font-family:monospace;">WIND 0</span></h3>
+      <div class="stat-grid">
+        <div class="stat"><div class="k">Score</div><div class="v" id="valScore" style="color:var(--amber)">0</div></div>
+        <div class="stat"><div class="k">Targets</div><div class="v" id="valTargets" style="color:var(--rose)">0</div></div>
+        <div class="stat"><div class="k">Shots Left</div><div class="v" id="valShots" style="color:var(--emerald)">5</div></div>
+        <div class="stat"><div class="k">Impact KE</div><div class="v" id="valKE" style="color:var(--accent)">0</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Physics Options</h3>
+      <label class="toggle-row">
+        <span>Show Aim Trajectory Arc</span>
+        <input type="checkbox" id="chkArc" checked />
+      </label>
+      <label class="toggle-row">
+        <span>Show Structural Damage Bars</span>
+        <input type="checkbox" id="chkHP" checked />
+      </label>
+      <div style="font-size:11px;color:var(--muted);line-height:1.45;margin-top:6px;">
+        Drag back from the slingshot on the left to aim &amp; fire! Press <strong>Space</strong> (or click) mid-flight to trigger Cluster Split or Detonate Bomb!
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Material Properties</h3>
+      <div class="mat-legend">
+        <div><span style="color:#7dd3fc">■</span> <strong>Glass</strong> — Fragile, shatters easily</div>
+        <div><span style="color:#d97706">■</span> <strong>Timber</strong> — Medium strength &amp; mass</div>
+        <div><span style="color:#94a3b8">■</span> <strong>Stone</strong> — Dense, high fracture limit</div>
+        <div><span style="color:#ef4444">■</span> <strong>TNT Crate</strong> — Chain-reaction blast!</div>
+        <div><span style="color:#34d399">●</span> <strong>Target Core</strong> — Destroy all to win</div>
+      </div>
+    </div>
+  </aside>
+</main>
+
+<script>
+(() => {
+  const canvas = document.getElementById('siegeCanvas');
+  const ctx = canvas.getContext('2d');
+  const W = 1000, H = 580;
+  const GROUND_Y = 530;
+  const SLING = { x: 165, y: 425 };
+
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = W * dpr;
+  canvas.height = H * dpr;
+  ctx.scale(dpr, dpr);
+
+  // ---------- Audio ----------
+  let ac = null, soundOn = true;
+  function ensureAudio() {
+    if (!soundOn) return null;
+    if (!ac) { const AC = window.AudioContext || window.webkitAudioContext; if (AC) ac = new AC(); }
+    if (ac && ac.state === 'suspended') ac.resume();
+    return ac;
+  }
+  function tone(f, dur = 0.1, type = 'triangle', vol = 0.12, f2 = null) {
+    const a = ensureAudio(); if (!a) return;
+    const t = a.currentTime;
+    const o = a.createOscillator(), g = a.createGain();
+    o.type = type; o.frequency.setValueAtTime(f, t);
+    if (f2) o.frequency.exponentialRampToValueAtTime(Math.max(22, f2), t + dur);
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0008, t + dur);
+    o.connect(g); g.connect(a.destination);
+    o.start(t); o.stop(t + dur + 0.01);
+  }
+  const sfxLaunch = () => tone(190, 0.14, 'triangle', 0.14, 90);
+  const sfxWood = () => tone(165, 0.08, 'square', 0.08, 80);
+  const sfxGlass = () => tone(980, 0.09, 'sine', 0.11, 1600);
+  const sfxBoom = () => { tone(95, 0.42, 'sawtooth', 0.18, 25); tone(60, 0.48, 'square', 0.12, 20); };
+  const sfxTarget = () => { tone(587, 0.1, 'triangle', 0.12, 880); setTimeout(() => tone(880, 0.14, 'sine', 0.11), 65); };
+  const sfxWin = () => [440, 554, 659, 880].forEach((f, i) => setTimeout(() => tone(f, 0.2, 'triangle', 0.13), i * 80));
+
+  // ---------- Material Table ----------
+  const MATS = {
+    glass: { density: 0.65, hp: 38,  fill: 'rgba(125,211,252,0.45)', stroke: '#bae6fd' },
+    wood:  { density: 1.0,  hp: 82,  fill: '#b45309', stroke: '#fde68a' },
+    stone: { density: 2.1,  hp: 175, fill: '#475569', stroke: '#cbd5e1' },
+    tnt:   { density: 0.9,  hp: 26,  fill: '#dc2626', stroke: '#fef08a' }
+  };
+
+  // ---------- Fortresses ----------
+  function makeBlock(cx, cy, w, h, mat) {
+    const m = MATS[mat];
+    const mass = Math.max(0.6, (w * h) / 1400 * m.density);
+    return {
+      x: cx, y: cy, w, h, vx: 0, vy: 0, angle: 0, omega: 0,
+      mass, invMass: 1 / mass,
+      hp: m.hp, maxHp: m.hp, mat,
+      awake: false, dead: false
+    };
+  }
+  function makeTarget(cx, cy) {
+    return { x: cx, y: cy, r: 16, vx: 0, vy: 0, hp: 32, maxHp: 32, awake: false, dead: false };
+  }
+
+  const LEVELS = [
+    {
+      name: 'Timber Outpost', wind: 0, shots: 5,
+      build: () => {
+        const b = [
+          makeBlock(660, 485, 22, 90, 'wood'),
+          makeBlock(780, 485, 22, 90, 'wood'),
+          makeBlock(720, 429, 156, 22, 'wood'),
+          makeBlock(680, 385, 20, 66, 'glass'),
+          makeBlock(760, 385, 20, 66, 'glass'),
+          makeBlock(720, 342, 120, 20, 'wood')
+        ];
+        const t = [makeTarget(720, 514), makeTarget(720, 402), makeTarget(720, 316)];
+        return { blocks: b, targets: t };
+      }
+    },
+    {
+      name: 'Twin Stone Towers', wind: -22, shots: 5,
+      build: () => {
+        const b = [
+          // Left tower
+          makeBlock(585, 480, 24, 100, 'stone'),
+          makeBlock(665, 480, 24, 100, 'stone'),
+          makeBlock(625, 419, 114, 22, 'wood'),
+          makeBlock(625, 380, 36, 36, 'tnt'),
+          // Right tower
+          makeBlock(775, 480, 24, 100, 'stone'),
+          makeBlock(855, 480, 24, 100, 'stone'),
+          makeBlock(815, 419, 114, 22, 'wood'),
+          makeBlock(790, 370, 20, 76, 'wood'),
+          makeBlock(840, 370, 20, 76, 'wood'),
+          makeBlock(815, 322, 96, 20, 'stone'),
+          // Connecting bridge
+          makeBlock(720, 419, 86, 18, 'glass')
+        ];
+        const t = [makeTarget(625, 514), makeTarget(720, 394), makeTarget(815, 514), makeTarget(815, 392)];
+        return { blocks: b, targets: t };
+      }
+    },
+    {
+      name: 'Glass Pyramid', wind: 35, shots: 5,
+      build: () => {
+        const b = [
+          makeBlock(620, 490, 22, 80, 'glass'),
+          makeBlock(700, 490, 22, 80, 'glass'),
+          makeBlock(780, 490, 22, 80, 'glass'),
+          makeBlock(860, 490, 22, 80, 'glass'),
+          makeBlock(660, 439, 106, 22, 'wood'),
+          makeBlock(820, 439, 106, 22, 'wood'),
+          makeBlock(740, 495, 38, 38, 'tnt'),
+          makeBlock(695, 392, 20, 72, 'glass'),
+          makeBlock(785, 392, 20, 72, 'glass'),
+          makeBlock(740, 346, 126, 20, 'wood'),
+          makeBlock(740, 305, 36, 36, 'tnt')
+        ];
+        const t = [makeTarget(660, 514), makeTarget(820, 514), makeTarget(740, 414), makeTarget(740, 270)];
+        return { blocks: b, targets: t };
+      }
+    },
+    {
+      name: 'Windy Bunker', wind: -75, shots: 6,
+      build: () => {
+        const b = [
+          // Front stone shield wall
+          makeBlock(575, 455, 28, 150, 'stone'),
+          // Rear bunker
+          makeBlock(665, 485, 24, 90, 'stone'),
+          makeBlock(785, 485, 24, 90, 'stone'),
+          makeBlock(885, 485, 24, 90, 'stone'),
+          makeBlock(725, 429, 150, 22, 'stone'),
+          makeBlock(835, 429, 130, 22, 'wood'),
+          makeBlock(725, 392, 36, 36, 'tnt'),
+          makeBlock(835, 380, 20, 76, 'glass'),
+          makeBlock(875, 380, 20, 76, 'glass'),
+          makeBlock(855, 332, 86, 20, 'wood')
+        ];
+        const t = [makeTarget(725, 514), makeTarget(835, 514), makeTarget(855, 402)];
+        return { blocks: b, targets: t };
+      }
+    },
+    {
+      name: 'Grand Keep', wind: 48, shots: 6,
+      build: () => {
+        const b = [
+          makeBlock(575, 485, 24, 90, 'stone'),
+          makeBlock(675, 485, 24, 90, 'stone'),
+          makeBlock(775, 485, 24, 90, 'stone'),
+          makeBlock(875, 485, 24, 90, 'stone'),
+          makeBlock(625, 429, 128, 22, 'wood'),
+          makeBlock(725, 429, 128, 22, 'stone'),
+          makeBlock(825, 429, 128, 22, 'wood'),
+          makeBlock(625, 511, 36, 36, 'tnt'),
+          makeBlock(825, 511, 36, 36, 'tnt'),
+          // Second floor
+          makeBlock(655, 378, 22, 80, 'wood'),
+          makeBlock(795, 378, 22, 80, 'wood'),
+          makeBlock(725, 327, 170, 22, 'stone'),
+          // Third floor spire
+          makeBlock(695, 282, 18, 68, 'glass'),
+          makeBlock(755, 282, 18, 68, 'glass'),
+          makeBlock(725, 238, 102, 20, 'wood')
+        ];
+        const t = [
+          makeTarget(725, 514), makeTarget(625, 402), makeTarget(825, 402),
+          makeTarget(725, 402), makeTarget(725, 300)
+        ];
+        return { blocks: b, targets: t };
+      }
+    }
+  ];
+
+  // ---------- State ----------
+  let levelIdx = 0;
+  let blocks = [];
+  let targets = [];
+  let projectiles = [];
+  let particles = [];
+  let popups = [];
+  let wind = 0;
+  let shotsLeft = 5;
+  let score = 0;
+  let ammoType = 'boulder';
+  let showArc = true, showHP = true;
+  let dragging = false;
+  let pullPos = { x: SLING.x, y: SLING.y };
+  let shakeTime = 0, shakeMag = 0;
+  let ended = false;
+  let settleTimer = 0;
+  let lastKE = 0;
+
+  const GRAVITY = 610;
+
+  function loadLevel(idx) {
+    levelIdx = (idx + LEVELS.length) % LEVELS.length;
+    const lv = LEVELS[levelIdx];
+    const data = lv.build();
+    blocks = data.blocks;
+    targets = data.targets;
+    projectiles = [];
+    particles = [];
+    popups = [];
+    wind = lv.wind;
+    shotsLeft = lv.shots;
+    score = 0;
+    ended = false;
+    settleTimer = 0;
+    lastKE = 0;
+    dragging = false;
+    pullPos = { x: SLING.x, y: SLING.y };
+
+    document.querySelectorAll('.levels .btn').forEach(b => b.classList.toggle('active', Number(b.dataset.lvl) === levelIdx));
+    document.getElementById('endOverlay').classList.remove('visible');
+    const dir = wind > 0 ? '→' : wind < 0 ? '←' : '·';
+    document.getElementById('windBadge').textContent = `WIND ${dir} ${Math.abs(wind)}`;
+    updateHUD();
+  }
+
+  function updateHUD() {
+    document.getElementById('valScore').textContent = score.toLocaleString();
+    document.getElementById('valTargets').textContent = targets.filter(t => !t.dead).length;
+    document.getElementById('valShots').textContent = shotsLeft;
+    document.getElementById('valKE').textContent = Math.round(lastKE);
+  }
+
+  function spawnDebris(x, y, col, count = 14, spd = 220) {
+    for (let i = 0; i < count; i++) {
+      const a = Math.random() * 6.28, s = (0.25 + Math.random() * 0.85) * spd;
+      particles.push({
+        x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 40,
+        col, r: 2 + Math.random() * 3.5, life: 0.55 + Math.random() * 0.4, maxLife: 0.95
+      });
+    }
+  }
+
+  function wakeAllNear(x, y, radius) {
+    for (const b of blocks) {
+      if (!b.dead && Math.hypot(b.x - x, b.y - y) < radius) b.awake = true;
+    }
+    for (const t of targets) {
+      if (!t.dead && Math.hypot(t.x - x, t.y - y) < radius) t.awake = true;
+    }
+  }
+
+  function triggerExplosion(cx, cy, radius = 145, force = 620) {
+    sfxBoom();
+    shakeTime = 0.35; shakeMag = 9;
+    spawnDebris(cx, cy, '#f97316', 32, 340);
+    spawnDebris(cx, cy, '#fef08a', 18, 260);
+    wakeAllNear(cx, cy, radius * 2.2);
+
+    for (const b of blocks) {
+      if (b.dead) continue;
+      const dx = b.x - cx, dy = b.y - cy;
+      const d = Math.hypot(dx, dy) || 1;
+      if (d < radius) {
+        const f = (1 - d / radius);
+        b.awake = true;
+        b.vx += (dx / d) * force * f * b.invMass;
+        b.vy += ((dy / d) * force - 160) * f * b.invMass;
+        b.omega += (Math.random() - 0.5) * 9 * f;
+        damageBlock(b, 145 * f);
+      }
+    }
+    for (const t of targets) {
+      if (t.dead) continue;
+      const dx = t.x - cx, dy = t.y - cy;
+      const d = Math.hypot(dx, dy) || 1;
+      if (d < radius) {
+        const f = 1 - d / radius;
+        t.awake = true;
+        t.vx += (dx / d) * force * f;
+        t.vy += ((dy / d) * force - 120) * f;
+        damageTarget(t, 120 * f);
+      }
+    }
+  }
+
+  function damageBlock(b, amt) {
+    if (b.dead || amt < 5) return;
+    b.hp -= amt;
+    if (b.hp <= 0) {
+      b.dead = true;
+      wakeAllNear(b.x, b.y, 190);
+      score += b.mat === 'stone' ? 200 : b.mat === 'tnt' ? 300 : 120;
+      if (b.mat === 'glass') sfxGlass(); else if (b.mat !== 'tnt') sfxWood();
+      spawnDebris(b.x, b.y, MATS[b.mat].stroke, 16, 200);
+      if (b.mat === 'tnt') triggerExplosion(b.x, b.y, 155, 680);
+      updateHUD();
+    }
+  }
+
+  function damageTarget(t, amt) {
+    if (t.dead || amt < 4) return;
+    t.hp -= amt;
+    if (t.hp <= 0) {
+      t.dead = true;
+      score += 500;
+      sfxTarget();
+      spawnDebris(t.x, t.y, '#34d399', 22, 230);
+      popups.push({ x: t.x, y: t.y - 16, text: '+500', color: '#34d399', life: 1.0, maxLife: 1.0 });
+      updateHUD();
+    }
+  }
+
+  function fireSpecial() {
+    for (const p of projectiles) {
+      if (p.usedSpecial || p.dead) continue;
+      if (p.kind === 'cluster') {
+        p.usedSpecial = true;
+        tone(620, 0.12, 'triangle', 0.13, 1100);
+        [-0.22, 0.22].forEach(da => {
+          const ang = Math.atan2(p.vy, p.vx) + da;
+          const spd = Math.hypot(p.vx, p.vy) * 1.08;
+          projectiles.push({
+            kind: 'shard', x: p.x, y: p.y, vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd,
+            r: 9, mass: 1.4, life: 5, usedSpecial: true, trail: [], dead: false
+          });
+        });
+      } else if (p.kind === 'bomb') {
+        p.usedSpecial = true;
+        p.dead = true;
+        triggerExplosion(p.x, p.y, 165, 720);
+      }
+    }
+  }
+
+  // ---------- Physics Step ----------
+  function step(dt) {
+    // 1. Projectiles
+    for (const p of projectiles) {
+      if (p.dead) continue;
+      p.life -= dt;
+      if (p.life <= 0) { p.dead = true; continue; }
+
+      const windFactor = p.kind === 'piercer' ? 0.35 : 1.0;
+      p.vx += wind * windFactor * dt;
+      p.vy += GRAVITY * dt;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+
+      // Ground bounce
+      if (p.y + p.r > GROUND_Y) {
+        p.y = GROUND_Y - p.r;
+        p.vy *= -0.45;
+        p.vx *= 0.82;
+        if (p.kind === 'bomb' && !p.usedSpecial) {
+          p.usedSpecial = true; p.dead = true; triggerExplosion(p.x, p.y, 160, 700);
+        }
+      }
+
+      // Collide projectile against blocks
+      for (const b of blocks) {
+        if (b.dead) continue;
+        // Transform circle center into block's local space
+        const c = Math.cos(-b.angle), s = Math.sin(-b.angle);
+        const dx = p.x - b.x, dy = p.y - b.y;
+        const lx = dx * c - dy * s, ly = dx * s + dy * c;
+        const hw = b.w / 2, hh = b.h / 2;
+        const cx = Math.max(-hw, Math.min(hw, lx));
+        const cy = Math.max(-hh, Math.min(hh, ly));
+        const dlx = lx - cx, dly = ly - cy;
+        const dist = Math.hypot(dlx, dly);
+        if (dist < p.r) {
+          const spd = Math.hypot(p.vx - b.vx, p.vy - b.vy);
+          lastKE = 0.5 * p.mass * spd * spd / 1000;
+          wakeAllNear(b.x, b.y, 260);
+          b.awake = true;
+
+          if (p.kind === 'bomb' && !p.usedSpecial) {
+            p.usedSpecial = true; p.dead = true; triggerExplosion(p.x, p.y, 165, 720);
+            break;
+          }
+
+          // World normal
+          let nlx = dist > 1e-4 ? dlx / dist : 0;
+          let nly = dist > 1e-4 ? dly / dist : -1;
+          const cw = Math.cos(b.angle), sw = Math.sin(b.angle);
+          const nx = nlx * cw - nly * sw, ny = nlx * sw + nly * cw;
+
+          const dmgMult = p.kind === 'piercer' && b.mat !== 'stone' ? 1.8 : p.kind === 'boulder' ? 1.25 : 0.9;
+          damageBlock(b, spd * 0.22 * p.mass * dmgMult);
+
+          if (!b.dead) {
+            p.x += nx * (p.r - dist);
+            p.y += ny * (p.r - dist);
+            const rvx = p.vx - b.vx, rvy = p.vy - b.vy;
+            const vn = rvx * nx + rvy * ny;
+            if (vn < 0) {
+              const j = -(1 + 0.35) * vn / (1 / p.mass + b.invMass);
+              p.vx += (j / p.mass) * nx;
+              p.vy += (j / p.mass) * ny;
+              b.vx -= (j * b.invMass) * nx;
+              b.vy -= (j * b.invMass) * ny;
+              const rx = (p.x - nx * p.r) - b.x, ry = (p.y - ny * p.r) - b.y;
+              b.omega -= (rx * ny - ry * nx) * j * 0.0008 * b.invMass;
+              sfxWood();
+            }
+          } else {
+            // Smashed right through! Retain most momentum!
+            p.vx *= 0.84; p.vy *= 0.84;
+          }
+        }
+      }
+
+      // Collide projectile against targets
+      for (const t of targets) {
+        if (t.dead) continue;
+        const d = Math.hypot(p.x - t.x, p.y - t.y);
+        if (d < p.r + t.r) {
+          const spd = Math.hypot(p.vx - t.vx, p.vy - t.vy);
+          t.awake = true;
+          t.vx += p.vx * 0.5; t.vy += p.vy * 0.5;
+          damageTarget(t, spd * 0.35 * p.mass);
+        }
+      }
+    }
+
+    // 2. Awake Blocks
+    for (const b of blocks) {
+      if (b.dead || !b.awake) continue;
+      b.vy += GRAVITY * dt;
+      b.x += b.vx * dt;
+      b.y += b.vy * dt;
+      b.angle += b.omega * dt;
+      b.vx *= Math.pow(0.992, dt * 60);
+      b.omega *= Math.pow(0.95, dt * 60);
+
+      // Compute lowest corner against ground
+      const hw = b.w / 2, hh = b.h / 2;
+      const c = Math.cos(b.angle), s = Math.sin(b.angle);
+      const extY = Math.abs(hw * s) + Math.abs(hh * c);
+      if (b.y + extY > GROUND_Y) {
+        const impact = b.vy;
+        b.y = GROUND_Y - extY;
+        if (impact > 185) damageBlock(b, (impact - 150) * 0.25);
+        b.vy *= -0.15;
+        b.vx *= 0.82;
+        // Gently settle angle toward nearest 90° increment on ground
+        const nearest = Math.round(b.angle / (Math.PI / 2)) * (Math.PI / 2);
+        b.omega += (nearest - b.angle) * 8 * dt;
+      }
+    }
+
+    // Simple AABB-approx block-to-block impulse & stacking support
+    for (let i = 0; i < blocks.length; i++) {
+      const a = blocks[i]; if (a.dead) continue;
+      for (let j = i + 1; j < blocks.length; j++) {
+        const b = blocks[j]; if (b.dead) continue;
+        if (!a.awake && !b.awake) continue;
+        const ac = Math.abs(Math.cos(a.angle)), as = Math.abs(Math.sin(a.angle));
+        const bc = Math.abs(Math.cos(b.angle)), bs = Math.abs(Math.sin(b.angle));
+        const ahw = (a.w * ac + a.h * as) * 0.5, ahh = (a.w * as + a.h * ac) * 0.5;
+        const bhw = (b.w * bc + b.h * bs) * 0.5, bhh = (b.w * bs + b.h * bc) * 0.5;
+        const ox = (ahw + bhw) - Math.abs(b.x - a.x);
+        const oy = (ahh + bhh) - Math.abs(b.y - a.y);
+        if (ox > 0 && oy > 0) {
+          a.awake = true; b.awake = true;
+          let nx = 0, ny = 0, pen = 0;
+          if (ox < oy) { nx = b.x > a.x ? 1 : -1; pen = ox; }
+          else { ny = b.y > a.y ? 1 : -1; pen = oy; }
+          const invSum = a.invMass + b.invMass;
+          a.x -= nx * pen * (a.invMass / invSum) * 0.8;
+          a.y -= ny * pen * (a.invMass / invSum) * 0.8;
+          b.x += nx * pen * (b.invMass / invSum) * 0.8;
+          b.y += ny * pen * (b.invMass / invSum) * 0.8;
+
+          const rvx = b.vx - a.vx, rvy = b.vy - a.vy;
+          const vn = rvx * nx + rvy * ny;
+          if (vn < 0) {
+            const j = -(1 + 0.18) * vn / invSum;
+            a.vx -= j * a.invMass * nx; a.vy -= j * a.invMass * ny;
+            b.vx += j * b.invMass * nx; b.vy += j * b.invMass * ny;
+            if (-vn > 160) {
+              damageBlock(a, (-vn - 130) * 0.22);
+              damageBlock(b, (-vn - 130) * 0.22);
+            }
+          }
+        }
+      }
+    }
+
+    // 3. Targets
+    for (const t of targets) {
+      if (t.dead || !t.awake) continue;
+      t.vy += GRAVITY * dt;
+      t.x += t.vx * dt; t.y += t.vy * dt;
+      t.vx *= Math.pow(0.985, dt * 60);
+      if (t.y + t.r > GROUND_Y) {
+        if (t.vy > 165) damageTarget(t, (t.vy - 130) * 0.45);
+        t.y = GROUND_Y - t.r; t.vy *= -0.3; t.vx *= 0.8;
+      }
+      // Block crushing target
+      for (const b of blocks) {
+        if (b.dead) continue;
+        const hw = b.w * 0.5, hh = b.h * 0.5;
+        const cx = Math.max(b.x - hw, Math.min(b.x + hw, t.x));
+        const cy = Math.max(b.y - hh, Math.min(b.y + hh, t.y));
+        const dx = t.x - cx, dy = t.y - cy, d = Math.hypot(dx, dy);
+        if (d < t.r && d > 1e-4) {
+          const nx = dx / d, ny = dy / d;
+          t.x += nx * (t.r - d); t.y += ny * (t.r - d);
+          const relSpd = Math.hypot(b.vx - t.vx, b.vy - t.vy);
+          if (relSpd > 85) damageTarget(t, relSpd * 0.32 * b.mass);
+          t.vx = b.vx * 0.7; t.vy = b.vy * 0.7;
+        }
+      }
+    }
+  }
+
+  // ---------- Render ----------
+  function render() {
+    ctx.save();
+    if (shakeTime > 0) {
+      ctx.translate((Math.random() - 0.5) * shakeMag, (Math.random() - 0.5) * shakeMag);
+    }
+
+    // Sky
+    const sky = ctx.createLinearGradient(0, 0, 0, GROUND_Y);
+    sky.addColorStop(0, '#0b1122');
+    sky.addColorStop(1, '#1e2942');
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, W, H);
+
+    // Ground
+    ctx.fillStyle = '#14532d';
+    ctx.fillRect(0, GROUND_Y, W, 10);
+    ctx.fillStyle = '#1c1917';
+    ctx.fillRect(0, GROUND_Y + 10, W, H - GROUND_Y - 10);
+
+    // Slingshot Back Fork
+    ctx.strokeStyle = '#92400e'; ctx.lineWidth = 9; ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(SLING.x, GROUND_Y); ctx.lineTo(SLING.x, SLING.y + 30);
+    ctx.lineTo(SLING.x - 16, SLING.y - 4);
+    ctx.stroke();
+
+    // Aiming Arc & Rubber Band
+    if (dragging) {
+      const vx = (SLING.x - pullPos.x) * 6.5;
+      const vy = (SLING.y - pullPos.y) * 6.5;
+      if (showArc) {
+        const wf = ammoType === 'piercer' ? 0.35 : 1.0;
+        for (let i = 1; i <= 26; i++) {
+          const t = i * 0.045;
+          const ax = pullPos.x + vx * t + 0.5 * wind * wf * t * t;
+          const ay = pullPos.y + vy * t + 0.5 * GRAVITY * t * t;
+          ctx.fillStyle = `rgba(251, 191, 36, ${(1 - i / 28) * 0.85})`;
+          ctx.beginPath(); ctx.arc(ax, ay, 2.6, 0, Math.PI * 2); ctx.fill();
+        }
+      }
+      ctx.strokeStyle = '#f59e0b'; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.moveTo(SLING.x - 14, SLING.y); ctx.lineTo(pullPos.x, pullPos.y); ctx.stroke();
+    }
+
+    // Ready Ammo sitting in sling
+    if (shotsLeft > 0 && !ended) {
+      const px = dragging ? pullPos.x : SLING.x;
+      const py = dragging ? pullPos.y : SLING.y;
+      drawAmmoBall(px, py, ammoType, 13);
+    }
+
+    // Slingshot Front Fork & Band
+    if (dragging) {
+      ctx.strokeStyle = '#fbbf24'; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.moveTo(SLING.x + 14, SLING.y); ctx.lineTo(pullPos.x, pullPos.y); ctx.stroke();
+    }
+    ctx.strokeStyle = '#b45309'; ctx.lineWidth = 8;
+    ctx.beginPath();
+    ctx.moveTo(SLING.x, SLING.y + 30); ctx.lineTo(SLING.x + 16, SLING.y - 4);
+    ctx.stroke();
+
+    // Blocks
+    for (const b of blocks) {
+      if (b.dead) continue;
+      const m = MATS[b.mat];
+      ctx.save();
+      ctx.translate(b.x, b.y);
+      ctx.rotate(b.angle);
+      ctx.fillStyle = m.fill;
+      ctx.strokeStyle = m.stroke;
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.roundRect(-b.w / 2, -b.h / 2, b.w, b.h, 3); ctx.fill(); ctx.stroke();
+
+      if (b.mat === 'tnt') {
+        ctx.fillStyle = '#fef08a'; ctx.font = '800 10px monospace'; ctx.textAlign = 'center';
+        ctx.fillText('TNT', 0, 4);
+      }
+      // Fracture crack lines when damaged
+      if (b.hp < b.maxHp * 0.72) {
+        ctx.strokeStyle = 'rgba(0,0,0,0.65)'; ctx.lineWidth = 1.6;
+        ctx.beginPath(); ctx.moveTo(-b.w * 0.25, -b.h * 0.2); ctx.lineTo(0, 0); ctx.lineTo(b.w * 0.2, b.h * 0.25); ctx.stroke();
+      }
+      ctx.restore();
+
+      if (showHP && b.hp < b.maxHp) {
+        const frac = Math.max(0, b.hp / b.maxHp);
+        ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(b.x - 16, b.y - b.h / 2 - 8, 32, 4);
+        ctx.fillStyle = frac > 0.5 ? '#34d399' : '#f43f5e';
+        ctx.fillRect(b.x - 16, b.y - b.h / 2 - 8, 32 * frac, 4);
+      }
+    }
+
+    // Targets
+    for (const t of targets) {
+      if (t.dead) continue;
+      ctx.save();
+      ctx.shadowColor = '#34d399'; ctx.shadowBlur = 10;
+      ctx.fillStyle = '#10b981';
+      ctx.strokeStyle = '#d1fae5'; ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.arc(t.x, t.y, t.r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      // Cute target eyes
+      ctx.fillStyle = '#fff';
+      ctx.beginPath(); ctx.arc(t.x - 5, t.y - 3, 3.5, 0, Math.PI * 2); ctx.arc(t.x + 5, t.y - 3, 3.5, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#064e3b';
+      ctx.beginPath(); ctx.arc(t.x - 5, t.y - 3, 1.8, 0, Math.PI * 2); ctx.arc(t.x + 5, t.y - 3, 1.8, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
+
+    // Flying Projectiles
+    for (const p of projectiles) {
+      if (p.dead) continue;
+      for (let i = 1; i < p.trail.length; i++) {
+        ctx.strokeStyle = `rgba(251, 191, 36, ${(i / p.trail.length) * 0.45})`;
+        ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.moveTo(p.trail[i - 1].x, p.trail[i - 1].y); ctx.lineTo(p.trail[i].x, p.trail[i].y); ctx.stroke();
+      }
+      drawAmmoBall(p.x, p.y, p.kind, p.r);
+    }
+
+    // Particles & Popups
+    for (const pt of particles) {
+      ctx.globalAlpha = Math.max(0, pt.life / pt.maxLife);
+      ctx.fillStyle = pt.col;
+      ctx.beginPath(); ctx.arc(pt.x, pt.y, pt.r, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    for (const pop of popups) {
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, pop.life / pop.maxLife);
+      ctx.font = '800 15px monospace'; ctx.textAlign = 'center';
+      ctx.fillStyle = pop.color; ctx.fillText(pop.text, pop.x, pop.y);
+      ctx.restore();
+    }
+
+    ctx.restore();
+  }
+
+  function drawAmmoBall(x, y, kind, r) {
+    ctx.save();
+    const col = kind === 'bomb' ? '#ef4444' : kind === 'cluster' ? '#38bdf8' : kind === 'piercer' ? '#f59e0b' : '#cbd5e1';
+    ctx.shadowColor = col; ctx.shadowBlur = 10;
+    ctx.fillStyle = col;
+    ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.restore();
+  }
+
+  // ---------- Loop ----------
+  let last = performance.now();
+  function loop(now) {
+    const dt = Math.min(0.03, (now - last) / 1000);
+    last = now;
+    if (shakeTime > 0) shakeTime = Math.max(0, shakeTime - dt);
+
+    const sub = 6;
+    for (let s = 0; s < sub; s++) step(dt / sub);
+
+    for (const p of projectiles) {
+      if (!p.dead) { p.trail.push({ x: p.x, y: p.y }); if (p.trail.length > 26) p.trail.shift(); }
+    }
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 450 * dt; p.life -= dt;
+      if (p.life <= 0) particles.splice(i, 1);
+    }
+    for (let i = popups.length - 1; i >= 0; i--) {
+      const pop = popups[i];
+      pop.y -= 30 * dt; pop.life -= dt;
+      if (pop.life <= 0) popups.splice(i, 1);
+    }
+
+    // Check Win / Out of Ammo
+    if (!ended) {
+      const aliveT = targets.filter(t => !t.dead).length;
+      if (aliveT === 0) {
+        ended = true;
+        score += shotsLeft * 400;
+        sfxWin();
+        document.getElementById('endTitle').textContent = 'FORTRESS DEMOLISHED!';
+        document.getElementById('endTitle').style.color = '#34d399';
+        document.getElementById('endBody').textContent = `Score: ${score.toLocaleString()} (Includes +${shotsLeft * 400} spare ammo bonus!)`;
+        document.getElementById('endOverlay').classList.add('visible');
+        updateHUD();
+      } else if (shotsLeft === 0 && projectiles.every(p => p.dead || Math.hypot(p.vx, p.vy) < 18)) {
+        settleTimer += dt;
+        if (settleTimer > 1.8) {
+          ended = true;
+          document.getElementById('endTitle').textContent = 'OUT OF AMMO!';
+          document.getElementById('endTitle').style.color = '#f87171';
+          document.getElementById('endBody').textContent = `${aliveT} target${aliveT > 1 ? 's' : ''} survived. Try Cluster or Blast Bomb!`;
+          document.getElementById('endOverlay').classList.add('visible');
+        }
+      }
+    }
+
+    render();
+    requestAnimationFrame(loop);
+  }
+
+  // ---------- Input ----------
+  function cPos(e) {
+    const r = canvas.getBoundingClientRect();
+    return { x: (e.clientX - r.left) * (W / r.width), y: (e.clientY - r.top) * (H / r.height) };
+  }
+
+  canvas.addEventListener('pointerdown', (e) => {
+    ensureAudio();
+    const p = cPos(e);
+    // If clicking while a special projectile is flying, trigger its ability!
+    if (projectiles.some(pr => !pr.dead && !pr.usedSpecial && (pr.kind === 'cluster' || pr.kind === 'bomb')) && Math.hypot(p.x - SLING.x, p.y - SLING.y) > 95) {
+      fireSpecial();
+      return;
+    }
+    if (ended || shotsLeft <= 0) return;
+    if (Math.hypot(p.x - SLING.x, p.y - SLING.y) < 110) {
+      dragging = true;
+      updatePull(p);
+    }
+  });
+
+  function updatePull(p) {
+    let dx = p.x - SLING.x, dy = p.y - SLING.y;
+    const maxPull = 128;
+    const d = Math.hypot(dx, dy);
+    if (d > maxPull) { dx = (dx / d) * maxPull; dy = (dy / d) * maxPull; }
+    pullPos.x = SLING.x + dx;
+    pullPos.y = SLING.y + dy;
+  }
+
+  window.addEventListener('pointermove', (e) => { if (dragging) updatePull(cPos(e)); });
+  window.addEventListener('pointerup', () => {
+    if (!dragging) return;
+    dragging = false;
+    const dx = SLING.x - pullPos.x, dy = SLING.y - pullPos.y;
+    if (Math.hypot(dx, dy) < 18) return;
+    shotsLeft--;
+    const massMap = { boulder: 2.8, cluster: 1.5, bomb: 1.9, piercer: 1.6 };
+    const radMap = { boulder: 15, cluster: 12, bomb: 14, piercer: 11 };
+    const spdScale = ammoType === 'piercer' ? 7.8 : 6.5;
+    projectiles.push({
+      kind: ammoType,
+      x: pullPos.x, y: pullPos.y,
+      vx: dx * spdScale, vy: dy * spdScale,
+      r: radMap[ammoType], mass: massMap[ammoType],
+      life: 7.5, usedSpecial: false, trail: [], dead: false
+    });
+    sfxLaunch();
+    updateHUD();
+  });
+
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'Space') { e.preventDefault(); fireSpecial(); }
+    if (e.code === 'KeyR') loadLevel(levelIdx);
+    const map = { Digit1: 'boulder', Digit2: 'cluster', Digit3: 'bomb', Digit4: 'piercer' };
+    if (map[e.code]) selectAmmo(map[e.code]);
+  });
+
+  function selectAmmo(a) {
+    ammoType = a;
+    document.querySelectorAll('#ammoBar .ammo-btn').forEach(b => b.classList.toggle('active', b.dataset.ammo === a));
+  }
+  document.querySelectorAll('#ammoBar .ammo-btn').forEach(b => b.onclick = () => selectAmmo(b.dataset.ammo));
+  document.querySelectorAll('.levels .btn').forEach(b => b.onclick = () => loadLevel(Number(b.dataset.lvl)));
+  document.getElementById('btnReset').onclick = () => loadLevel(levelIdx);
+  document.getElementById('btnReplay').onclick = () => loadLevel(levelIdx);
+  document.getElementById('btnNext').onclick = () => loadLevel(levelIdx + 1);
+  document.getElementById('btnSound').onclick = (e) => { soundOn = !soundOn; e.target.textContent = soundOn ? '🔊 Audio' : '🔇 Muted'; };
+  document.getElementById('chkArc').onchange = (e) => showArc = e.target.checked;
+  document.getElementById('chkHP').onchange = (e) => showHP = e.target.checked;
+
+  loadLevel(0);
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

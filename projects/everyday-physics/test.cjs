@@ -104,4 +104,33 @@ assert.ok(P.wingLoading("glider", "a4").loading > P.wingLoading("glider", "lette
 assert.ok(!P.wingLoading("rocket", "letter").ok && !P.wingLoading("dart", "tissue").ok,
  "an unknown plane and an unknown paper are refused");
 
+/* The Physics Game Table: supplied pages integrated 20 November 2026 */
+const fs = require("node:fs");
+const path = require("node:path");
+const gameFiles = [
+  "lunar-lander-cave.html", "hill-climb-suspension.html", "jelly-softbody-platformer.html",
+  "falling-sand-sandbox.html", "pendulum-grapple-swinger.html", "air-hockey-curl.html",
+  "ragdoll-archery-duel.html", "siege-demolition.html", "bridge-builder-truss.html",
+  "orbital-pinball.html", "marble-run.html", "orbital-gravity-golf.html",
+  "pool-table-physics.html",
+];
+for (const f of gameFiles)
+  assert.ok(fs.existsSync(path.join(__dirname, f)), `the Game Table game ${f} sits beside the table page`);
+assert.ok(fs.existsSync(path.join(__dirname, "physics-game-table.html")), "the Game Table page exists");
+assert.ok(fs.existsSync(path.join(__dirname, "gravity-well-illustration.jpg")), "the gravity-well illustration exists");
+const tableHtml = fs.readFileSync(path.join(__dirname, "physics-game-table.html"), "utf8");
+const targets = [...tableHtml.matchAll(/file: '([^']+)'/g)].map((m) => m[1]);
+assert.strictEqual(targets.length, 14, "the Game Table names fourteen games");
+for (const t of targets)
+  assert.ok(fs.existsSync(path.resolve(__dirname, t)), `the Game Table target ${t} resolves to a real file`);
+for (const f of [...gameFiles, "physics-game-table.html"]) {
+  const src = fs.readFileSync(path.join(__dirname, f), "utf8");
+  assert.ok(!/<(?:script|link|img)[^>]+(?:src|href)="https?:\/\//i.test(src), `${f} loads nothing external`);
+}
+const roomHtml = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
+assert.ok(roomHtml.includes('href="physics-game-table.html"'), "the Physics room links to the Game Table");
+const gamesHtml = fs.readFileSync(path.join(__dirname, "..", "games-room", "index.html"), "utf8");
+assert.ok(gamesHtml.includes('href="../everyday-physics/physics-game-table.html"'), "the Games Room links back to the Game Table");
+console.log("everyday-physics tests: Game Table checks passed (13 local games, 14 targets resolve, nothing external, links both ways)");
+
 console.log("everyday-physics tests: all passed (reflection, equal-mass collisions, ballistics, pendulum, seesaw, flight, timestep)");

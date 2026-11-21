@@ -11,3 +11,5 @@ The eleven game shelves and three learning links were each verified live on 15 N
 Local changes to imported files: none (no files were imported; all files originate here).
 
 Documentation update (20 November 2026): at Steven Powell's direction, `index.html` gained a professional Documentation & source panel with the room README, GitHub source, sources and limitations, workshop download, collection documentation index, and curator profile link. Changed files: `index.html`, `COLLECTION.md`. The addition is documentation and navigation only; no lesson content or workshop behaviour was changed.
+
+Game Table link added (20 November 2026): `index.html` and `COLLECTION.md` — the Tensor-Tris section gained a link across to the Physics Game Table in Everyday Physics (`../everyday-physics/physics-game-table.html`), the portal page whose Tensor-Tris card points back at this room's copy of the game. No game, lesson, or behaviour changed.

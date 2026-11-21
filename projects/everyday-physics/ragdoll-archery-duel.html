@@ -1,0 +1,884 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>2D Ragdoll Archery Duel — Ballistics &amp; Articulated Constraints</title>
+<style>
+  :root {
+    --bg: #0b0f18;
+    --panel: #131a28;
+    --panel-alt: #1b2437;
+    --border: #2a3750;
+    --text: #eaf0fa;
+    --muted: #8fa1bd;
+    --accent: #38bdf8;
+    --amber: #f59e0b;
+    --emerald: #34d399;
+    --rose: #f43f5e;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: radial-gradient(circle at 45% 0%, #1d263e 0%, var(--bg) 68%);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif;
+    display: flex;
+    flex-direction: column;
+    user-select: none;
+    overflow-x: hidden;
+  }
+
+  header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 9px 16px;
+    background: rgba(11, 15, 24, 0.94);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .brand-badge {
+    width: 32px; height: 32px; border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #fbbf24, #b45309 75%);
+    border: 2px solid #fde68a;
+    display: grid; place-items: center; font-size: 16px;
+    box-shadow: 0 0 12px rgba(245, 158, 11, 0.45);
+  }
+  .brand h1 { margin: 0; font-size: 15px; font-weight: 700; }
+  .brand small { display: block; font-size: 11px; color: var(--muted); }
+
+  .arenas, .top-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+
+  .btn {
+    background: var(--panel-alt);
+    color: var(--text);
+    border: 1px solid var(--border);
+    padding: 6px 11px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.14s ease;
+  }
+  .btn:hover { border-color: var(--amber); background: #25314a; color: #fff; }
+  .btn.active { background: rgba(245,158,11,0.22); border-color: var(--amber); color: #fde68a; }
+  .btn.primary { background: linear-gradient(135deg, #d97706, #ea580c); border-color: transparent; color: #fff; }
+
+  main {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 12px 16px 18px;
+    flex-wrap: wrap;
+  }
+
+  .stage-col {
+    flex: 1;
+    min-width: 320px;
+    max-width: 1020px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .canvas-frame {
+    position: relative;
+    border-radius: 14px;
+    padding: 5px;
+    background: linear-gradient(160deg, #273452, #0d1320);
+    border: 1px solid #304263;
+    box-shadow: 0 18px 46px rgba(0,0,0,0.62);
+  }
+
+  canvas {
+    display: block;
+    width: 100%;
+    height: auto;
+    aspect-ratio: 1000 / 580;
+    border-radius: 10px;
+    background: #0a101d;
+    cursor: crosshair;
+    touch-action: none;
+  }
+
+  .overlay {
+    position: absolute;
+    inset: 5px;
+    border-radius: 10px;
+    background: rgba(10, 14, 24, 0.78);
+    backdrop-filter: blur(4px);
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: 10px;
+  }
+  .overlay.visible { display: flex; }
+  .overlay h2 { margin: 0; font-size: 32px; }
+  .overlay p { margin: 0; color: #cbd5e1; font-size: 14px; }
+
+  .hint-bar {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 8px 12px; font-size: 12px; color: var(--muted);
+    display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px;
+  }
+  .hint-bar strong { color: #e2ecf9; }
+
+  .sidebar { width: 270px; display: flex; flex-direction: column; gap: 12px; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 13px; padding: 12px 13px; }
+  .card h3 {
+    margin: 0 0 9px; font-size: 11px; text-transform: uppercase;
+    letter-spacing: 0.8px; color: var(--muted); display: flex; justify-content: space-between;
+  }
+
+  .hp-block { margin-bottom: 9px; }
+  .hp-head { display: flex; justify-content: space-between; font-size: 11.5px; margin-bottom: 3px; }
+  .bar-bg { height: 9px; border-radius: 999px; background: #090e18; border: 1px solid #26334a; overflow: hidden; }
+  .bar-fill { height: 100%; width: 100%; border-radius: 999px; transition: width 0.18s ease; }
+
+  .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+  .stat { background: var(--panel-alt); border: 1px solid #26334a; border-radius: 8px; padding: 7px 8px; }
+  .stat .k { font-size: 10px; color: var(--muted); text-transform: uppercase; }
+  .stat .v { font-size: 16px; font-weight: 800; font-family: ui-monospace, monospace; margin-top: 2px; }
+
+  .toggle-row { display: flex; align-items: center; justify-content: space-between; font-size: 12px; color: #d6e0f0; margin-bottom: 7px; cursor: pointer; }
+  .toggle-row input { accent-color: var(--amber); width: 15px; height: 15px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <div class="brand-badge">🏹</div>
+    <div>
+      <h1>2D Ragdoll Archery Duel</h1>
+      <small>Verlet Articulated Skeletons · Ballistic Wind Arcs · Impulse Knockback</small>
+    </div>
+  </div>
+
+  <div class="arenas">
+    <button class="btn active" data-arena="towers">Castle Towers</button>
+    <button class="btn" data-arena="canyon">Canyon Cliffs</button>
+    <button class="btn" data-arena="pillars">Windy Pillars</button>
+  </div>
+
+  <div class="top-actions">
+    <button class="btn" id="btnMode">Mode: 1P vs AI</button>
+    <button class="btn" id="btnSound">🔊 Audio</button>
+    <button class="btn primary" id="btnReset">↺ New Duel</button>
+  </div>
+</header>
+
+<main>
+  <section class="stage-col">
+    <div class="canvas-frame">
+      <canvas id="archCanvas" width="1000" height="580"></canvas>
+      <div class="overlay" id="duelOverlay">
+        <h2 id="overTitle" style="color:var(--emerald)">ARCHER VICTORY!</h2>
+        <p id="overBody">Blue Archer defeated Red Archer in 4 volleys!</p>
+        <button class="btn primary" id="btnRematch" style="padding:9px 22px;font-size:14px;">Rematch</button>
+      </div>
+    </div>
+
+    <div class="hint-bar">
+      <span id="turnPrompt"><strong>Blue Archer's Turn:</strong> Click and drag backward anywhere on the canvas to draw your bow, then release!</span>
+      <span><strong>Headshot:</strong> 2.5x DMG · <strong>Torso:</strong> 1x · <strong>Limb:</strong> 0.6x</span>
+    </div>
+  </section>
+
+  <aside class="sidebar">
+    <div class="card">
+      <h3>Duelists <span id="windBadge" style="color:var(--accent);font-family:monospace;">WIND 0</span></h3>
+      <div class="hp-block">
+        <div class="hp-head"><span style="color:#38bdf8;font-weight:700;">Blue Archer (You)</span><span id="hpBlueTxt">100 HP</span></div>
+        <div class="bar-bg"><div class="bar-fill" id="hpBlueBar" style="background:linear-gradient(90deg,#0284c7,#38bdf8)"></div></div>
+      </div>
+      <div class="hp-block" style="margin-bottom:0;">
+        <div class="hp-head"><span style="color:#f43f5e;font-weight:700;" id="redName">Red Archer (AI)</span><span id="hpRedTxt">100 HP</span></div>
+        <div class="bar-bg"><div class="bar-fill" id="hpRedBar" style="background:linear-gradient(90deg,#be123c,#f43f5e)"></div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Ballistics Telemetry</h3>
+      <div class="stat-grid">
+        <div class="stat"><div class="k">Angle (θ)</div><div class="v" id="valAng" style="color:var(--amber)">0°</div></div>
+        <div class="stat"><div class="k">Velocity</div><div class="v" id="valVel" style="color:var(--accent)">0</div></div>
+        <div class="stat"><div class="k">Wind Accel</div><div class="v" id="valWind" style="color:var(--emerald)">0</div></div>
+        <div class="stat"><div class="k">Volleys</div><div class="v" id="valShots">0</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Physics Options</h3>
+      <label class="toggle-row">
+        <span>Show Ballistic Aim Guide</span>
+        <input type="checkbox" id="chkGuide" checked />
+      </label>
+      <label class="toggle-row">
+        <span>Dynamic Wind Each Turn</span>
+        <input type="checkbox" id="chkWind" checked />
+      </label>
+      <label class="toggle-row">
+        <span>Hitbox &amp; Ragdoll Nodes</span>
+        <input type="checkbox" id="chkDebug" />
+      </label>
+      <div style="font-size:11px;color:var(--muted);line-height:1.45;margin-top:6px;">
+        Arrows physically embed into limbs and apply real momentum impulse to the Verlet ragdoll skeleton!
+      </div>
+    </div>
+  </aside>
+</main>
+
+<script>
+(() => {
+  const canvas = document.getElementById('archCanvas');
+  const ctx = canvas.getContext('2d');
+  const W = 1000, H = 580;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = W * dpr;
+  canvas.height = H * dpr;
+  ctx.scale(dpr, dpr);
+
+  // ---------- Audio ----------
+  let ac = null, soundOn = true;
+  function ensureAudio() {
+    if (!soundOn) return null;
+    if (!ac) { const AC = window.AudioContext || window.webkitAudioContext; if (AC) ac = new AC(); }
+    if (ac && ac.state === 'suspended') ac.resume();
+    return ac;
+  }
+  function tone(f, dur = 0.1, type = 'triangle', vol = 0.12, f2 = null) {
+    const a = ensureAudio(); if (!a) return;
+    const t = a.currentTime;
+    const o = a.createOscillator(), g = a.createGain();
+    o.type = type; o.frequency.setValueAtTime(f, t);
+    if (f2) o.frequency.exponentialRampToValueAtTime(Math.max(25, f2), t + dur);
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0008, t + dur);
+    o.connect(g); g.connect(a.destination);
+    o.start(t); o.stop(t + dur + 0.01);
+  }
+  const sfxTwang = () => tone(260, 0.14, 'triangle', 0.14, 110);
+  const sfxThud = () => tone(135, 0.09, 'sine', 0.11, 55);
+  const sfxHit = (head) => head
+    ? (tone(680, 0.14, 'square', 0.12, 320), setTimeout(() => tone(920, 0.18, 'triangle', 0.13), 50))
+    : tone(220, 0.13, 'sawtooth', 0.12, 95);
+
+  // ---------- Arenas ----------
+  const ARENAS = {
+    towers: {
+      p1: { x: 155, y: 315 }, p2: { x: 845, y: 315 },
+      platforms: [
+        { x: 0, y: 530, w: 1000, h: 50 },
+        { x: 85, y: 390, w: 140, h: 140 },
+        { x: 775, y: 390, w: 140, h: 140 },
+        { x: 455, y: 340, w: 90, h: 190 }
+      ]
+    },
+    canyon: {
+      p1: { x: 145, y: 240 }, p2: { x: 855, y: 360 },
+      platforms: [
+        { x: 0, y: 540, w: 1000, h: 40 },
+        { x: 50, y: 315, w: 190, h: 225 },
+        { x: 755, y: 435, w: 195, h: 105 },
+        { x: 420, y: 405, w: 160, h: 135 }
+      ]
+    },
+    pillars: {
+      p1: { x: 135, y: 340 }, p2: { x: 865, y: 270 },
+      platforms: [
+        { x: 0, y: 535, w: 1000, h: 45 },
+        { x: 75, y: 415, w: 120, h: 120 },
+        { x: 350, y: 280, w: 55, h: 255 },
+        { x: 590, y: 225, w: 55, h: 310 },
+        { x: 805, y: 345, w: 120, h: 190 }
+      ]
+    }
+  };
+
+  // ---------- Verlet Ragdoll Builder ----------
+  function createArcher(x, footY, team, facing) {
+    // Nodes: 0:head, 1:neck, 2:pelvis, 3:lKnee, 4:lFoot, 5:rKnee, 6:rFoot, 7:lHand, 8:rHand
+    const pts = [
+      [0, -72], [0, -56], [0, -32],
+      [-9, -16], [-12, 0],
+      [9, -16],  [12, 0],
+      [facing * 18, -52], [facing * 6, -48]
+    ].map(([dx, dy]) => ({ x: x + dx, y: footY + dy, ox: x + dx, oy: footY + dy, rx: dx, ry: dy }));
+
+    const links = [
+      [0, 1], [1, 2], [2, 3], [3, 4], [2, 5], [5, 6], [1, 7], [1, 8],
+      // Subtle structural cross-links
+      [0, 2], [3, 5]
+    ].map(([a, b]) => ({
+      a, b, len: Math.hypot(pts[b].x - pts[a].x, pts[b].y - pts[a].y),
+      soft: (a === 0 && b === 2) || (a === 3 && b === 5)
+    }));
+
+    return {
+      team, facing,
+      color: team === 'blue' ? '#38bdf8' : '#f43f5e',
+      anchorX: x, anchorY: footY,
+      hp: 100,
+      ragdolled: false,
+      stunTimer: 0,
+      nodes: pts,
+      links,
+      aimAngle: facing === 1 ? -0.45 : Math.PI + 0.45,
+      drawPct: 0
+    };
+  }
+
+  // ---------- State ----------
+  let arenaKey = 'towers';
+  let twoPlayer = false;
+  let showGuide = true;
+  let dynamicWind = true;
+  let showDebug = false;
+
+  let platforms = [];
+  let archers = [];
+  let arrows = [];
+  let particles = [];
+  let popups = [];
+  let windStreaks = Array.from({ length: 26 }, () => ({ x: Math.random() * W, y: Math.random() * H * 0.85, len: 25 + Math.random() * 35 }));
+
+  let wind = 0; // horizontal acceleration px/s^2
+  let turn = 0; // 0 = blue, 1 = red
+  let volleys = 0;
+  let waitingForArrow = false;
+  let aiTimer = 0;
+  let gameOver = false;
+
+  // Aim state
+  let dragging = false;
+  let dragStart = { x: 0, y: 0 };
+  let aimVel = { vx: 0, vy: 0 };
+
+  const GRAVITY = 560;
+
+  function rollWind() {
+    wind = dynamicWind ? Math.round((Math.random() - 0.5) * 260) : 0;
+    const dir = wind > 10 ? '→' : wind < -10 ? '←' : '·';
+    document.getElementById('windBadge').textContent = `WIND ${dir} ${Math.abs(wind)}`;
+    document.getElementById('valWind').textContent = (wind >= 0 ? '+' : '') + wind;
+  }
+
+  function resetDuel() {
+    const ar = ARENAS[arenaKey];
+    platforms = ar.platforms.map(p => ({ ...p }));
+    archers = [
+      createArcher(ar.p1.x, ar.p1.y + 75, 'blue', 1),
+      createArcher(ar.p2.x, ar.p2.y + 75, 'red', -1)
+    ];
+    arrows = [];
+    particles = [];
+    popups = [];
+    turn = 0;
+    volleys = 0;
+    waitingForArrow = false;
+    aiTimer = 0;
+    gameOver = false;
+    dragging = false;
+    rollWind();
+    document.getElementById('duelOverlay').classList.remove('visible');
+    updateUI();
+  }
+
+  function updateUI() {
+    const b = archers[0], r = archers[1];
+    document.getElementById('hpBlueTxt').textContent = Math.max(0, Math.round(b.hp)) + ' HP';
+    document.getElementById('hpRedTxt').textContent = Math.max(0, Math.round(r.hp)) + ' HP';
+    document.getElementById('hpBlueBar').style.width = Math.max(0, b.hp) + '%';
+    document.getElementById('hpRedBar').style.width = Math.max(0, r.hp) + '%';
+    document.getElementById('valShots').textContent = volleys;
+    document.getElementById('redName').textContent = twoPlayer ? 'Red Archer (P2)' : 'Red Archer (AI)';
+
+    const prompt = document.getElementById('turnPrompt');
+    if (gameOver) return;
+    if (turn === 0) prompt.innerHTML = '<strong>Blue Archer\'s Turn:</strong> Drag backward anywhere to draw your bow and release!';
+    else if (twoPlayer) prompt.innerHTML = '<strong>Red Archer\'s Turn (P2):</strong> Drag backward anywhere to draw your bow and release!';
+    else prompt.innerHTML = '<strong>Red Archer (AI)</strong> is calculating windage &amp; elevation...';
+  }
+
+  function spawnBloodOrSparks(x, y, col, n = 16) {
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * 6.28, s = 60 + Math.random() * 210;
+      particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 50, col, r: 2 + Math.random() * 2.5, life: 0.55, maxLife: 0.55 });
+    }
+  }
+
+  function fireArrow(archer, vx, vy) {
+    const hand = archer.nodes[7];
+    arrows.push({
+      owner: archer.team,
+      x: hand.x, y: hand.y,
+      vx, vy,
+      angle: Math.atan2(vy, vx),
+      stuck: false,
+      stuckArcher: null,
+      stuckNodeIdx: -1,
+      offX: 0, offY: 0,
+      trail: []
+    });
+    volleys++;
+    waitingForArrow = true;
+    archer.drawPct = 0;
+    sfxTwang();
+    updateUI();
+  }
+
+  function computeAIShot() {
+    const ai = archers[1], target = archers[0];
+    const start = ai.nodes[7];
+    const dest = target.nodes[1]; // aim for chest/head
+    // Analytical projectile solution with wind compensation!
+    const T = 1.35 + Math.random() * 0.35;
+    const dx = dest.x - start.x;
+    const dy = dest.y - start.y;
+    // x(T) = vx*T + 0.5*wind*T^2 => vx = (dx - 0.5*wind*T^2)/T
+    // y(T) = vy*T + 0.5*G*T^2 => vy = (dy - 0.5*G*T^2)/T
+    let vx = (dx - 0.5 * wind * T * T) / T;
+    let vy = (dy - 0.5 * GRAVITY * T * T) / T;
+    // Slight human-like inaccuracy so it's fun & fair!
+    const jitter = 1 + (Math.random() - 0.5) * 0.11;
+    vx *= jitter;
+    vy *= (1 + (Math.random() - 0.5) * 0.09);
+    ai.aimAngle = Math.atan2(vy, vx);
+    fireArrow(ai, vx, vy);
+  }
+
+  function nextTurn() {
+    waitingForArrow = false;
+    if (gameOver) return;
+    turn = 1 - turn;
+    rollWind();
+    aiTimer = 0;
+    updateUI();
+  }
+
+  // ---------- Physics Step ----------
+  function step(dt) {
+    // Wind streaks
+    for (const ws of windStreaks) {
+      ws.x += (wind * 1.4 + (wind >= 0 ? 35 : -35)) * dt;
+      if (ws.x > W + 40) ws.x = -40;
+      if (ws.x < -40) ws.x = W + 40;
+    }
+
+    // AI Turn Delay
+    if (!gameOver && !waitingForArrow && turn === 1 && !twoPlayer) {
+      aiTimer += dt;
+      archers[1].drawPct = Math.min(1, aiTimer / 0.85);
+      if (aiTimer >= 0.95) computeAIShot();
+    }
+
+    // Update Ragdoll Skeletons (Verlet Integration + Posture Springs!)
+    for (const a of archers) {
+      if (a.stunTimer > 0) a.stunTimer = Math.max(0, a.stunTimer - dt);
+      const upright = !a.ragdolled && a.stunTimer <= 0;
+
+      for (let i = 0; i < a.nodes.length; i++) {
+        const n = a.nodes[i];
+        const vx = (n.x - n.ox) * 0.985;
+        const vy = (n.y - n.oy) * 0.985;
+        n.ox = n.x; n.oy = n.y;
+        n.x += vx;
+        n.y += vy + GRAVITY * dt * dt;
+
+        // Soft posture spring keeps alive unstunned archer standing upright
+        if (upright) {
+          let tx = a.anchorX + n.rx;
+          let ty = a.anchorY + n.ry;
+          if (i === 7) {
+            tx = a.nodes[1].x + Math.cos(a.aimAngle) * 20;
+            ty = a.nodes[1].y + Math.sin(a.aimAngle) * 20;
+          }
+          n.x += (tx - n.x) * 0.18;
+          n.y += (ty - n.y) * 0.18;
+        }
+      }
+
+      // Distance constraint relaxation (5 iterations for crisp bones!)
+      for (let it = 0; it < 5; it++) {
+        for (const l of a.links) {
+          const na = a.nodes[l.a], nb = a.nodes[l.b];
+          const dx = nb.x - na.x, dy = nb.y - na.y;
+          const d = Math.hypot(dx, dy) || 1;
+          const diff = (d - l.len) / d;
+          const stiff = l.soft ? 0.18 : 0.5;
+          na.x += dx * diff * stiff; na.y += dy * diff * stiff;
+          nb.x -= dx * diff * stiff; nb.y -= dy * diff * stiff;
+        }
+
+        // Collide nodes with platforms
+        for (const n of a.nodes) {
+          if (n.x < 10) n.x = 10;
+          if (n.x > W - 10) n.x = W - 10;
+          for (const p of platforms) {
+            if (n.x > p.x && n.x < p.x + p.w && n.y > p.y && n.y < p.y + p.h) {
+              const dtTop = n.y - p.y, dl = n.x - p.x, dr = (p.x + p.w) - n.x;
+              const m = Math.min(dtTop, dl, dr);
+              if (m === dtTop) { n.y = p.y; n.ox = n.x - (n.x - n.ox) * 0.72; }
+              else if (m === dl) n.x = p.x;
+              else n.x = p.x + p.w;
+            }
+          }
+        }
+      }
+
+      // Update standing anchor gently if nudged horizontally while alive
+      if (!a.ragdolled && a.stunTimer <= 0) {
+        const footMid = (a.nodes[4].x + a.nodes[6].x) * 0.5;
+        a.anchorX += (footMid - a.anchorX) * 0.05;
+      }
+    }
+
+    // Update Arrows
+    let activeFlying = false;
+    for (const ar of arrows) {
+      if (ar.stuck) {
+        if (ar.stuckArcher) {
+          const n = ar.stuckArcher.nodes[ar.stuckNodeIdx];
+          ar.x = n.x + ar.offX;
+          ar.y = n.y + ar.offY;
+        }
+        continue;
+      }
+      activeFlying = true;
+      ar.vx += wind * dt;
+      ar.vy += GRAVITY * dt;
+      ar.x += ar.vx * dt;
+      ar.y += ar.vy * dt;
+      ar.angle = Math.atan2(ar.vy, ar.vx);
+      ar.trail.push({ x: ar.x, y: ar.y });
+      if (ar.trail.length > 26) ar.trail.shift();
+
+      // Tip of arrow
+      const tipX = ar.x + Math.cos(ar.angle) * 16;
+      const tipY = ar.y + Math.sin(ar.angle) * 16;
+
+      // Check hit against Archers (skip firing archer for first 120px)
+      let hit = false;
+      for (const target of archers) {
+        if (target.team === ar.owner && ar.trail.length < 10) continue;
+        // Check head (node 0), torso (1..2), limbs (3..8)
+        for (let ni = 0; ni < target.nodes.length; ni++) {
+          const n = target.nodes[ni];
+          const rad = ni === 0 ? 12 : (ni <= 2 ? 13 : 9);
+          if (Math.hypot(tipX - n.x, tipY - n.y) < rad) {
+            ar.stuck = true;
+            ar.stuckArcher = target;
+            ar.stuckNodeIdx = ni;
+            ar.offX = ar.x - n.x;
+            ar.offY = ar.y - n.y;
+
+            const isHead = ni === 0;
+            const isTorso = ni === 1 || ni === 2;
+            const dmg = isHead ? 68 : isTorso ? 32 : 18;
+            target.hp = Math.max(0, target.hp - dmg);
+            target.stunTimer = isHead ? 1.15 : 0.6;
+
+            // Real Momentum Impulse transferred into struck Ragdoll bone!
+            const imp = isHead ? 0.042 : 0.028;
+            n.ox -= ar.vx * imp;
+            n.oy -= ar.vy * imp - 2.5;
+            if (target.hp <= 0) {
+              target.ragdolled = true;
+              // Big theatrical knockout impulse!
+              target.nodes.forEach(nd => { nd.ox -= ar.vx * 0.022; nd.oy -= ar.vy * 0.015 - 3; });
+            }
+
+            sfxHit(isHead);
+            spawnBloodOrSparks(tipX, tipY, target.color, isHead ? 26 : 14);
+            popups.push({
+              x: tipX, y: tipY - 18,
+              text: isHead ? `HEADSHOT! -${dmg}` : `-${dmg}`,
+              color: isHead ? '#fbbf24' : '#f87171',
+              life: 1.2, maxLife: 1.2
+            });
+
+            if (target.hp <= 0 && !gameOver) {
+              gameOver = true;
+              const blueWon = target.team === 'red';
+              document.getElementById('overTitle').textContent = blueWon ? 'BLUE ARCHER WINS!' : 'RED ARCHER WINS!';
+              document.getElementById('overTitle').style.color = blueWon ? '#38bdf8' : '#f43f5e';
+              document.getElementById('overBody').textContent = `Knocked out in ${volleys} volley${volleys > 1 ? 's' : ''}!`;
+              setTimeout(() => document.getElementById('duelOverlay').classList.add('visible'), 950);
+            }
+            updateUI();
+            hit = true;
+            break;
+          }
+        }
+        if (hit) break;
+      }
+      if (hit) continue;
+
+      // Platform hit
+      for (const p of platforms) {
+        if (tipX >= p.x && tipX <= p.x + p.w && tipY >= p.y && tipY <= p.y + p.h) {
+          ar.stuck = true;
+          sfxThud();
+          spawnBloodOrSparks(tipX, tipY, '#94a3b8', 7);
+          break;
+        }
+      }
+
+      // Off-screen cleanup
+      if (ar.x < -80 || ar.x > W + 80 || ar.y > H + 80) {
+        ar.stuck = true;
+        ar.offscreen = true;
+      }
+    }
+
+    if (waitingForArrow && !activeFlying) {
+      nextTurn();
+    }
+  }
+
+  // ---------- Render ----------
+  function render() {
+    // Sunset / twilight sky
+    const sky = ctx.createLinearGradient(0, 0, 0, H);
+    sky.addColorStop(0, '#0a1020');
+    sky.addColorStop(1, '#1b253d');
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, W, H);
+
+    // Wind streaks
+    if (Math.abs(wind) > 8) {
+      ctx.strokeStyle = 'rgba(148, 163, 184, 0.22)';
+      ctx.lineWidth = 1.4;
+      for (const ws of windStreaks) {
+        ctx.beginPath(); ctx.moveTo(ws.x, ws.y); ctx.lineTo(ws.x + ws.len * Math.sign(wind), ws.y); ctx.stroke();
+      }
+    }
+
+    // Platforms
+    for (const p of platforms) {
+      ctx.fillStyle = '#1e293b';
+      ctx.strokeStyle = '#475569';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.roundRect(p.x, p.y, p.w, p.h, 4); ctx.fill(); ctx.stroke();
+      // Stone battlement cap
+      ctx.fillStyle = '#334155';
+      ctx.fillRect(p.x + 2, p.y + 2, p.w - 4, 8);
+    }
+
+    // Ballistic Aim Guide when dragging
+    if (dragging && showGuide) {
+      const shooter = archers[turn];
+      const hand = shooter.nodes[7];
+      ctx.save();
+      for (let i = 1; i <= 26; i++) {
+        const t = i * 0.045;
+        const px = hand.x + aimVel.vx * t + 0.5 * wind * t * t;
+        const py = hand.y + aimVel.vy * t + 0.5 * GRAVITY * t * t;
+        ctx.fillStyle = `rgba(251, 191, 36, ${(1 - i / 28) * 0.8})`;
+        ctx.beginPath(); ctx.arc(px, py, 2.5, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    // Draw Articulated Ragdoll Archers!
+    for (const a of archers) {
+      ctx.save();
+      ctx.strokeStyle = a.color;
+      ctx.lineWidth = 4.2;
+      ctx.lineCap = 'round';
+      // Draw primary skeleton bones
+      for (const l of a.links) {
+        if (l.soft) continue;
+        const na = a.nodes[l.a], nb = a.nodes[l.b];
+        ctx.beginPath(); ctx.moveTo(na.x, na.y); ctx.lineTo(nb.x, nb.y); ctx.stroke();
+      }
+
+      // Head + Visor
+      const hd = a.nodes[0];
+      ctx.fillStyle = '#0f172a';
+      ctx.strokeStyle = a.color;
+      ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(hd.x, hd.y, 10, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+
+      // Bow held at node 7 when alive!
+      if (!a.ragdolled) {
+        const hnd = a.nodes[7];
+        ctx.save();
+        ctx.translate(hnd.x, hnd.y);
+        ctx.rotate(a.aimAngle);
+        ctx.strokeStyle = '#fbbf24';
+        ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(0, 0, 17, -1.05, 1.05); ctx.stroke();
+        // Bowstring pulls back with drawPct
+        const pull = -8 - a.drawPct * 14;
+        ctx.strokeStyle = '#e2e8f0'; ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(-1.05) * 17, Math.sin(-1.05) * 17);
+        ctx.lineTo(pull, 0);
+        ctx.lineTo(Math.cos(1.05) * 17, Math.sin(1.05) * 17);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      if (showDebug) {
+        ctx.fillStyle = '#34d399';
+        a.nodes.forEach((n, i) => {
+          ctx.beginPath(); ctx.arc(n.x, n.y, i === 0 ? 12 : 4, 0, Math.PI * 2);
+          ctx.strokeStyle = '#34d399'; ctx.lineWidth = 1; ctx.stroke();
+        });
+      }
+      ctx.restore();
+    }
+
+    // Arrows
+    for (const ar of arrows) {
+      if (ar.offscreen) continue;
+      if (!ar.stuck && ar.trail.length > 1) {
+        for (let i = 1; i < ar.trail.length; i++) {
+          ctx.strokeStyle = `rgba(253, 224, 71, ${(i / ar.trail.length) * 0.45})`;
+          ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.moveTo(ar.trail[i - 1].x, ar.trail[i - 1].y); ctx.lineTo(ar.trail[i].x, ar.trail[i].y); ctx.stroke();
+        }
+      }
+      ctx.save();
+      ctx.translate(ar.x, ar.y);
+      ctx.rotate(ar.angle);
+      ctx.strokeStyle = '#f8fafc'; ctx.lineWidth = 2.4;
+      ctx.beginPath(); ctx.moveTo(-16, 0); ctx.lineTo(16, 0); ctx.stroke();
+      // Arrowhead
+      ctx.fillStyle = '#fbbf24';
+      ctx.beginPath(); ctx.moveTo(19, 0); ctx.lineTo(11, -4); ctx.lineTo(11, 4); ctx.closePath(); ctx.fill();
+      // Fletching
+      ctx.strokeStyle = ar.owner === 'blue' ? '#38bdf8' : '#f43f5e';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(-16, 0); ctx.lineTo(-21, -4);
+      ctx.moveTo(-16, 0); ctx.lineTo(-21, 4);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Particles & Popups
+    for (const p of particles) {
+      ctx.globalAlpha = Math.max(0, p.life / p.maxLife);
+      ctx.fillStyle = p.col;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    for (const pop of popups) {
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, pop.life / pop.maxLife);
+      ctx.font = '800 15px monospace'; ctx.textAlign = 'center';
+      ctx.fillStyle = pop.color; ctx.shadowColor = '#000'; ctx.shadowBlur = 6;
+      ctx.fillText(pop.text, pop.x, pop.y);
+      ctx.restore();
+    }
+  }
+
+  // ---------- Loop ----------
+  let last = performance.now();
+  function loop(now) {
+    const dt = Math.min(0.03, (now - last) / 1000);
+    last = now;
+
+    const sub = 4;
+    for (let i = 0; i < sub; i++) step(dt / sub);
+
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 420 * dt; p.life -= dt;
+      if (p.life <= 0) particles.splice(i, 1);
+    }
+    for (let i = popups.length - 1; i >= 0; i--) {
+      const pop = popups[i];
+      pop.y -= 32 * dt; pop.life -= dt;
+      if (pop.life <= 0) popups.splice(i, 1);
+    }
+
+    render();
+    requestAnimationFrame(loop);
+  }
+
+  // ---------- Input ----------
+  function cPos(e) {
+    const r = canvas.getBoundingClientRect();
+    return { x: (e.clientX - r.left) * (W / r.width), y: (e.clientY - r.top) * (H / r.height) };
+  }
+
+  function canHumanShoot() {
+    return !gameOver && !waitingForArrow && (turn === 0 || twoPlayer);
+  }
+
+  canvas.addEventListener('pointerdown', (e) => {
+    ensureAudio();
+    if (!canHumanShoot()) return;
+    dragging = true;
+    dragStart = cPos(e);
+    aimVel.vx = 0; aimVel.vy = 0;
+  });
+
+  window.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    const p = cPos(e);
+    let dx = dragStart.x - p.x;
+    let dy = dragStart.y - p.y;
+    const maxPull = 175;
+    const d = Math.hypot(dx, dy);
+    if (d > maxPull) { dx = (dx / d) * maxPull; dy = (dy / d) * maxPull; }
+    aimVel.vx = dx * 5.2;
+    aimVel.vy = dy * 5.2;
+
+    const shooter = archers[turn];
+    shooter.aimAngle = Math.atan2(aimVel.vy, aimVel.vx);
+    shooter.drawPct = Math.min(1, d / maxPull);
+
+    const deg = Math.round(-Math.atan2(aimVel.vy, Math.abs(aimVel.vx)) * 180 / Math.PI);
+    document.getElementById('valAng').textContent = deg + '°';
+    document.getElementById('valVel').textContent = Math.round(Math.hypot(aimVel.vx, aimVel.vy));
+  });
+
+  window.addEventListener('pointerup', () => {
+    if (!dragging) return;
+    dragging = false;
+    const spd = Math.hypot(aimVel.vx, aimVel.vy);
+    const shooter = archers[turn];
+    if (spd < 90) { shooter.drawPct = 0; return; }
+    fireArrow(shooter, aimVel.vx, aimVel.vy);
+  });
+
+  document.querySelectorAll('.arenas .btn').forEach(b => b.onclick = () => {
+    arenaKey = b.dataset.arena;
+    document.querySelectorAll('.arenas .btn').forEach(x => x.classList.toggle('active', x === b));
+    resetDuel();
+  });
+
+  document.getElementById('btnMode').onclick = (e) => {
+    twoPlayer = !twoPlayer;
+    e.target.textContent = twoPlayer ? 'Mode: 2P Hotseat' : 'Mode: 1P vs AI';
+    resetDuel();
+  };
+  document.getElementById('btnReset').onclick = resetDuel;
+  document.getElementById('btnRematch').onclick = resetDuel;
+  document.getElementById('btnSound').onclick = (e) => { soundOn = !soundOn; e.target.textContent = soundOn ? '🔊 Audio' : '🔇 Muted'; };
+  document.getElementById('chkGuide').onchange = (e) => showGuide = e.target.checked;
+  document.getElementById('chkWind').onchange = (e) => { dynamicWind = e.target.checked; rollWind(); };
+  document.getElementById('chkDebug').onchange = (e) => showDebug = e.target.checked;
+
+  resetDuel();
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
