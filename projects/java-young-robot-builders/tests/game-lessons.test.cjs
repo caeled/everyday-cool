@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const ROOT = path.join(__dirname, '..');
-// The nineteen game lessons shelved on the home page, in the page's gentlest-first order.
+// The twenty game lessons shelved on the home page, in the page's gentlest-first order.
 const LESSONS = [
   '../everyday-light/laser-mirrors-lesson.html',
   '../everyday-sound/tune-the-string-lesson.html',
@@ -25,9 +25,10 @@ const LESSONS = [
   '../everyday-measure/anchors-lesson.html',
   '../nerd-heaven-tech-support/corrected-by-halves-lesson.html',
   '../games-room/zenith-othello-lesson.html',
+  '../games-room/zenith-chess-lesson.html',
 ];
 
-test('the home page shelves all nineteen game lessons', () => {
+test('the home page shelves all twenty game lessons', () => {
   const home = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
   for (const href of LESSONS) {
     assert.ok(home.includes(`href="${href}"`), `index.html links ${href}`);
