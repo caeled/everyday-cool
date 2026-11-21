@@ -42,6 +42,7 @@ The rules (pitch and note naming, decibel arithmetic and the NIOSH halving rule,
 
 - `index.html` — the room itself
 - `tune-the-string.html` — Tune the String, the pitch-matching game (self-contained; see THIRD-PARTY.md)
+- `tune-the-string-lesson.html` — the game's lesson page: the physics, the math, worked examples, and the coding choices (opens inside the game from its 📖 Lesson button)
 - `sound.js` — pure rules: pitch, decibels, echoes, strings, intervals, rhythm, the circle, voice recipes, the MIDI reader/writer
 - `app.js` — the wiring: WebAudio benches, the piano and its voices, Web MIDI, playback, recording
 - `style.css` — the room's styling (shared Everyday Cool room styling plus the benches, piano, measure bar, and circle)
