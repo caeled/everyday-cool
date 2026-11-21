@@ -42,6 +42,16 @@
   .feedback.bad { border-color:var(--bad); }
   .row { display:flex; flex-wrap:wrap; gap:9px; margin-top:14px; }
   .score-big { font-size:2.2rem; margin:4px 0; }
+  .search-row { display:flex; flex-wrap:wrap; gap:9px; margin-top:12px; }
+  .search-row input { flex:1 1 240px; background:var(--card2); color:var(--ink); border:1px solid var(--line);
+    border-radius:9px; padding:9px 13px; font:15.5px Georgia, Palatino, serif; }
+  .search-row input:focus { outline:none; border-color:var(--accent); }
+  .hits { display:grid; gap:10px; margin-top:14px; }
+  .hit { display:flex; gap:16px; align-items:flex-start; background:var(--card2); border:1px solid var(--line);
+    border-radius:11px; padding:13px 16px; }
+  .hit-num { font-size:2.1rem; line-height:1; font-variant-numeric:tabular-nums; letter-spacing:0.03em; color:#fff; }
+  .hit-body { font-size:15px; }
+  .hit-body .why { color:var(--muted); display:block; margin-top:2px; }
   footer { color:var(--muted); font-size:0.85rem; margin-top:2rem; }
   /* Lesson pop-up — the back door, readable mid-game (same pattern as the Physics games). */
   .lesson-overlay { position:fixed; inset:0; background:rgba(3,6,12,.8); display:flex; align-items:center; justify-content:center; padding:16px; z-index:50; }
@@ -68,6 +78,17 @@
       <button id="btnLesson" type="button">📖 Lesson</button>
     </div>
   </header>
+
+  <section class="panel" id="searchPanel">
+    <h2>Just want the number? Look a subject up.</h2>
+    <p class="muted" style="margin:0">Type a subject and the table kicks out the Dewey number it lives at — the same hundred divisions the game is played from, searched the way a catalog searches. Where the precise home is a section below the division, you get both numbers: the section is the address, the division is its street.</p>
+    <form class="search-row" id="searchForm">
+      <input id="searchInput" type="text" autocomplete="off" placeholder="Try: chickens, dreams, soccer, taxes, dinosaurs…">
+      <button class="primary" type="submit">Find the number</button>
+    </form>
+    <div class="hits" id="searchResults"></div>
+    <p class="muted" style="margin:14px 0 0;font-size:0.92rem">Searching by subject is a whole trade of its own — the collection's <a href="../find-it/index.html">Find It</a> room is built around it. This little lookup is its library cousin.</p>
+  </section>
 
   <section class="panel" id="menuPanel">
     <h2>Choose your rounds</h2>
@@ -369,6 +390,176 @@ function scoreOf(rounds, picks) {
   for (let i = 0; i < rounds.length; i++) if (checkAnswer(rounds[i], picks[i])) s++;
   return s;
 }
+
+/* The subject search: a hand-kept index from everyday words to the table.
+   Each entry is [division, section-or-null, why]. The division is always a
+   row of DIVISIONS; the section, when present, is the more precise home
+   below the division — the decimal tail, shown instead of hidden, so a
+   search teaches the walk from street to address. This is a teaching
+   index, not the DDC schedules: a word it doesn't know gets no answer,
+   never an invented one. */
+const KEYWORDS = {
+  "chickens": ["630", "636", "Chickens are farm animals — animal husbandry, inside Agriculture."],
+  "dogs": ["630", "636", "Dogs shelve with the other kept animals, at animal husbandry."],
+  "cats": ["630", "636", "Cats shelve with the other kept animals, at animal husbandry."],
+  "horses": ["630", "636", "Horses are working and kept animals — animal husbandry."],
+  "cows": ["630", "636", "Cattle are livestock: animal husbandry, inside Agriculture."],
+  "pigs": ["630", "636", "Pigs are livestock: animal husbandry, inside Agriculture."],
+  "pets": ["630", "636", "Keeping pets is animal husbandry at home scale."],
+  "bees": ["630", "638", "Beekeeping gets its own section: insect culture, inside Agriculture."],
+  "gardening": ["630", "635", "Garden crops — vegetables and flowers grown on purpose."],
+  "birds": ["590", "598", "Birds are animals (590); birds themselves narrow to 598."],
+  "fish": ["590", "597", "Fish are cold-blooded vertebrates, inside Animals."],
+  "snakes": ["590", "597", "Snakes shelve with the cold-blooded vertebrates."],
+  "insects": ["590", "595", "Insects get a section of their own inside Animals."],
+  "animals": ["590", null, "The whole animal kingdom gathers at 590."],
+  "plants": ["580", null, "Botany — the plant kingdom — is 580."],
+  "trees": ["580", "582", "Trees are seed plants with a section of their own."],
+  "flowers": ["580", null, "Flowers are plants first: botany, at 580. (Growing them is 635.)"],
+  "cooking": ["640", "641", "Cooking is food & drink, inside Home & family management."],
+  "recipes": ["640", "641", "Recipe books live with food & drink, at 641."],
+  "baking": ["640", "641", "Baking is cooking with the oven on: food & drink, 641."],
+  "food": ["640", "641", "Food & drink is 641, inside Home & family management."],
+  "babies": ["640", "649", "Raising children at home — babies included — is 649."],
+  "parenting": ["640", "649", "Child rearing at home is 649."],
+  "sewing": ["640", "646", "Sewing is clothing construction, inside home management."],
+  "cleaning": ["640", "648", "Housekeeping — cleaning included — is 648."],
+  "soccer": ["790", "796", "Soccer is an athletic outdoor sport: 796, inside Sports & games."],
+  "football": ["790", "796", "Football is an athletic outdoor sport, at 796."],
+  "baseball": ["790", "796", "Baseball is a bat-and-ball outdoor sport, at 796."],
+  "basketball": ["790", "796", "Basketball is a court sport, at 796."],
+  "hockey": ["790", "796", "Hockey is an athletic sport, at 796."],
+  "swimming": ["790", "797", "Swimming is a water sport: 797."],
+  "fishing": ["790", "799", "Fishing sits at the far end of sports, with hunting: 799."],
+  "camping": ["790", "796", "Camping is outdoor life, inside athletic & outdoor sports."],
+  "sports": ["790", "796", "Sports gather at 790; the athletic sports themselves are 796."],
+  "chess": ["790", "794", "Chess is a game of skill: 794."],
+  "card games": ["790", "795", "Card games narrow from 790 to 795 in the sections."],
+  "video games": ["790", "794", "Electronic games shelve with games of skill, at 794."],
+  "puzzles": ["790", "793", "Puzzles are indoor games & amusements: 793."],
+  "dancing": ["790", "793", "Dance as recreation is 793, inside Sports, games & entertainment."],
+  "magic tricks": ["790", "793", "Conjuring is an indoor amusement: 793."],
+  "movies": ["790", "791", "Film lives with public performances, at 791."],
+  "jokes": ["810", "818", "Joke books shelve with American miscellaneous writings, at 818."],
+  "dinosaurs": ["560", "567", "Dinosaurs are fossil vertebrates: 567, inside Fossils & prehistoric life."],
+  "fossils": ["560", null, "Fossils & prehistoric life get a division of their own: 560."],
+  "space": ["520", null, "The heavens are Astronomy's: 520. (Flying there is 629.)"],
+  "astronauts": ["620", "629", "Space flight is engineering: 629, inside Engineering."],
+  "planets": ["520", "523", "The planets are specific celestial bodies: 523."],
+  "stars": ["520", "523", "Stars are specific celestial bodies: 523."],
+  "moon": ["520", "523", "The Moon is a specific celestial body: 523."],
+  "weather": ["550", "551", "Weather is meteorology, a section of Earth sciences."],
+  "volcanoes": ["550", "551", "Volcanoes are Earth in motion: geology, at 551."],
+  "earthquakes": ["550", "551", "Earthquakes are geology at work: 551."],
+  "oceans": ["550", "551", "Oceanography is a section of Earth sciences: 551."],
+  "rocks": ["550", "552", "Rocks themselves — petrology — are 552."],
+  "computers": ["000", "004", "Computers moved into the 000s' general shelf; computing proper is 004."],
+  "coding": ["000", "005", "Programming is 005, inside the computer corner of the 000s."],
+  "programming": ["000", "005", "Programming is 005, inside the computer corner of the 000s."],
+  "robots": ["620", "629", "Robotics is automatic control engineering: 629."],
+  "cars": ["620", "629", "Motor vehicles are engineering: 629."],
+  "airplanes": ["620", "629", "Aircraft are engineering: 629, inside Engineering."],
+  "trains": ["620", "625", "Railroad engineering is 625."],
+  "ships": ["620", "623", "Ships are naval engineering: 623."],
+  "bridges": ["620", "624", "Bridges are civil engineering: 624."],
+  "electricity": ["530", "537", "Electricity as a science is 537, inside Physics."],
+  "magnets": ["530", "538", "Magnetism is 538, inside Physics."],
+  "experiments": ["500", "507", "Science experiments live with science education & research: 507."],
+  "math": ["510", null, "Mathematics opens the sciences at 510."],
+  "mathematics": ["510", null, "Mathematics opens the sciences at 510."],
+  "body": ["610", "612", "How the human body works is physiology: 612."],
+  "health": ["610", null, "Medicine & health open the applied sciences at 610."],
+  "dreams": ["150", "154", "Dreams live in the subconscious corner of Psychology: 154."],
+  "feelings": ["150", "152", "Emotions are a section of Psychology: 152."],
+  "money": ["330", "332", "Money as a system is financial economics: 332."],
+  "taxes": ["330", "336", "Taxes are public finance: 336, inside Economics."],
+  "jobs": ["330", "331", "Work and labour are 331, inside Economics."],
+  "law": ["340", null, "Law gets a division of its own: 340."],
+  "police": ["360", "363", "Police are public safety services: 363."],
+  "firefighters": ["360", "363", "Fire services are public safety: 363."],
+  "school": ["370", null, "Education — schools and teaching — is 370."],
+  "maps": ["910", "912", "Maps are graphic representations of places: 912."],
+  "fairy tales": ["390", "398", "Fairy tales shelve as folklore, at 398."],
+  "myths": ["390", "398", "Myths live with folklore, at 398."],
+  "mythology": ["390", "398", "Mythology lives with folklore, at 398."],
+  "bible": ["220", null, "The Bible itself gets 220."],
+  "religion": ["200", null, "Religion is a whole class: the 200s, gathered at 200."],
+  "christmas": ["390", "394", "Christmas is a holiday custom: 394."],
+  "halloween": ["390", "394", "Halloween is a holiday custom: 394."],
+  "weddings": ["390", "395", "Weddings are etiquette & customs: 395."],
+  "drawing": ["740", "741", "Drawing is 741, inside Graphic arts."],
+  "painting": ["750", null, "Painting is 750."],
+  "photography": ["770", null, "Photography & photographs: 770."],
+  "music": ["780", null, "Music is 780."],
+  "songs": ["780", "782", "Songs are vocal music: 782."],
+  "crafts": ["740", "745", "Handicrafts are decorative arts: 745."],
+  "origami": ["740", "745", "Origami is a paper handicraft: 745."],
+  "sculpture": ["730", null, "Sculpture, ceramics & metalwork: 730."],
+  "castles": ["720", "728", "Castles as buildings are 728, inside Architecture."],
+  "egypt": ["930", "932", "Ancient Egypt is 932, inside History of the ancient world."],
+  "knights": ["940", null, "Knights ride with medieval Europe, in History of Europe: 940."],
+  "history": ["900", null, "History & geography is a whole class: the 900s, gathered at 900."]
+};
+
+function normSubject(s) {
+  return String(s).toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
+/* Two words refer to the same stem if one is a prefix of the other
+   (chicken/chickens, politics/political). Short words must match whole. */
+function wordHit(a, b) {
+  if (a === b) return true;
+  const s = a.length <= b.length ? a : b, l = a.length <= b.length ? b : a;
+  return s.length >= 3 && l.indexOf(s) === 0;
+}
+
+/* Look a subject up. Returns up to five hits, best first, each
+   { div, sec, subject, why } — div and subject straight from DIVISIONS,
+   sec the section number or null. Keyword hits outrank table-word hits.
+   A subject the index doesn't know returns an empty list: the honest
+   answer is "no address", never an invented number. */
+function searchSubject(query) {
+  const q = normSubject(query || "");
+  if (!q) return [];
+  const qWords = q.split(" ");
+  const hits = [], seen = {};
+  function push(div, sec, why) {
+    const k = div + "|" + (sec || "");
+    if (seen[k] || !DIVISIONS[div]) return;
+    seen[k] = true;
+    hits.push({ div: div, sec: sec || null, subject: DIVISIONS[div], why: why });
+  }
+  /* 1. An exact everyday word or phrase from the keyword index. */
+  if (Object.prototype.hasOwnProperty.call(KEYWORDS, q)) {
+    const e = KEYWORDS[q]; push(e[0], e[1], e[2]);
+  }
+  /* 2. Keyword phrases whose words all appear in the query (or, for a
+        one-word query, phrases containing that word). */
+  const partial = [];
+  Object.keys(KEYWORDS).forEach(function (key) {
+    if (key === q) return;
+    const kWords = key.split(" ");
+    const matched = kWords.filter(function (kw) {
+      return qWords.some(function (qw) { return wordHit(kw, qw); });
+    }).length;
+    if (matched === kWords.length || (qWords.length === 1 && matched >= 1)) {
+      partial.push({ key: key, matched: matched });
+    }
+  });
+  partial.sort(function (a, b) { return b.matched - a.matched; });
+  partial.forEach(function (p) { const e = KEYWORDS[p.key]; push(e[0], e[1], e[2]); });
+  /* 3. The table's own words: a query word that matches a word of a
+        division's name (040 stays out — it is never dealt). */
+  Object.keys(DIVISIONS).forEach(function (code) {
+    if (UNPLAYABLE[code]) return;
+    const sWords = normSubject(DIVISIONS[code]).split(" ");
+    const matched = qWords.some(function (qw) {
+      return sWords.some(function (sw) { return wordHit(qw, sw); });
+    });
+    if (matched) push(code, null, "The table's own words: " + code + " is \u201C" + DIVISIONS[code] + ".\u201D");
+  });
+  return hits.slice(0, 5);
+}
 /* === END CORE === */
 
 (function () {
@@ -474,6 +665,34 @@ function scoreOf(rounds, picks) {
       s >= 5 ? 'A solid reshelving cart\u2019s worth. The decimals get friendlier from here.' :
                'Dewey takes practice — that is what the system\u2019s own lesson page is for. It prints the whole map: ten classes, one hundred divisions.';
   }
+
+  /* Subject search: type a subject, get its Dewey number. Runs entirely
+     over the game's own table and keyword index (searchSubject, in the
+     CORE) — no answer is ever invented. */
+  function escHtml(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+  function runSearch() {
+    const q = el('searchInput').value;
+    const box = el('searchResults');
+    const hits = searchSubject(q);
+    if (!hits.length) {
+      box.innerHTML = '<p class="muted" style="margin:2px 0 0">No address in the table for \u201C' +
+        escHtml(q.trim()) + '\u201D. Dewey only answers for subjects it knows — try a broader word: ' +
+        '<i>animals</i>, <i>sports</i>, <i>food</i>, <i>space</i> or <i>history</i>.</p>';
+      return;
+    }
+    box.innerHTML = hits.map(function (h) {
+      const cl = classOf(h.div);
+      return '<div class="hit"><div class="hit-num">' + (h.sec || h.div) + '</div>' +
+        '<div class="hit-body"><b>' + h.div + ' — ' + h.subject + '</b> ' +
+        '<span class="muted">(in the ' + cl + 's — ' + DIVISIONS[cl] + ')</span>' +
+        (h.sec ? '<span class="why">The precise home is the section <b>' + h.sec + '</b>, inside division ' + h.div + '. ' + h.why + '</span>'
+               : '<span class="why">' + h.why + '</span>') +
+        '</div></div>';
+    }).join('');
+  }
+  el('searchForm').addEventListener('submit', e => { e.preventDefault(); runSearch(); });
 
   document.querySelectorAll('[data-mode]').forEach(b =>
     b.addEventListener('click', () => startGame(b.dataset.mode)));

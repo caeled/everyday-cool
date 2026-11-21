@@ -13,3 +13,5 @@ Local changes to imported files: none (no files were imported; all files origina
 Documentation update, 20 November 2026: `index.html`, `style.css`, `README.md`, and `COLLECTION.md` gained a professional documentation treatment — a Source on GitHub link in the Help menu, a documentation lede and action bar in the Help section, matching styles, and a Documentation section in the README — at Steven Powell's direction ('the documentation section is the only part that doesn't look like a real program'). No bench, lesson, or behaviour changed.
 
 The same documentation update also added a Steve's Profile link (Steven Powell's LinkedIn) at the foot of the Help section — `index.html` and `style.css`.
+
+Cross-link (21 November 2026): at Steven Powell's direction, the Keep Going shelf in `index.html` gained an entry for A Library's Shelf It! (`../a-library/dewey-game.html`) — this room finds places by name; the Library's new subject search finds books by subject and kicks out the Dewey number — and the game's search panel links back to this room. Changed files: `index.html`, `COLLECTION.md`.

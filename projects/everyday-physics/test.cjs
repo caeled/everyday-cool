@@ -120,7 +120,7 @@ assert.ok(fs.existsSync(path.join(__dirname, "physics-game-table.html")), "the G
 assert.ok(fs.existsSync(path.join(__dirname, "gravity-well-illustration.jpg")), "the gravity-well illustration exists");
 const tableHtml = fs.readFileSync(path.join(__dirname, "physics-game-table.html"), "utf8");
 const targets = [...tableHtml.matchAll(/file: '([^']+)'/g)].map((m) => m[1]);
-assert.strictEqual(targets.length, 24, "the Game Table names twenty-four games");
+assert.strictEqual(targets.length, 27, "the Game Table names twenty-seven games");
 for (const t of targets)
   assert.ok(fs.existsSync(path.resolve(__dirname, t)), `the Game Table target ${t} resolves to a real file`);
 assert.ok(tableHtml.includes("The back door — read the lesson"), "every Game Table card carries its back-door lesson link");
@@ -142,6 +142,12 @@ assert.ok(targets.includes("../nerd-heaven-tech-support/find-the-fault.html"), "
 assert.ok(fs.existsSync(path.resolve(__dirname, "../nerd-heaven-tech-support/find-the-fault.html")), "the Find the Fault target resolves to Nerd Heaven's game file");
 assert.ok(targets.includes("../a-library/dewey-game.html"), "the Game Table cross-lists Shelf It! from A Library");
 assert.ok(fs.existsSync(path.resolve(__dirname, "../a-library/dewey-game.html")), "the Shelf It! target resolves to A Library's game file");
+assert.ok(targets.includes("../map-room/go-thataway.html"), "the Game Table cross-lists Go Thataway from the Map Room");
+assert.ok(fs.existsSync(path.resolve(__dirname, "../map-room/go-thataway.html")), "the Go Thataway target resolves to the Map Room's game file");
+assert.ok(targets.includes("../everyday-chemistry/balance-it.html"), "the Game Table cross-lists Balance It from Everyday Chemistry");
+assert.ok(fs.existsSync(path.resolve(__dirname, "../everyday-chemistry/balance-it.html")), "the Balance It target resolves to the Chemistry room's game file");
+assert.ok(targets.includes("../secret-squares/pass-it-on.html"), "the Game Table cross-lists Pass It On from Secret Squares");
+assert.ok(fs.existsSync(path.resolve(__dirname, "../secret-squares/pass-it-on.html")), "the Pass It On target resolves to the Secret Squares game file");
 for (const f of [...gameFiles, "physics-game-table.html"]) {
   const src = fs.readFileSync(path.join(__dirname, f), "utf8");
   assert.ok(!/<(?:script|link|img)[^>]+(?:src|href)="https?:\/\//i.test(src), `${f} loads nothing external`);
@@ -150,7 +156,7 @@ const roomHtml = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
 assert.ok(roomHtml.includes('href="physics-game-table.html"'), "the Physics room links to the Game Table");
 const gamesHtml = fs.readFileSync(path.join(__dirname, "..", "games-room", "index.html"), "utf8");
 assert.ok(gamesHtml.includes('href="../everyday-physics/physics-game-table.html"'), "the Games Room links back to the Game Table");
-console.log("everyday-physics tests: Game Table checks passed (16 local games, 24 targets resolve, nothing external, links both ways)");
+console.log("everyday-physics tests: Game Table checks passed (16 local games, 27 targets resolve, nothing external, links both ways)");
 
 /* Docking: the room's own orbital-rendezvous game (added 20 November 2026) */
 assert.ok(fs.existsSync(path.join(__dirname, "docking.html")), "the Docking game page exists");
