@@ -52,6 +52,17 @@ Browser progress does not automatically travel with a USB stick. Use **Save prog
 
 Large recordings are not stored in Git. The optional download helper assembles about eleven hours of media. See [OFFLINE-MEDIA.md](OFFLINE-MEDIA.md).
 
+## The Back Doors — game lessons for builders
+
+Six games elsewhere in Everyday Cool keep a back door open: a lesson page that explains the physics the game runs on and shows how it was coded, with the proof that its levels can actually be beaten. The workshop home shelves all six as builder reading, because every game's "How it's built" section points onward to this bench:
+
+- [Docking — the lesson](../everyday-physics/docking-lesson.html) — a pure-function orbital core stepped with RK4, flown by a script to prove every level dockable.
+- [Stage It — the lesson](../everyday-physics/stage-it-lesson.html) — one rocket-equation core serving the design screen, the flight, and the test.
+- [Ballast — the lesson](../everyday-physics/ballast-lesson.html) — a proof pilot that flies on the same instruments the player gets.
+- [Laser & Mirrors — the lesson](../everyday-light/laser-mirrors-lesson.html) — a beam tracer that doubles as the prover of its own levels.
+- [Tune the String — the lesson](../everyday-sound/tune-the-string-lesson.html) — real Web Audio synthesis; the beating is summed tones, not a sound effect.
+- [Shake Table — the lesson](../everyday-engineering/shake-table-lesson.html) — a lumped-mass model searched backwards by inverse iteration.
+
 ## Library
 
 [Steven’s publicly shared IT reference notebook](https://notebook.google.com/notebook/0d70e944-e6cc-4485-a888-f71f4419168b) — further material on infrastructure and cybersecurity. Internet required.

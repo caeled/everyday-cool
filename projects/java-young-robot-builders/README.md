@@ -12,6 +12,7 @@ Build, test, observe, fix, repeat. Every activity follows **Sense → Think → 
 - [Java reference](java-reference.html): 38 searchable entries about syntax, objects, collections, robot math, timing, validation, and debugging, with filters, common mistakes, lesson links, and official documentation links.
 - [Example code](examples.html): eight complete Java programs with download/copy controls, expected output, and suggested experiments. Java 17-compatible; no SDK or dependencies.
 - [Discover](discover.html): child, teen, and adult competition videos, credited manufacturing photographs, and a Python comparison.
+- [Games that teach — and show their work](index.html#game-lessons): a home-page shelf of six Everyday Cool game lessons — Laser & Mirrors, Tune the String, Ballast, Stage It, Docking, and Shake Table. Each game keeps a back door open: a page explaining its physics and showing how it was coded. The shelf is arranged gentlest first for young builders.
 
 All nine introductory modules are available. These are teaching prototypes, not a classroom curriculum validated by student trials. See the [course outline](COURSE_OUTLINE.md) for outcomes and a first-pilot checklist.
 
@@ -64,12 +65,12 @@ Replace TrafficLight with the chosen class name. `TeachingRobotMission` implemen
 ## Validation
 
 ```sh
-node --test tests/geometry.test.cjs tests/lab-models.test.cjs
+node --test tests/geometry.test.cjs tests/lab-models.test.cjs tests/game-lessons.test.cjs
 python tests/check-site.py
 python tests/check-java.py
 ```
 
-No packages are needed. The Java check requires a JDK on PATH or `--jdk-bin` pointing to its bin directory. It compiles with `--release 17`, runs all eight examples, and compares exact output with `tests/java-expected.json`. Fourteen JavaScript tests cover geometry, calibration, wheel motion, automation stopping, feedback convergence/failure, and mission validation. Static checks verify local links, assets, anchors, copy targets, and navigation across 15 pages.
+No packages are needed. The Java check requires a JDK on PATH or `--jdk-bin` pointing to its bin directory. It compiles with `--release 17`, runs all eight examples, and compares exact output with `tests/java-expected.json`. Fourteen JavaScript tests cover geometry, calibration, wheel motion, automation stopping, feedback convergence/failure, and mission validation. A further test file, `tests/game-lessons.test.cjs`, asserts that the six game-lesson links on the home page resolve to their lesson pages in the neighbouring Everyday Cool rooms. Static checks verify local links, assets, anchors, copy targets, and navigation across 15 pages.
 
 Browser checks should include search/topic combinations, no matches, clear filters, deep links, example copying/downloads, all lab normal/failure cases, reset, keyboard use, and mobile layouts. Lessons, reference, and examples remain readable with scripting disabled.
 

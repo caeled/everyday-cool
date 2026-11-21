@@ -27,4 +27,6 @@ The rules (pieces, rotation, collision, line clears, scoring, the 7-bag, the ben
 - `app.js` — canvas, clock, keys, and the bench robot display
 - `style.css` — the room's styling
 - `games-banner.jpg` — AI-generated banner art (see COLLECTION.md)
+- `tensor-tris.html` — Tensor-Tris, the matrix-block arcade game (built with Google Antigravity, supplied by Steven; also dealt at the Physics Game Table)
+- `tensor-tris-lesson.html` — the game's lesson page: the matrix mathematics it really runs on, and the name-vs-reality audit (there are no tensors in Tensor-Tris)
 - `test.cjs` — rule tests

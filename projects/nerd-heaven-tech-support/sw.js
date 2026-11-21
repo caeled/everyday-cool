@@ -1,7 +1,7 @@
 'use strict';
 /* Nerd Heaven service worker: caches the course shell so the installed
    app works offline. It only ever handles this app's own files. */
-const VERSION = 'nerd-heaven-v2';
+const VERSION = 'nerd-heaven-v3';
 const SHELL = [
   './',
   './index.html',

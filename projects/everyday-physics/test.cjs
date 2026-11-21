@@ -123,6 +123,11 @@ const targets = [...tableHtml.matchAll(/file: '([^']+)'/g)].map((m) => m[1]);
 assert.strictEqual(targets.length, 20, "the Game Table names twenty games");
 for (const t of targets)
   assert.ok(fs.existsSync(path.resolve(__dirname, t)), `the Game Table target ${t} resolves to a real file`);
+assert.ok(tableHtml.includes("The back door — read the lesson"), "every Game Table card carries its back-door lesson link");
+for (const t of targets) {
+  const lesson = t.replace(".html", "-lesson.html");
+  assert.ok(fs.existsSync(path.resolve(__dirname, lesson)), `the Game Table lesson ${lesson} resolves to a real file`);
+}
 assert.ok(targets.includes("../everyday-light/laser-mirrors.html"), "the Game Table cross-lists Laser & Mirrors from Everyday Light");
 assert.ok(fs.existsSync(path.resolve(__dirname, "../everyday-light/laser-mirrors.html")), "the Laser & Mirrors target resolves to the Light room's game file");
 assert.ok(targets.includes("../everyday-sound/tune-the-string.html"), "the Game Table cross-lists Tune the String from Everyday Sound");
