@@ -1,0 +1,884 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Ballast — A Submarine Buoyancy Game</title>
+<style>
+  :root {
+    --bg: #060a14;
+    --panel: #101827;
+    --panel-alt: #182238;
+    --border: #29354d;
+    --text: #eaf0fa;
+    --muted: #8ea1bd;
+    --accent: #38bdf8;
+    --amber: #f59e0b;
+    --emerald: #34d399;
+    --rose: #f43f5e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh;
+    background: radial-gradient(circle at 50% 0%, #12203a 0%, var(--bg) 70%);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif;
+    display: flex; flex-direction: column;
+    user-select: none; -webkit-user-select: none;
+    overflow-x: hidden;
+  }
+  header {
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+    gap: 10px; padding: 9px 16px;
+    background: rgba(6, 10, 20, 0.94);
+    border-bottom: 1px solid var(--border);
+  }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .brand-badge {
+    width: 32px; height: 32px; border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #7dd3fc, #0c4a6e 78%);
+    border: 2px solid #bae6fd;
+    display: grid; place-items: center; font-size: 15px;
+    box-shadow: 0 0 12px rgba(56, 189, 248, 0.45);
+  }
+  .brand h1 { margin: 0; font-size: 15px; font-weight: 700; }
+  .brand small { display: block; font-size: 11px; color: var(--muted); }
+  .levels, .top-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .btn {
+    background: var(--panel-alt); color: var(--text);
+    border: 1px solid var(--border); padding: 6px 11px; border-radius: 999px;
+    font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.14s ease;
+    touch-action: manipulation;
+  }
+  .btn:hover { border-color: var(--accent); background: #233048; color: #fff; }
+  .btn.active { background: rgba(56,189,248,0.2); border-color: var(--accent); color: #7dd3fc; }
+  .btn.primary { background: linear-gradient(135deg, #0369a1, #0284c7); border-color: transparent; color: #fff; }
+  .btn.emerald { background: linear-gradient(135deg, #059669, #10b981); border-color: transparent; color: #fff; }
+  main {
+    flex: 1; display: flex; justify-content: center; align-items: flex-start;
+    gap: 14px; padding: 12px 16px 18px; flex-wrap: wrap;
+  }
+  .stage-col { flex: 1; min-width: 320px; max-width: 1020px; display: flex; flex-direction: column; gap: 8px; }
+  .hud { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 5px 10px; font-size: 12px; min-width: 104px;
+  }
+  .chip .k { display: block; font-size: 9.5px; letter-spacing: 0.08em; color: var(--muted); font-weight: 700; }
+  .chip .v { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .chip .v.up { color: var(--emerald); }
+  .chip .v.down { color: var(--amber); }
+  .chip .v.warn { color: var(--rose); }
+  .objective {
+    background: var(--panel); border: 1px solid var(--border); border-left: 3px solid var(--accent);
+    border-radius: 8px; padding: 7px 11px; font-size: 13px; color: #cbd5e1;
+  }
+  .objective b { color: var(--text); }
+  .holdbar { height: 6px; background: #0b1220; border-radius: 3px; overflow: hidden; margin-top: 6px; border: 1px solid var(--border); }
+  .holdbar > div { height: 100%; width: 0%; background: linear-gradient(90deg, #059669, #34d399); transition: width 0.15s linear; }
+  .canvas-frame {
+    position: relative; border-radius: 14px; padding: 5px;
+    background: linear-gradient(160deg, #22304a, #0a101d);
+    border: 1px solid #304263;
+    box-shadow: 0 18px 46px rgba(0, 0, 0, 0.62);
+  }
+  canvas {
+    display: block; width: 100%; height: auto; aspect-ratio: 1000 / 620;
+    border-radius: 10px; background: #04101f; touch-action: none;
+  }
+  .overlay {
+    position: absolute; inset: 5px; border-radius: 10px;
+    background: rgba(4, 8, 16, 0.82); backdrop-filter: blur(4px);
+    display: none; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; gap: 10px; padding: 22px;
+  }
+  .overlay.visible { display: flex; }
+  .overlay h2 { margin: 0; font-size: 30px; letter-spacing: 0.5px; }
+  .overlay h2.win { color: var(--emerald); }
+  .overlay h2.lose { color: var(--rose); }
+  .overlay p { margin: 0; color: #cbd5e1; font-size: 14px; line-height: 1.55; max-width: 560px; }
+  .overlay .btn { font-size: 14px; padding: 9px 20px; }
+  .lesson-overlay {
+    position: fixed; inset: 0; z-index: 60;
+    background: rgba(3, 6, 12, 0.8); backdrop-filter: blur(3px);
+    display: none; align-items: center; justify-content: center; padding: 18px;
+  }
+  .lesson-overlay.visible { display: flex; }
+  .lesson-panel {
+    width: min(940px, 96vw); height: min(88vh, 900px);
+    background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+    display: flex; flex-direction: column; overflow: hidden;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.65);
+  }
+  .lesson-head {
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 9px 12px; border-bottom: 1px solid var(--border); background: var(--panel-alt);
+  }
+  .lesson-head .t { font-size: 13px; font-weight: 700; }
+  .lesson-head .t small { display: block; font-size: 11px; color: var(--muted); font-weight: 400; }
+  .lesson-head .acts { display: flex; gap: 6px; align-items: center; }
+  .lesson-head a.btn { text-decoration: none; display: inline-block; }
+  .lesson-panel iframe { flex: 1; width: 100%; border: 0; background: #0a1120; }
+  .controls {
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 9px;
+  }
+  .ctl-group { display: flex; flex-direction: column; gap: 4px; align-items: stretch; }
+  .ctl-group .lbl { font-size: 9.5px; letter-spacing: 0.08em; color: var(--muted); font-weight: 700; text-align: center; }
+  .big-btn {
+    background: var(--panel-alt); color: var(--text); border: 1px solid var(--border);
+    border-radius: 10px; padding: 10px 14px; font-size: 13px; font-weight: 700; cursor: pointer;
+    touch-action: none; min-width: 92px;
+  }
+  .big-btn:active, .big-btn.held { border-color: var(--accent); background: #27405e; color: #fff; }
+  .big-btn.on { background: rgba(56,189,248,0.25); border-color: var(--accent); color: #7dd3fc; }
+  .slider-wrap { flex: 1; min-width: 180px; display: flex; flex-direction: column; gap: 4px; justify-content: center; }
+  .slider-wrap .lbl { font-size: 9.5px; letter-spacing: 0.08em; color: var(--muted); font-weight: 700; text-align: center; }
+  input[type="range"] { width: 100%; accent-color: var(--accent); height: 28px; }
+  .fineprint { font-size: 11.5px; color: var(--muted); line-height: 1.6; max-width: 1020px; }
+  .fineprint b { color: #cbd5e1; }
+  kbd {
+    background: #0b1220; border: 1px solid var(--border); border-bottom-width: 2px;
+    border-radius: 4px; padding: 0 4px; font-size: 10.5px; font-family: inherit;
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <div class="brand-badge">⚖️</div>
+    <div>
+      <h1>Ballast</h1>
+      <small>Everyday Physics · Archimedes at the controls</small>
+    </div>
+  </div>
+  <div class="levels" id="levelBtns"></div>
+  <div class="top-actions">
+    <button class="btn" id="lessonBtn">📖 Lesson</button>
+    <button class="btn" id="restartBtn">↺ Restart dive</button>
+  </div>
+</header>
+
+<main>
+  <div class="stage-col">
+    <div class="hud">
+      <div class="chip"><span class="k">DEPTH</span><span class="v" id="hudDepth">—</span></div>
+      <div class="chip"><span class="k">VERT SPEED</span><span class="v" id="hudVy">—</span></div>
+      <div class="chip"><span class="k">TANKS (ACTUAL)</span><span class="v" id="hudTank">—</span></div>
+      <div class="chip"><span class="k">NET BUOYANCY</span><span class="v" id="hudNet">—</span></div>
+      <div class="chip"><span class="k">SPEED AHEAD</span><span class="v" id="hudVx">—</span></div>
+      <div class="chip"><span class="k">WATER HERE</span><span class="v" id="hudRho">—</span></div>
+    </div>
+    <div class="objective" id="objectiveBox"><span id="objectiveText"></span><div class="holdbar" id="holdBarWrap" style="display:none"><div id="holdBar"></div></div></div>
+
+    <div class="canvas-frame">
+      <canvas id="game" width="1000" height="620"></canvas>
+      <div class="overlay visible" id="overlay">
+        <h2 id="ovTitle">Ballast</h2>
+        <p id="ovText"></p>
+        <button class="btn primary" id="ovBtn">Dive</button>
+      </div>
+    </div>
+
+    <div class="controls">
+      <div class="ctl-group">
+        <span class="lbl">BLOW TANKS · RISE</span>
+        <button class="big-btn" id="blowBtn">▲ BLOW</button>
+      </div>
+      <div class="slider-wrap">
+        <span class="lbl">TANK ORDER — DRAG TO SET, TANKS FOLLOW · <span id="tankOrderVal">30%</span></span>
+        <input type="range" id="tankSlider" min="0" max="100" step="0.5" value="30" />
+      </div>
+      <div class="ctl-group">
+        <span class="lbl">FLOOD TANKS · SINK</span>
+        <button class="big-btn" id="floodBtn">FLOOD ▼</button>
+      </div>
+      <div class="ctl-group">
+        <span class="lbl">PROPELLER</span>
+        <button class="big-btn" id="propBtn">PROP: OFF</button>
+      </div>
+      <div class="ctl-group">
+        <span class="lbl">DIVE PLANES · NEED FLOW</span>
+        <div style="display:flex; gap:6px;">
+          <button class="big-btn" id="planeUpBtn" style="min-width:56px;">▲</button>
+          <button class="big-btn" id="planeDownBtn" style="min-width:56px;">▼</button>
+        </div>
+      </div>
+    </div>
+
+    <p class="fineprint" id="ideaBox">
+      <b>The one idea:</b> you don't steer a submarine up and down. You make it heavier or lighter
+      than the water it pushes aside — and the water decides. Flood the tanks and your sub's mass grows
+      past the mass of its displaced water: down you go. Blow them and the water wins: up you come.
+      The dive planes only bite while water flows over them, so they are a nudge, never a lift.
+      Keys if you have them: <kbd>↑</kbd>/<kbd>↓</kbd> blow &amp; flood, <kbd>Space</kbd> propeller, <kbd>A</kbd>/<kbd>D</kbd> planes.
+    </p>
+    <p class="fineprint">
+      <b>Simplifications, named plainly:</b> the hull displaces a fixed 10 m³ (a real hull compresses
+      slightly as pressure grows, which is one reason real trim is a constant chore); the tanks answer
+      at a game pace, not a real boat's; there are no currents — the only surprise in the water is the
+      density layer's effect on buoyancy itself; and the ocean is a 2D side view. The arithmetic is not
+      simplified: net force really is (displaced water mass − sub mass) × g, with drag opposing motion,
+      and the HUD shows you every number the physics is using.
+    </p>
+  </div>
+</main>
+
+<div class="lesson-overlay" id="lessonOverlay" role="dialog" aria-modal="true" aria-label="Ballast lesson">
+  <div class="lesson-panel">
+    <div class="lesson-head">
+      <div class="t">📖 The Ballast lesson<small>The physics behind the game — the dive is paused while you read.</small></div>
+      <div class="acts">
+        <a class="btn" href="ballast-lesson.html" target="_blank" rel="noopener">Open the full page ↗</a>
+        <button class="btn" id="lessonClose">✕ Close</button>
+      </div>
+    </div>
+    <iframe id="lessonFrame" src="ballast-lesson.html" title="Ballast — the physics behind the game"></iframe>
+  </div>
+</div>
+
+<script>
+/* === BallastCore BEGIN === */
+/* BallastCore — pure physics and rules for Ballast. No DOM, no rendering.
+   Everything the HUD shows and everything the test proves comes from here.
+   Sign conventions: depth is metres, positive DOWN. vy positive = sinking.
+   Net buoyancy force netN is positive = pushing UP (toward the surface). */
+const BallastCore = (() => {
+  'use strict';
+
+  const G = 9.81;              // m/s^2
+  const V_DISP = 10.0;         // m^3 of water the hull displaces (fixed)
+  const V_TANK = 1.2;          // m^3 of ballast-tank capacity
+  const M_HULL = 9635.0;       // kg: hull, crew, kit, and empty tanks
+  const RHO_STD = 1025;        // kg/m^3, ordinary seawater in this game
+  const FILL_CHASE = 0.25;     // tanks chase the ordered fill at this rate (/s)
+  const FILL_ORDER_RATE = 0.16;// flood/blow orders move the target at this rate (/s)
+  const PROP_ACCEL = 0.42;     // m/s^2 from the propeller at full ahead
+  const PLANE_COEF = 340;      // N of plane force per (m/s of forward flow), full planes
+  const SURFACE_DEPTH = 2.5;   // the sub's centre can come no shallower than this
+  const SURFACE_ZONE = 8;      // "the surface zone" for return objectives
+  const BOTTOM_CLEAR = 2.2;    // sub centre to keel, metres
+  const SUB_HALF_LEN = 9;      // sub half-length, metres (for wreck overlap)
+
+  const LEVELS = [
+    {
+      id: 'neutral',
+      name: 'Find Neutral',
+      width: 200, bottom: 90, crush: 140, rho: RHO_STD,
+      start: { x: 30, depth: 3 },
+      band: { d0: 38, d1: 46 }, holdTime: 6, holdVy: 0.15, thenReturn: false,
+      broachLimit: null,
+      briefing: 'Drop to the marked band — 38 to 46 metres — and hold it: inside the band, ' +
+        'rising or sinking slower than 0.15 m/s, for six seconds. There is exactly one way to do it: ' +
+        'neutral buoyancy. Flood or blow until your sub weighs exactly what the water it pushes aside ' +
+        'weighs. Watch the NET BUOYANCY gauge — when it reads zero and your vertical speed dies, ' +
+        'you are hovering. The seabed is soft mud and a gentle touch is forgiven; arrive faster ' +
+        'than 1.2 m/s and it is not.',
+      winText: 'Neutral buoyancy. With the tanks about half full, your sub\u2019s mass equals the mass ' +
+        'of the water it displaces — 10,250 kg against 10,250 kg — so the sea holds you up exactly as ' +
+        'hard as gravity pulls you down, and you hang in the water column going nowhere. That is not ' +
+        'floating and it is not sinking; it is the knife-edge in between, and every submariner lives on it.',
+      objectiveMain: 'Reach the band at 38–46 m and hold it — |vert speed| under 0.15 m/s for 6 s.',
+      objectiveReturn: ''
+    },
+    {
+      id: 'wreck',
+      name: 'Down to the Wreck',
+      width: 250, bottom: 172, crush: 165, rho: RHO_STD,
+      start: { x: 15, depth: 3 },
+      mound: { x: 204, spread: 17, height: 22 },
+      wreck: { x0: 190, x1: 218, topDepth: 144 },
+      touchVy: 0.8, touchVx: 1.6, broachLimit: 1.5,
+      briefing: 'A wreck rests on a rock mound about 200 metres east, its deck at 144 metres. ' +
+        'Motor over, sink gently, and set down ON the wreck: arrive sinking slower than 0.8 m/s and ' +
+        'crossing slower than 1.6 m/s, or you will crunch into it. Then blow tanks and come home to ' +
+        'the surface zone — gently. Rise into the shallows faster than 1.5 m/s and you will broach. ' +
+        'And mind the red line: crush depth is 165 m. The wreck sits above it. The seabed beside the ' +
+        'mound does not.',
+      winText: 'Down slow, up slow, hull intact. You used the one control a submarine really has: its ' +
+        'own weight. Flood to sink, blow to rise — and a feather-touch on the wreck, because momentum ' +
+        'does not care that water feels soft. A ten-tonne boat arriving fast is a collision, whatever ' +
+        'it lands on.',
+      objectiveMain: 'Motor east, then set down gently ON the wreck (deck 144 m): sink < 0.8 m/s, across < 1.6 m/s.',
+      objectiveReturn: 'Wreck reached. Now blow tanks and return to the surface zone — rise slower than 1.5 m/s or you broach.'
+    },
+    {
+      id: 'layer',
+      name: 'The Layer',
+      width: 220, bottom: 150, crush: 175, rho: RHO_STD,
+      start: { x: 30, depth: 3 },
+      layer: { d0: 55, d1: 75, rhoAbove: 1025, rhoBelow: 1050 },
+      band: { d0: 95, d1: 105 }, holdTime: 5, holdVy: 0.2, thenReturn: true,
+      broachLimit: 1.5,
+      briefing: 'Below the shimmering band — 55 to 75 metres — the water is denser: 1050 kg/m\u00B3 ' +
+        'instead of 1025. Same sub, same tanks, different water. Sink through the layer, hold the deep ' +
+        'band at 95–105 m for five seconds, then come back up and finish in the surface zone, gently ' +
+        '(broach limit 1.5 m/s). Keep an eye on the NET BUOYANCY gauge as you cross the layer. ' +
+        'You will not touch a valve — and it will change anyway.',
+      winText: 'The layer did that. Above it, one tank setting made you neutral; below it, the denser ' +
+        'water pushed up harder on the same hull, and that same setting made you float — until you ' +
+        'flooded more and re-trimmed for the new water. Buoyancy is not a property of the sub. It is a ' +
+        'negotiation between the sub and whatever water it happens to be in.',
+      objectiveMain: 'Cross the layer and hold the deep band at 95–105 m for 5 s.',
+      objectiveReturn: 'Deep hold done. Re-trim for the lighter water above and return to the surface zone — rise slower than 1.5 m/s.'
+    }
+  ];
+
+  function clamp(v, a, b) { return v < a ? a : (v > b ? b : v); }
+
+  function bottomAt(level, x) {
+    if (level.mound) {
+      const dx = (x - level.mound.x) / level.mound.spread;
+      return level.bottom - level.mound.height * Math.exp(-dx * dx);
+    }
+    return level.bottom;
+  }
+
+  function densityAt(level, depth) {
+    if (!level.layer) return level.rho;
+    const L = level.layer;
+    if (depth <= L.d0) return L.rhoAbove;
+    if (depth >= L.d1) return L.rhoBelow;
+    const t = (depth - L.d0) / (L.d1 - L.d0);
+    const s = t * t * (3 - 2 * t); // smoothstep across the band
+    return L.rhoAbove + (L.rhoBelow - L.rhoAbove) * s;
+  }
+
+  /* The tank fill fraction at which this sub, in water of the density found
+     at this depth, neither rises nor sinks. Exposed because the HUD's story
+     and the test's pilot both fly on the same instruments. */
+  function neutralFill(level, depth) {
+    const rho = densityAt(level, depth);
+    return (rho * V_DISP - M_HULL) / (rho * V_TANK);
+  }
+
+  /* The whole of Archimedes for this game, in one place:
+     displaced water mass vs. the sub's actual mass. */
+  function physics(level, s) {
+    const rho = densityAt(level, s.depth);
+    const displaced = rho * V_DISP;                    // kg of water pushed aside
+    const mass = M_HULL + s.fill * rho * V_TANK;       // kg, tanks flooded with local water
+    const netKg = displaced - mass;                    // + = lighter than the water
+    const netN = netKg * G;                            // + = force pushing UP
+    return { rho, displaced, mass, netKg, netN };
+  }
+
+  function createState(level) {
+    return {
+      x: level.start.x, depth: level.start.depth, vx: 0, vy: 0,
+      fill: 0.30, fillTarget: 0.30, propOn: false, plane: 0,
+      status: 'play', loseReason: null, loseVy: 0,
+      phase: 'main', holdTimer: 0, t: 0,
+      onFloor: null, touchedWreck: false,
+      touchVy: null, touchVx: null
+    };
+  }
+
+  function lose(s, reason) {
+    s.status = 'lost'; s.loseReason = reason; s.loseVy = s.vy;
+    return s;
+  }
+
+  /* input: { flood, blow, slider (0..1 or null), prop (bool), plane (-1,0,1) }
+     plane: +1 = planes set to push the sub DOWN, -1 = push UP. */
+  function step(level, s, input, dt) {
+    if (s.status !== 'play') return s;
+    s.t += dt;
+
+    /* --- tank orders --- */
+    if (input.slider != null && isFinite(input.slider)) s.fillTarget = clamp(input.slider, 0, 1);
+    if (input.flood) s.fillTarget = clamp(s.fillTarget + FILL_ORDER_RATE * dt, 0, 1);
+    if (input.blow) s.fillTarget = clamp(s.fillTarget - FILL_ORDER_RATE * dt, 0, 1);
+    const dFill = s.fillTarget - s.fill;
+    const maxMove = FILL_CHASE * dt;
+    s.fill += Math.abs(dFill) <= maxMove ? dFill : Math.sign(dFill) * maxMove;
+    s.propOn = !!input.prop;
+    s.plane = clamp(input.plane || 0, -1, 1);
+
+    const P = physics(level, s);
+
+    /* --- vertical: depth-positive-down, so buoyancy enters as -netN --- */
+    let Fv = -P.netN;
+    Fv += -(50 * s.vy + 260 * s.vy * Math.abs(s.vy));   // drag opposes motion
+    Fv += s.plane * PLANE_COEF * s.vx;                  // planes need flow: force ~ forward speed
+    s.vy += (Fv / P.mass) * dt;
+    s.depth += s.vy * dt;
+
+    /* --- horizontal: propeller thrust vs. drag --- */
+    let Fh = s.propOn ? PROP_ACCEL * P.mass : 0;
+    Fh += -(40 * s.vx + 160 * s.vx * Math.abs(s.vx));
+    s.vx += (Fh / P.mass) * dt;
+    s.x += s.vx * dt;
+    s.x = clamp(s.x, 6, level.width - 6);
+
+    /* --- hard limits --- */
+    if (s.depth > level.crush) return lose(s, 'crush');
+    if (level.broachLimit && s.depth <= 6 && s.vy < -level.broachLimit) return lose(s, 'broach');
+    if (s.depth < SURFACE_DEPTH) { s.depth = SURFACE_DEPTH; if (s.vy < 0) s.vy = 0; }
+
+    /* --- floors: seabed, or the wreck's deck if we are over it --- */
+    let floor = bottomAt(level, s.x);
+    let floorKind = 'bottom';
+    if (level.wreck) {
+      const w = level.wreck;
+      const overlap = (s.x + SUB_HALF_LEN > w.x0) && (s.x - SUB_HALF_LEN < w.x1);
+      if (overlap && w.topDepth < floor) { floor = w.topDepth; floorKind = 'wreck'; }
+    }
+    s.onFloor = null;
+    if (s.depth + BOTTOM_CLEAR >= floor) {
+      if (floorKind === 'wreck' && !s.touchedWreck) {
+        if (Math.abs(s.vy) <= level.touchVy && Math.abs(s.vx) <= level.touchVx) {
+          s.touchedWreck = true; s.phase = 'return';
+          s.touchVy = s.vy; s.touchVx = s.vx;
+        } else {
+          return lose(s, 'wreck');
+        }
+      } else if (floorKind === 'bottom' && s.vy > 1.2) {
+        return lose(s, 'impact');
+      }
+      s.depth = floor - BOTTOM_CLEAR;
+      if (s.vy > 0) s.vy = 0;
+      s.onFloor = floorKind;
+    }
+
+    /* --- objectives --- */
+    if (level.band && s.phase === 'main') {
+      const inBand = s.depth >= level.band.d0 && s.depth <= level.band.d1;
+      if (inBand && Math.abs(s.vy) <= level.holdVy) {
+        s.holdTimer += dt;
+        if (s.holdTimer >= level.holdTime) {
+          if (level.thenReturn) { s.phase = 'return'; s.holdTimer = 0; }
+          else { s.status = 'won'; return s; }
+        }
+      } else {
+        s.holdTimer = Math.max(0, s.holdTimer - dt * 0.5);
+      }
+    }
+    if (s.phase === 'return' && s.depth <= SURFACE_ZONE) {
+      s.status = 'won';
+      return s;
+    }
+    return s;
+  }
+
+  function loseText(level, s) {
+    switch (s.loseReason) {
+      case 'crush':
+        return 'Crush depth. Pressure grows by about an atmosphere every 10 metres, so down there ' +
+          'the sea presses with many atmospheres on every square centimetre — and a hull is strong ' +
+          'only until it isn\u2019t. In this stretch of ocean the safe water was above the red line.';
+      case 'impact':
+        return 'You struck the seabed sinking at ' + Math.abs(s.loseVy).toFixed(1) + ' m/s. Water is ' +
+          'soft; the bottom is not, and ten tonnes arriving at speed is a collision however it lands. ' +
+          'Feather the tanks earlier and let drag do the braking.';
+      case 'wreck':
+        return 'You hit the wreck too hard. It has waited down there a long time and did not mind ' +
+          'waiting longer — what it could not survive was a ten-tonne boat arriving at speed. ' +
+          'Momentum does not care that the water felt soft on the way down.';
+      case 'broach':
+        return 'Broach. You rose into the shallows faster than ' +
+          (level.broachLimit || 1.5).toFixed(1) + ' m/s and punched out of the water\u2019s grip ' +
+          'before you could check the rise. Coming up is a manoeuvre, not an escape: re-flood a ' +
+          'little on the way and arrive like you mean to stay afloat.';
+      default:
+        return 'The dive is over.';
+    }
+  }
+
+  return {
+    G, V_DISP, V_TANK, M_HULL, RHO_STD, FILL_ORDER_RATE, FILL_CHASE,
+    LEVELS, clamp, bottomAt, densityAt, neutralFill, physics,
+    createState, step, loseText,
+    SURFACE_ZONE, SURFACE_DEPTH
+  };
+})();
+/* === BallastCore END === */
+</script>
+
+<script>
+(function () {
+  'use strict';
+  const Core = BallastCore;
+  const cv = document.getElementById('game');
+  const ctx = cv.getContext('2d');
+  const W = 1000, H = 620;
+  const SURF_Y = 54, BOT_Y = H - 44, X0 = 10, X1 = W - 66;
+
+  const hud = {
+    depth: document.getElementById('hudDepth'), vy: document.getElementById('hudVy'),
+    tank: document.getElementById('hudTank'), net: document.getElementById('hudNet'),
+    vx: document.getElementById('hudVx'), rho: document.getElementById('hudRho')
+  };
+  const objText = document.getElementById('objectiveText');
+  const holdWrap = document.getElementById('holdBarWrap');
+  const holdBar = document.getElementById('holdBar');
+  const overlay = document.getElementById('overlay');
+  const ovTitle = document.getElementById('ovTitle');
+  const ovText = document.getElementById('ovText');
+  const ovBtn = document.getElementById('ovBtn');
+  const slider = document.getElementById('tankSlider');
+  const tankOrderVal = document.getElementById('tankOrderVal');
+  const propBtn = document.getElementById('propBtn');
+
+  let levelIdx = 0;
+  let level = Core.LEVELS[0];
+  let s = Core.createState(level);
+  let running = false;
+  let lessonOpen = false;
+  let propOn = false;
+  let propAngle = 0;
+  const held = { flood: false, blow: false, planeUp: false, planeDown: false };
+  const bubbles = [];
+
+  /* level buttons */
+  const btnWrap = document.getElementById('levelBtns');
+  Core.LEVELS.forEach((lv, i) => {
+    const b = document.createElement('button');
+    b.className = 'btn' + (i === 0 ? ' active' : '');
+    b.textContent = (i + 1) + ' · ' + lv.name;
+    b.addEventListener('click', () => startLevel(i, true));
+    btnWrap.appendChild(b);
+  });
+
+  function startLevel(i, showIntro) {
+    levelIdx = i; level = Core.LEVELS[i];
+    s = Core.createState(level);
+    propOn = false; propBtn.textContent = 'PROP: OFF'; propBtn.classList.remove('on');
+    slider.value = String(s.fillTarget * 100);
+    tankOrderVal.textContent = Math.round(s.fillTarget * 100) + '%';
+    bubbles.length = 0;
+    [...btnWrap.children].forEach((b, j) => b.classList.toggle('active', j === i));
+    running = false;
+    if (showIntro) {
+      ovTitle.textContent = 'Level ' + (i + 1) + ' — ' + level.name;
+      ovTitle.className = '';
+      ovText.textContent = level.briefing;
+      ovBtn.textContent = 'Dive';
+      overlay.classList.add('visible');
+    }
+    draw(); updateHud();
+  }
+
+  ovBtn.addEventListener('click', () => {
+    if (s.status === 'won' && levelIdx < Core.LEVELS.length - 1) { startLevel(levelIdx + 1, true); return; }
+    if (s.status !== 'play') { startLevel(levelIdx, false); }
+    overlay.classList.remove('visible');
+    running = true;
+  });
+  document.getElementById('restartBtn').addEventListener('click', () => startLevel(levelIdx, true));
+
+  /* --- the lesson pop-up: reading pauses the dive, closing resumes it --- */
+  const lessonOverlay = document.getElementById('lessonOverlay');
+  function openLesson() { lessonOpen = true; lessonOverlay.classList.add('visible'); }
+  function closeLesson() { lessonOpen = false; lessonOverlay.classList.remove('visible'); }
+  document.getElementById('lessonBtn').addEventListener('click', openLesson);
+  document.getElementById('lessonClose').addEventListener('click', closeLesson);
+  lessonOverlay.addEventListener('click', e => { if (e.target === lessonOverlay) closeLesson(); });
+  window.addEventListener('keydown', e => { if (e.code === 'Escape' && lessonOpen) closeLesson(); });
+
+  /* --- input wiring --- */
+  function holdable(el, key) {
+    const on = e => { e.preventDefault(); held[key] = true; el.classList.add('held'); };
+    const off = () => { held[key] = false; el.classList.remove('held'); };
+    el.addEventListener('pointerdown', on);
+    el.addEventListener('pointerup', off);
+    el.addEventListener('pointerleave', off);
+    el.addEventListener('pointercancel', off);
+  }
+  holdable(document.getElementById('floodBtn'), 'flood');
+  holdable(document.getElementById('blowBtn'), 'blow');
+  holdable(document.getElementById('planeUpBtn'), 'planeUp');
+  holdable(document.getElementById('planeDownBtn'), 'planeDown');
+  propBtn.addEventListener('click', () => {
+    propOn = !propOn;
+    propBtn.textContent = propOn ? 'PROP: ON' : 'PROP: OFF';
+    propBtn.classList.toggle('on', propOn);
+  });
+  slider.addEventListener('input', () => {
+    tankOrderVal.textContent = Math.round(parseFloat(slider.value)) + '%';
+  });
+  const keys = {};
+  window.addEventListener('keydown', e => {
+    if (e.code === 'Space') { e.preventDefault(); if (!keys.space) { keys.space = true; propBtn.click(); } }
+    keys[e.code] = true;
+  });
+  window.addEventListener('keyup', e => { keys[e.code] = false; if (e.code === 'Space') keys.space = false; });
+
+  function currentInput() {
+    let target = parseFloat(slider.value) / 100;
+    const dtOrder = 1 / 60;
+    if (held.flood || keys['ArrowDown']) target = Math.min(1, target + Core.FILL_ORDER_RATE * dtOrder);
+    if (held.blow || keys['ArrowUp']) target = Math.max(0, target - Core.FILL_ORDER_RATE * dtOrder);
+    if (target * 100 !== parseFloat(slider.value)) {
+      slider.value = String(target * 100);
+      tankOrderVal.textContent = Math.round(target * 100) + '%';
+    }
+    let plane = 0;
+    if (held.planeDown || keys['KeyD']) plane = 1;
+    if (held.planeUp || keys['KeyA']) plane = -1;
+    return { flood: false, blow: false, slider: target, prop: propOn, plane };
+  }
+
+  /* --- geometry --- */
+  function sx(x) { return X0 + (x / level.width) * (X1 - X0); }
+  function sy(d) { return SURF_Y + (d / (level.bottom + 4)) * (BOT_Y - SURF_Y); }
+
+  function draw() {
+    ctx.clearRect(0, 0, W, H);
+    /* water */
+    const grad = ctx.createLinearGradient(0, SURF_Y, 0, BOT_Y);
+    grad.addColorStop(0, '#0d3050'); grad.addColorStop(0.45, '#082238'); grad.addColorStop(1, '#030b16');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, SURF_Y, W, BOT_Y - SURF_Y + 40);
+    /* sky strip */
+    ctx.fillStyle = '#0a1626'; ctx.fillRect(0, 0, W, SURF_Y);
+    ctx.strokeStyle = 'rgba(125,211,252,0.75)'; ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let px = 0; px <= W; px += 8) {
+      const y = SURF_Y + Math.sin(px * 0.05 + s.t * 1.7) * 1.6;
+      px === 0 ? ctx.moveTo(px, y) : ctx.lineTo(px, y);
+    }
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(186,230,253,0.85)';
+    ctx.font = '600 11px system-ui, sans-serif';
+    ctx.fillText('SURFACE', 12, SURF_Y - 8);
+
+    /* surface zone */
+    ctx.fillStyle = 'rgba(56,189,248,0.10)';
+    ctx.fillRect(X0, sy(0), X1 - X0, sy(Core.SURFACE_ZONE) - sy(0));
+
+    /* density layer */
+    if (level.layer) {
+      const y0 = sy(level.layer.d0), y1 = sy(level.layer.d1);
+      ctx.fillStyle = 'rgba(125,211,252,0.10)';
+      ctx.fillRect(X0, y0, X1 - X0, y1 - y0);
+      ctx.strokeStyle = 'rgba(125,211,252,0.35)'; ctx.lineWidth = 1;
+      for (let i = 0; i < 5; i++) {
+        const yy = y0 + ((y1 - y0) * (i + 0.5)) / 5;
+        ctx.beginPath();
+        for (let px = X0; px <= X1; px += 10) {
+          const y = yy + Math.sin(px * 0.045 + s.t * 2.2 + i * 1.7) * 2.2;
+          px === X0 ? ctx.moveTo(px, y) : ctx.lineTo(px, y);
+        }
+        ctx.stroke();
+      }
+      ctx.fillStyle = 'rgba(186,230,253,0.9)';
+      ctx.font = '600 11px system-ui, sans-serif';
+      ctx.fillText('THE LAYER — denser water below (' + level.layer.rhoBelow + ' kg/m\u00B3)', X0 + 8, y0 - 6);
+      ctx.fillText('lighter water above (' + level.layer.rhoAbove + ' kg/m\u00B3)', X0 + 8, y1 + 14);
+    }
+
+    /* hold band */
+    if (level.band) {
+      ctx.fillStyle = s.phase === 'main' ? 'rgba(52,211,153,0.14)' : 'rgba(52,211,153,0.05)';
+      ctx.fillRect(X0, sy(level.band.d0), X1 - X0, sy(level.band.d1) - sy(level.band.d0));
+      ctx.strokeStyle = 'rgba(52,211,153,0.65)'; ctx.setLineDash([6, 5]); ctx.lineWidth = 1.5;
+      ctx.strokeRect(X0, sy(level.band.d0), X1 - X0, sy(level.band.d1) - sy(level.band.d0));
+      ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(167,243,208,0.95)';
+      ctx.font = '600 11px system-ui, sans-serif';
+      ctx.fillText('HOLD ' + level.band.d0 + '–' + level.band.d1 + ' m', X0 + 8, sy(level.band.d0) - 6);
+    }
+
+    /* crush line */
+    if (level.crush <= level.bottom + 4) {
+      ctx.strokeStyle = 'rgba(244,63,94,0.8)'; ctx.lineWidth = 2; ctx.setLineDash([10, 6]);
+      ctx.beginPath(); ctx.moveTo(X0, sy(level.crush)); ctx.lineTo(X1, sy(level.crush)); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(253,164,175,0.95)';
+      ctx.font = '700 11px system-ui, sans-serif';
+      ctx.fillText('CRUSH DEPTH ' + level.crush + ' m', X0 + 8, sy(level.crush) - 6);
+    }
+
+    /* seabed */
+    ctx.beginPath();
+    ctx.moveTo(0, sy(Core.bottomAt(level, 0)));
+    for (let x = 0; x <= level.width; x += 2) ctx.lineTo(sx(x), sy(Core.bottomAt(level, x)));
+    ctx.lineTo(W, H); ctx.lineTo(0, H); ctx.closePath();
+    ctx.fillStyle = '#131c2b'; ctx.fill();
+    ctx.strokeStyle = '#2b3c58'; ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(0, sy(Core.bottomAt(level, 0)));
+    for (let x = 0; x <= level.width; x += 2) ctx.lineTo(sx(x), sy(Core.bottomAt(level, x)));
+    ctx.stroke();
+
+    /* the wreck */
+    if (level.wreck) {
+      const w = level.wreck;
+      const wx0 = sx(w.x0), wx1 = sx(w.x1), wy = sy(w.topDepth), wh = sy(w.topDepth + 9) - wy;
+      ctx.save();
+      ctx.translate((wx0 + wx1) / 2, wy + wh / 2);
+      ctx.rotate(0.045);
+      ctx.fillStyle = '#1d2a3f';
+      ctx.strokeStyle = '#41597d'; ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(-(wx1 - wx0) / 2, wh * 0.28);
+      ctx.lineTo(-(wx1 - wx0) / 2 + 12, -wh * 0.32);
+      ctx.lineTo((wx1 - wx0) / 2 - 20, -wh * 0.32);
+      ctx.lineTo((wx1 - wx0) / 2, wh * 0.05);
+      ctx.lineTo((wx1 - wx0) / 2 - 8, wh * 0.42);
+      ctx.lineTo(-(wx1 - wx0) / 2 + 6, wh * 0.42);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.fillRect(-14, -wh * 0.32 - 9, 22, 9);
+      ctx.fillStyle = 'rgba(125,211,252,0.5)';
+      for (let i = 0; i < 4; i++) { ctx.beginPath(); ctx.arc(-(wx1 - wx0) / 4 + i * 16, 0, 2.4, 0, 7); ctx.fill(); }
+      ctx.restore();
+      ctx.fillStyle = 'rgba(203,213,225,0.9)';
+      ctx.font = '600 11px system-ui, sans-serif';
+      ctx.fillText('THE WRECK — deck ' + w.topDepth + ' m', wx0 + 4, wy - 8);
+    }
+
+    /* depth ruler */
+    ctx.strokeStyle = 'rgba(142,161,189,0.5)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(X1 + 14, sy(0)); ctx.lineTo(X1 + 14, sy(level.bottom)); ctx.stroke();
+    ctx.fillStyle = 'rgba(142,161,189,0.95)';
+    ctx.font = '10.5px system-ui, sans-serif';
+    for (let d = 0; d <= level.bottom; d += 20) {
+      ctx.beginPath(); ctx.moveTo(X1 + 10, sy(d)); ctx.lineTo(X1 + 18, sy(d)); ctx.stroke();
+      ctx.fillText(d + ' m', X1 + 22, sy(d) + 3);
+    }
+
+    /* bubbles */
+    for (let i = bubbles.length - 1; i >= 0; i--) {
+      const b = bubbles[i];
+      b.y -= 46 * (1 / 60); b.x += Math.sin(b.y * 0.2 + b.seed) * 0.3;
+      if (b.y < SURF_Y + 4) { bubbles.splice(i, 1); continue; }
+      ctx.strokeStyle = 'rgba(186,230,253,0.55)';
+      ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, 7); ctx.stroke();
+    }
+
+    drawSub();
+  }
+
+  function drawSub() {
+    const cx = sx(s.x), cy = sy(s.depth);
+    ctx.save();
+    ctx.translate(cx, cy);
+    /* vertical-speed chevron */
+    if (Math.abs(s.vy) > 0.12) {
+      ctx.fillStyle = s.vy > 0 ? 'rgba(245,158,11,0.9)' : 'rgba(52,211,153,0.9)';
+      const dir = s.vy > 0 ? 1 : -1;
+      const len = Math.min(26, 8 + Math.abs(s.vy) * 7);
+      ctx.beginPath();
+      ctx.moveTo(0, dir * (14 + len)); ctx.lineTo(-6, dir * 14); ctx.lineTo(6, dir * 14);
+      ctx.closePath(); ctx.fill();
+    }
+    /* hull */
+    const hullGrad = ctx.createLinearGradient(0, -11, 0, 11);
+    hullGrad.addColorStop(0, '#5b7ba6'); hullGrad.addColorStop(0.5, '#33465f'); hullGrad.addColorStop(1, '#1c2a3f');
+    ctx.fillStyle = hullGrad;
+    ctx.strokeStyle = '#8fb4dd'; ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(-34, 0);
+    ctx.quadraticCurveTo(-34, -10, -20, -10.5);
+    ctx.lineTo(16, -10.5);
+    ctx.quadraticCurveTo(34, -9, 36, 0);
+    ctx.quadraticCurveTo(34, 9, 16, 10.5);
+    ctx.lineTo(-20, 10.5);
+    ctx.quadraticCurveTo(-34, 10, -34, 0);
+    ctx.fill(); ctx.stroke();
+    /* sail */
+    ctx.fillStyle = '#2a3c58';
+    ctx.fillRect(-6, -19, 17, 9);
+    ctx.strokeRect(-6, -19, 17, 9);
+    ctx.fillRect(2, -23, 3, 5);
+    /* stern planes + rudder */
+    ctx.fillStyle = '#2a3c58';
+    ctx.fillRect(-39, -3, 7, 6);
+    /* bow planes (angle shows the plane order) */
+    ctx.save();
+    ctx.translate(20, 3); ctx.rotate(s.plane * 0.5);
+    ctx.fillRect(-2, -1.6, 15, 3.2);
+    ctx.restore();
+    /* propeller */
+    if (s.propOn) propAngle += 0.55;
+    ctx.strokeStyle = '#cbd5e1'; ctx.lineWidth = 2;
+    for (let i = 0; i < 3; i++) {
+      const a = propAngle + (i * Math.PI * 2) / 3;
+      ctx.beginPath();
+      ctx.moveTo(-40, 0); ctx.lineTo(-40 + Math.cos(a) * 3.5, Math.sin(a) * 8);
+      ctx.stroke();
+    }
+    /* tank gauge on the hull: actual fill */
+    ctx.fillStyle = 'rgba(4,10,20,0.8)';
+    ctx.fillRect(-24, 12.5, 44, 5);
+    ctx.fillStyle = '#38bdf8';
+    ctx.fillRect(-24, 12.5, 44 * s.fill, 5);
+    ctx.strokeStyle = 'rgba(143,180,221,0.7)'; ctx.lineWidth = 1;
+    ctx.strokeRect(-24, 12.5, 44, 5);
+    /* neutral marker on the gauge */
+    const nf = Core.neutralFill(level, s.depth);
+    ctx.strokeStyle = '#34d399'; ctx.lineWidth = 1.6;
+    ctx.beginPath(); ctx.moveTo(-24 + 44 * nf, 11.5); ctx.lineTo(-24 + 44 * nf, 18.5); ctx.stroke();
+    ctx.restore();
+
+    /* spawn bubbles while blowing */
+    if (running && s.fillTarget < s.fill - 0.002 && Math.random() < 0.5) {
+      bubbles.push({ x: cx + (Math.random() * 20 - 10), y: cy - 16, r: 1.5 + Math.random() * 2.2, seed: Math.random() * 9 });
+    }
+  }
+
+  function fmtSigned(v, unit) { return (v > 0 ? '+' : '') + v + unit; }
+
+  function updateHud() {
+    const P = Core.physics(level, s);
+    hud.depth.textContent = s.depth.toFixed(1) + ' m';
+    const vyTxt = (s.vy > 0 ? '▼ ' : s.vy < 0 ? '▲ ' : '') + Math.abs(s.vy).toFixed(2) + ' m/s';
+    hud.vy.textContent = vyTxt;
+    hud.vy.className = 'v ' + (Math.abs(s.vy) < 0.15 ? '' : s.vy > 0 ? 'down' : 'up');
+    if (level.broachLimit && s.depth < 30 && s.vy < -level.broachLimit * 0.8) hud.vy.className = 'v warn';
+    hud.tank.textContent = Math.round(s.fill * 100) + '% full';
+    hud.net.textContent = fmtSigned(Math.round(P.netKg), ' kg') + ' (' + fmtSigned(Math.round(P.netN / 10) * 10, ' N') + ')';
+    hud.net.className = 'v ' + (Math.abs(P.netKg) < 25 ? 'up' : P.netKg > 0 ? 'up' : 'down');
+    hud.vx.textContent = s.vx.toFixed(1) + ' m/s';
+    hud.rho.textContent = Math.round(P.rho) + ' kg/m\u00B3';
+    objText.innerHTML = '<b>' + level.name + ':</b> ' + (s.phase === 'return' ? level.objectiveReturn : level.objectiveMain);
+    if (level.band && s.phase === 'main') {
+      holdWrap.style.display = 'block';
+      holdBar.style.width = Math.min(100, (s.holdTimer / level.holdTime) * 100) + '%';
+    } else { holdWrap.style.display = 'none'; }
+  }
+
+  function showEnd() {
+    running = false;
+    if (s.status === 'won') {
+      ovTitle.textContent = 'Dive complete — ' + level.name;
+      ovTitle.className = 'win';
+      let extra = '';
+      if (level.wreck && s.touchVy != null) {
+        extra = ' You touched the wreck at ' + Math.abs(s.touchVy).toFixed(2) + ' m/s down and ' +
+          Math.abs(s.touchVx).toFixed(2) + ' m/s across.';
+      }
+      ovText.textContent = level.winText + extra;
+      ovBtn.textContent = levelIdx < Core.LEVELS.length - 1 ? 'Next level' : 'Dive again';
+    } else {
+      ovTitle.textContent = 'Dive over';
+      ovTitle.className = 'lose';
+      ovText.textContent = Core.loseText(level, s);
+      ovBtn.textContent = 'Try again';
+    }
+    overlay.classList.add('visible');
+  }
+
+  /* fixed-step loop: the sim always advances in 1/240 s slices */
+  let last = performance.now(), acc = 0;
+  const DT = 1 / 240;
+  function frame(now) {
+    requestAnimationFrame(frame);
+    let elapsed = Math.min(0.06, (now - last) / 1000);
+    last = now;
+    if (running && !lessonOpen && s.status === 'play') {
+      acc += elapsed;
+      const input = currentInput();
+      while (acc >= DT) { Core.step(level, s, input, DT); acc -= DT; if (s.status !== 'play') break; }
+      if (s.status !== 'play') { draw(); updateHud(); showEnd(); return; }
+    }
+    draw(); updateHud();
+  }
+
+  startLevel(0, true);
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

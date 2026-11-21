@@ -112,7 +112,7 @@ const gameFiles = [
   "falling-sand-sandbox.html", "pendulum-grapple-swinger.html", "air-hockey-curl.html",
   "ragdoll-archery-duel.html", "siege-demolition.html", "bridge-builder-truss.html",
   "orbital-pinball.html", "marble-run.html", "orbital-gravity-golf.html",
-  "pool-table-physics.html", "docking.html",
+  "pool-table-physics.html", "docking.html", "stage-it.html", "ballast.html",
 ];
 for (const f of gameFiles)
   assert.ok(fs.existsSync(path.join(__dirname, f)), `the Game Table game ${f} sits beside the table page`);
@@ -120,13 +120,15 @@ assert.ok(fs.existsSync(path.join(__dirname, "physics-game-table.html")), "the G
 assert.ok(fs.existsSync(path.join(__dirname, "gravity-well-illustration.jpg")), "the gravity-well illustration exists");
 const tableHtml = fs.readFileSync(path.join(__dirname, "physics-game-table.html"), "utf8");
 const targets = [...tableHtml.matchAll(/file: '([^']+)'/g)].map((m) => m[1]);
-assert.strictEqual(targets.length, 17, "the Game Table names seventeen games");
+assert.strictEqual(targets.length, 20, "the Game Table names twenty games");
 for (const t of targets)
   assert.ok(fs.existsSync(path.resolve(__dirname, t)), `the Game Table target ${t} resolves to a real file`);
 assert.ok(targets.includes("../everyday-light/laser-mirrors.html"), "the Game Table cross-lists Laser & Mirrors from Everyday Light");
 assert.ok(fs.existsSync(path.resolve(__dirname, "../everyday-light/laser-mirrors.html")), "the Laser & Mirrors target resolves to the Light room's game file");
 assert.ok(targets.includes("../everyday-sound/tune-the-string.html"), "the Game Table cross-lists Tune the String from Everyday Sound");
 assert.ok(fs.existsSync(path.resolve(__dirname, "../everyday-sound/tune-the-string.html")), "the Tune the String target resolves to the Sound room's game file");
+assert.ok(targets.includes("../everyday-engineering/shake-table.html"), "the Game Table cross-lists Shake Table from Everyday Engineering");
+assert.ok(fs.existsSync(path.resolve(__dirname, "../everyday-engineering/shake-table.html")), "the Shake Table target resolves to the Engineering room's game file");
 for (const f of [...gameFiles, "physics-game-table.html"]) {
   const src = fs.readFileSync(path.join(__dirname, f), "utf8");
   assert.ok(!/<(?:script|link|img)[^>]+(?:src|href)="https?:\/\//i.test(src), `${f} loads nothing external`);
@@ -135,7 +137,7 @@ const roomHtml = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
 assert.ok(roomHtml.includes('href="physics-game-table.html"'), "the Physics room links to the Game Table");
 const gamesHtml = fs.readFileSync(path.join(__dirname, "..", "games-room", "index.html"), "utf8");
 assert.ok(gamesHtml.includes('href="../everyday-physics/physics-game-table.html"'), "the Games Room links back to the Game Table");
-console.log("everyday-physics tests: Game Table checks passed (14 local games, 17 targets resolve, nothing external, links both ways)");
+console.log("everyday-physics tests: Game Table checks passed (16 local games, 20 targets resolve, nothing external, links both ways)");
 
 /* Docking: the room's own orbital-rendezvous game (added 20 November 2026) */
 assert.ok(fs.existsSync(path.join(__dirname, "docking.html")), "the Docking game page exists");
@@ -143,5 +145,19 @@ const dockingHtml = fs.readFileSync(path.join(__dirname, "docking.html"), "utf8"
 assert.ok(!/(?:src|href)="https?:\/\//i.test(dockingHtml), "docking.html loads nothing external");
 assert.ok(dockingHtml.includes("<title>Docking — Orbital Rendezvous</title>"), "docking.html carries its title");
 console.log("everyday-physics tests: Docking checks passed (page present, self-contained, titled)");
+
+/* Stage It: the Flight section's two-stage rocket game (added 20 November 2026) */
+assert.ok(fs.existsSync(path.join(__dirname, "stage-it.html")), "the Stage It game page exists");
+const stageItHtml = fs.readFileSync(path.join(__dirname, "stage-it.html"), "utf8");
+assert.ok(!/(?:src|href)="https?:\/\//i.test(stageItHtml), "stage-it.html loads nothing external");
+assert.ok(stageItHtml.includes("<title>Stage It — a two-stage rocket game · Everyday Physics</title>"), "stage-it.html carries its title");
+console.log("everyday-physics tests: Stage It checks passed (page present, self-contained, titled)");
+
+/* Ballast: the room's submarine buoyancy game (added 20 November 2026) */
+assert.ok(fs.existsSync(path.join(__dirname, "ballast.html")), "the Ballast game page exists");
+const ballastHtml = fs.readFileSync(path.join(__dirname, "ballast.html"), "utf8");
+assert.ok(!/(?:src|href)="https?:\/\//i.test(ballastHtml), "ballast.html loads nothing external");
+assert.ok(ballastHtml.includes("<title>Ballast — A Submarine Buoyancy Game</title>"), "ballast.html carries its title");
+console.log("everyday-physics tests: Ballast checks passed (page present, self-contained, titled)");
 
 console.log("everyday-physics tests: all passed (reflection, equal-mass collisions, ballistics, pendulum, seesaw, flight, timestep)");
