@@ -120,9 +120,11 @@ assert.ok(fs.existsSync(path.join(__dirname, "physics-game-table.html")), "the G
 assert.ok(fs.existsSync(path.join(__dirname, "gravity-well-illustration.jpg")), "the gravity-well illustration exists");
 const tableHtml = fs.readFileSync(path.join(__dirname, "physics-game-table.html"), "utf8");
 const targets = [...tableHtml.matchAll(/file: '([^']+)'/g)].map((m) => m[1]);
-assert.strictEqual(targets.length, 14, "the Game Table names fourteen games");
+assert.strictEqual(targets.length, 15, "the Game Table names fifteen games");
 for (const t of targets)
   assert.ok(fs.existsSync(path.resolve(__dirname, t)), `the Game Table target ${t} resolves to a real file`);
+assert.ok(targets.includes("../everyday-light/laser-mirrors.html"), "the Game Table cross-lists Laser & Mirrors from Everyday Light");
+assert.ok(fs.existsSync(path.resolve(__dirname, "../everyday-light/laser-mirrors.html")), "the Laser & Mirrors target resolves to the Light room's game file");
 for (const f of [...gameFiles, "physics-game-table.html"]) {
   const src = fs.readFileSync(path.join(__dirname, f), "utf8");
   assert.ok(!/<(?:script|link|img)[^>]+(?:src|href)="https?:\/\//i.test(src), `${f} loads nothing external`);
@@ -131,6 +133,6 @@ const roomHtml = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
 assert.ok(roomHtml.includes('href="physics-game-table.html"'), "the Physics room links to the Game Table");
 const gamesHtml = fs.readFileSync(path.join(__dirname, "..", "games-room", "index.html"), "utf8");
 assert.ok(gamesHtml.includes('href="../everyday-physics/physics-game-table.html"'), "the Games Room links back to the Game Table");
-console.log("everyday-physics tests: Game Table checks passed (13 local games, 14 targets resolve, nothing external, links both ways)");
+console.log("everyday-physics tests: Game Table checks passed (13 local games, 15 targets resolve, nothing external, links both ways)");
 
 console.log("everyday-physics tests: all passed (reflection, equal-mass collisions, ballistics, pendulum, seesaw, flight, timestep)");

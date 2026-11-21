@@ -13,6 +13,15 @@ All lesson/Help text and code are original work written for this workshop (code 
 - **Solar position and shadows** — altitude and azimuth use the standard spherical-astronomy formulas (in terms of latitude, declination, and hour angle); the solstice/equinox declinations (±23.44°, 0) are the conventional values; shadow length = height ÷ tan(altitude) is elementary trigonometry. The same geometry underlies Everyday Time's sundial bench, whose hour-line rule is cited there. The Survival Guide's shadow-stick method is the field version of the same shadow.
 - **The spectrum** — the visible band (≈380–750 nm), the frequency relation f = c/λ with c = 299,792,458 m/s exact by definition since 1983, and the infrared/ultraviolet facts (remote controls and thermal imaging; sunburn, bee vision, fluorescence) are the standard published material, as in the Wikipedia Electromagnetic spectrum article on the shelf. The wavelength-to-colour mapping is the usual hue-walk approximation, dimmed at the band's ends where the eye's sensitivity fades; it suggests spectral colours, it does not reproduce them.
 
+## The game — Laser & Mirrors
+
+`laser-mirrors.html` is an original Everyday Cool game built by Muse on 20 November 2026 for this room: seven puzzles in which the player rotates 45° mirrors to bounce a laser beam onto every target, the reflection rule — angle in equals angle out — as the whole mechanic. It is cross-listed on the Physics Game Table in Everyday Physics. Like the benches, it makes no network calls. Its simplifications, stated plainly:
+
+- The mirrors are **two-sided 45° diagonals**: the beam reflects off either face, the player flips each mirror between its two diagonal orientations, and there are no single-sided mirrors.
+- **Targets are pass-through sensors**: the beam lights a target and continues past it, which is what lets one beam thread several targets on a single path.
+- **Glass blocks pass the beam straight through, with no bending.** Real glass refracts — that is the lens bench's story, told in this room above, not the game's.
+- The beam travels a square grid, so **every turn is an exact 90°** — true to 45° mirror geometry, but there are no free-angle mirrors.
+
 ## Linked, not loaded (each opens in a new tab, under its own terms)
 
 OpenStax University Physics Volume 3 (openstax.org) · The Physics Classroom (physicsclassroom.com) · HyperPhysics, Georgia State University (gsu.edu) · Wikipedia: Rayleigh scattering, Thin lens, Additive color, Subtractive color, Color theory, Color wheel, Electromagnetic spectrum (wikipedia.org). Every link was checked live on 20 November 2026 and returned HTTP 200 to a browser-style request.

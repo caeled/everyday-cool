@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Laser &amp; Mirrors — an Everyday Light game</title>
+<style>
+  :root{
+    --bg:#080d1a; --panel:#101a30; --panel2:#0c1425; --border:#24365c;
+    --text:#eaf1ff; --muted:#93a7cc; --accent:#57c7ff; --gold:#ffd94d;
+    --beam:#ffe066; --good:#4ade80;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:radial-gradient(circle at 25% 0%,rgba(87,199,255,.12),transparent 50%),var(--bg);
+    color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,sans-serif;line-height:1.5}
+  .wrap{max-width:640px;margin:0 auto;padding:22px 16px 40px}
+  h1{margin:0;font-size:27px;letter-spacing:-.3px}
+  h1 .amp{color:var(--accent)}
+  .intro{color:var(--muted);font-size:14px;margin:6px 0 4px}
+  .intro b{color:var(--text)}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:14px 14px 10px;margin-top:14px}
+  .lvl-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px;justify-content:space-between}
+  .lvl-name{font-size:18px;font-weight:700}
+  .lvl-num{color:var(--muted);font-size:12.5px;font-weight:600;text-transform:uppercase;letter-spacing:.6px}
+  .hint{color:var(--muted);font-size:13.5px;margin:4px 0 10px}
+  .hint b{color:var(--gold);font-weight:600}
+  canvas{display:block;width:100%;height:auto;background:var(--panel2);border:1px solid var(--border);border-radius:10px;touch-action:manipulation;cursor:pointer}
+  .bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px}
+  .stat{color:var(--muted);font-size:13.5px;margin-right:auto}
+  .stat b{color:var(--text)}
+  button{background:#182540;color:var(--text);border:1px solid var(--border);
+    padding:7px 13px;border-radius:999px;font-size:13px;font-weight:600;cursor:pointer}
+  button:hover{background:#1f3054}
+  button.on{background:var(--accent);color:#06121f;border-color:var(--accent)}
+  button.next{background:var(--good);color:#06130a;border-color:var(--good)}
+  .lvls{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+  .msg{min-height:22px;margin-top:10px;font-size:14.5px;font-weight:600}
+  .msg.win{color:var(--good)}
+  .foot{color:var(--muted);font-size:12.5px;margin-top:16px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Laser <span class="amp">&amp;</span> Mirrors</h1>
+  <p class="intro">Bounce the beam onto <b>every target at once</b>. <b>Click or tap a mirror to rotate it</b> —
+  each mirror sits at 45°, so it turns the beam exactly 90°: the angle in equals the angle out, every time.
+  That is the whole of reflection, and it is the same law the Light room's benches measure.</p>
+
+  <div class="card">
+    <div class="lvl-head">
+      <span class="lvl-name" id="lvlName"></span>
+      <span class="lvl-num" id="lvlNum"></span>
+    </div>
+    <p class="hint" id="lvlHint"></p>
+    <canvas id="board" width="540" height="420"></canvas>
+    <div class="bar">
+      <span class="stat">Targets lit: <b id="litCount">0/0</b> · Moves: <b id="moveCount">0</b></span>
+      <button id="resetBtn" type="button">Reset level</button>
+      <button id="nextBtn" type="button" class="next" style="display:none">Next level ▸</button>
+    </div>
+    <div class="msg" id="msg"></div>
+    <div class="lvls" id="lvlBtns"></div>
+  </div>
+
+  <p class="foot">One honest simplification: the pale <b>glass</b> blocks in this game let the beam pass straight
+  through. Real glass bends light as it enters — that bending is refraction, and the Light room's lens bench
+  carries the real story. The mirrors here play it straight: reflection is exact.</p>
+</div>
+
+<script>
+"use strict";
+// === CORE START ===
+// Pure level data + beam tracer. No DOM in this section: the node test
+// extracts it and proves every level starts unsolved and is solvable.
+const DIRS = { U:[0,-1], R:[1,0], D:[0,1], L:[-1,0] };
+// Mirror orientations: 0 = "/" (bottom-left to top-right), 1 = "\" (top-left to bottom-right).
+// Reflection: "/" maps (dx,dy)->(-dy,-dx); "\" maps (dx,dy)->(dy,dx). A 45° mirror turns a beam 90°.
+const LEVELS = [
+  {
+    name: "First Bounce", w: 9, h: 7,
+    hint: "A 45° mirror turns a beam exactly 90°: the angle in equals the angle out.",
+    emitter: { x:0, y:3, dir:"R" },
+    mirrors: [ {x:5, y:3, init:1} ],
+    solution: [0],
+    blocks: [], glass: [],
+    targets: [ [5,1] ]
+  },
+  {
+    name: "Around the Corner", w: 9, h: 7,
+    hint: "Down, then across: two turns carry a beam around a corner.",
+    emitter: { x:0, y:1, dir:"R" },
+    mirrors: [ {x:6, y:1, init:0}, {x:6, y:5, init:1} ],
+    solution: [1, 0],
+    blocks: [], glass: [],
+    targets: [ [2,5] ]
+  },
+  {
+    name: "The Long Way", w: 9, h: 7,
+    hint: "When the straight road is blocked, go up, across, and down.",
+    emitter: { x:0, y:3, dir:"R" },
+    mirrors: [ {x:2, y:3, init:1}, {x:2, y:1, init:1}, {x:7, y:1, init:0} ],
+    solution: [0, 0, 1],
+    blocks: [ [4,2], [4,3], [4,4] ], glass: [],
+    targets: [ [7,4] ]
+  },
+  {
+    name: "Clear Through", w: 9, h: 7,
+    hint: "This glass is the simple kind: the beam passes straight through. Real glass bends light — the lens bench tells that story.",
+    emitter: { x:0, y:2, dir:"R" },
+    mirrors: [ {x:6, y:2, init:0} ],
+    solution: [1],
+    blocks: [], glass: [ [3,2], [6,4] ],
+    targets: [ [6,5] ]
+  },
+  {
+    name: "Threading the Needle", w: 9, h: 7,
+    hint: "A target drinks the light and lets the beam pass. Thread both targets onto a single path.",
+    emitter: { x:0, y:5, dir:"R" },
+    mirrors: [ {x:6, y:5, init:1} ],
+    solution: [0],
+    blocks: [], glass: [],
+    targets: [ [3,5], [6,2] ]
+  },
+  {
+    name: "The Obvious Lie", w: 9, h: 7,
+    hint: "The mirror pointing at the target is lying; a wall guards that column. Come at the target from the side.",
+    emitter: { x:0, y:3, dir:"R" },
+    mirrors: [ {x:4, y:3, init:0}, {x:4, y:6, init:0}, {x:7, y:6, init:1}, {x:7, y:0, init:0} ],
+    solution: [1, 1, 0, 1],
+    blocks: [ [4,1], [4,2] ], glass: [],
+    targets: [ [4,0] ]
+  },
+  {
+    name: "The Serpent", w: 9, h: 7,
+    hint: "Everything at once: thread the targets, pass the glass, and let the beam wind like a serpent.",
+    emitter: { x:0, y:0, dir:"R" },
+    mirrors: [ {x:7, y:0, init:0}, {x:7, y:6, init:1}, {x:4, y:6, init:0}, {x:4, y:2, init:1} ],
+    solution: [1, 0, 1, 0],
+    blocks: [ [2,3], [3,3], [6,4] ], glass: [ [2,0], [7,2] ],
+    targets: [ [5,0], [7,4], [6,2] ]
+  }
+];
+
+// traceBeam(level, states) -> { points, lit, visited }
+//   states: array of mirror orientations, parallel to level.mirrors.
+//   points: beam polyline in cell-centre coordinates (cell (x,y) centre is (x+0.5, y+0.5)).
+//   lit: Set of lit target indices. visited: "x,y" keys of every cell the beam enters.
+// The beam stops at the grid edge or at the face of a solid block; it never enters a block cell.
+// It passes through targets (lighting them) and glass, and reflects off mirrors.
+function traceBeam(level, states) {
+  const key = (x, y) => x + "," + y;
+  const blocks  = new Set(level.blocks.map(b => key(b[0], b[1])));
+  const glass   = new Set(level.glass.map(b => key(b[0], b[1])));
+  const targets = new Map(level.targets.map((t, i) => [key(t[0], t[1]), i]));
+  const mirrors = new Map(level.mirrors.map((m, i) => [key(m.x, m.y), states[i]]));
+  let dx = DIRS[level.emitter.dir][0], dy = DIRS[level.emitter.dir][1];
+  let x = level.emitter.x, y = level.emitter.y;
+  const points = [{ x: x + 0.5, y: y + 0.5 }];
+  const lit = new Set(), visited = [];
+  const seen = new Set();
+  for (let step = 0; step < 1000; step++) {
+    const sig = x + "," + y + "," + dx + "," + dy;
+    if (seen.has(sig)) break;               // loop guard
+    seen.add(sig);
+    const nx = x + dx, ny = y + dy;
+    if (nx < 0 || ny < 0 || nx >= level.w || ny >= level.h) {
+      points.push({ x: x + 0.5 + dx * 0.5, y: y + 0.5 + dy * 0.5 });  // out the edge
+      break;
+    }
+    if (blocks.has(key(nx, ny))) {
+      points.push({ x: x + 0.5 + dx * 0.5, y: y + 0.5 + dy * 0.5 });  // stops at the block's face
+      break;
+    }
+    x = nx; y = ny;
+    visited.push(key(x, y));
+    points.push({ x: x + 0.5, y: y + 0.5 });
+    const k = key(x, y);
+    if (targets.has(k)) lit.add(targets.get(k));
+    if (mirrors.has(k)) {
+      const o = mirrors.get(k);
+      if (o === 0) { const t = dx; dx = -dy; dy = -t; }   // "/"
+      else         { const t = dx; dx =  dy; dy =  t; }   // "\"
+    }
+  }
+  return { points, lit, visited };
+}
+// === CORE END ===
+
+// ---------- UI ----------
+const CS = 60; // cell size in px (board is 9x7 -> 540x420)
+const canvas = document.getElementById("board");
+const ctx = canvas.getContext("2d");
+const el = id => document.getElementById(id);
+let lvlIdx = 0, states = [], moves = 0, won = false;
+
+function loadLevel(i) {
+  lvlIdx = i;
+  const lv = LEVELS[i];
+  states = lv.mirrors.map(m => m.init);
+  moves = 0; won = false;
+  el("lvlName").textContent = lv.name;
+  el("lvlNum").textContent = "Level " + (i + 1) + " of " + LEVELS.length;
+  el("lvlHint").innerHTML = "<b>Hint:</b> " + lv.hint;
+  el("nextBtn").style.display = "none";
+  el("msg").textContent = ""; el("msg").className = "msg";
+  [...el("lvlBtns").children].forEach((b, j) => b.classList.toggle("on", j === i));
+  draw();
+}
+
+function draw() {
+  const lv = LEVELS[lvlIdx];
+  const res = traceBeam(lv, states);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  // grid
+  ctx.strokeStyle = "rgba(120,150,210,.14)"; ctx.lineWidth = 1;
+  for (let gx = 0; gx <= lv.w; gx++) { ctx.beginPath(); ctx.moveTo(gx * CS, 0); ctx.lineTo(gx * CS, lv.h * CS); ctx.stroke(); }
+  for (let gy = 0; gy <= lv.h; gy++) { ctx.beginPath(); ctx.moveTo(0, gy * CS); ctx.lineTo(lv.w * CS, gy * CS); ctx.stroke(); }
+  // solid blocks
+  for (const [bx, by] of lv.blocks) {
+    ctx.fillStyle = "#2b3c5f"; ctx.fillRect(bx * CS + 4, by * CS + 4, CS - 8, CS - 8);
+    ctx.strokeStyle = "#47608f"; ctx.lineWidth = 2; ctx.strokeRect(bx * CS + 4, by * CS + 4, CS - 8, CS - 8);
+  }
+  // glass blocks
+  for (const [gx, gy] of lv.glass) {
+    ctx.fillStyle = "rgba(150,220,255,.16)"; ctx.fillRect(gx * CS + 5, gy * CS + 5, CS - 10, CS - 10);
+    ctx.strokeStyle = "rgba(170,230,255,.75)"; ctx.lineWidth = 1.5; ctx.strokeRect(gx * CS + 5, gy * CS + 5, CS - 10, CS - 10);
+    ctx.beginPath(); ctx.moveTo(gx * CS + 14, (gy + 1) * CS - 14); ctx.lineTo((gx + 1) * CS - 22, gy * CS + 12); ctx.stroke();
+  }
+  // targets
+  lv.targets.forEach(([tx, ty], i) => {
+    const cx = tx * CS + CS / 2, cy = ty * CS + CS / 2, isLit = res.lit.has(i);
+    ctx.save();
+    if (isLit) { ctx.shadowColor = "#ffd94d"; ctx.shadowBlur = 18; }
+    ctx.beginPath(); ctx.arc(cx, cy, 15, 0, Math.PI * 2);
+    ctx.fillStyle = isLit ? "#ffd94d" : "rgba(255,217,77,.08)"; ctx.fill();
+    ctx.lineWidth = 3; ctx.strokeStyle = "#ffd94d"; ctx.stroke();
+    ctx.beginPath(); ctx.arc(cx, cy, 5, 0, Math.PI * 2);
+    ctx.fillStyle = isLit ? "#7a5200" : "#ffd94d"; ctx.fill();
+    ctx.restore();
+  });
+  // beam (under mirrors/emitter, over the rest)
+  if (res.points.length > 1) {
+    ctx.save();
+    ctx.shadowColor = "#ffcf3d"; ctx.shadowBlur = 14;
+    ctx.strokeStyle = "#ffe066"; ctx.lineWidth = 4; ctx.lineJoin = "round"; ctx.lineCap = "round";
+    ctx.beginPath();
+    res.points.forEach((p, i) => i ? ctx.lineTo(p.x * CS, p.y * CS) : ctx.moveTo(p.x * CS, p.y * CS));
+    ctx.stroke();
+    ctx.shadowBlur = 0; ctx.strokeStyle = "rgba(255,255,255,.85)"; ctx.lineWidth = 1.4;
+    ctx.stroke();
+    ctx.restore();
+  }
+  // mirrors
+  lv.mirrors.forEach((m, i) => {
+    const x0 = m.x * CS, y0 = m.y * CS;
+    ctx.save();
+    ctx.strokeStyle = "rgba(140,190,255,.35)"; ctx.lineWidth = 9; ctx.lineCap = "round";
+    ctx.beginPath();
+    if (states[i] === 0) { ctx.moveTo(x0 + 9, y0 + CS - 9); ctx.lineTo(x0 + CS - 9, y0 + 9); }
+    else                 { ctx.moveTo(x0 + 9, y0 + 9);      ctx.lineTo(x0 + CS - 9, y0 + CS - 9); }
+    ctx.stroke();
+    ctx.strokeStyle = "#dfe9ff"; ctx.lineWidth = 4;
+    ctx.stroke();
+    ctx.fillStyle = "#57c7ff";
+    ctx.beginPath(); ctx.arc(x0 + CS / 2, y0 + CS / 2, 3.5, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  });
+  // emitter
+  const e = lv.emitter, ex = e.x * CS + CS / 2, ey = e.y * CS + CS / 2, d = DIRS[e.dir];
+  ctx.save();
+  ctx.translate(ex, ey); ctx.rotate(Math.atan2(d[1], d[0]));
+  ctx.fillStyle = "#ff5d5d";
+  ctx.beginPath(); ctx.moveTo(16, 0); ctx.lineTo(-10, -11); ctx.lineTo(-5, 0); ctx.lineTo(-10, 11); ctx.closePath(); ctx.fill();
+  ctx.restore();
+  // status
+  el("litCount").textContent = res.lit.size + "/" + lv.targets.length;
+  el("moveCount").textContent = moves;
+  if (res.lit.size === lv.targets.length && !won) {
+    won = true;
+    el("msg").textContent = lvlIdx === LEVELS.length - 1
+      ? "Every target lit — that's the whole table. Reflection is exact, and so were you."
+      : "Every target lit. Level complete!";
+    el("msg").className = "msg win";
+    el("nextBtn").style.display = lvlIdx === LEVELS.length - 1 ? "none" : "";
+  }
+}
+
+canvas.addEventListener("click", ev => {
+  const r = canvas.getBoundingClientRect();
+  const cx = Math.floor((ev.clientX - r.left) * canvas.width / r.width / CS);
+  const cy = Math.floor((ev.clientY - r.top) * canvas.height / r.height / CS);
+  const lv = LEVELS[lvlIdx];
+  const mi = lv.mirrors.findIndex(m => m.x === cx && m.y === cy);
+  if (mi >= 0) { states[mi] = states[mi] === 0 ? 1 : 0; moves++; draw(); }
+});
+el("resetBtn").addEventListener("click", () => loadLevel(lvlIdx));
+el("nextBtn").addEventListener("click", () => loadLevel(Math.min(lvlIdx + 1, LEVELS.length - 1)));
+LEVELS.forEach((lv, i) => {
+  const b = document.createElement("button");
+  b.type = "button"; b.textContent = (i + 1) + " · " + lv.name;
+  b.addEventListener("click", () => loadLevel(i));
+  el("lvlBtns").appendChild(b);
+});
+loadLevel(0);
+</script>
+</body>
+</html>

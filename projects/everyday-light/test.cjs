@@ -95,3 +95,14 @@ assert.ok(L.wavelengthFreqTHz(400) > L.wavelengthFreqTHz(700), "shorter waveleng
 assert.ok(/^hsl\(/.test(L.wavelengthColor(550)), "a wavelength maps to a screen colour string");
 
 console.log("Everyday Light: all rule tests passed.");
+
+/* Laser & Mirrors: the room's game, integrated 20 November 2026 */
+const fs = require("node:fs");
+const path = require("node:path");
+const laserPath = path.join(__dirname, "laser-mirrors.html");
+assert.ok(fs.existsSync(laserPath), "Laser & Mirrors sits in this room");
+const laserHtml = fs.readFileSync(laserPath, "utf8");
+assert.ok(!/(?:src|href)="https?:\/\//i.test(laserHtml), "Laser & Mirrors loads nothing external");
+const lightRoomHtml = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
+assert.ok(lightRoomHtml.includes('href="laser-mirrors.html"'), "the Light room links to Laser & Mirrors");
+console.log("Everyday Light: Laser & Mirrors checks passed (exists, nothing external, room links to it).");
