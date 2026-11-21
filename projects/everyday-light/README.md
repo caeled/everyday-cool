@@ -37,6 +37,7 @@ The rules (additive mixing to white and yellow; the subtractive model's endpoint
 
 - `index.html` — the room itself
 - `laser-mirrors.html` — the room's game: rotate-the-mirrors beam puzzles, self-contained
+- `laser-mirrors-lesson.html` — the game's lesson page: the physics, the math, worked solutions, and the coding choices (opens inside the game from its 📖 Lesson button)
 - `light.js` — pure rules: additive and subtractive mixing, the wheel and its chords, the thin lens, Rayleigh scattering, solar position and shadows, the spectrum
 - `app.js` — the wiring: the lamp stage, the wheel, the ray diagram, the sky swatches, the compass shadow plot, the spectrum slider
 - `style.css` — the room's styling (shared Everyday Cool room styling plus the mixing stage, wheel, lens, sky, shadow, and spectrum)
