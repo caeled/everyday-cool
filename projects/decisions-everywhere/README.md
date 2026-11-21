@@ -6,6 +6,10 @@ Very few people are taught how to decide. This workshop makes decision-making vi
 
 Open `index.html` in a browser and work through eight rooms, each with a small experiment: sort statements into observations, facts, predictions, opinions, and guesses; diagnose a broken flashlight by eliminating causes; shop at a store where you can only ever have two of three wishes; predict coin flips, dice rolls, and card draws, then run them; find what a dramatic chart is not showing; ride short choices into their long-term results; calibrate a confidence meter against evidence; and run one real budget decision through the full cycle — **SEE → QUESTION → TEST → DECIDE → REVIEW**. Field missions and an educator guide close the workshop.
 
+## The expected-value game
+
+**The Boring Bet Wins** (`the-boring-bet-wins.html`) — the workshop's game, seated in the probability room: three doors with their expected values printed on them — a boring bet with a small honest edge (+2.6 a round), a fair coin (0), and a flashy wheel (−2.5) — played over free rounds, a 30-round challenge, and a Long Run simulator (100 runs × 1,000 rounds). Its back door (`the-boring-bet-wins-lesson.html`) works all three EVs by hand and teaches variance, the law of large numbers, and gambler's ruin; it opens inside the game from a 📖 Lesson pop-up. Before it shipped, a headless proof verified the EVs as exact fractions and measured the long run: the flashy line ruined 100 of 100 runs; the boring line's median climbed from 500 to 3,114 with no ruins.
+
 ## Understand it
 
 The learner is anyone who makes decisions, which is everyone: upper elementary through adult learners, no prior technical knowledge required. The outcome is a practiced habit, not a fact set — observe before concluding, ask what is missing, test before deciding, expect tradeoffs, set confidence to match evidence, and review afterward. The probability benches are labeled simulations run on the browser's random number generator; they demonstrate how randomness behaves, and no result predicts any real-world event. The flashlight, products, school, and chart are fictional teaching examples.
