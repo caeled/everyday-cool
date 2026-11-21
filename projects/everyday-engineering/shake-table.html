@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shake Table — an Everyday Engineering game</title>
+<style>
+  :root{
+    --bg:#080d1a; --panel:#101a30; --panel2:#0c1425; --border:#24365c;
+    --text:#eaf1ff; --muted:#93a7cc; --accent:#57c7ff; --gold:#ffd94d;
+    --good:#4ade80; --bad:#ff7b72;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:radial-gradient(circle at 25% 0%,rgba(87,199,255,.12),transparent 50%),var(--bg);
+    color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,sans-serif;line-height:1.5}
+  .wrap{max-width:640px;margin:0 auto;padding:22px 16px 40px}
+  h1{margin:0;font-size:27px;letter-spacing:-.3px}
+  h1 .amp{color:var(--accent)}
+  .intro{color:var(--muted);font-size:14px;margin:6px 0 4px}
+  .intro b{color:var(--text)}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:14px 14px 10px;margin-top:14px}
+  .lvl-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px;justify-content:space-between}
+  .lvl-name{font-size:18px;font-weight:700}
+  .lvl-num{color:var(--muted);font-size:12.5px;font-weight:600;text-transform:uppercase;letter-spacing:.6px}
+  .hint{color:var(--muted);font-size:13.5px;margin:4px 0 10px}
+  .hint b{color:var(--gold);font-weight:600}
+  canvas{display:block;width:100%;height:auto;background:var(--panel2);border:1px solid var(--border);border-radius:10px;touch-action:manipulation;cursor:pointer}
+  .bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px}
+  .stat{color:var(--muted);font-size:13.5px}
+  .stat b{color:var(--text)}
+  .warn{color:var(--bad);font-weight:600}
+  .close{color:var(--gold);font-weight:600}
+  button{background:#182540;color:var(--text);border:1px solid var(--border);
+    padding:7px 13px;border-radius:999px;font-size:13px;font-weight:600;cursor:pointer}
+  button:hover:not(:disabled){background:#1f3054}
+  button:disabled{opacity:.42;cursor:default}
+  button.on{background:var(--accent);color:#06121f;border-color:var(--accent)}
+  button.go{background:var(--good);color:#06130a;border-color:var(--good)}
+  .lvls{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+  .msg{min-height:22px;margin-top:10px;font-size:14.5px;font-weight:600}
+  .msg.win{color:var(--good)}
+  .msg.fail{color:var(--bad)}
+  .msg .sub{display:block;font-size:13px;font-weight:500;color:var(--muted);margin-top:2px}
+  .foot{color:var(--muted);font-size:12.5px;margin-top:16px}
+  .lesson-btn{float:right;margin-top:4px}
+  .lesson-overlay{position:fixed;inset:0;background:rgba(3,6,14,.78);z-index:50;
+    display:flex;align-items:center;justify-content:center;padding:18px}
+  .lesson-overlay[hidden]{display:none}
+  .lesson-panel{background:var(--panel);border:1px solid var(--border);border-radius:14px;
+    width:min(860px,100%);height:min(88vh,900px);display:flex;flex-direction:column;overflow:hidden}
+  .lesson-bar{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border)}
+  .lesson-bar .t{font-weight:700;font-size:14.5px}
+  .lesson-bar .sp{flex:1}
+  .lesson-bar a{color:var(--accent);font-size:13px;font-weight:600;text-decoration:none}
+  .lesson-panel iframe{flex:1;width:100%;border:0;background:var(--bg)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <button id="lessonBtn" type="button" class="lesson-btn">📖 Lesson</button>
+  <h1>Shake <span class="amp">Table</span></h1>
+  <p class="intro">Every building has a <b>natural wobble</b> — the rhythm it swings at when it's shoved and
+  left alone. A quake has a rhythm too. <b>When the two match, each push from the ground lands just as the
+  building is already swinging that way, and the sway piles up, floor over floor.</b> That's resonance, and it
+  knocks down more towers than raw strength ever saves. Build to the target height, spend the budget well —
+  then start the quake.</p>
+
+  <div class="card">
+    <div class="lvl-head">
+      <span class="lvl-name" id="lvlName"></span>
+      <span class="lvl-num" id="lvlNum"></span>
+    </div>
+    <p class="hint" id="lvlHint"></p>
+    <canvas id="board" width="560" height="470"></canvas>
+    <div class="bar">
+      <button id="addBtn" type="button">＋ Floor · $10</button>
+      <button id="remBtn" type="button">− Floor</button>
+      <button id="isoBtn" type="button">Base isolator · $20</button>
+      <button id="tmdBtn" type="button">Tuned mass damper · $14</button>
+      <button id="quakeBtn" type="button" class="go">Start the quake ▸</button>
+    </div>
+    <div class="bar">
+      <span class="stat" id="statLine"></span>
+    </div>
+    <div class="msg" id="msg"></div>
+    <div class="lvls" id="lvlBtns"></div>
+  </div>
+
+  <p class="foot">Simplifications, named: each floor is one lumped mass on a spring, where a real building
+  bends in a curve; the quake here is a single steady note, where real quakes are a jumble of frequencies
+  that swell and fade; a storey fails at one drift number, where real frames tear in complicated ways; and
+  the tuned mass damper is a hefty quarter of the tower's mass — real ones are a percent or two of it,
+  working alongside other damping, so this one is oversized to let you watch it work. The resonance is not
+  simplified: it falls straight out of the masses and springs, the same arithmetic a real tower obeys.
+  Quake playback runs at 1.5× speed.</p>
+</div>
+
+<div class="lesson-overlay" id="lessonOverlay" hidden>
+  <div class="lesson-panel" role="dialog" aria-modal="true" aria-label="Shake Table lesson">
+    <div class="lesson-bar">
+      <span class="t">📖 The Physics of Shake Table</span>
+      <span class="sp"></span>
+      <a href="shake-table-lesson.html">Open the full page ↗</a>
+      <button id="lessonClose" type="button">Close ✕</button>
+    </div>
+    <iframe id="lessonFrame" title="Shake Table lesson"></iframe>
+  </div>
+</div>
+
+<script>
+"use strict";
+// === CORE START ===
+// Pure physics + level data for Shake Table. No DOM in this section: the node
+// test extracts it and proves every level's intended solution survives, every
+// named trap fails, and the resonance signature is real.
+//
+// Model: a shear building. Each floor is a lumped mass; each storey is a
+// spring (plus damping) between the floor below and the floor above. Ground
+// acceleration is one steady sinusoid with a smooth ramp in and out.
+// Damping is Rayleigh (C = beta*K) set so the first wobble mode gets ZETA.
+// Bracing multiplies a storey's stiffness by BRACE_MULT. A base isolator
+// replaces the ground storey with a much softer, well-damped spring (and is
+// allowed far more travel). A tuned mass damper adds one extra mass on top,
+// spring-tuned Den Hartog style to the bare tower's first wobble.
+const PHYS = {
+  K0: 400,          // unbraced storey stiffness (mass = 1 per floor)
+  MASS: 1,
+  BRACE_MULT: 2,    // braced storey stiffness multiplier
+  ZETA: 0.03,       // first-mode damping ratio
+  ISO_K: 40,        // isolator storey stiffness (K0/10)
+  ISO_ZETA: 0.18,   // isolator dashpot damping (fraction of critical)
+  ISO_TRAVEL: 5,    // isolator storey drift-limit multiplier
+  TMD_MU: 0.25,     // damper mass / total tower mass (oversized; see footer)
+  COST: { floor: 10, brace: 8, isolator: 20, damper: 14 }
+};
+
+// A design: { floors, braced: [bool per floor], isolator, damper }.
+function designCost(d) {
+  let c = d.floors * PHYS.COST.floor;
+  for (const b of d.braced) if (b) c += PHYS.COST.brace;
+  if (d.isolator) c += PHYS.COST.isolator;
+  if (d.damper) c += PHYS.COST.damper;
+  return c;
+}
+
+// Storey stiffnesses, ground storey first. The isolator overrides storey 1.
+function storeyStiffness(d) {
+  const ks = [];
+  for (let i = 0; i < d.floors; i++) ks.push(d.braced[i] ? PHYS.K0 * PHYS.BRACE_MULT : PHYS.K0);
+  if (d.isolator && ks.length) ks[0] = PHYS.ISO_K;
+  return ks;
+}
+
+function solveTri(diag, off, b) {
+  const n = diag.length;
+  if (n === 1) return [b[0] / diag[0]];
+  const c = new Array(n).fill(0), dd = new Array(n).fill(0), x = new Array(n).fill(0);
+  let w = diag[0];
+  c[0] = off[0] / w; dd[0] = b[0] / w;
+  for (let i = 1; i < n; i++) {
+    w = diag[i] - off[i - 1] * c[i - 1];
+    if (i < n - 1) c[i] = off[i] / w;
+    dd[i] = (b[i] - off[i - 1] * dd[i - 1]) / w;
+  }
+  x[n - 1] = dd[n - 1];
+  for (let i = n - 2; i >= 0; i--) x[i] = dd[i] - c[i] * x[i + 1];
+  return x;
+}
+
+// The bare tower's first natural frequency (Hz), by inverse iteration on the
+// shear chain's stiffness matrix (mass = 1 per floor). The damper is excluded:
+// it tunes itself TO this wobble, it doesn't set it.
+function estimateFreq(d) {
+  const ks = storeyStiffness(d), n = ks.length;
+  if (!n) return 0;
+  const diag = [], off = [];
+  for (let i = 0; i < n; i++) {
+    diag.push(ks[i] + (i < n - 1 ? ks[i + 1] : 0));
+    if (i < n - 1) off.push(-ks[i + 1]);
+  }
+  let x = ks.map((_, i) => i + 1);
+  for (let it = 0; it < 500; it++) {
+    const y = solveTri(diag, off, x);
+    const mx = Math.max(...y.map(Math.abs));
+    x = y.map(v => v / mx);
+  }
+  // Rayleigh quotient with the converged shape.
+  let num = 0, den = 0;
+  for (let i = 0; i < n; i++) {
+    const drift = x[i] - (i ? x[i - 1] : 0);
+    num += ks[i] * drift * drift;
+    den += PHYS.MASS * x[i] * x[i];
+  }
+  return Math.sqrt(num / den) / (2 * Math.PI);
+}
+
+function smooth01(t) { return t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t); }
+function quakeEnv(t, dur) {
+  return smooth01(t / 1.2) * (1 - smooth01((t - (dur - 1.5)) / 1.5));
+}
+
+// simulateTower(design, quake, driftLimit, record)
+//   quake: { freq (Hz), accel, duration (s) }
+//   -> { survived, failStorey (1-based, 0 = none), failTime,
+//        peakDrift: [per storey], peakDamper, fNatural,
+//        series: (record only) [{ t, u: [floor displacements..., damper?], ground }] }
+function simulateTower(d, q, driftLimit, record) {
+  const N = d.floors, ks = storeyStiffness(d);
+  const fNatural = estimateFreq(d);
+  const hasTMD = !!d.damper, n = N + (hasTMD ? 1 : 0);
+  const m = new Array(n).fill(PHYS.MASS);
+  let kd = 0, cd = 0;
+  if (hasTMD) {
+    const mu = PHYS.TMD_MU, md = mu * N * PHYS.MASS;
+    m[N] = md;
+    const wd = 2 * Math.PI * fNatural / (1 + mu);          // Den Hartog tuning
+    kd = md * wd * wd;
+    const zd = Math.sqrt(3 * mu / (8 * (1 + mu)));          // Den Hartog damping
+    cd = 2 * zd * md * wd;
+  }
+  // Assemble K and C (dense; n is tiny).
+  const K = Array.from({ length: n }, () => new Array(n).fill(0));
+  for (let s = 0; s < N; s++) {
+    K[s][s] += ks[s];
+    if (s > 0) { K[s - 1][s - 1] += ks[s]; K[s][s - 1] -= ks[s]; K[s - 1][s] -= ks[s]; }
+  }
+  if (hasTMD) {
+    K[N][N] += kd; K[N - 1][N - 1] += kd; K[N][N - 1] -= kd; K[N - 1][N] -= kd;
+  }
+  const beta = fNatural > 0 ? 2 * PHYS.ZETA / (2 * Math.PI * fNatural) : 0;
+  const C = K.map(row => row.map(v => v * beta));
+  if (hasTMD) {
+    C[N][N] += cd; C[N - 1][N - 1] += cd; C[N][N - 1] -= cd; C[N - 1][N] -= cd;
+  }
+  if (d.isolator && N) {
+    C[0][0] += 2 * PHYS.ISO_ZETA * Math.sqrt(ks[0] * N * PHYS.MASS);
+  }
+  const limits = ks.map((_, s) => driftLimit * (d.isolator && s === 0 ? PHYS.ISO_TRAVEL : 1));
+  const wq = 2 * Math.PI * q.freq;
+  const dt = 1 / 480, steps = Math.round(q.duration / dt);
+  const x = new Array(n).fill(0), v = new Array(n).fill(0);
+  const peakDrift = new Array(N).fill(0);
+  let peakDamper = 0, failStorey = 0, failTime = -1;
+  const series = record ? [] : null;
+  const F = new Array(n), tmp = new Array(n);
+  for (let st = 0; st <= steps; st++) {
+    const t = st * dt;
+    const ag = q.accel * Math.sin(wq * t) * quakeEnv(t, q.duration);
+    for (let i = 0; i < n; i++) {
+      let kx = 0, cv = 0;
+      for (let j = 0; j < n; j++) { kx += K[i][j] * x[j]; cv += C[i][j] * v[j]; }
+      tmp[i] = (-kx - cv - m[i] * ag) / m[i];
+    }
+    for (let i = 0; i < n; i++) { v[i] += tmp[i] * dt; x[i] += v[i] * dt; }
+    for (let s = 0; s < N; s++) {
+      const drift = Math.abs(x[s] - (s ? x[s - 1] : 0));
+      if (drift > peakDrift[s]) peakDrift[s] = drift;
+      if (failStorey === 0 && drift > limits[s]) { failStorey = s + 1; failTime = t; }
+    }
+    if (hasTMD) peakDamper = Math.max(peakDamper, Math.abs(x[N] - x[N - 1]));
+    if (record && st % 8 === 0) {
+      series.push({ t, u: x.slice(0, n), ground: -(q.accel / (wq * wq)) * Math.sin(wq * t) * quakeEnv(t, q.duration) });
+    }
+  }
+  return { survived: failStorey === 0, failStorey, failTime, peakDrift, peakDamper, fNatural, series };
+}
+
+const LEVELS = [
+  {
+    name: "Low and Stiff",
+    briefing: "A short tower and a fast, rattly quake. The tower's own wobble is far from the quake's rhythm, so the pushes land out of step. Build to the line and watch how little it cares.",
+    target: 3, budget: 60,
+    quake: { freq: 2.9, accel: 30, duration: 12 },
+    driftLimit: 0.55,
+    tools: { isolator: false, damper: false },
+    solution: { floors: 3, braced: [false, false, false], isolator: false, damper: false },
+    trap: null
+  },
+  {
+    name: "The Resonance Trap",
+    briefing: "A middling quake — weaker than the last one. But its rhythm matches a plain five-storey tower exactly, and rhythm beats strength. Stiffen the tower to change its wobble, or float it on isolators and let the ground thrash alone.",
+    target: 5, budget: 90,
+    quake: { freq: 0.906, accel: 12, duration: 16 },
+    driftLimit: 0.55,
+    tools: { isolator: true, damper: false },
+    solution: { floors: 5, braced: [true, true, true, true, true], isolator: false, damper: false },
+    altSolution: { floors: 5, braced: [false, false, false, false, false], isolator: true, damper: false },
+    trap: { floors: 5, braced: [false, false, false, false, false], isolator: false, damper: false }
+  },
+  {
+    name: "The Damper",
+    briefing: "Eight storeys, a slow heavy quake sitting right on the tower's wobble, and a budget too tight to brace your way out. The soil is soft clay, so isolators are off the table. The heavy weight that swings against the sway — that's the answer.",
+    target: 8, budget: 94,
+    quake: { freq: 0.587, accel: 15, duration: 18 },
+    driftLimit: 0.85,
+    tools: { isolator: false, damper: true },
+    solution: { floors: 8, braced: [false, false, false, false, false, false, false, false], isolator: false, damper: true },
+    trap: { floors: 8, braced: [false, false, false, false, false, false, false, false], isolator: false, damper: false }
+  }
+];
+// === CORE END ===
+
+// ---------- UI ----------
+const CW = 560, CH = 470, CX = 280, TW = 62, SH = 34, BASE = 428, PXU = 20;
+const canvas = document.getElementById("board");
+const ctx = canvas.getContext("2d");
+const el = id => document.getElementById(id);
+let lvlIdx = 0, design = null, phase = "build"; // build | quake | done
+let raf = null, run = null;
+let lessonOpen = false, lessonPauseStart = 0;
+
+const fHz = v => (v < 1 ? v.toFixed(3) : v.toFixed(2));
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+function storeyLimit(L, s) { return L.driftLimit * (design.isolator && s === 0 ? PHYS.ISO_TRAVEL : 1); }
+
+function loadLevel(i) {
+  if (raf) cancelAnimationFrame(raf);
+  raf = null; run = null;
+  lvlIdx = i; phase = "build";
+  const L = LEVELS[i];
+  design = { floors: L.target, braced: Array(L.target).fill(false), isolator: false, damper: false };
+  el("lvlName").textContent = L.name;
+  el("lvlNum").textContent = "Level " + (i + 1) + " of " + LEVELS.length;
+  el("lvlHint").innerHTML = "<b>Briefing:</b> " + L.briefing;
+  el("isoBtn").style.display = L.tools.isolator ? "" : "none";
+  el("tmdBtn").style.display = L.tools.damper ? "" : "none";
+  el("isoBtn").textContent = "Base isolator · $" + PHYS.COST.isolator;
+  el("tmdBtn").textContent = "Tuned mass damper · $" + PHYS.COST.damper;
+  el("quakeBtn").textContent = "Start the quake ▸";
+  [...el("lvlBtns").children].forEach((b, j) => b.classList.toggle("on", j === i));
+  setMsg("The plain tower is pre-built. <b>Click a floor to brace it</b> ($" + PHYS.COST.brace +
+    ", click again to unbrace), add the level's tools if it offers them — or shake it exactly as it stands.", "");
+  refresh();
+}
+
+function setMsg(html, cls) { const m = el("msg"); m.innerHTML = html; m.className = "msg" + (cls ? " " + cls : ""); }
+
+function refresh() {
+  const L = LEVELS[lvlIdx];
+  const cost = designCost(design), fest = estimateFreq(design), fq = L.quake.freq;
+  let warn = "";
+  const rel = fest > 0 ? Math.abs(fest - fq) / fq : 1;
+  if (design.damper && rel < 0.2) warn = ' <span class="close">— right on the quake\'s rhythm, and the damper is tuned to fight exactly that.</span>';
+  else if (rel < 0.2) warn = ' <span class="warn">— right on the quake\'s rhythm. Resonance country.</span>';
+  else if (rel < 0.4) warn = ' <span class="close">— uncomfortably close to the quake\'s rhythm.</span>';
+  el("statLine").innerHTML =
+    "Floors: <b>" + design.floors + "/" + L.target + "</b> · Cost: <b>$" + cost + "</b> of $" + L.budget +
+    " · Tower wobble ≈ <b>" + fHz(fest) + " Hz</b> · Quake: <b>" + fHz(fq) + " Hz</b>" + warn;
+  const building = phase !== "quake";
+  el("addBtn").disabled = !building || design.floors >= L.target || cost + PHYS.COST.floor > L.budget;
+  el("remBtn").disabled = !building || design.floors <= 1;
+  el("isoBtn").disabled = !building || (!design.isolator && cost - (design.braced[0] ? PHYS.COST.brace : 0) + PHYS.COST.isolator > L.budget);
+  el("tmdBtn").disabled = !building || (!design.damper && cost + PHYS.COST.damper > L.budget);
+  el("isoBtn").classList.toggle("on", !!design.isolator);
+  el("tmdBtn").classList.toggle("on", !!design.damper);
+  el("quakeBtn").disabled = !building || design.floors !== L.target || cost > L.budget;
+  if (phase === "build") drawFrame(new Array(design.floors + (design.damper ? 1 : 0)).fill(0), 0, 0, null);
+}
+
+function driftColor(ratio, braced) {
+  const stops = [[29, 47, 82], [122, 90, 20], [150, 44, 38]];
+  let a, b, t;
+  if (ratio < 0.6) { a = stops[0]; b = stops[1]; t = ratio / 0.6; }
+  else { a = stops[1]; b = stops[2]; t = Math.min(1, (ratio - 0.6) / 0.4); }
+  const c = a.map((v, i) => Math.round(v + (b[i] - v) * t) + (braced ? 10 : 0));
+  return "rgb(" + c.join(",") + ")";
+}
+
+// Draw one frame. u: floor displacements (units), index N = damper if present.
+// ground: ground displacement (units). p: collapse progress 0..1. res: sim result or null.
+function drawFrame(u, ground, p, res) {
+  const L = LEVELS[lvlIdx], N = design.floors;
+  const gPx = clamp(ground, -2, 2) * PXU;
+  const uPx = [];
+  for (let i = 0; i < N; i++) uPx.push(clamp(u[i] || 0, -6, 6) * PXU);
+  const off = lvl => (lvl === 0 ? 0 : uPx[lvl - 1]); // px offset of slab level (0 = platform top)
+  ctx.clearRect(0, 0, CW, CH);
+  // lab floor (static) + shake-table platform (moves with the ground)
+  ctx.fillStyle = "#0a1120"; ctx.fillRect(0, BASE + 27, CW, CH - BASE - 27);
+  ctx.strokeStyle = "rgba(120,150,210,.18)"; ctx.lineWidth = 1;
+  for (let hx = 8; hx < CW; hx += 26) { ctx.beginPath(); ctx.moveTo(hx, BASE + 33); ctx.lineTo(hx - 8, BASE + 44); ctx.stroke(); }
+  ctx.fillStyle = "#22355a";
+  ctx.fillRect(CX - 185 + gPx, BASE + 13, 64, 14); ctx.fillRect(CX + 121 + gPx, BASE + 13, 64, 14);
+  ctx.fillStyle = "#2b3c5f"; ctx.fillRect(CX - 235 + gPx, BASE, 470, 13);
+  ctx.strokeStyle = "#47608f"; ctx.lineWidth = 1.5; ctx.strokeRect(CX - 235 + gPx, BASE, 470, 13);
+  // target silhouette (build phase)
+  if (phase === "build") {
+    ctx.save();
+    ctx.setLineDash([5, 5]); ctx.strokeStyle = "rgba(147,167,204,.4)"; ctx.lineWidth = 1;
+    ctx.strokeRect(CX - TW - 9, BASE - L.target * SH, 2 * TW + 18, L.target * SH);
+    ctx.setLineDash([]);
+    ctx.fillStyle = "rgba(147,167,204,.65)"; ctx.font = "10px sans-serif";
+    ctx.fillText("target height", CX - TW - 9, BASE - L.target * SH - 5);
+    ctx.restore();
+  }
+  // collapse geometry
+  let F = 0, dir = 1, pivotX = 0, pivotY = 0;
+  if (p > 0 && res && !res.survived) {
+    F = res.failStorey;
+    const dF = (u[F - 1] || 0) - (F > 1 ? (u[F - 2] || 0) : 0);
+    dir = dF >= 0 ? 1 : -1;
+    pivotX = CX + gPx + off(F - 1); pivotY = BASE - (F - 1) * SH;
+  }
+  const ang = p * 0.55 * dir, drop = p * p * 30;
+  function cPt(x, y, level) {
+    if (p <= 0 || level < F) return [x, y];
+    const dx = x - pivotX, dy = y - pivotY, ca = Math.cos(ang), sa = Math.sin(ang);
+    return [pivotX + dx * ca - dy * sa, pivotY + dx * sa + dy * ca + drop];
+  }
+  // base isolator hardware
+  if (design.isolator) {
+    ctx.fillStyle = "#ffd94d";
+    for (const rx of [CX - 38, CX, CX + 38]) {
+      ctx.beginPath(); ctx.arc(rx + gPx, BASE - 4, 4.5, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.strokeStyle = "#ffd94d"; ctx.lineWidth = 2.5;
+    const p1 = cPt(CX - TW + gPx + off(1), BASE - 9, 1), p2 = cPt(CX + TW + gPx + off(1), BASE - 9, 1);
+    ctx.beginPath(); ctx.moveTo(p1[0], p1[1]); ctx.lineTo(p2[0], p2[1]); ctx.stroke();
+  }
+  // storeys, bottom up
+  for (let s = 0; s < N; s++) {
+    const yB = BASE - s * SH, yT = yB - SH;
+    const bO = gPx + off(s), tO = gPx + off(s + 1);
+    const BL = cPt(CX - TW + bO, yB, s), BR = cPt(CX + TW + bO, yB, s);
+    const TR = cPt(CX + TW + tO, yT, s + 1), TL = cPt(CX - TW + tO, yT, s + 1);
+    const drift = Math.abs((u[s] || 0) - (s ? (u[s - 1] || 0) : 0));
+    const ratio = drift / storeyLimit(L, s);
+    ctx.beginPath();
+    ctx.moveTo(BL[0], BL[1]); ctx.lineTo(BR[0], BR[1]); ctx.lineTo(TR[0], TR[1]); ctx.lineTo(TL[0], TL[1]);
+    ctx.closePath();
+    ctx.fillStyle = driftColor(phase === "build" ? 0 : ratio, design.braced[s]);
+    ctx.fill();
+    ctx.strokeStyle = "#3d5a8f"; ctx.lineWidth = 1.5; ctx.stroke();
+    if (design.braced[s]) {
+      ctx.strokeStyle = "rgba(87,199,255,.85)"; ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(BL[0] + 3, BL[1] - 3); ctx.lineTo(TR[0] - 3, TR[1] + 3);
+      ctx.moveTo(BR[0] - 3, BR[1] - 3); ctx.lineTo(TL[0] + 3, TL[1] + 3);
+      ctx.stroke();
+    }
+    // floor slab at the top of the storey
+    const S1 = cPt(TL[0] - 5, yT - 3, s + 1), S2 = cPt(TR[0] + 5, yT - 3, s + 1);
+    const S3 = cPt(TR[0] + 5, yT + 4, s + 1), S4 = cPt(TL[0] - 5, yT + 4, s + 1);
+    ctx.beginPath();
+    ctx.moveTo(S1[0], S1[1]); ctx.lineTo(S2[0], S2[1]); ctx.lineTo(S3[0], S3[1]); ctx.lineTo(S4[0], S4[1]);
+    ctx.closePath();
+    ctx.fillStyle = "#47608f"; ctx.fill();
+    if (phase === "build") {
+      ctx.fillStyle = "rgba(234,241,255,.55)"; ctx.font = "10px sans-serif";
+      ctx.fillText(String(s + 1), TL[0] + 6, yT + 16);
+    }
+  }
+  // tuned mass damper block on the roof
+  if (design.damper) {
+    const dOff = clamp(u[N] !== undefined ? u[N] : (u[N - 1] || 0), -6, 6) * PXU;
+    const cy = BASE - N * SH - 17, cxD = CX + gPx + dOff;
+    const c1 = cPt(cxD - 24, cy - 11, N), c2 = cPt(cxD + 24, cy - 11, N);
+    const c3 = cPt(cxD + 24, cy + 11, N), c4 = cPt(cxD - 24, cy + 11, N);
+    ctx.beginPath();
+    ctx.moveTo(c1[0], c1[1]); ctx.lineTo(c2[0], c2[1]); ctx.lineTo(c3[0], c3[1]); ctx.lineTo(c4[0], c4[1]);
+    ctx.closePath();
+    ctx.fillStyle = "#131c30"; ctx.fill();
+    ctx.strokeStyle = "#ffd94d"; ctx.lineWidth = 2; ctx.stroke();
+    ctx.fillStyle = "#ffd94d"; ctx.font = "9px sans-serif"; ctx.textAlign = "center";
+    ctx.fillText("DAMPER", (c1[0] + c3[0]) / 2, (c1[1] + c3[1]) / 2 + 3);
+    ctx.textAlign = "left";
+  }
+}
+
+function worstRatio(res) {
+  const L = LEVELS[lvlIdx];
+  let w = 0, ws = 0;
+  res.peakDrift.forEach((d, s) => { const r = d / storeyLimit(L, s); if (r > w) { w = r; ws = s; } });
+  return { ratio: w, storey: ws };
+}
+
+function startQuake() {
+  const L = LEVELS[lvlIdx];
+  const res = simulateTower(design, L.quake, L.driftLimit, true);
+  run = { res, t0: performance.now() };
+  phase = "quake";
+  el("addBtn").disabled = el("remBtn").disabled = el("isoBtn").disabled = el("tmdBtn").disabled = el("quakeBtn").disabled = true;
+  setMsg("Shaking…", "");
+  raf = requestAnimationFrame(tick);
+}
+
+function tick(now) {
+  if (lessonOpen) { raf = requestAnimationFrame(tick); return; } // playback paused while the lesson is open
+  const L = LEVELS[lvlIdx], res = run.res, frames = res.series;
+  const simT = (now - run.t0) / 1000 * 1.5;
+  if (!res.survived && simT >= res.failTime) {
+    const fr = frames[Math.min(frames.length - 1, Math.round(res.failTime * 60))];
+    const p = Math.min(1, (simT - res.failTime) / 1.2);
+    drawFrame(fr.u, fr.ground, p * p * (3 - 2 * p), res);
+    if (p >= 1) return finish();
+    setMsg("Storey " + res.failStorey + " gave way…", "fail");
+  } else if (simT >= L.quake.duration) {
+    const fr = frames[frames.length - 1];
+    drawFrame(fr.u, fr.ground, 0, res);
+    return finish();
+  } else {
+    const fr = frames[Math.min(frames.length - 1, Math.floor(simT * 60))];
+    drawFrame(fr.u, fr.ground, 0, res);
+    let w = 0;
+    for (let s = 0; s < design.floors; s++) {
+      const d = Math.abs((fr.u[s] || 0) - (s ? (fr.u[s - 1] || 0) : 0)) / storeyLimit(L, s);
+      if (d > w) w = d;
+    }
+    setMsg("Shaking… worst storey drift so far: <b>" + Math.round(w * 100) + "%</b> of its limit.", "");
+  }
+  raf = requestAnimationFrame(tick);
+}
+
+function finish() {
+  phase = "done";
+  const L = LEVELS[lvlIdx], res = run.res, w = worstRatio(res);
+  const fq = L.quake.freq, rel = Math.abs(res.fNatural - fq) / fq;
+  const stats = '<span class="sub">Worst storey drift ' + res.peakDrift[w.storey].toFixed(2) +
+    ' of its ' + storeyLimit(L, w.storey).toFixed(2) + ' limit · tower wobble ≈ ' + fHz(res.fNatural) +
+    ' Hz · quake ' + fHz(fq) + ' Hz</span>';
+  if (res.survived) {
+    let line;
+    if (design.damper) line = "The weight up top swung against the tower's sway, stealing a push from every cycle — the rhythm never got the swings to pile up.";
+    else if (design.isolator) line = "The ground thrashed underneath; the isolators let it, swaying " + res.peakDrift[0].toFixed(2) +
+      " so the floors above barely had to. The tower rode above the rhythm, barely hurried.";
+    else if (w.ratio > 0.7) line = "Standing — but feel that? The sway came close to the edge. A few more seconds of that rhythm and this was a collapse.";
+    else line = "Your tower's wobble never lined up with the quake's rhythm, so the pushes landed out of step and the sway stayed small.";
+    setMsg("Still standing. " + line + stats, "win");
+  } else {
+    const line = rel < 0.2
+      ? "Your tower's wobble matched the quake's rhythm — each swing arrived just in time to push the next one bigger, until storey " + res.failStorey + " bent past its limit."
+      : "The shaking shoved storey " + res.failStorey + " farther sideways than its frame could bend. Not resonance this time — brute drift.";
+    setMsg("Down — storey " + res.failStorey + " gave way. " + line + stats, "fail");
+  }
+  el("quakeBtn").textContent = "Shake it again ▸";
+  refresh();
+}
+
+canvas.addEventListener("click", ev => {
+  if (phase === "quake") return;
+  const L = LEVELS[lvlIdx];
+  const r = canvas.getBoundingClientRect();
+  const px = (ev.clientX - r.left) * canvas.width / r.width;
+  const py = (ev.clientY - r.top) * canvas.height / r.height;
+  if (Math.abs(px - CX) > TW + 10) return;
+  const s = Math.floor((BASE - py) / SH);
+  if (s < 0 || s >= design.floors) return;
+  if (design.isolator && s === 0) {
+    setMsg("The isolator carries the ground floor — it rides on the bearings and can't be braced.", "");
+    return;
+  }
+  if (!design.braced[s] && designCost(design) + PHYS.COST.brace > L.budget) {
+    setMsg("Not enough budget left to brace that floor.", "");
+    return;
+  }
+  design.braced[s] = !design.braced[s];
+  phase = "build";
+  setMsg(design.braced[s] ? "Storey " + (s + 1) + " braced — stiffer, and its wobble quickens." :
+    "Storey " + (s + 1) + " unbraced.", "");
+  refresh();
+});
+el("addBtn").addEventListener("click", () => {
+  if (design.floors >= LEVELS[lvlIdx].target) return;
+  design.floors++; design.braced.push(false); phase = "build"; refresh();
+});
+el("remBtn").addEventListener("click", () => {
+  if (design.floors <= 1) return;
+  design.floors--; design.braced.pop(); phase = "build"; refresh();
+});
+el("isoBtn").addEventListener("click", () => {
+  const L = LEVELS[lvlIdx];
+  if (!design.isolator && designCost(design) - (design.braced[0] ? PHYS.COST.brace : 0) + PHYS.COST.isolator > L.budget) {
+    setMsg("Not enough budget left for the isolator.", ""); return;
+  }
+  design.isolator = !design.isolator;
+  if (design.isolator && design.braced[0]) {
+    design.braced[0] = false;
+    setMsg("Isolator in — the ground floor rides on it now, so its brace came off (refunded).", "");
+  } else setMsg(design.isolator ? "Isolator in. Watch the tower's wobble drop." : "Isolator out.", "");
+  phase = "build"; refresh();
+});
+el("tmdBtn").addEventListener("click", () => {
+  const L = LEVELS[lvlIdx];
+  if (!design.damper && designCost(design) + PHYS.COST.damper > L.budget) {
+    setMsg("Not enough budget left for the damper.", ""); return;
+  }
+  design.damper = !design.damper;
+  phase = "build";
+  setMsg(design.damper ? "Damper in — tuned to the tower's own wobble, ready to swing against it." : "Damper out.", "");
+  refresh();
+});
+el("quakeBtn").addEventListener("click", () => { if (phase !== "quake") startQuake(); });
+// ---------- Lesson overlay (the back door, readable mid-game) ----------
+function openLesson() {
+  const ov = el("lessonOverlay"), fr = el("lessonFrame");
+  if (!fr.getAttribute("src")) fr.setAttribute("src", "shake-table-lesson.html");
+  ov.hidden = false; lessonOpen = true;
+  if (phase === "quake" && run) lessonPauseStart = performance.now();
+}
+function closeLesson() {
+  el("lessonOverlay").hidden = true; lessonOpen = false;
+  if (lessonPauseStart && run) { run.t0 += performance.now() - lessonPauseStart; lessonPauseStart = 0; }
+}
+el("lessonBtn").addEventListener("click", openLesson);
+el("lessonClose").addEventListener("click", closeLesson);
+el("lessonOverlay").addEventListener("click", ev => { if (ev.target === ev.currentTarget) closeLesson(); });
+document.addEventListener("keydown", ev => { if (ev.key === "Escape" && lessonOpen) closeLesson(); });
+
+LEVELS.forEach((lv, i) => {
+  const b = document.createElement("button");
+  b.type = "button"; b.textContent = (i + 1) + " · " + lv.name;
+  b.addEventListener("click", () => loadLevel(i));
+  el("lvlBtns").appendChild(b);
+});
+loadLevel(0);
+
+</script>
+</body>
+</html>

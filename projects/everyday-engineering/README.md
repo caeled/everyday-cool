@@ -15,6 +15,7 @@ An Everyday Cool workshop about the six simple machines and the building sense t
 - **The pulley bench** — rig one to four rope segments; effort = load ÷ segments, rope pulled = segments × lift height, both stated on the same line, with the honesty note that real pulleys lose some to friction and a safety line about never standing under a hoisted load.
 - **The ramp bench** — a slope slider; push = load × sin(slope), read out for a 1-metre climb with the ramp's length and rise-to-run ratio, against the accessibility anchor: the wheelchair-ramp standard of 1:12 (about 4.8°), computed on the page from the same rules.
 - **The frames bench** — push a square frame, a triangle, and a braced square: the square racks by the full push, the other two hold at zero, because a triangle's angles are fixed by its side lengths. The reason bridges, trusses, and farm gates are full of triangles.
+- **Shake Table** — the room's game, linked from the frames bench: design a tower floor by floor — brace a storey to stiffen it, add a base isolator, or hang a tuned mass damper — then the earthquake runs and the tower sways storey by storey in a lumped-mass spring simulation. The lesson is resonance: a tower falls when the quake's rhythm matches its own natural wobble, and the fix is to change the rhythm, not just add strength. Three levels, including a resonance trap whose obvious build fails at 3.6× the drift limit while braced and isolated designs survive.
 - **The two that move** — the wedge (splitting wood, with struck-tool safety) and the screw (an unwrapped-thread diagram showing the ramp inside it), each drawn in inline SVG.
 - **The pocket log table** — the engineer's pocket calculator for three centuries (Napier, 1614, to the electronic calculator): a ninety-entry table of four-decimal mantissas for 1.0–9.9, the characteristic-plus-mantissa rule that stretches it to any number (500 = characteristic 2 + mantissa .6990 = 2.6990), a bench that looks numbers up *the table's way* — interpolation and its small fourth-decimal wobble included, on purpose — a worked interpolation example (log 2.53 ≈ .4030 by proportional parts), and the slide rule named as the same table turned into lengths on a stick.
 - **The rules none of them break** — force is multiplied, energy never is; friction always takes a cut; multiplied force is multiplied danger (rigging safety).
@@ -38,6 +39,7 @@ The rules (lever, pulley, ramp, the 1:12 standard, frame lean, the log table) li
 ## Files
 
 - `index.html` — the room itself
+- `shake-table.html` — the Shake Table game (one self-contained file: the tower designer, the lumped-mass earthquake simulation, and its lesson panels)
 - `engineering.js` — pure rules: the lever, pulley, and ramp arithmetic, the 1:12 ramp standard, the frame-lean model, the log table and its interpolated lookup, formatting
 - `app.js` — the wiring: the four benches and their SVG drawings
 - `style.css` — the room's styling (shared Everyday Cool room styling plus the benches)

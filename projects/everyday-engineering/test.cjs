@@ -68,4 +68,15 @@ assert.ok(!E.log10Table(0).ok && !E.log10Table(-3).ok, "zero and negatives are r
 assert.strictEqual(E.fmt(2500), "2,500");
 assert.strictEqual(E.fmt(4.7636), "4.764");
 
+/* Shake Table: the room's game (added 20 November 2026) */
+const fs = require("node:fs");
+const path = require("node:path");
+assert.ok(fs.existsSync(path.join(__dirname, "shake-table.html")), "the Shake Table game page exists");
+const shakeHtml = fs.readFileSync(path.join(__dirname, "shake-table.html"), "utf8");
+assert.ok(!/(?:src|href)\s*=\s*"https?:\/\//i.test(shakeHtml), "Shake Table loads nothing external");
+assert.ok(!/<(?:script|link|img)[^>]+(?:src|href)\s*=\s*"\/\//i.test(shakeHtml), "Shake Table uses no protocol-relative external loads");
+const roomHtml = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
+assert.ok(roomHtml.includes('href="shake-table.html"'), "the room links to Shake Table");
+console.log("everyday-engineering tests: Shake Table checks passed (page present, self-contained, room links to it)");
+
 console.log("everyday-engineering tests: all passed (lever, pulley 1-4 segments, ramp + 1:12 standard, frames, log table + interpolation)");
