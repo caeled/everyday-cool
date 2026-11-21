@@ -1,4 +1,4 @@
-# Everyday Body
+# Everyday Body · Human Body Lab
 
 An Everyday Cool workshop about the body you carry around: a working atlas of twelve organs you can pick from a front-view figure, a brain explorer that gives the brain a room of its own — six tappable surface structures and twelve region topics, surface and deep — a "connect the dots" mode that follows everyday actions across cooperating systems, a six-question thinking check, and a screen-free activity to finish.
 
@@ -22,7 +22,7 @@ The workshop was designed and built by **ChatGPT** at Steven Powell's direction 
 
 ## Run it
 
-Open `index.html` in a browser. Everything — atlas, brain explorer, scenarios, quiz, Help — works fully offline from the single file. Only the "Explore further" links need the internet.
+Open `index.html` in a browser. Everything — body imager, Body Detective, atlas, brain explorer, scenarios, quiz, Help — works fully offline from the single file. Only the "Explore further" links need the internet.
 
 ## Tests
 
@@ -37,3 +37,18 @@ The tests confirm the page stays self-contained (no external images, stylesheets
 - `index.html` — the room itself: page, styling, inline SVG atlas and brain diagram, and the workshop's script, all in one file
 - `everyday-body-banner.jpg` — AI-generated banner art (see COLLECTION.md)
 - `test.cjs` — self-containment, content, and script checks
+
+## Human Body Lab (21 November 2026)
+
+The organ atlas and all twelve brain topics are preserved. The new activity navigation leads to:
+
+- **Body imager:** 25 selectable regions, adapted from the collection's `prototypes/body-symptom-mapper/body-symptom-mapper.html` geometry. Front/back switches preserve the selected anatomical side. Four topics cover regions, muscles, bones/joints, and nerves. The colors identify the selected topic; the ellipses are regional hit areas, not drawings of individual muscles, bones, or nerve territories. Text describes examples in or serving each region, including deep structures. A labeled region selector provides the same experience without pointing at the diagram. Tab to a shape and use Enter or Space to select it.
+- **Body Detective:** five fictional cases about breathing, elbow movement, texture, walking, and balance. Predict in a session-only notebook, reveal a clue, compare an explanation, and investigate a follow-up question. Each case links to the relevant imager region and organ. Notes and reveal states persist across case switching but clear on reload; nothing is uploaded or stored in browser storage.
+
+Learning goal: connect a location to structures and explain how support, force, and signals cooperate. No symptom journal or diagnostic output is included. The original prototype is unchanged. The educational imager uses front/back SVG views rather than the prototype's free-rotation canvas, giving every region a keyboard-accessible control.
+
+Open the downloaded folder's `index.html` directly, even with networking disabled. All core code and diagrams are inline; the decorative banner is a local JPEG. External reading requires internet. Downloading the workshop is required for reliable offline use; this is not a service-worker-cached website.
+
+### Browser regression checks
+
+`node test.cjs` runs dependency-free checks. With Playwright installed in your test environment, `node browser-test.cjs` exercises all regions, views and topics, each detective case and cross-link, notes, keyboard selection, all quiz answers, 12 organs and brain topics, and mobile overflow with HTTP(S) blocked. Set `BODY_TEST_SCREENSHOT` to save a desktop screenshot; Playwright is a test-only dependency and is not loaded by the workshop.

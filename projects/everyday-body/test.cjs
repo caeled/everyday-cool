@@ -77,4 +77,26 @@ assert.ok(html.includes('id="help"'), "Help section present");
 assert.ok(html.includes('href="README.md"'), "full documentation linked");
 assert.ok(html.includes("caeled.github.io/everyday-cool/"), "back link to the collection hub");
 
-console.log("everyday-body tests: all passed (self-contained page, script parses and runs, 12 organs, 12 brain regions, Help wiring)");
+/* Human Body Lab data integrity and state transitions, without browser dependencies. */
+const run = source => vm.runInContext(source, sandbox);
+assert.equal(run('labRegions.length'), 25);
+assert.equal(run('new Set(labRegions.map(r=>r.id)).size'), 25);
+assert.equal(run('detectiveCases.length'), 5);
+assert.ok(run('labRegions.every(r=>organs.some(o=>o.id===r.organ)&&r.muscles&&r.bones&&r.nerves)'));
+assert.ok(run('detectiveCases.every(c=>labRegions.some(r=>r.id===c.region)&&organs.some(o=>o.id===c.organ)&&["regions","muscles","bones","nerves"].includes(c.layer))'));
+run("labChoose('r9-right')");
+assert.equal(documentStub.querySelector('#lab-region').value, 'r9-right');
+run("labChoose('nonexistent')");
+assert.equal(run('labSelected'), 'r9-right', 'invalid region cannot corrupt selection');
+documentStub.querySelector('#lab-back').onclick();
+assert.equal(run('labView'), 'back');
+assert.equal(run('labSelected'), 'r9-right', 'anatomical side survives view switch');
+documentStub.querySelector('#detective-notes').oninput({target:{value:'My prediction'}});
+documentStub.querySelector('#detective-case').onchange({target:{value:'1'}});
+assert.equal(documentStub.querySelector('#detective-notes').value, '', 'each case has independent notes');
+documentStub.querySelector('#detective-case').onchange({target:{value:'0'}});
+assert.equal(documentStub.querySelector('#detective-notes').value, 'My prediction');
+documentStub.querySelector('#detective-map').onclick();
+assert.equal(run('labSelected'), run('detectiveCases[0].region'));
+assert.ok(!/\b(fetch|XMLHttpRequest|localStorage|sessionStorage)\b/.test(code), 'core content has no network or persistent-storage dependency');
+console.log('everyday-body tests: all passed (atlas, brain, Help, 25-region lab, 5 cases, state transitions, offline dependencies)');

@@ -294,6 +294,8 @@ Before proposing or merging any change:
   spelled out; the shipped banner's staircase reads correctly. It
   enters the catalog under "Science," immediately after Everyday Body.
 
+- **21 November 2026 — Human Body Lab:** At Steven's explicit request, Everyday Body gained an educational adaptation of the existing body mapper: front/back regional exploration and Body Detective inquiry. Keep the organ atlas and brain explorer intact. The educational workshop uses session-only predictions, not the prototype's personal symptom records. Details and sources are recorded in the room's COLLECTION.md and THIRD-PARTY.md.
+
 ## Known Future Goals
 
 - **Grow from a collection into a curriculum and workshop distribution
