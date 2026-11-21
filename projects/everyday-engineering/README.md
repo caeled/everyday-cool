@@ -40,6 +40,7 @@ The rules (lever, pulley, ramp, the 1:12 standard, frame lean, the log table) li
 
 - `index.html` — the room itself
 - `shake-table.html` — the Shake Table game (one self-contained file: the tower designer, the lumped-mass earthquake simulation, and its lesson panels)
+- `shake-table-lesson.html` — the game's lesson page: the physics, the math, worked examples, and the coding choices (opens inside the game from its 📖 Lesson button)
 - `engineering.js` — pure rules: the lever, pulley, and ramp arithmetic, the 1:12 ramp standard, the frame-lean model, the log table and its interpolated lookup, formatting
 - `app.js` — the wiring: the four benches and their SVG drawings
 - `style.css` — the room's styling (shared Everyday Cool room styling plus the benches)
