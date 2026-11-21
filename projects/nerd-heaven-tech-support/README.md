@@ -54,7 +54,7 @@ Large recordings are not stored in Git. The optional download helper assembles a
 
 ## The Back Doors — game lessons for builders
 
-Eighteen games keep a back door open: a lesson page that explains the physics — or the method — the game runs on and shows how it was coded, with the proof that its levels can actually be beaten. The workshop home shelves all eighteen as builder reading, because every game's "How it's built" section points onward to this bench. This bench's own game leads the list:
+Nineteen games keep a back door open: a lesson page that explains the physics — or the method — the game runs on and shows how it was coded, with the proof that its levels can actually be beaten. The workshop home shelves all nineteen as builder reading, because every game's "How it's built" section points onward to this bench. This bench's own game leads the list:
 
 - [Find the Fault — the lesson](find-the-fault-lesson.html) — this workshop's own game: four dead machines, six suspects each, diagnosed by the pattern of test results. An outcome matrix is the whole world; the greedy solver that proves every case crackable reads the same table the player reasons over, and par is the solver's own score.
 - [Docking — the lesson](../everyday-physics/docking-lesson.html) — a pure-function orbital core stepped with RK4, flown by a script to prove every level dockable.
@@ -74,6 +74,7 @@ Eighteen games keep a back door open: a lesson page that explains the physics �
 - [Catch the Pass — the lesson](../satellite-watch/catch-the-pass-lesson.html) — an analytic arc and a pure scoring function; the umpire is arithmetic.
 - [Anchors — the lesson](../everyday-measure/anchors-lesson.html) — one anchor table drives the shelf, the feedback, and the proof's estimator; the three can never drift apart.
 - [Corrected by Halves — the lesson](corrected-by-halves-lesson.html) — the collection's audit of Gemini Neon's ten-op halving suite: what's genuine, what's named loosely, checked against the code.
+- [Zenith Othello — the lesson](../games-room/zenith-othello-lesson.html) — a learning claim that survives its audit: eleven zeroed weights, self-play, and a benchmark that moves 21% → 90%.
 
 ## Library
 
