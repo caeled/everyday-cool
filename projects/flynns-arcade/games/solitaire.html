@@ -1,0 +1,989 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <link rel="icon" href="data:," />
+    <title>Solitaire — Seeing the Patterns</title>
+    <style>
+      button, [role="button"], select, summary, input:not([type="checkbox"], [type="radio"]) { min-height: 2.25rem; }
+      * { box-sizing: border-box; }
+      :root{
+        --bg:#e8e2d2; --ink:#1d241e; --ink-soft:#4a554b;
+        --felt:#1e6b46; --felt-deep:#17573a; --felt-line:rgba(255,255,255,.22);
+        --panel:#f6f2e7; --panel-line:#cfc7ae;
+        --gold:#b98a1c; --gold-bright:#e3b93c;
+        --card-face:#fdfcf7; --card-edge:#b9b2a0;
+        --red:#b3271e; --black:#20242a;
+        --back:#27355e; --back-2:#1d294b;
+        --good:#1e7d46; --shadow:0 2px 6px rgba(20,30,20,.28);
+        --cw:min(92px, calc((100vw - 44px) / 7.7));
+        --ch:calc(var(--cw) * 1.4);
+        --radius:calc(var(--cw) * 0.09);
+      }
+      @media (min-width: 1020px){
+        :root{ --cw:min(96px, calc((100vw - 420px) / 7.7)); }
+      }
+      @media (prefers-color-scheme: dark){
+        :root{
+          --bg:#0f1511; --ink:#e7e9df; --ink-soft:#a9b3a6;
+          --felt:#14402a; --felt-deep:#0f3521; --felt-line:rgba(255,255,255,.16);
+          --panel:#1a231c; --panel-line:#33413a;
+          --gold:#d9ab2e; --gold-bright:#f0cd55;
+          --card-face:#f4f0e2; --card-edge:#8f8a76;
+          --back:#2c3d6e; --back-2:#22315a;
+          --shadow:0 2px 8px rgba(0,0,0,.5);
+        }
+      }
+      body{
+        margin:0; background:var(--bg); color:var(--ink);
+        font-family:ui-rounded, "Avenir Next", "Segoe UI", system-ui, sans-serif;
+        -webkit-tap-highlight-color:transparent;
+      }
+      .wrap{ max-width:1240px; margin:0 auto; padding:14px 14px 40px; }
+      header.top{ display:flex; flex-wrap:wrap; align-items:end; gap:6px 18px; margin:2px 2px 10px; }
+      h1{
+        font-family:Georgia, "Iowan Old Style", "Times New Roman", serif;
+        font-size:clamp(28px, 5vw, 42px); margin:0; letter-spacing:.01em; font-weight:700;
+      }
+      .tagline{ color:var(--ink-soft); font-size:15px; max-width:56ch; margin:0 0 4px; line-height:1.45; }
+      .tagline em{ color:var(--ink); }
+      .controls{
+        display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:8px 0 12px;
+      }
+      .controls button, .controls .seg{
+        font:inherit; font-size:14px; font-weight:600; cursor:pointer;
+        border:1px solid var(--panel-line); background:var(--panel); color:var(--ink);
+        border-radius:9px; padding:6px 13px; box-shadow:var(--shadow);
+      }
+      .controls button:active{ transform:translateY(1px); }
+      .controls button[aria-pressed="true"]{ background:var(--gold); border-color:var(--gold); color:#fffdf4; }
+      .seg{ display:inline-flex; padding:3px; gap:3px; }
+      .seg button{ border:none; box-shadow:none; background:transparent; padding:4px 11px; min-height:2rem; }
+      .seg button[aria-pressed="true"]{ background:var(--gold); color:#fffdf4; }
+      .hud{
+        display:flex; flex-wrap:wrap; gap:6px 18px; font-size:14px; color:var(--ink-soft);
+        margin:0 2px 10px; font-variant-numeric:tabular-nums;
+      }
+      .hud b{ color:var(--ink); font-weight:700; }
+      .layout{ display:grid; grid-template-columns:1fr; gap:16px; align-items:start; }
+      @media (min-width: 1020px){ .layout{ grid-template-columns:minmax(0,1fr) 330px; } }
+
+      /* ---------- the table ---------- */
+      .table{
+        background:linear-gradient(160deg, var(--felt), var(--felt-deep));
+        border-radius:18px; padding:14px 12px 20px; box-shadow:var(--shadow);
+        border:1px solid rgba(0,0,0,.25);
+      }
+      .toprow{ display:flex; gap:calc(var(--cw) * 0.14); align-items:flex-start; margin-bottom:16px; }
+      .gap-slot{ width:var(--cw); flex:none; }
+      .slot{
+        width:var(--cw); height:var(--ch); flex:none; position:relative;
+        border-radius:var(--radius);
+      }
+      .slot.empty{
+        border:2px dashed var(--felt-line);
+        display:flex; align-items:center; justify-content:center;
+        color:rgba(255,255,255,.55); font-size:calc(var(--cw) * .42);
+        font-family:Georgia, serif; user-select:none;
+      }
+      .slot.empty.red{ color:rgba(255,190,170,.55); }
+      .slot .count{
+        position:absolute; right:-6px; top:-8px; z-index:60;
+        background:var(--gold); color:#fffdf4; font-size:12px; font-weight:700;
+        min-width:24px; height:24px; border-radius:12px; display:flex; align-items:center; justify-content:center;
+        padding:0 6px; box-shadow:var(--shadow); font-variant-numeric:tabular-nums;
+      }
+      .slot.drop-ok{ outline:3px solid var(--gold-bright); outline-offset:2px; }
+      .tableau{ display:flex; gap:calc(var(--cw) * 0.14); align-items:flex-start; }
+      .col{
+        width:var(--cw); flex:none; min-height:var(--ch); position:relative;
+        border-radius:var(--radius);
+      }
+      .col.empty{ border:2px dashed var(--felt-line); height:var(--ch); }
+      .col.drop-ok{ outline:3px solid var(--gold-bright); outline-offset:2px; }
+
+      .card{
+        width:var(--cw); height:var(--ch); border-radius:var(--radius);
+        background:var(--card-face); border:1px solid var(--card-edge);
+        box-shadow:0 1px 3px rgba(10,20,10,.35);
+        position:relative; padding:calc(var(--cw)*.06) calc(var(--cw)*.08);
+        font-family:Georgia, "Iowan Old Style", serif; user-select:none; touch-action:none;
+        margin-top:calc(var(--ch) * -1 + var(--cw) * 0.34);
+      }
+      .card:first-child{ margin-top:0; }
+      .card.down{ margin-top:calc(var(--ch) * -1 + var(--cw) * 0.13); }
+      .card.down:first-child{ margin-top:0; }
+      .card .corner{ font-size:calc(var(--cw) * .26); font-weight:700; line-height:1.02; }
+      .card .corner small{ display:block; font-size:calc(var(--cw) * .24); }
+      .card .pip{
+        position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+        font-size:calc(var(--cw) * .52); pointer-events:none;
+      }
+      .card.red{ color:var(--red); } .card.black{ color:var(--black); }
+      .card.facedown{
+        background:
+          repeating-linear-gradient(45deg, rgba(255,255,255,.14) 0 2px, transparent 2px 9px),
+          repeating-linear-gradient(-45deg, rgba(255,255,255,.14) 0 2px, transparent 2px 9px),
+          linear-gradient(150deg, var(--back), var(--back-2));
+        border-color:rgba(255,255,255,.35);
+      }
+      .card.facedown::after{
+        content:""; position:absolute; inset:7%; border:1.5px solid rgba(255,255,255,.4); border-radius:calc(var(--radius) * .7);
+      }
+      .card.clickable{ cursor:pointer; }
+      .card.selected{ outline:3px solid var(--gold-bright); outline-offset:1px; transform:translateY(-5px); z-index:50 !important; }
+      .card.hinted{ outline:3px solid #4fc3f7; outline-offset:1px; }
+      .lens-on .card.can-foundation{ box-shadow:0 0 0 3px var(--good), 0 0 14px 2px rgba(46,160,90,.55); }
+      .lens-on .card.can-move{ box-shadow:0 0 0 2px var(--gold-bright), 0 0 10px 1px rgba(227,185,60,.5); }
+      .lens-on .card.is-king-needed{ box-shadow:0 0 0 3px #b06ac8, 0 0 12px 2px rgba(176,106,200,.55); }
+      .card.dealt{ animation:deal .38s ease backwards; }
+      @keyframes deal{ from{ opacity:0; transform:translateY(-16px) rotate(-2deg); } to{ opacity:1; transform:none; } }
+      @media (prefers-reduced-motion: reduce){ .card.dealt{ animation:none; } .card.selected{ transform:none; } }
+      .waste-fan{ position:relative; width:var(--cw); height:var(--ch); flex:none; }
+      .waste-fan .card{ position:absolute; margin-top:0; }
+      .drag-ghost{ position:fixed; z-index:999; pointer-events:none; opacity:.92; }
+      .drag-ghost .card{ margin-top:calc(var(--ch) * -1 + var(--cw) * 0.34); }
+      .drag-ghost .card:first-child{ margin-top:0; }
+
+      .message{
+        min-height:24px; margin:10px 2px 0; font-size:15px; color:var(--ink);
+      }
+      .message b{ color:var(--gold); }
+      .autocomplete-row{ margin-top:8px; display:none; }
+      .autocomplete-row.show{ display:block; }
+      .autocomplete-row button{
+        font:inherit; font-weight:700; cursor:pointer; border:none; border-radius:9px;
+        background:var(--gold); color:#fffdf4; padding:9px 18px; box-shadow:var(--shadow);
+      }
+
+      /* ---------- counting panel ---------- */
+      aside.panel{
+        background:var(--panel); border:1px solid var(--panel-line); border-radius:16px;
+        padding:16px 16px 12px; box-shadow:var(--shadow);
+      }
+      aside.panel h2{
+        font-family:Georgia, serif; font-size:20px; margin:0 0 4px;
+      }
+      aside.panel h3{
+        font-family:Georgia, serif; font-size:15.5px; margin:18px 0 6px;
+        border-top:1px solid var(--panel-line); padding-top:12px;
+      }
+      aside.panel p{ font-size:13.5px; line-height:1.5; color:var(--ink-soft); margin:4px 0; }
+      aside.panel p b, aside.panel li b{ color:var(--ink); }
+      .meter{ height:12px; border-radius:6px; background:rgba(127,127,127,.25); overflow:hidden; display:flex; margin:8px 0 4px; }
+      .meter i{ display:block; height:100%; }
+      .meter .m-seen{ background:var(--good); } .meter .m-hidden{ background:var(--back); } .meter .m-stock{ background:var(--gold); }
+      .legend{ display:flex; flex-wrap:wrap; gap:4px 14px; font-size:12.5px; color:var(--ink-soft); }
+      .legend i{ display:inline-block; width:10px; height:10px; border-radius:3px; margin-right:5px; }
+      .odds{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:8px; }
+      .odd{
+        border:1px solid var(--panel-line); border-radius:10px; padding:8px 10px;
+      }
+      .odd .big{ font-size:21px; font-weight:800; font-variant-numeric:tabular-nums; font-family:Georgia, serif; }
+      .odd .lbl{ font-size:12px; color:var(--ink-soft); line-height:1.35; }
+      .stackbars{ display:grid; gap:5px; margin-top:6px; }
+      .stackbar{ display:grid; grid-template-columns:52px 1fr 48px; align-items:center; gap:8px; font-size:12.5px; }
+      .stackbar > span:last-child{ white-space:nowrap; text-align:right; }
+      .stackbar .track{ height:10px; border-radius:5px; background:rgba(127,127,127,.22); position:relative; overflow:hidden; }
+      .stackbar .fill{ position:absolute; inset:0 auto 0 0; background:var(--back); border-radius:5px; }
+      .stackbar .fill.open{ background:var(--good); }
+      ul.notes{ margin:6px 0 0; padding-left:18px; font-size:13.5px; line-height:1.55; color:var(--ink-soft); }
+      ul.notes li{ margin-bottom:5px; }
+      .unseen{ border-collapse:collapse; margin-top:6px; width:100%; }
+      .unseen td, .unseen th{ padding:1px; text-align:center; }
+      .chip{
+        display:inline-flex; align-items:center; justify-content:center;
+        width:100%; min-width:20px; height:22px; border-radius:5px; font-size:11px; font-weight:700;
+        font-family:Georgia, serif; border:1px solid var(--card-edge); background:var(--card-face); color:var(--black);
+      }
+      .chip.red{ color:var(--red); }
+      .chip.gone{ opacity:.18; border-style:dashed; }
+      .chip.head{ background:transparent; border:none; color:var(--ink-soft); font-family:inherit; }
+      ol.motions{ margin:6px 0 4px; padding-left:20px; font-size:13px; line-height:1.55; color:var(--ink-soft); }
+      ol.motions li b{ color:var(--ink); }
+      .legend-keys{ font-size:12.5px; color:var(--ink-soft); line-height:1.6; }
+      .legend-keys .sw{ display:inline-block; width:11px; height:11px; border-radius:3px; vertical-align:-1px; margin-right:5px; }
+
+      .winveil{
+        position:fixed; inset:0; background:rgba(10,18,12,.72); display:none;
+        align-items:center; justify-content:center; z-index:1000; padding:18px;
+      }
+      .winveil.show{ display:flex; }
+      .wincard{
+        background:var(--panel); color:var(--ink); border-radius:18px; padding:28px 26px; max-width:420px; width:100%;
+        text-align:center; box-shadow:0 12px 40px rgba(0,0,0,.45);
+      }
+      .wincard h2{ font-family:Georgia, serif; font-size:30px; margin:0 0 8px; }
+      .wincard p{ color:var(--ink-soft); line-height:1.55; font-size:15px; }
+      .wincard button{
+        font:inherit; font-weight:700; cursor:pointer; border:none; border-radius:10px;
+        background:var(--gold); color:#fffdf4; padding:11px 22px; margin-top:8px;
+      }
+      footer.foot{ margin-top:18px; font-size:13px; color:var(--ink-soft); line-height:1.6; }
+      footer.foot a{ color:var(--gold); font-weight:600; padding:6px 2px; display:inline-block; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header class="top">
+        <h1>Solitaire</h1>
+        <p class="tagline">Breakout is reflection and Tempest is geometry. Solitaire is <em>seeing the patterns of motion</em> — in the stack, in the layout, and in the plain math of counting cards and probabilities.</p>
+      </header>
+
+      <div class="controls">
+        <button id="btn-new" type="button">New deal</button>
+        <button id="btn-undo" type="button">Undo</button>
+        <button id="btn-hint" type="button">Hint</button>
+        <span class="seg" role="group" aria-label="Draw count">
+          <button id="draw1" type="button" aria-pressed="true">Draw 1</button>
+          <button id="draw3" type="button" aria-pressed="false">Draw 3</button>
+        </span>
+        <button id="btn-lens" type="button" aria-pressed="true">Pattern lens: on</button>
+      </div>
+
+      <div class="hud">
+        <span>Moves <b id="hud-moves">0</b></span>
+        <span>Time <b id="hud-time">0:00</b></span>
+        <span>Score <b id="hud-score">0</b></span>
+        <span>Foundations <b id="hud-found">0</b> / 52</span>
+        <span>Moves available <b id="hud-avail">0</b></span>
+      </div>
+
+      <div class="layout">
+        <div>
+          <div class="table" id="table">
+            <div class="toprow">
+              <div class="slot" id="stock-slot"></div>
+              <div class="waste-fan" id="waste-slot"></div>
+              <div class="gap-slot"></div>
+              <div class="slot" id="found-0"></div>
+              <div class="slot" id="found-1"></div>
+              <div class="slot" id="found-2"></div>
+              <div class="slot" id="found-3"></div>
+            </div>
+            <div class="tableau" id="tableau"></div>
+          </div>
+          <p class="message" id="message" role="status"></p>
+          <div class="autocomplete-row" id="autocomplete-row">
+            <button id="btn-auto" type="button">Run it home — auto-finish</button>
+          </div>
+        </div>
+
+        <aside class="panel" aria-label="Counting and patterns panel">
+          <h2>The Counting Table</h2>
+          <p>Solitaire deals you 52 cards and shows you only some of them. Everything below is counted from <b>what you have actually seen</b> — the same information a card counter at the table would have.</p>
+
+          <div class="meter" aria-hidden="true">
+            <i class="m-seen" id="meter-seen"></i><i class="m-hidden" id="meter-hidden"></i><i class="m-stock" id="meter-stock"></i>
+          </div>
+          <div class="legend">
+            <span><i style="background:var(--good)"></i>Seen <b id="lg-seen">0</b></span>
+            <span><i style="background:var(--back)"></i>Face-down <b id="lg-hidden">0</b></span>
+            <span><i style="background:var(--gold)"></i>In stock <b id="lg-stock">0</b></span>
+          </div>
+
+          <h3>Odds on the next card you turn</h3>
+          <p>The unseen cards are a known pile — you just don't know their order. By symmetry, the next card you turn is equally likely to be any of them, so the odds are honest counting, not a guess:</p>
+          <div class="odds">
+            <div class="odd"><div class="big" id="odd-red">–</div><div class="lbl">it is <b>red</b></div></div>
+            <div class="odd"><div class="big" id="odd-black">–</div><div class="lbl">it is <b>black</b></div></div>
+            <div class="odd"><div class="big" id="odd-found">–</div><div class="lbl">it plays straight to a <b>foundation</b></div></div>
+            <div class="odd"><div class="big" id="odd-play">–</div><div class="lbl">it plays <b>anywhere</b> at all</div></div>
+          </div>
+          <p id="odd-detail"></p>
+
+          <h3>The stack — where the cards are buried</h3>
+          <p>Face-down cards are the game's hidden motion. A column only starts to move when its buried cards turn over:</p>
+          <div class="stackbars" id="stackbars"></div>
+
+          <h3>Patterns in the layout</h3>
+          <ul class="notes" id="notes"></ul>
+
+          <h3>Cards you haven't seen</h3>
+          <p>Dimmed chips have already appeared. What's left lit is the exact pool every probability above is counted from:</p>
+          <table class="unseen" id="unseen" aria-label="Unseen cards grid"></table>
+
+          <h3>Recent motions</h3>
+          <ol class="motions" id="motions"></ol>
+
+          <h3>Reading the lens</h3>
+          <p class="legend-keys">
+            <span class="sw" style="background:var(--good)"></span>can go to a foundation now<br>
+            <span class="sw" style="background:var(--gold-bright)"></span>can move somewhere on the layout<br>
+            <span class="sw" style="background:#b06ac8"></span>a King, while an empty column waits for one
+          </p>
+        </aside>
+      </div>
+
+      <footer class="foot">
+        Klondike rules: build down in alternating colors on the layout, build up by suit on the foundations, only Kings fill an empty column. Tap a card, then tap where it goes — or drag it. Double-tap a card to send it to its foundation. New to the math? Read up on
+        <a href="https://en.wikipedia.org/wiki/Klondike_(solitaire)" target="_blank" rel="noopener">Klondike</a>,
+        <a href="https://en.wikipedia.org/wiki/Card_counting" target="_blank" rel="noopener">card counting</a>, and
+        <a href="https://en.wikipedia.org/wiki/Probability" target="_blank" rel="noopener">probability</a>.
+      </footer>
+    </div>
+
+    <div class="winveil" id="winveil">
+      <div class="wincard">
+        <h2>All 52 home.</h2>
+        <p id="win-stats"></p>
+        <p>Every buried card turned, every run laid bare. The pattern was there the whole time — you just had to keep turning cards until it showed itself.</p>
+        <button id="btn-again" type="button">Deal another</button>
+      </div>
+    </div>
+
+    <script>
+    (function(){
+      "use strict";
+      var SUITS = ["♠","♥","♦","♣"];
+      var SUIT_RED = [false,true,true,false];
+      var RANKS = ["A","2","3","4","5","6","7","8","9","10","J","Q","K"];
+
+      var state = null;
+      var selected = null;      // {kind:'waste'} | {kind:'found', f} | {kind:'tab', col, idx}
+      var hintMark = null;      // {srcKey, dstKey, until}
+      var history = [];
+      var drawCount = 1;
+      var lensOn = true;
+      var timerId = null, startStamp = null, elapsedBase = 0;
+      var justDealt = false;
+
+      function $(id){ return document.getElementById(id); }
+      function cardId(suit, rank){ return suit * 13 + (rank - 1); }
+      function mkCard(suit, rank){ return { suit:suit, rank:rank, red:SUIT_RED[suit], id:cardId(suit,rank), faceUp:false }; }
+      function cardName(c){ return RANKS[c.rank-1] + SUITS[c.suit]; }
+
+      function newDeck(){
+        var d = [];
+        for (var s=0;s<4;s++) for (var r=1;r<=13;r++) d.push(mkCard(s,r));
+        for (var i=d.length-1;i>0;i--){ var j=Math.floor(Math.random()*(i+1)); var t=d[i]; d[i]=d[j]; d[j]=t; }
+        return d;
+      }
+
+      function newGame(){
+        var deck = newDeck();
+        var tab = [[],[],[],[],[],[],[]];
+        for (var c=0;c<7;c++){
+          for (var k=0;k<=c;k++){
+            var card = deck.pop();
+            card.faceUp = (k===c);
+            tab[c].push(card);
+          }
+        }
+        state = {
+          stock: deck, waste: [],
+          foundations: [[],[],[],[]],
+          tableau: tab,
+          seen: {}, moves:0, score:0, elapsed:0,
+          log: [], won:false
+        };
+        tab.forEach(function(col){ col.forEach(function(cd){ if (cd.faceUp) state.seen[cd.id]=true; }); });
+        history = []; selected = null; hintMark = null;
+        justDealt = true;
+        startStamp = null; elapsedBase = 0;
+        stopTimer();
+        $("winveil").classList.remove("show");
+        setMessage("Dealt. Seven columns, <b>21 cards face-down</b> — the pattern is in there. Start turning it over.");
+        render();
+      }
+
+      function snapshot(){
+        return JSON.stringify({
+          stock:state.stock, waste:state.waste, foundations:state.foundations,
+          tableau:state.tableau, seen:state.seen, moves:state.moves,
+          score:state.score, elapsed:currentElapsed(), log:state.log, won:state.won
+        });
+      }
+      function pushHistory(){
+        history.push(snapshot());
+        if (history.length > 300) history.shift();
+      }
+      function undo(){
+        if (!history.length){ setMessage("Nothing to undo yet."); return; }
+        var s = JSON.parse(history.pop());
+        state = s; selected = null; hintMark = null;
+        elapsedBase = s.elapsed || 0; startStamp = null; stopTimer();
+        setMessage("Undone. The cards remember nothing — but you do. That's counting.");
+        render();
+      }
+
+      function currentElapsed(){
+        if (startStamp) return elapsedBase + Math.floor((Date.now()-startStamp)/1000);
+        return elapsedBase;
+      }
+      function startTimerIfNeeded(){
+        if (startStamp || state.won) return;
+        startStamp = Date.now();
+        timerId = setInterval(function(){ $("hud-time").textContent = fmtTime(currentElapsed()); }, 500);
+      }
+      function stopTimer(){ if (timerId){ clearInterval(timerId); timerId=null; } }
+      function fmtTime(sec){ var m=Math.floor(sec/60), s=sec%60; return m + ":" + (s<10?"0":"") + s; }
+
+      /* ---------------- rules ---------------- */
+      function foundationIndexFor(card){ return card.suit; }
+      function canFoundation(card, f){
+        var pile = state.foundations[f];
+        if (card.suit !== f) return false;
+        if (!pile.length) return card.rank === 1;
+        return pile[pile.length-1].rank === card.rank - 1;
+      }
+      function canTableau(card, col){
+        var pile = state.tableau[col];
+        if (!pile.length) return card.rank === 13;
+        var top = pile[pile.length-1];
+        if (!top.faceUp) return false;
+        return top.rank === card.rank + 1 && top.red !== card.red;
+      }
+      function validRun(col, idx){
+        var pile = state.tableau[col];
+        for (var i=idx;i<pile.length;i++){ if (!pile[i].faceUp) return false; }
+        for (var j=idx;j<pile.length-1;j++){
+          if (!(pile[j].rank === pile[j+1].rank + 1 && pile[j].red !== pile[j+1].red)) return false;
+        }
+        return true;
+      }
+      function topCardOf(sel){
+        if (sel.kind==="waste") return state.waste[state.waste.length-1];
+        if (sel.kind==="found"){ var p=state.foundations[sel.f]; return p[p.length-1]; }
+        return state.tableau[sel.col][sel.idx];
+      }
+      function legalMoves(){
+        var moves = [];
+        var c, col, i, f;
+        // waste
+        if (state.waste.length){
+          c = state.waste[state.waste.length-1];
+          if (canFoundation(c, foundationIndexFor(c))) moves.push({from:{kind:"waste"}, card:c, to:{kind:"found", f:foundationIndexFor(c)}, label:cardName(c)+" to foundation"});
+          for (col=0;col<7;col++) if (canTableau(c,col)) moves.push({from:{kind:"waste"}, card:c, to:{kind:"tab", col:col}, label:cardName(c)+" to column "+(col+1)});
+        }
+        // tableau -> foundation / tableau
+        for (col=0;col<7;col++){
+          var pile = state.tableau[col];
+          if (pile.length && pile[pile.length-1].faceUp){
+            c = pile[pile.length-1];
+            if (canFoundation(c, foundationIndexFor(c))) moves.push({from:{kind:"tab", col:col, idx:pile.length-1}, card:c, to:{kind:"found", f:foundationIndexFor(c)}, label:cardName(c)+" to foundation"});
+          }
+          for (i=0;i<pile.length;i++){
+            if (!pile[i].faceUp || !validRun(col,i)) continue;
+            c = pile[i];
+            // moving the whole face-up part of a column to an empty column is a no-op shuffle
+            for (var d=0;d<7;d++){
+              if (d===col) continue;
+              if (!state.tableau[d].length && i===0 && pile[0].faceUp && colHasNoDown(col)) continue;
+              if (canTableau(c,d)) moves.push({from:{kind:"tab", col:col, idx:i}, card:c, to:{kind:"tab", col:d}, label:cardName(c)+(pile.length-i>1 ? " +"+(pile.length-i-1) : "")+" to column "+(d+1)});
+            }
+            break; // only the longest movable run start matters per destination set; shorter runs checked below
+          }
+          // shorter runs (starting deeper) can also move
+          for (i=1;i<pile.length;i++){
+            if (!pile[i].faceUp || !validRun(col,i)) continue;
+            c = pile[i];
+            for (var d2=0;d2<7;d2++){
+              if (d2===col) continue;
+              if (canTableau(c,d2)) moves.push({from:{kind:"tab", col:col, idx:i}, card:c, to:{kind:"tab", col:d2}, label:cardName(c)+(pile.length-i>1 ? " +"+(pile.length-i-1) : "")+" to column "+(d2+1)});
+            }
+          }
+        }
+        // foundation -> tableau
+        for (f=0;f<4;f++){
+          var fp = state.foundations[f];
+          if (!fp.length) continue;
+          c = fp[fp.length-1];
+          for (col=0;col<7;col++) if (canTableau(c,col)) moves.push({from:{kind:"found", f:f}, card:c, to:{kind:"tab", col:col}, label:cardName(c)+" back to column "+(col+1)});
+        }
+        return moves;
+      }
+      function colHasNoDown(col){ return state.tableau[col].every(function(cd){ return cd.faceUp; }); }
+
+      function doMove(from, to){
+        pushHistory();
+        startTimerIfNeeded();
+        var moved = [], label = "";
+        if (from.kind==="waste"){ moved = [state.waste.pop()]; }
+        else if (from.kind==="found"){ moved = [state.foundations[from.f].pop()]; }
+        else { moved = state.tableau[from.col].splice(from.idx); }
+        if (to.kind==="found"){ state.foundations[to.f].push(moved[0]); }
+        else { for (var i=0;i<moved.length;i++) state.tableau[to.col].push(moved[i]); }
+        label = cardName(moved[0]) + (moved.length>1 ? " +"+(moved.length-1)+" more" : "");
+        label += to.kind==="found" ? " → foundation " + SUITS[to.f] : " → column " + (to.col+1);
+        if (from.kind==="waste") label = "Waste " + label;
+        else if (from.kind==="found") label = "Foundation " + label;
+        else label = "Column " + (from.col+1) + ": " + label;
+        // scoring
+        if (to.kind==="found") state.score += 10;
+        else if (from.kind==="waste") state.score += 5;
+        else if (from.kind==="found") state.score -= 15;
+        // flip exposed tableau card
+        if (from.kind==="tab"){
+          var src = state.tableau[from.col];
+          if (src.length && !src[src.length-1].faceUp){
+            src[src.length-1].faceUp = true;
+            state.seen[src[src.length-1].id] = true;
+            state.score += 5;
+            label += " — and flips the " + cardName(src[src.length-1]) + ". One less buried card.";
+          }
+        }
+        state.moves++;
+        state.log.unshift(label);
+        if (state.log.length>6) state.log.pop();
+        selected = null; hintMark = null;
+        setMessage(label + ".");
+        checkWin();
+        render();
+      }
+
+      function tryMoveSelectedTo(to){
+        if (!selected) return false;
+        var card = topCardOf(selected);
+        if (!card) return false;
+        if (to.kind==="found"){
+          var isSingle = selected.kind!=="tab" || selected.idx === state.tableau[selected.col].length-1;
+          if (!isSingle) return false;
+          if (canFoundation(card, to.f)){ doMove(selected, to); return true; }
+          return false;
+        }
+        if (to.kind==="tab"){
+          if (selected.kind==="tab" && selected.col===to.col) { selected=null; render(); return true; }
+          if (canTableau(card, to.col)){ doMove(selected, to); return true; }
+          return false;
+        }
+        return false;
+      }
+
+      function autoFoundation(sel){
+        var card = topCardOf(sel);
+        if (!card) return;
+        if (sel.kind==="tab" && sel.idx !== state.tableau[sel.col].length-1) return;
+        var f = foundationIndexFor(card);
+        if (canFoundation(card, f)){ doMove(sel, {kind:"found", f:f}); }
+        else setMessage("The " + cardName(card) + " can't go home yet — its foundation needs the " + (card.rank>1 ? RANKS[card.rank-2]+SUITS[card.suit] : "an empty pile") + " first.");
+      }
+
+      function drawStock(){
+        if (state.won) return;
+        if (!state.stock.length){
+          if (!state.waste.length) return;
+          pushHistory(); startTimerIfNeeded();
+          state.stock = state.waste.reverse();
+          state.stock.forEach(function(c){ c.faceUp=false; });
+          state.waste = [];
+          state.moves++;
+          if (drawCount===1) state.score = Math.max(0, state.score-20); else state.score = Math.max(0, state.score-5);
+          state.log.unshift("Waste recycled back into the stock — same cards, second time around. Counters love a recycle: nothing new can surprise you.");
+          if (state.log.length>6) state.log.pop();
+          setMessage("Stock recycled. Every card in it is one you've <b>already seen</b> — the odds panel doesn't change, only the order does.");
+          selected=null; render(); return;
+        }
+        pushHistory(); startTimerIfNeeded();
+        var n = Math.min(drawCount, state.stock.length), drawn = [];
+        for (var i=0;i<n;i++){
+          var c = state.stock.pop(); c.faceUp = true; state.seen[c.id]=true;
+          state.waste.push(c); drawn.push(cardName(c));
+        }
+        state.moves++;
+        state.log.unshift("Drew " + drawn.join(", ") + " from the stock.");
+        if (state.log.length>6) state.log.pop();
+        setMessage("Drew the <b>" + drawn[drawn.length-1] + "</b>. The unseen pool just shrank by " + n + " — watch the odds move.");
+        selected=null; render();
+      }
+
+      function checkWin(){
+        var total = state.foundations.reduce(function(a,p){ return a+p.length; }, 0);
+        if (total===52 && !state.won){
+          state.won = true;
+          elapsedBase = currentElapsed(); startStamp=null; stopTimer();
+          $("win-stats").textContent = "Finished in " + state.moves + " moves, " + fmtTime(elapsedBase) + ", score " + state.score + ".";
+          setTimeout(function(){ $("winveil").classList.add("show"); }, 350);
+        }
+      }
+
+      function canAutoFinish(){
+        if (state.stock.length || state.waste.length===0 && false) return false;
+        if (state.stock.length) return false;
+        for (var c=0;c<7;c++) for (var i=0;i<state.tableau[c].length;i++) if (!state.tableau[c][i].faceUp) return false;
+        var total = state.foundations.reduce(function(a,p){ return a+p.length; }, 0);
+        return total < 52;
+      }
+      function runAutoFinish(){
+        var step = function(){
+          // find any card that can go to foundation: waste top or tableau tops
+          if (state.waste.length){
+            var wc = state.waste[state.waste.length-1];
+            if (canFoundation(wc, wc.suit)){ doMove({kind:"waste"}, {kind:"found", f:wc.suit}); setTimeout(step, 120); return; }
+          }
+          for (var c=0;c<7;c++){
+            var pile = state.tableau[c];
+            if (pile.length){
+              var tc = pile[pile.length-1];
+              if (canFoundation(tc, tc.suit)){ doMove({kind:"tab", col:c, idx:pile.length-1}, {kind:"found", f:tc.suit}); setTimeout(step, 120); return; }
+            }
+          }
+          if (state.waste.length){
+            // waste blocked: cycle it — move top waste to tableau isn't possible in auto; just stop
+          }
+          render();
+        };
+        step();
+      }
+
+      /* ---------------- selection & input ---------------- */
+      function selectSource(sel){ selected = sel; render(); }
+      function sameSel(a,b){
+        if (!a||!b) return false;
+        return a.kind===b.kind && a.col===b.col && a.idx===b.idx && a.f===b.f;
+      }
+
+      function onCardClick(sel, ev){
+        ev.stopPropagation();
+        if (dragMoved) return;
+        if (selected && !sameSel(selected, sel)){
+          if (sel.kind==="tab"){
+            if (tryMoveSelectedTo({kind:"tab", col:sel.col})) return;
+          }
+          if (sel.kind==="found"){
+            if (tryMoveSelectedTo({kind:"found", f:sel.f})) return;
+          }
+        }
+        if (sel.kind==="tab"){
+          var pile = state.tableau[sel.col];
+          if (!pile[sel.idx].faceUp) { selected=null; render(); return; }
+          if (!validRun(sel.col, sel.idx)){ setMessage("That run doesn't alternate colors all the way down, so it can't travel together. Only the top card can move alone."); selected=null; render(); return; }
+        }
+        if (sameSel(selected, sel)){ autoFoundation(sel); selected=null; render(); return; }
+        selectSource(sel);
+      }
+
+      /* drag */
+      var drag = null, dragMoved = false;
+      function onPointerDown(sel, el, ev){
+        if (ev.button!==undefined && ev.button>0) return;
+        dragMoved = false;
+        drag = { sel:sel, x:ev.clientX, y:ev.clientY, el:el, ghost:null };
+      }
+      document.addEventListener("pointermove", function(ev){
+        if (!drag) return;
+        var dx = ev.clientX - drag.x, dy = ev.clientY - drag.y;
+        if (!drag.ghost && Math.abs(dx)+Math.abs(dy) > 8){
+          dragMoved = true;
+          var ghost = document.createElement("div");
+          ghost.className = "drag-ghost";
+          ghost.style.width = drag.el.offsetWidth + "px";
+          // clone the moving stack
+          if (drag.sel.kind==="tab"){
+            var pile = state.tableau[drag.sel.col];
+            if (!pile[drag.sel.idx].faceUp || !validRun(drag.sel.col, drag.sel.idx)){ drag=null; return; }
+            for (var i=drag.sel.idx;i<pile.length;i++) ghost.appendChild(buildCardEl(pile[i], null));
+          } else {
+            var c = topCardOf(drag.sel);
+            if (!c){ drag=null; return; }
+            ghost.appendChild(buildCardEl(c, null));
+          }
+          document.body.appendChild(ghost);
+          drag.ghost = ghost;
+          selected = drag.sel;
+        }
+        if (drag.ghost){
+          drag.ghost.style.left = (ev.clientX - drag.el.offsetWidth/2) + "px";
+          drag.ghost.style.top = (ev.clientY - 14) + "px";
+        }
+      });
+      document.addEventListener("pointerup", function(ev){
+        if (!drag) return;
+        var d = drag; drag = null;
+        if (d.ghost){
+          var target = document.elementFromPoint(ev.clientX, ev.clientY);
+          d.ghost.remove();
+          var dropEl = target ? target.closest("[data-drop]") : null;
+          if (dropEl){
+            var parts = dropEl.getAttribute("data-drop").split(":");
+            if (parts[0]==="tab") tryMoveSelectedTo({kind:"tab", col:parseInt(parts[1],10)});
+            else if (parts[0]==="found") tryMoveSelectedTo({kind:"found", f:parseInt(parts[1],10)});
+          }
+          selected = null; render();
+          setTimeout(function(){ dragMoved=false; }, 50);
+        }
+      });
+
+      /* ---------------- rendering ---------------- */
+      function buildCardEl(card, sel){
+        var el = document.createElement("div");
+        el.className = "card " + (card.red ? "red" : "black") + (card.faceUp ? "" : " facedown down");
+        el.style.zIndex = 10 + (sel && sel.idx!==undefined ? sel.idx : 0);
+        if (card.faceUp){
+          var corner = document.createElement("div");
+          corner.className = "corner";
+          corner.innerHTML = RANKS[card.rank-1] + "<small>" + SUITS[card.suit] + "</small>";
+          var pip = document.createElement("div");
+          pip.className = "pip"; pip.textContent = SUITS[card.suit];
+          el.appendChild(corner); el.appendChild(pip);
+          el.classList.add("clickable");
+          if (sel){
+            el.addEventListener("click", function(ev){ onCardClick(sel, ev); });
+            el.addEventListener("dblclick", function(ev){ ev.stopPropagation(); autoFoundation(sel); });
+            el.addEventListener("pointerdown", function(ev){ onPointerDown(sel, el, ev); });
+            if (sameSel(selected, sel)) el.classList.add("selected");
+            if (hintMark && hintMark.srcKey === keyOf(sel)) el.classList.add("hinted");
+            if (lensOn){
+              var moves = legalMovesCache;
+              var id = card.id;
+              if (moves.some(function(m){ return m.card.id===id && m.to.kind==="found" && isTopSel(sel); })) el.classList.add("can-foundation");
+              else if (moves.some(function(m){ return m.card.id===id; })) el.classList.add("can-move");
+              var hasEmpty = state.tableau.some(function(p){ return !p.length; });
+              if (hasEmpty && card.rank===13 && isMovableKing(sel)) el.classList.add("is-king-needed");
+            }
+          }
+        }
+        if (justDealt && sel && sel.kind==="tab") { el.classList.add("dealt"); el.style.animationDelay = (sel.col*90 + (sel.idx||0)*40) + "ms"; }
+        return el;
+      }
+      function keyOf(sel){
+        if (sel.kind==="waste") return "waste";
+        if (sel.kind==="found") return "found:"+sel.f;
+        return "tab:"+sel.col+":"+sel.idx;
+      }
+      function isTopSel(sel){
+        if (sel.kind==="waste") return true;
+        if (sel.kind==="found") return true;
+        return sel.idx === state.tableau[sel.col].length-1;
+      }
+      function isMovableKing(sel){
+        if (sel.kind==="waste") return true;
+        if (sel.kind==="tab") return !(sel.idx===0 && colHasNoDown(sel.col));
+        return false;
+      }
+
+      var legalMovesCache = [];
+      function render(){
+        legalMovesCache = legalMoves();
+        // stock
+        var stockSlot = $("stock-slot"); stockSlot.innerHTML = "";
+        stockSlot.className = "slot" + (!state.stock.length && !state.waste.length ? " empty" : "");
+        stockSlot.setAttribute("role","button");
+        stockSlot.setAttribute("aria-label", state.stock.length ? "Draw from stock, " + state.stock.length + " cards" : "Recycle the waste");
+        if (state.stock.length){
+          var back = document.createElement("div");
+          back.className = "card facedown"; back.style.marginTop = "0";
+          stockSlot.appendChild(back);
+          var badge = document.createElement("span"); badge.className="count"; badge.textContent = state.stock.length;
+          stockSlot.appendChild(badge);
+        } else if (state.waste.length){
+          stockSlot.classList.add("empty"); stockSlot.textContent = "↻";
+        }
+        stockSlot.onclick = function(){ if (!dragMoved) drawStock(); };
+        // waste (fan of last 3)
+        var wasteSlot = $("waste-slot"); wasteSlot.innerHTML = "";
+        var show = state.waste.slice(-3);
+        show.forEach(function(card, i){
+          var isTop = i === show.length-1;
+          var el = buildCardEl(card, isTop ? {kind:"waste"} : null);
+          el.style.left = (i * 14) + "px";
+          el.style.zIndex = 20 + i;
+          wasteSlot.appendChild(el);
+        });
+        // foundations
+        for (var f=0;f<4;f++){
+          var fs = $("found-"+f); fs.innerHTML = "";
+          var pile = state.foundations[f];
+          fs.className = "slot" + (!pile.length ? " empty" + (SUIT_RED[f] ? " red" : "") : "");
+          fs.setAttribute("data-drop", "found:"+f);
+          if (!pile.length){ fs.textContent = SUITS[f]; }
+          else {
+            var top = pile[pile.length-1];
+            var fel = buildCardEl(top, {kind:"found", f:f});
+            fel.style.marginTop = "0";
+            fs.appendChild(fel);
+            if (pile.length>1){ var fb=document.createElement("span"); fb.className="count"; fb.textContent=pile.length; fs.appendChild(fb); }
+          }
+          fs.onclick = (function(ff){ return function(){
+            if (selected && tryMoveSelectedTo({kind:"found", f:ff})) return;
+            if (state.foundations[ff].length) selectSource({kind:"found", f:ff});
+          }; })(f);
+        }
+        // tableau
+        var tab = $("tableau"); tab.innerHTML = "";
+        state.tableau.forEach(function(pile, col){
+          var colEl = document.createElement("div");
+          colEl.className = "col" + (!pile.length ? " empty" : "");
+          colEl.setAttribute("data-drop", "tab:"+col);
+          colEl.addEventListener("click", function(){
+            if (selected && !pile.length) tryMoveSelectedTo({kind:"tab", col:col});
+          });
+          pile.forEach(function(card, idx){
+            colEl.appendChild(buildCardEl(card, {kind:"tab", col:col, idx:idx}));
+          });
+          tab.appendChild(colEl);
+        });
+        $("table").classList.toggle("lens-on", lensOn);
+        // HUD
+        $("hud-moves").textContent = state.moves;
+        $("hud-score").textContent = state.score;
+        $("hud-time").textContent = fmtTime(currentElapsed());
+        $("hud-found").textContent = state.foundations.reduce(function(a,p){ return a+p.length; }, 0);
+        $("hud-avail").textContent = legalMovesCache.length;
+        $("btn-auto").parentNode.classList.toggle("show", canAutoFinish());
+        renderPanel();
+        justDealt = false;
+      }
+
+      /* ---------------- the counting panel ---------------- */
+      function unseenPool(){
+        var pool = [];
+        for (var id=0; id<52; id++) if (!state.seen[id]) pool.push(id);
+        return pool;
+      }
+      function pct(n, d){ if (!d) return "—"; return Math.round(100*n/d) + "%"; }
+      function renderPanel(){
+        var hidden = 0;
+        state.tableau.forEach(function(p){ p.forEach(function(c){ if (!c.faceUp) hidden++; }); });
+        var seenCount = Object.keys(state.seen).length;
+        var stockN = state.stock.length;
+        $("meter-seen").style.width = (seenCount/52*100) + "%";
+        $("meter-hidden").style.width = (hidden/52*100) + "%";
+        $("meter-stock").style.width = (stockN/52*100) + "%";
+        $("lg-seen").textContent = seenCount;
+        $("lg-hidden").textContent = hidden;
+        $("lg-stock").textContent = stockN;
+
+        // odds from the unseen pool
+        var pool = unseenPool();
+        var reds = pool.filter(function(id){ return SUIT_RED[Math.floor(id/13)]; }).length;
+        var toFound = 0, toAny = 0;
+        var emptyCol = state.tableau.some(function(p){ return !p.length; });
+        pool.forEach(function(id){
+          var suit = Math.floor(id/13), rank = (id % 13) + 1;
+          var probe = { suit:suit, rank:rank, red:SUIT_RED[suit], id:id, faceUp:true };
+          var f = canFoundation(probe, suit);
+          var t = false;
+          for (var col=0; col<7; col++) if (canTableau(probe, col)) { t = true; break; }
+          if (f) toFound++;
+          if (f || t) toAny++;
+        });
+        if (pool.length){
+          $("odd-red").textContent = pct(reds, pool.length);
+          $("odd-black").textContent = pct(pool.length-reds, pool.length);
+          $("odd-found").textContent = pct(toFound, pool.length);
+          $("odd-play").textContent = pct(toAny, pool.length);
+          $("odd-detail").innerHTML = "Counted from <b>" + pool.length + " unseen cards</b>: " + reds + " red, " + (pool.length-reds) + " black. " +
+            toFound + " of them would land on a foundation the moment they turn; " + toAny + " would play somewhere." +
+            (emptyCol ? " An empty column is waiting, so every unseen King counts as playable." : "");
+        } else {
+          $("odd-red").textContent = $("odd-black").textContent = $("odd-found").textContent = $("odd-play").textContent = "—";
+          $("odd-detail").textContent = "Nothing is unseen. The whole deck is on the table — pure pattern, no probability left.";
+        }
+
+        // stack bars
+        var sb = $("stackbars"); sb.innerHTML = "";
+        state.tableau.forEach(function(p, col){
+          var down = p.filter(function(c){ return !c.faceUp; }).length;
+          var row = document.createElement("div"); row.className = "stackbar";
+          var total = Math.max(p.length, 1);
+          row.innerHTML = "<span>Column " + (col+1) + "</span><span class='track'><span class='fill" + (down===0 ? " open" : "") + "' style='width:" + (p.length ? (down/total*100) : 0) + "%'></span></span><span>" + (p.length===0 ? "empty" : down===0 ? "open" : down + " down") + "</span>";
+          sb.appendChild(row);
+        });
+
+        // pattern notes
+        var notes = [];
+        var longest = 0, longestCol = -1;
+        state.tableau.forEach(function(p, col){
+          var run = 0;
+          for (var i=p.length-1;i>=0;i--){
+            if (!p[i].faceUp) break;
+            if (i===p.length-1) run = 1;
+            else if (p[i].rank === p[i+1].rank+1 && p[i].red !== p[i+1].red) run++;
+            else break;
+          }
+          if (run > longest){ longest = run; longestCol = col; }
+        });
+        if (longest >= 3) notes.push("The longest alternating run is <b>" + longest + " cards</b> in column " + (longestCol+1) + " — a run like that is the engine of the layout: it moves as one piece and frees whatever is under it.");
+        var deepest = -1, deepN = 0;
+        state.tableau.forEach(function(p, col){ var d = p.filter(function(c){ return !c.faceUp; }).length; if (d>deepN){ deepN=d; deepest=col; } });
+        if (deepN>0) notes.push("Column " + (deepest+1) + " is the deepest stack: <b>" + deepN + " cards still face-down</b>. Every card you lift off it is a step toward the biggest reveal on the table.");
+        else notes.push("No face-down cards remain — the whole layout is visible. From here it's pure arrangement, no more luck.");
+        var fmin = 99, fmax = -1;
+        state.foundations.forEach(function(p){ fmin = Math.min(fmin, p.length); fmax = Math.max(fmax, p.length); });
+        if (fmax - fmin >= 4) notes.push("The foundations are lopsided — highest at <b>" + fmax + "</b>, lowest at <b>" + fmin + "</b>. Lopsided foundations mean the low suits' middle cards are still buried somewhere, holding their runs hostage.");
+        var emptyCols = state.tableau.filter(function(p){ return !p.length; }).length;
+        if (emptyCols) notes.push("There " + (emptyCols===1 ? "is <b>1 empty column</b>" : "are <b>"+emptyCols+" empty columns</b>") + " — open ground. Only a King can claim it, and a King with a run behind him is the biggest single motion in the game.");
+        if (legalMovesCache.length===0 && (state.stock.length || state.waste.length)) notes.push("No moves on the layout right now. The game is in the stock: <b>" + state.stock.length + " cards</b> left to turn, and the odds above say what they're likely to bring.");
+        if (!notes.length) notes.push("Early days — deal, draw, and watch which columns start to breathe.");
+        $("notes").innerHTML = notes.map(function(n){ return "<li>" + n + "</li>"; }).join("");
+
+        // unseen grid
+        var tbl = $("unseen"); tbl.innerHTML = "";
+        var head = document.createElement("tr");
+        head.innerHTML = "<th></th>" + RANKS.map(function(r){ return "<th><span class='chip head'>" + r + "</span></th>"; }).join("");
+        tbl.appendChild(head);
+        for (var s=0;s<4;s++){
+          var tr = document.createElement("tr");
+          var rowHtml = "<th><span class='chip head'>" + SUITS[s] + "</span></th>";
+          for (var r=1;r<=13;r++){
+            var id = cardId(s, r);
+            rowHtml += "<td><span class='chip" + (SUIT_RED[s] ? " red" : "") + (state.seen[id] ? " gone" : "") + "'>" + SUITS[s] + "</span></td>";
+          }
+          tr.innerHTML = rowHtml;
+          tbl.appendChild(tr);
+        }
+
+        // motions log
+        var mo = $("motions");
+        if (state.log.length) mo.innerHTML = state.log.map(function(l){ return "<li>" + l + "</li>"; }).join("");
+        else mo.innerHTML = "<li>No motions yet. The first draw starts the story.</li>";
+      }
+
+      function setMessage(html){ $("message").innerHTML = html; }
+
+      /* ---------------- controls ---------------- */
+      $("btn-new").addEventListener("click", newGame);
+      $("btn-again").addEventListener("click", newGame);
+      $("btn-undo").addEventListener("click", undo);
+      $("btn-auto").addEventListener("click", runAutoFinish);
+      $("btn-lens").addEventListener("click", function(){
+        lensOn = !lensOn;
+        this.setAttribute("aria-pressed", lensOn ? "true" : "false");
+        this.textContent = "Pattern lens: " + (lensOn ? "on" : "off");
+        render();
+      });
+      $("draw1").addEventListener("click", function(){ setDraw(1); });
+      $("draw3").addEventListener("click", function(){ setDraw(3); });
+      function setDraw(n){
+        drawCount = n;
+        $("draw1").setAttribute("aria-pressed", n===1 ? "true" : "false");
+        $("draw3").setAttribute("aria-pressed", n===3 ? "true" : "false");
+        setMessage(n===1 ? "Draw 1: every stock card gets its moment on top of the waste." : "Draw 3: only every third stock card surfaces — the other two pass by unseen-but-counted. Harder, and the counting matters more.");
+      }
+      $("btn-hint").addEventListener("click", function(){
+        var moves = legalMovesCache;
+        if (!moves.length){
+          setMessage(state.stock.length ? "No layout moves — <b>draw from the stock</b> and let the odds work." : "No moves anywhere. This deal may be spent; a fresh shuffle is a new pattern.");
+          return;
+        }
+        // prefer foundation moves, then flips (moves from a column with face-down beneath)
+        var pick = moves[0];
+        for (var i=0;i<moves.length;i++){
+          var m = moves[i];
+          if (m.from.kind==="tab"){
+            var pile = state.tableau[m.from.col];
+            if (m.from.idx>0 && !pile[m.from.idx-1].faceUp){ pick = m; break; }
+          }
+          if (m.to.kind==="found") pick = m;
+        }
+        hintMark = { srcKey: keyOf(pick.from) };
+        setMessage("Try: <b>" + pick.label + "</b>." + (pick.from.kind==="tab" && pick.from.idx>0 && !state.tableau[pick.from.col][pick.from.idx-1].faceUp ? " It turns over a buried card — motions that reveal are worth more than motions that just rearrange." : ""));
+        render();
+        setTimeout(function(){ hintMark = null; render(); }, 2600);
+      });
+      document.addEventListener("click", function(ev){
+        if (selected && !ev.target.closest(".card") && !ev.target.closest(".slot") && !ev.target.closest(".col") && !ev.target.closest("button")){
+          selected = null; render();
+        }
+      });
+
+      newGame();
+    })();
+    </script>
+  <!-- flynns-arcade assembly: back chip -->
+<a href="../index.html" style="position:fixed;left:12px;bottom:12px;z-index:9999;background:#14101e;color:#7ef0d4;font:600 13px/1 system-ui,sans-serif;padding:9px 13px;border-radius:999px;text-decoration:none;border:1px solid #7ef0d455;box-shadow:0 4px 16px rgba(0,0,0,.35)">&#8592; Flynn's Arcade</a>
+</body>
+</html>
