@@ -38,3 +38,8 @@ The tests check the data in `lang.js` (tree integrity — every parent resolves 
 - `style.css` — the room's styling, in the collection's house idiom
 - `everyday-language-banner.jpg` — AI-generated banner art (see COLLECTION.md)
 - `test.cjs` — data-integrity and page-wiring checks
+
+
+## Boggle (added 22 November 2026)
+
+The word game with the classic dice and the full ENABLE1 dictionary embedded. Play `boggle.html`; the audit lesson is `boggle-lesson.html`.

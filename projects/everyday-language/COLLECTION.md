@@ -15,3 +15,6 @@ Banner: `everyday-language-banner.jpg`, AI-generated watercolor — a friendly r
 Documentation update, 20 November 2026: `index.html`, `style.css`, `README.md`, and `COLLECTION.md` gained a professional documentation treatment — a Source on GitHub link in the Help menu, a documentation lede and action bar in the Help section, matching styles, and a Documentation section in the README — at Steven Powell's direction ('the documentation section is the only part that doesn't look like a real program'). No bench, lesson, or behaviour changed.
 
 The same documentation update also added a Steve's Profile link (Steven Powell's LinkedIn) at the foot of the Help section — `index.html` and `style.css`.
+
+
+Game added 22 November 2026: `boggle.html` and `boggle-lesson.html` — Boggle, built by ChatGPT at Steven Powell's direction (commissioned first to Microsoft Copilot, which could not output the embedded dictionary), integrated unchanged (sha256 9c227c22…). The lesson is Muse's audit: dice verified die-for-die against the classic 16; the embedded dictionary is exactly the ENABLE1 source (172,727 words ≥3 letters) whose hash the page prints; the solver matched an independent brute force on 240 seeded trays. `index.html` gained the Boggle nav link and section.
