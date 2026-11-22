@@ -1,0 +1,1889 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Deep Zoom — Mandelbrot &amp; Julia Set Explorer</title>
+<style>
+  :root {
+    --bg-void: #020307;
+    --panel-bg: rgba(8, 10, 20, 0.86);
+    --panel-border: rgba(132, 168, 255, 0.16);
+    --panel-border-hi: rgba(132, 168, 255, 0.38);
+    --text-main: #f0f4ff;
+    --text-dim: #9fb0d4;
+    --text-muted: #65769c;
+    --accent-gold: #ffd166;
+    --accent-cyan: #5ae4ff;
+    --accent-violet: #b68cff;
+    --accent-mint: #53f2b3;
+    --accent-rose: #ff6b8b;
+    --radius-lg: 13px;
+    --radius-md: 9px;
+    --radius-sm: 6px;
+    --mono: ui-monospace, "Cascadia Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg-void);
+    color: var(--text-main);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+  }
+
+  /* Layout: Topbar + Main Fractal Stage (Mandelbrot + Live Julia) + Right Controls/Log Sidebar */
+  .app-shell {
+    display: grid;
+    grid-template-rows: auto 1fr;
+    grid-template-columns: 1fr 312px;
+    width: 100vw;
+    height: 100vh;
+    gap: 10px;
+    padding: 10px;
+  }
+  body.zen-mode .app-shell {
+    grid-template-rows: 0 1fr;
+    grid-template-columns: 1fr 0;
+    gap: 0;
+    padding: 0;
+  }
+  body.zen-mode .topbar,
+  body.zen-mode .sidebar {
+    display: none;
+  }
+
+  .panel {
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-lg);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    box-shadow: 0 10px 34px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  }
+
+  /* Top Bar */
+  .topbar {
+    grid-column: 1 / -1;
+    padding: 9px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .brand-block {
+    display: flex;
+    align-items: center;
+    gap: 13px;
+    flex-wrap: wrap;
+    min-width: 0;
+  }
+
+  .brand-title {
+    font-size: 18px;
+    font-weight: 760;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+    background: linear-gradient(120deg, #fff5dc 0%, #ffd166 42%, #6ce5ff 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    white-space: nowrap;
+  }
+
+  .lesson-line {
+    font-size: 11.8px;
+    font-style: italic;
+    color: #d8e3ff;
+    border-left: 2px solid rgba(255, 209, 102, 0.65);
+    padding-left: 10px;
+    line-height: 1.32;
+  }
+
+  .top-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  /* Main Stage */
+  .stage-wrap {
+    position: relative;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+    min-width: 0;
+    min-height: 0;
+  }
+  .stage-wrap.julia-open {
+    grid-template-columns: 1.55fr 1fr;
+  }
+
+  .viewport-card {
+    position: relative;
+    background: #000;
+    border: 1px solid rgba(132, 168, 255, 0.18);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    min-width: 0;
+    min-height: 0;
+    box-shadow: 0 16px 50px rgba(0, 0, 0, 0.7);
+  }
+  body.zen-mode .viewport-card {
+    border: none;
+    border-radius: 0;
+  }
+
+  .julia-card {
+    display: none;
+  }
+  .stage-wrap.julia-open .julia-card {
+    display: block;
+  }
+
+  canvas.fractal-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+  #mandel-canvas {
+    cursor: crosshair;
+    touch-action: none;
+  }
+  #julia-canvas {
+    cursor: default;
+  }
+
+  /* Floating Telemetry Overlays on Canvases */
+  .vp-overlay-top {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    right: 10px;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+    pointer-events: none;
+    z-index: 4;
+  }
+
+  .vp-overlay-bot {
+    position: absolute;
+    left: 10px;
+    right: 10px;
+    bottom: 10px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 8px;
+    pointer-events: none;
+    z-index: 4;
+  }
+
+  .chip-glass {
+    background: rgba(5, 7, 15, 0.74);
+    border: 1px solid rgba(132, 168, 255, 0.2);
+    border-radius: 8px;
+    padding: 5px 9px;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--text-main);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    line-height: 1.4;
+  }
+  .chip-glass strong {
+    color: var(--accent-gold);
+    font-weight: 650;
+  }
+  .chip-glass .dim {
+    color: var(--text-muted);
+  }
+
+  .precision-badge {
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 700;
+    padding: 4px 9px;
+    border-radius: 999px;
+    background: rgba(90, 228, 255, 0.14);
+    border: 1px solid rgba(90, 228, 255, 0.38);
+    color: var(--accent-cyan);
+    white-space: nowrap;
+  }
+  .precision-badge.deep {
+    background: rgba(182, 140, 255, 0.18);
+    border-color: rgba(182, 140, 255, 0.55);
+    color: #e0ccff;
+  }
+  .precision-badge.floor {
+    background: rgba(255, 107, 139, 0.2);
+    border-color: rgba(255, 107, 139, 0.6);
+    color: #ffc2d0;
+  }
+
+  .render-bar {
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    height: 2px;
+    width: 0%;
+    background: linear-gradient(90deg, var(--accent-cyan), var(--accent-gold));
+    z-index: 6;
+    transition: opacity 0.2s ease;
+  }
+
+  /* Zoom Selection Box */
+  .zoom-box {
+    position: absolute;
+    display: none;
+    border: 1.5px solid var(--accent-gold);
+    background: rgba(255, 209, 102, 0.1);
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.7), 0 0 18px rgba(255, 209, 102, 0.28);
+    pointer-events: none;
+    z-index: 5;
+  }
+  .zoom-box-label {
+    position: absolute;
+    right: 4px;
+    bottom: 4px;
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 700;
+    color: #fff6d6;
+    background: rgba(0, 0, 0, 0.72);
+    padding: 1px 5px;
+    border-radius: 4px;
+  }
+
+  /* Toast */
+  .stage-toast {
+    position: absolute;
+    top: 52px;
+    left: 50%;
+    transform: translateX(-50%) translateY(-10px);
+    padding: 7px 15px;
+    border-radius: 999px;
+    background: rgba(10, 22, 34, 0.92);
+    border: 1px solid rgba(83, 242, 179, 0.65);
+    color: #dcfff0;
+    font-size: 12px;
+    font-weight: 650;
+    z-index: 15;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.22s ease, transform 0.22s ease;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+    white-space: nowrap;
+  }
+  .stage-toast.visible {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+
+  /* Right Sidebar */
+  .sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+    overflow-y: auto;
+    min-height: 0;
+    padding-right: 2px;
+  }
+  .sidebar::-webkit-scrollbar { width: 4px; }
+  .sidebar::-webkit-scrollbar-thumb {
+    background: rgba(132, 168, 255, 0.25);
+    border-radius: 99px;
+  }
+
+  .card {
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+  }
+
+  .card-title {
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--accent-gold);
+  }
+  .card-title.cyan { color: var(--accent-cyan); }
+  .card-title.mint { color: var(--accent-mint); }
+  .card-title.violet { color: var(--accent-violet); }
+
+  /* Buttons */
+  button {
+    font-family: var(--sans);
+    color: var(--text-main);
+    background: rgba(255, 255, 255, 0.055);
+    border: 1px solid rgba(132, 168, 255, 0.18);
+    border-radius: var(--radius-sm);
+    padding: 5.5px 9px;
+    font-size: 11px;
+    font-weight: 550;
+    cursor: pointer;
+    transition: background 0.14s ease, border-color 0.14s ease, transform 0.08s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    white-space: nowrap;
+  }
+  button:hover {
+    background: rgba(132, 168, 255, 0.14);
+    border-color: var(--panel-border-hi);
+  }
+  button:active { transform: scale(0.97); }
+  button.active-gold {
+    background: rgba(255, 209, 102, 0.18);
+    border-color: rgba(255, 209, 102, 0.65);
+    color: #fff7e0;
+  }
+  button.active-cyan {
+    background: rgba(90, 228, 255, 0.17);
+    border-color: rgba(90, 228, 255, 0.6);
+    color: #fff;
+  }
+  button.active-mint {
+    background: rgba(83, 242, 179, 0.16);
+    border-color: rgba(83, 242, 179, 0.58);
+    color: #eafff5;
+  }
+  button.active-violet {
+    background: rgba(182, 140, 255, 0.2);
+    border-color: rgba(182, 140, 255, 0.6);
+    color: #f3ebff;
+  }
+
+  .grid-2 {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 5px;
+  }
+  .grid-3 {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 5px;
+  }
+
+  /* Sliders */
+  .slider-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .slider-meta {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+  }
+  .slider-val {
+    font-family: var(--mono);
+    color: var(--accent-gold);
+    font-variant-numeric: tabular-nums;
+  }
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 5px;
+    border-radius: 99px;
+    background: rgba(132, 168, 255, 0.18);
+    outline: none;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 13px;
+    height: 13px;
+    border-radius: 50%;
+    background: var(--accent-gold);
+    border: 2px solid #090c18;
+    box-shadow: 0 0 8px rgba(255, 209, 102, 0.65);
+    cursor: pointer;
+  }
+
+  /* Palette Swatches */
+  .pal-btn {
+    justify-content: flex-start;
+    padding: 5px 7px;
+    font-size: 10.5px;
+  }
+  .pal-swatch {
+    width: 18px;
+    height: 9px;
+    border-radius: 3px;
+    flex-shrink: 0;
+    border: 1px solid rgba(255, 255, 255, 0.22);
+  }
+
+  /* Challenges List */
+  .challenge-list {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+  .ch-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 7px;
+    padding: 6px 8px;
+    border-radius: var(--radius-sm);
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(132, 168, 255, 0.11);
+    font-size: 11px;
+    line-height: 1.32;
+  }
+  .ch-row.done {
+    background: rgba(83, 242, 179, 0.09);
+    border-color: rgba(83, 242, 179, 0.36);
+  }
+  .ch-check {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-muted);
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+  .ch-row.done .ch-check {
+    color: var(--accent-mint);
+  }
+  .ch-name {
+    font-weight: 600;
+    color: var(--text-main);
+    display: block;
+  }
+  .ch-hint {
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+
+  /* Dive Sites & Dive Log */
+  .site-btn {
+    justify-content: space-between;
+    padding: 5.5px 8px;
+    font-size: 10.8px;
+  }
+  .depth-tag {
+    font-family: var(--mono);
+    font-size: 9.5px;
+    color: var(--accent-cyan);
+    opacity: 0.9;
+  }
+
+  .log-stats {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 6px;
+  }
+  .log-box {
+    background: rgba(255, 255, 255, 0.035);
+    border: 1px solid rgba(132, 168, 255, 0.14);
+    border-radius: var(--radius-sm);
+    padding: 5px 7px;
+    text-align: center;
+  }
+  .log-box span {
+    display: block;
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+  }
+  .log-box strong {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: var(--accent-gold);
+  }
+
+  .bookmark-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 116px;
+    overflow-y: auto;
+  }
+  .bm-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 5px;
+    padding: 4px 7px;
+    border-radius: var(--radius-sm);
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(132, 168, 255, 0.12);
+    font-size: 10.5px;
+  }
+  .bm-jump {
+    background: none;
+    border: none;
+    padding: 0;
+    text-align: left;
+    color: var(--text-main);
+    font-size: 10.5px;
+    flex: 1;
+    justify-content: flex-start;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .bm-jump:hover {
+    background: none;
+    color: var(--accent-cyan);
+  }
+
+  /* Honesty List */
+  .honesty-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    font-size: 10.8px;
+    line-height: 1.38;
+    color: var(--text-dim);
+  }
+  .honesty-list li {
+    position: relative;
+    padding-left: 10px;
+  }
+  .honesty-list li::before {
+    content: "•";
+    position: absolute;
+    left: 0;
+    color: var(--accent-gold);
+  }
+  .honesty-list strong {
+    color: var(--text-main);
+    font-weight: 600;
+  }
+
+  .zen-restore {
+    position: fixed;
+    top: 12px;
+    right: 12px;
+    z-index: 30;
+    display: none;
+  }
+  body.zen-mode .zen-restore {
+    display: inline-flex;
+  }
+
+  @media (max-width: 960px) {
+    .app-shell {
+      grid-template-columns: 1fr;
+      grid-template-rows: auto 1fr auto;
+      overflow-y: auto;
+      height: auto;
+      min-height: 100vh;
+    }
+    .stage-wrap { min-height: 440px; }
+    .stage-wrap.julia-open { grid-template-columns: 1fr; grid-template-rows: 1.3fr 1fr; min-height: 620px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="app-shell">
+  <!-- Top Bar -->
+  <header class="panel topbar">
+    <div class="brand-block">
+      <h1 class="brand-title">Deep Zoom</h1>
+      <p class="lesson-line">
+        One tiny rule, z → z² + c, repeated — and the same shapes keep appearing at every scale, forever. The same level, reflected at a different scale.
+      </p>
+    </div>
+
+    <div class="top-actions">
+      <button id="btn-julia-toggle" class="active-violet" title="Show/hide live-linked Julia set beside the Mandelbrot set (Hotkey: J)">✦ Julia Live</button>
+      <button id="btn-breathe" title="Smoothly cycle palette phase in real time (Hotkey: B)">◈ Breathe</button>
+      <button id="btn-zoom-out" title="Zoom out 2× (Hotkey: -)">− Out</button>
+      <button id="btn-reset" title="Return to full Mandelbrot set (Hotkey: R)">↺ Reset</button>
+      <button id="btn-zen" title="Fullscreen jewel view (Hotkey: H)">Zen</button>
+    </div>
+  </header>
+
+  <!-- Main Stage: Mandelbrot + Live-Linked Julia -->
+  <main class="stage-wrap julia-open" id="stage-wrap">
+    <!-- Mandelbrot Viewport -->
+    <section class="viewport-card" id="mandel-card" aria-label="Mandelbrot Set">
+      <canvas class="fractal-canvas" id="mandel-canvas"></canvas>
+      <div class="zoom-box" id="zoom-box"><span class="zoom-box-label" id="zoom-box-label"></span></div>
+      <div class="render-bar" id="render-bar"></div>
+      <div class="stage-toast" id="stage-toast"></div>
+
+      <div class="vp-overlay-top">
+        <div class="chip-glass">
+          <div><span class="dim">Re:</span> <strong id="read-re">-0.500000</strong></div>
+          <div><span class="dim">Im:</span> <strong id="read-im">+0.000000</strong></div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px;">
+          <span class="precision-badge" id="precision-badge">Float64 · fast path</span>
+          <div class="chip-glass" style="text-align:right;">
+            <div><span class="dim">Zoom:</span> <strong id="read-zoom">1.0×</strong></div>
+            <div><span class="dim">Max iter:</span> <strong id="read-iter">500</strong> · <span id="read-ms">0 ms</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="vp-overlay-bot">
+        <div class="chip-glass" id="mandel-hint">
+          Drag box to zoom · Click to re-center · Scroll to zoom · Right-drag to pan
+        </div>
+      </div>
+    </section>
+
+    <!-- Live-Linked Julia Set Viewport -->
+    <section class="viewport-card julia-card" id="julia-card" aria-label="Live Julia Set">
+      <canvas class="fractal-canvas" id="julia-canvas"></canvas>
+
+      <div class="vp-overlay-top">
+        <div class="chip-glass">
+          <div style="color:var(--accent-violet);font-weight:700;margin-bottom:2px;">JULIA SET · z → z² + c</div>
+          <div><span class="dim">c =</span> <strong id="julia-c">-0.7453 + 0.1127i</strong></div>
+        </div>
+        <button id="btn-julia-pin" style="pointer-events:auto;" title="Pin/unpin c so moving cursor stops morphing Julia set (Hotkey: L)">Pin c (L)</button>
+      </div>
+
+      <div class="vp-overlay-bot">
+        <div class="chip-glass" id="julia-hint">
+          Move pointer across Mandelbrot to morph · Press L to pin
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Right Sidebar: Controls, Challenges, Dive Sites, Dive Log, Honesty -->
+  <aside class="sidebar">
+    <!-- Iteration & Palettes -->
+    <section class="panel card">
+      <div class="card-head">
+        <span class="card-title">Optics &amp; Precision</span>
+        <span style="font-family:var(--mono);font-size:10px;color:var(--text-muted);" id="iter-auto-hint">Floor ~10⁵⁰×</span>
+      </div>
+
+      <div class="slider-group">
+        <div class="slider-meta">
+          <span>Max Iterations <span style="color:var(--text-muted);">(sharpens boundary)</span></span>
+          <span class="slider-val" id="val-iter">500</span>
+        </div>
+        <input type="range" id="sl-iter" min="80" max="4000" step="20" value="500" />
+      </div>
+
+      <div class="grid-2" id="palette-grid"></div>
+    </section>
+
+    <!-- Dive Challenges -->
+    <section class="panel card">
+      <div class="card-head">
+        <span class="card-title mint">Dive Challenges</span>
+        <span style="font-family:var(--mono);font-size:10px;color:var(--accent-mint);" id="ch-progress">0 / 4</span>
+      </div>
+      <div class="challenge-list" id="challenge-list"></div>
+    </section>
+
+    <!-- Curated Dive Sites (Field Guide) -->
+    <section class="panel card">
+      <div class="card-head">
+        <span class="card-title cyan">Dive Sites &amp; Minibrots</span>
+        <span style="font-family:var(--mono);font-size:9.5px;color:var(--text-muted);">click to dive</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:5px;" id="dive-sites-list"></div>
+    </section>
+
+    <!-- Dive Log (localStorage) -->
+    <section class="panel card">
+      <div class="card-head">
+        <span class="card-title violet">Dive Log</span>
+        <button id="btn-bookmark" style="padding:3px 7px;font-size:10px;" title="Save current coordinates &amp; zoom to your Dive Log">+ Bookmark</button>
+      </div>
+
+      <div class="log-stats">
+        <div class="log-box">
+          <span>Deepest Zoom</span>
+          <strong id="log-deepest">1.0×</strong>
+        </div>
+        <div class="log-box">
+          <span>Minibrots Found</span>
+          <strong id="log-minibrots">0 / 3</strong>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:5px;">
+        <button id="btn-jump-deepest" style="flex:1;font-size:10.5px;">↳ Return to Deepest</button>
+        <button id="btn-clear-log" style="font-size:10.5px;color:var(--text-dim);" title="Reset saved dive log">Clear</button>
+      </div>
+
+      <div class="bookmark-list" id="bookmark-list"></div>
+    </section>
+
+    <!-- What this leaves out (Honesty Card) -->
+    <section class="panel card">
+      <div class="card-head">
+        <span class="card-title">What this leaves out</span>
+      </div>
+      <ul class="honesty-list">
+        <li><strong>Colour is escape speed, not the set:</strong> The true Mandelbrot set is only the black interior and its infinitely lacy boundary between escaping and trapped points; the jewel glow measures how quickly exterior points flee to ∞.</li>
+        <li><strong>Finite iteration horizon:</strong> Points still bounded at <em>Max Iterations</em> are painted black — raising the slider carves out escaping filaments that looked solid.</li>
+        <li><strong>Precision floor (honest math):</strong> Plain 64-bit IEEE-754 doubles hit pixelation around <strong>10¹⁴×</strong>. Past <strong>10¹²×</strong>, Deep Zoom engages a <strong>256-bit BigInt reference orbit + Zhuoran rebasing perturbation</strong>, extending depth to <strong>~10⁵⁰×</strong> (where 256-bit digits &amp; Float64 delta squares bottom out). The real set continues forever past any zoom we can compute.</li>
+      </ul>
+    </section>
+  </aside>
+</div>
+
+<button class="panel zen-restore" id="btn-zen-restore">Exit Zen (H)</button>
+
+<script>
+(() => {
+  'use strict';
+
+  // =========================================================================
+  // 256-BIT FIXED-POINT BIGINT ARITHMETIC (SUPPORTS ZOOMS PAST 10^14 UP TO ~10^50)
+  // =========================================================================
+  const FRAC_BITS = 256n;
+  const FRAC_NUM = 256;
+  const BASE_HALF_WIDTH = 1.75; // Half real-axis span at zoom = 1.0×
+  const MAX_ZOOM = 1e50;        // Honest 256-bit perturbation precision floor
+  const PERTURB_THRESHOLD = 1e12;
+  const STORAGE_LOG_KEY = 'deep_zoom_dive_log_v1';
+
+  function floatToBig(x) {
+    if (!Number.isFinite(x) || x === 0) return 0n;
+    const neg = x < 0;
+    const ax = Math.abs(x);
+    const exp = Math.floor(Math.log2(ax));
+    const mant = ax / Math.pow(2, exp);
+    const mantInt = BigInt(Math.round(mant * 4503599627370496)); // 2^52
+    const shift = FRAC_NUM - 52 + exp;
+    const val = shift >= 0 ? (mantInt << BigInt(shift)) : (mantInt >> BigInt(-shift));
+    return neg ? -val : val;
+  }
+
+  function bigToFloat(b) {
+    if (b === 0n) return 0;
+    const neg = b < 0n;
+    const ab = neg ? -b : b;
+    const bitLen = ab.toString(2).length;
+    const shift = bitLen - 53;
+    const top = shift > 0 ? Number(ab >> BigInt(shift)) : Number(ab);
+    const val = top * Math.pow(2, (shift > 0 ? shift : 0) - FRAC_NUM);
+    return neg ? -val : val;
+  }
+
+  function bigMul(a, b) {
+    return (a * b) >> FRAC_BITS;
+  }
+
+  function decToBig(str) {
+    const clean = str.trim();
+    const neg = clean.startsWith('-');
+    const s = (neg || clean.startsWith('+')) ? clean.slice(1) : clean;
+    const [ip, fp = ''] = s.split('.');
+    const denom = 10n ** BigInt(fp.length);
+    const num = BigInt(ip || '0') * denom + BigInt(fp || '0');
+    const val = (num << FRAC_BITS) / denom;
+    return neg ? -val : val;
+  }
+
+  function bigToDecimal(b, decimals) {
+    const neg = b < 0n;
+    const ab = neg ? -b : b;
+    const d = Math.max(4, Math.min(54, decimals));
+    const scale = 10n ** BigInt(d);
+    const scaled = (ab * scale + (1n << (FRAC_BITS - 1n))) >> FRAC_BITS;
+    const intPart = scaled / scale;
+    const fracPart = (scaled % scale).toString().padStart(d, '0');
+    return `${neg ? '-' : '+'}${intPart}.${fracPart}`;
+  }
+
+  // =========================================================================
+  // JEWEL PALETTES (CONTINUOUS SMOOTH COSINE/SPLINE LUT — 2048 ENTRIES)
+  // =========================================================================
+  const PALETTES = [
+    {
+      id: 'sapphire',
+      name: 'Sapphire & Gold',
+      swatch: 'linear-gradient(90deg, #061338, #1982c4, #8be9fd, #ffd166, #fff6dc)',
+      stops: [
+        [0.00,   4,  10,  32],
+        [0.18,  14,  58, 138],
+        [0.40,  36, 178, 224],
+        [0.62, 232, 246, 255],
+        [0.78, 255, 198,  82],
+        [0.92, 130,  46,  24],
+        [1.00,   4,  10,  32]
+      ]
+    },
+    {
+      id: 'emerald',
+      name: 'Emerald Abyss',
+      swatch: 'linear-gradient(90deg, #031512, #0d6e57, #3be8b0, #e3fff6, #207d94)',
+      stops: [
+        [0.00,   3,  18,  16],
+        [0.22,  10,  94,  76],
+        [0.48,  52, 224, 178],
+        [0.68, 230, 255, 246],
+        [0.84,  48, 158, 188],
+        [1.00,   3,  18,  16]
+      ]
+    },
+    {
+      id: 'solar',
+      name: 'Solar Flare',
+      swatch: 'linear-gradient(90deg, #16040a, #8a1530, #e85d04, #ffd166, #ffffff)',
+      stops: [
+        [0.00,  18,   4,  10],
+        [0.24, 132,  20,  46],
+        [0.48, 235,  96,  18],
+        [0.72, 255, 214, 102],
+        [0.86, 255, 250, 238],
+        [1.00,  18,   4,  10]
+      ]
+    },
+    {
+      id: 'amethyst',
+      name: 'Amethyst Prism',
+      swatch: 'linear-gradient(90deg, #0b051e, #5a189a, #d946ef, #67e8f9, #f5f3ff)',
+      stops: [
+        [0.00,  11,   5,  30],
+        [0.24,  92,  28, 162],
+        [0.48, 222,  76, 224],
+        [0.70, 104, 232, 252],
+        [0.86, 244, 240, 255],
+        [1.00,  11,   5,  30]
+      ]
+    },
+    {
+      id: 'ice',
+      name: 'Obsidian & Ice',
+      swatch: 'linear-gradient(90deg, #04060d, #253b6e, #7dd3fc, #ffffff, #334155)',
+      stops: [
+        [0.00,   4,   6,  14],
+        [0.28,  40,  72, 130],
+        [0.56, 136, 216, 252],
+        [0.76, 250, 253, 255],
+        [0.90,  58,  74, 102],
+        [1.00,   4,   6,  14]
+      ]
+    },
+    {
+      id: 'opal',
+      name: 'Opal Jewel',
+      swatch: 'linear-gradient(90deg, #070b1a, #3b82f6, #10b981, #f59e0b, #ec4899)',
+      stops: [
+        [0.00,   8,  12,  28],
+        [0.20,  46, 126, 248],
+        [0.40,  22, 212, 168],
+        [0.60, 252, 206,  84],
+        [0.80, 236,  72, 153],
+        [1.00,   8,  12,  28]
+      ]
+    }
+  ];
+
+  const LUT_SIZE = 2048;
+  const palR = new Uint8Array(LUT_SIZE);
+  const palG = new Uint8Array(LUT_SIZE);
+  const palB = new Uint8Array(LUT_SIZE);
+  let activePaletteId = 'sapphire';
+
+  function buildPaletteLUT(palId) {
+    const pal = PALETTES.find((p) => p.id === palId) || PALETTES[0];
+    const stops = pal.stops;
+    for (let i = 0; i < LUT_SIZE; i++) {
+      const t = i / LUT_SIZE;
+      let s0 = stops[0], s1 = stops[stops.length - 1];
+      for (let k = 0; k < stops.length - 1; k++) {
+        if (t >= stops[k][0] && t <= stops[k + 1][0]) {
+          s0 = stops[k];
+          s1 = stops[k + 1];
+          break;
+        }
+      }
+      const span = Math.max(1e-6, s1[0] - s0[0]);
+      // Smooth cosine interpolation for liquid jewel transitions
+      const u = (t - s0[0]) / span;
+      const w = 0.5 - 0.5 * Math.cos(u * Math.PI);
+      palR[i] = Math.round(s0[1] + (s1[1] - s0[1]) * w);
+      palG[i] = Math.round(s0[2] + (s1[2] - s0[2]) * w);
+      palB[i] = Math.round(s0[3] + (s1[3] - s0[3]) * w);
+    }
+  }
+  buildPaletteLUT(activePaletteId);
+
+  // =========================================================================
+  // CURATED DIVE SITES, MINIBROTS & CHALLENGES
+  // =========================================================================
+  const DIVE_SITES = [
+    {
+      id: 'seahorse',
+      name: 'Seahorse Valley Spiral',
+      re: '-0.7453000000000000',
+      im: '0.1127000000000000',
+      zoom: 65,
+      iter: 600,
+      minibrot: false
+    },
+    {
+      id: 'elephant',
+      name: 'Elephant Valley',
+      re: '0.2817179200000000',
+      im: '0.5771052800000000',
+      zoom: 55,
+      iter: 500,
+      minibrot: false
+    },
+    {
+      id: 'minibrot-antenna',
+      name: 'Antenna Minibrot (Period-3)',
+      re: '-1.7620000000000000',
+      im: '0.0000000000000000',
+      zoom: 42,
+      iter: 500,
+      minibrot: true,
+      detectRadius: 0.035,
+      detectMinZoom: 20
+    },
+    {
+      id: 'minibrot-north',
+      name: 'Filament Minibrot (North)',
+      re: '-0.1592000000000000',
+      im: '1.0317000000000000',
+      zoom: 120,
+      iter: 700,
+      minibrot: true,
+      detectRadius: 0.02,
+      detectMinZoom: 40
+    },
+    {
+      id: 'minibrot-seahorse',
+      name: 'Deep Seahorse Minibrot',
+      re: '-0.743643887037158704752191506114774',
+      im: '0.131825904205311970493132056385139',
+      zoom: 3.0e12,
+      iter: 2800,
+      minibrot: true,
+      detectRadius: 0.005,
+      detectMinZoom: 200
+    },
+    {
+      id: 'past-double-wall',
+      name: 'Beyond Float64 Boundary',
+      re: '-1.762000000000000000000000',
+      im: '0.011590577680266154905964',
+      zoom: 2.5e15,
+      iter: 1600,
+      minibrot: false
+    }
+  ];
+
+  const CHALLENGES = [
+    {
+      id: 'ch-seahorse',
+      name: 'Find the Seahorse Spiral',
+      hint: 'Dive into (-0.745, +0.113) at ≥ 40× zoom',
+      check: (re, im, zoom) => zoom >= 40 && Math.hypot(re - (-0.7453), im - 0.1127) < 0.045
+    },
+    {
+      id: 'ch-million',
+      name: 'Reach 1,000,000× Zoom',
+      hint: 'Dive past 10⁶× anywhere on the boundary',
+      check: (_re, _im, zoom) => zoom >= 1e6
+    },
+    {
+      id: 'ch-minibrot',
+      name: 'Find a Minibrot',
+      hint: 'Spot a baby Mandelbrot hiding in the antenna or filaments',
+      check: (re, im, zoom) => {
+        return DIVE_SITES.some((s) =>
+          s.minibrot && zoom >= s.detectMinZoom && Math.hypot(re - parseFloat(s.re), im - parseFloat(s.im)) < s.detectRadius
+        );
+      }
+    },
+    {
+      id: 'ch-deep',
+      name: 'Cross the Float64 Wall (10¹⁴×)',
+      hint: 'Engage 256-bit Perturbation past IEEE-754 double precision',
+      check: (_re, _im, zoom) => zoom >= 1e14
+    }
+  ];
+
+  // =========================================================================
+  // STATE & PERSISTENT DIVE LOG
+  // =========================================================================
+  const view = {
+    cr: decToBig('-0.5'),
+    ci: decToBig('0.0'),
+    zoom: 1.0,
+    maxIter: 500
+  };
+
+  let breatheMode = false;
+  let colorPhase = 0;
+  let juliaOpen = true;
+  let juliaPinned = false;
+  let juliaCr = -0.7453;
+  let juliaCi = 0.1127;
+  let juliaDirty = true;
+
+  let diveLog = loadDiveLog();
+
+  function loadDiveLog() {
+    const empty = {
+      deepestZoom: 1.0,
+      deepestRe: '-0.5',
+      deepestIm: '0.0',
+      deepestIter: 500,
+      challenges: {},
+      minibrots: {},
+      bookmarks: []
+    };
+    try {
+      const raw = localStorage.getItem(STORAGE_LOG_KEY);
+      if (!raw) return empty;
+      const parsed = JSON.parse(raw);
+      return {
+        ...empty,
+        ...parsed,
+        challenges: parsed.challenges || {},
+        minibrots: parsed.minibrots || {},
+        bookmarks: Array.isArray(parsed.bookmarks) ? parsed.bookmarks : []
+      };
+    } catch {
+      return empty;
+    }
+  }
+
+  function saveDiveLog() {
+    try {
+      localStorage.setItem(STORAGE_LOG_KEY, JSON.stringify(diveLog));
+    } catch {
+      // Ignore storage errors
+    }
+  }
+
+  function formatZoom(z) {
+    if (z < 1000) return `${z.toFixed(1)}×`;
+    if (z < 1e6) return `${Math.round(z).toLocaleString()}×`;
+    const exp = Math.floor(Math.log10(z));
+    const mant = z / Math.pow(10, exp);
+    return `${mant.toFixed(2)}×10^${exp}×`;
+  }
+
+  let toastTimer = null;
+  function showToast(msg) {
+    const el = document.getElementById('stage-toast');
+    el.textContent = msg;
+    el.classList.add('visible');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove('visible'), 3000);
+  }
+
+  // =========================================================================
+  // CANVASES & PROGRESSIVE ZERO-FLICKER MANDELBROT RENDERER
+  // =========================================================================
+  const mandelCard = document.getElementById('mandel-card');
+  const mandelCanvas = document.getElementById('mandel-canvas');
+  const mandelCtx = mandelCanvas.getContext('2d');
+  const juliaCard = document.getElementById('julia-card');
+  const juliaCanvas = document.getElementById('julia-canvas');
+  const juliaCtx = juliaCanvas.getContext('2d');
+  const renderBar = document.getElementById('render-bar');
+
+  let mW = 640, mH = 480;
+  let jW = 320, jH = 320;
+
+  // Cached smooth escape-time values (-1 = interior black, >=0 = smooth escape nu)
+  let mIterBuf = new Float32Array(1);
+  let mImgData = null;
+  let mImgU32 = null;
+
+  let jIterBuf = new Float32Array(1);
+  let jImgData = null;
+  let jImgU32 = null;
+
+  // Progressive render job state for Mandelbrot
+  const renderJob = {
+    active: false,
+    passIdx: 0,       // 0 -> step 4, 1 -> step 2, 2 -> step 1
+    row: 0,
+    startMs: 0,
+    usePerturb: false,
+    ref: null,
+    refOffsetRe: 0,
+    refOffsetIm: 0,
+    crF: -0.5,
+    ciF: 0,
+    pixelStep: 0.005,
+    maxIter: 500
+  };
+  const PASS_STEPS = [4, 2, 1];
+
+  function resizeCanvases() {
+    const mr = mandelCard.getBoundingClientRect();
+    const scale = Math.min(window.devicePixelRatio || 1, 1.5); // crisp & super fast
+    mW = Math.max(160, Math.floor(mr.width * scale));
+    mH = Math.max(140, Math.floor(mr.height * scale));
+    mandelCanvas.width = mW;
+    mandelCanvas.height = mH;
+    mIterBuf = new Float32Array(mW * mH);
+    mImgData = mandelCtx.createImageData(mW, mH);
+    mImgU32 = new Uint32Array(mImgData.data.buffer);
+
+    if (juliaOpen) {
+      const jr = juliaCard.getBoundingClientRect();
+      const jScale = Math.min(window.devicePixelRatio || 1, 1.15);
+      jW = Math.max(140, Math.floor(jr.width * jScale));
+      jH = Math.max(140, Math.floor(jr.height * jScale));
+      juliaCanvas.width = jW;
+      juliaCanvas.height = jH;
+      jIterBuf = new Float32Array(jW * jH);
+      jImgData = juliaCtx.createImageData(jW, jH);
+      jImgU32 = new Uint32Array(jImgData.data.buffer);
+      juliaDirty = true;
+    }
+
+    startMandelRender();
+  }
+
+  // Compute 256-bit BigInt reference orbit for Perturbation Theory
+  function computeRefOrbit(crBig, ciBig, maxIter) {
+    const Zr = new Float64Array(maxIter + 1);
+    const Zi = new Float64Array(maxIter + 1);
+    let zr = 0n, zi = 0n;
+    let len = maxIter;
+    for (let n = 0; n < maxIter; n++) {
+      const zrf = bigToFloat(zr);
+      const zif = bigToFloat(zi);
+      Zr[n] = zrf;
+      Zi[n] = zif;
+      if (zrf * zrf + zif * zif > 65536) {
+        len = n;
+        break;
+      }
+      const zr2 = bigMul(zr, zr);
+      const zi2 = bigMul(zi, zi);
+      const t = bigMul(zr, zi) << 1n;
+      zr = zr2 - zi2 + crBig;
+      zi = t + ciBig;
+    }
+    Zr[len] = bigToFloat(zr);
+    Zi[len] = bigToFloat(zi);
+    return { Zr, Zi, len };
+  }
+
+  function pickBestReferenceOrbit(pixelStep, maxIter) {
+    // Start with screen center; if center escapes early, probe 4 nearby points for a longer trapped orbit
+    let bestRef = computeRefOrbit(view.cr, view.ci, maxIter);
+    let bestOffRe = 0;
+    let bestOffIm = 0;
+
+    if (bestRef.len < maxIter * 0.65) {
+      const probes = [
+        [-mW * 0.22, -mH * 0.22],
+        [ mW * 0.22, -mH * 0.22],
+        [-mW * 0.22,  mH * 0.22],
+        [ mW * 0.22,  mH * 0.22]
+      ];
+      for (const [px, py] of probes) {
+        const dRe = px * pixelStep;
+        const dIm = py * pixelStep;
+        const cand = computeRefOrbit(view.cr + floatToBig(dRe), view.ci + floatToBig(dIm), maxIter);
+        if (cand.len > bestRef.len) {
+          bestRef = cand;
+          bestOffRe = dRe;
+          bestOffIm = dIm;
+          if (bestRef.len === maxIter) break;
+        }
+      }
+    }
+    return { ref: bestRef, offRe: bestOffRe, offIm: bestOffIm };
+  }
+
+  function mandelFloat64(cr, ci, maxIter) {
+    // Fast exact cardioid & period-2 bulb interior skip
+    const q = (cr - 0.25) * (cr - 0.25) + ci * ci;
+    if (q * (q + (cr - 0.25)) <= 0.25 * ci * ci) return -1;
+    if ((cr + 1) * (cr + 1) + ci * ci <= 0.0625) return -1;
+
+    let zr = 0, zi = 0;
+    let zr2 = 0, zi2 = 0;
+    for (let n = 0; n < maxIter; n++) {
+      zi = 2 * zr * zi + ci;
+      zr = zr2 - zi2 + cr;
+      zr2 = zr * zr;
+      zi2 = zi * zi;
+      const mag2 = zr2 + zi2;
+      if (mag2 > 256) {
+        return n + 1 - Math.log2(Math.log2(mag2) * 0.5);
+      }
+    }
+    return -1;
+  }
+
+  function mandelPerturb(dcx, dcy, ref, maxIter) {
+    const Zr = ref.Zr;
+    const Zi = ref.Zi;
+    const len = ref.len;
+    let dzx = 0, dzy = 0;
+    let refIdx = 0;
+
+    for (let n = 0; n < maxIter; n++) {
+      const Zx = Zr[refIdx];
+      const Zy = Zi[refIdx];
+      const nx = 2 * (Zx * dzx - Zy * dzy) + (dzx * dzx - dzy * dzy) + dcx;
+      const ny = 2 * (Zx * dzy + Zy * dzx) + (2 * dzx * dzy) + dcy;
+      dzx = nx;
+      dzy = ny;
+      refIdx++;
+
+      const zx = Zr[refIdx] + dzx;
+      const zy = Zi[refIdx] + dzy;
+      const z2 = zx * zx + zy * zy;
+      if (z2 > 256) {
+        return n + 1 - Math.log2(Math.log2(z2) * 0.5);
+      }
+      // Zhuoran rebasing: eliminates perturbation glitches when orbit passes near 0 or ref escapes
+      if (z2 < dzx * dzx + dzy * dzy || refIdx === len) {
+        dzx = zx;
+        dzy = zy;
+        refIdx = 0;
+      }
+    }
+    return -1;
+  }
+
+  function colorFromSmoothIter(nu, phaseShift) {
+    if (nu < 0) return 0xff000000; // True set interior: pure velvet black
+    // Logarithmic jewel mapping: reveals silky gradients both near outer bands and deep filaments
+    const t = (Math.log(nu + 1) * 0.22 + nu * 0.0045 + phaseShift) % 1;
+    const idx = ((t < 0 ? t + 1 : t) * LUT_SIZE) | 0;
+    return (255 << 24) | (palB[idx] << 16) | (palG[idx] << 8) | palR[idx];
+  }
+
+  function recolorBuffer(iterBuf, imgU32, imgData, targetCtx, w, h) {
+    const len = w * h;
+    const phase = colorPhase;
+    for (let i = 0; i < len; i++) {
+      imgU32[i] = colorFromSmoothIter(iterBuf[i], phase);
+    }
+    targetCtx.putImageData(imgData, 0, 0);
+  }
+
+  function startMandelRender() {
+    const pixelStep = (BASE_HALF_WIDTH * 2) / (view.zoom * Math.min(mW, mH));
+    renderJob.active = true;
+    renderJob.passIdx = 0;
+    renderJob.row = 0;
+    renderJob.startMs = performance.now();
+    renderJob.pixelStep = pixelStep;
+    renderJob.maxIter = view.maxIter;
+    renderJob.crF = bigToFloat(view.cr);
+    renderJob.ciF = bigToFloat(view.ci);
+    renderJob.usePerturb = view.zoom >= PERTURB_THRESHOLD;
+
+    if (renderJob.usePerturb) {
+      const picked = pickBestReferenceOrbit(pixelStep, view.maxIter);
+      renderJob.ref = picked.ref;
+      renderJob.refOffsetRe = picked.offRe;
+      renderJob.refOffsetIm = picked.offIm;
+    } else {
+      renderJob.ref = null;
+    }
+
+    renderBar.style.opacity = '1';
+    renderBar.style.width = '4%';
+    updateTelemetryUI();
+    checkDiveChallengesAndLog();
+  }
+
+  function stepMandelRender(budgetMs) {
+    if (!renderJob.active) return;
+
+    const tStart = performance.now();
+    const step = PASS_STEPS[renderJob.passIdx];
+    const halfW = mW * 0.5;
+    const halfH = mH * 0.5;
+    const ps = renderJob.pixelStep;
+    const maxIter = renderJob.maxIter;
+    const usePerturb = renderJob.usePerturb;
+    const ref = renderJob.ref;
+    const crF = renderJob.crF;
+    const ciF = renderJob.ciF;
+    const offRe = renderJob.refOffsetRe;
+    const offIm = renderJob.refOffsetIm;
+    const phase = colorPhase;
+
+    while (renderJob.row < mH) {
+      const y = renderJob.row;
+      const dyIm = (halfH - y) * ps; // +Im upwards
+
+      for (let x = 0; x < mW; x += step) {
+        // Skip pixels already computed in coarser pass if on finer pass
+        if (step < 4 && (y % (step * 2) === 0) && (x % (step * 2) === 0)) {
+          continue;
+        }
+        const dxRe = (x - halfW) * ps;
+        const nu = usePerturb
+          ? mandelPerturb(dxRe - offRe, dyIm - offIm, ref, maxIter)
+          : mandelFloat64(crF + dxRe, ciF + dyIm, maxIter);
+
+        const col = colorFromSmoothIter(nu, phase);
+
+        // Fill step×step block cleanly (zero flicker!)
+        const maxBy = Math.min(mH, y + step);
+        const maxBx = Math.min(mW, x + step);
+        for (let by = y; by < maxBy; by++) {
+          const rowOff = by * mW;
+          for (let bx = x; bx < maxBx; bx++) {
+            mIterBuf[rowOff + bx] = nu;
+            mImgU32[rowOff + bx] = col;
+          }
+        }
+      }
+
+      renderJob.row += step;
+      if (performance.now() - tStart >= budgetMs) break;
+    }
+
+    mandelCtx.putImageData(mImgData, 0, 0);
+
+    // Progress indicator
+    const passWeight = renderJob.passIdx === 0 ? 0.1 : (renderJob.passIdx === 1 ? 0.3 : 1.0);
+    const prevWeight = renderJob.passIdx === 0 ? 0 : (renderJob.passIdx === 1 ? 0.1 : 0.3);
+    const pct = (prevWeight + (renderJob.row / mH) * (passWeight - prevWeight)) * 100;
+    renderBar.style.width = `${Math.min(100, pct)}%`;
+
+    if (renderJob.row >= mH) {
+      renderJob.passIdx++;
+      renderJob.row = 0;
+      if (renderJob.passIdx >= PASS_STEPS.length) {
+        renderJob.active = false;
+        const elapsed = Math.round(performance.now() - renderJob.startMs);
+        document.getElementById('read-ms').textContent = `${elapsed} ms`;
+        renderBar.style.opacity = '0';
+      }
+    }
+  }
+
+  // Live-Linked Julia Set Renderer (always instant & smooth on hover!)
+  function renderJulia() {
+    if (!juliaOpen) return;
+    const maxIter = Math.min(360, Math.max(140, Math.round(view.maxIter * 0.6)));
+    const halfW = jW * 0.5;
+    const halfH = jH * 0.5;
+    const ps = 3.2 / Math.min(jW, jH);
+    const cr = juliaCr;
+    const ci = juliaCi;
+    const phase = colorPhase;
+
+    for (let y = 0; y < jH; y++) {
+      const rowOff = y * jW;
+      const zi0 = (halfH - y) * ps;
+      for (let x = 0; x < jW; x++) {
+        let zr = (x - halfW) * ps;
+        let zi = zi0;
+        let zr2 = zr * zr;
+        let zi2 = zi * zi;
+        let nu = -1;
+        for (let n = 0; n < maxIter; n++) {
+          if (zr2 + zi2 > 256) {
+            nu = n - Math.log2(Math.log2(zr2 + zi2) * 0.5);
+            break;
+          }
+          zi = 2 * zr * zi + ci;
+          zr = zr2 - zi2 + cr;
+          zr2 = zr * zr;
+          zi2 = zi * zi;
+        }
+        jIterBuf[rowOff + x] = nu;
+        jImgU32[rowOff + x] = colorFromSmoothIter(nu, phase);
+      }
+    }
+    juliaCtx.putImageData(jImgData, 0, 0);
+    document.getElementById('julia-c').textContent =
+      `${cr >= 0 ? '+' : ''}${cr.toFixed(5)} ${ci >= 0 ? '+' : '−'} ${Math.abs(ci).toFixed(5)}i`;
+    juliaDirty = false;
+  }
+
+  // =========================================================================
+  // CHALLENGES, DIVE LOG & TELEMETRY UI
+  // =========================================================================
+  function checkDiveChallengesAndLog() {
+    const reF = bigToFloat(view.cr);
+    const imF = bigToFloat(view.ci);
+    let dirty = false;
+
+    // Deepest zoom tracking
+    if (view.zoom > diveLog.deepestZoom * 1.05) {
+      diveLog.deepestZoom = view.zoom;
+      const digits = Math.min(52, Math.max(12, Math.ceil(Math.log10(view.zoom)) + 6));
+      diveLog.deepestRe = bigToDecimal(view.cr, digits);
+      diveLog.deepestIm = bigToDecimal(view.ci, digits);
+      diveLog.deepestIter = view.maxIter;
+      dirty = true;
+    }
+
+    // Minibrot detections
+    for (const s of DIVE_SITES) {
+      if (!s.minibrot || diveLog.minibrots[s.id]) continue;
+      if (view.zoom >= s.detectMinZoom && Math.hypot(reF - parseFloat(s.re), imF - parseFloat(s.im)) < s.detectRadius) {
+        diveLog.minibrots[s.id] = true;
+        dirty = true;
+        showToast(`✦ Minibrot Logged: ${s.name}`);
+      }
+    }
+
+    // Dive Challenges
+    for (const ch of CHALLENGES) {
+      if (diveLog.challenges[ch.id]) continue;
+      if (ch.check(reF, imF, view.zoom)) {
+        diveLog.challenges[ch.id] = true;
+        dirty = true;
+        showToast(`★ Challenge Complete: ${ch.name}`);
+      }
+    }
+
+    if (dirty) {
+      saveDiveLog();
+      renderChallengesUI();
+      renderDiveLogUI();
+    }
+  }
+
+  function updateTelemetryUI() {
+    const decimals = Math.min(50, Math.max(6, Math.ceil(Math.log10(Math.max(1, view.zoom))) + 5));
+    document.getElementById('read-re').textContent = bigToDecimal(view.cr, decimals);
+    document.getElementById('read-im').textContent = bigToDecimal(view.ci, decimals);
+    document.getElementById('read-zoom').textContent = formatZoom(view.zoom);
+    document.getElementById('read-iter').textContent = String(view.maxIter);
+
+    const badge = document.getElementById('precision-badge');
+    if (view.zoom >= MAX_ZOOM * 0.99) {
+      badge.textContent = 'Precision Floor · 10⁵⁰× (256-bit limit)';
+      badge.className = 'precision-badge floor';
+    } else if (view.zoom >= PERTURB_THRESHOLD) {
+      badge.textContent = '256-bit BigInt + Perturbation (past Float64)';
+      badge.className = 'precision-badge deep';
+    } else {
+      badge.textContent = 'Float64 · fast path (< 10¹²×)';
+      badge.className = 'precision-badge';
+    }
+  }
+
+  function renderPaletteUI() {
+    const grid = document.getElementById('palette-grid');
+    grid.innerHTML = '';
+    for (const p of PALETTES) {
+      const btn = document.createElement('button');
+      btn.className = `pal-btn ${p.id === activePaletteId ? 'active-gold' : ''}`;
+      btn.innerHTML = `<span class="pal-swatch" style="background:${p.swatch};"></span>${p.name}`;
+      btn.addEventListener('click', () => {
+        activePaletteId = p.id;
+        buildPaletteLUT(activePaletteId);
+        renderPaletteUI();
+        recolorBuffer(mIterBuf, mImgU32, mImgData, mandelCtx, mW, mH);
+        if (juliaOpen) recolorBuffer(jIterBuf, jImgU32, jImgData, juliaCtx, jW, jH);
+      });
+      grid.appendChild(btn);
+    }
+  }
+
+  function renderChallengesUI() {
+    const list = document.getElementById('challenge-list');
+    list.innerHTML = '';
+    let doneCount = 0;
+    for (const ch of CHALLENGES) {
+      const done = Boolean(diveLog.challenges[ch.id]);
+      if (done) doneCount++;
+      const row = document.createElement('div');
+      row.className = `ch-row ${done ? 'done' : ''}`;
+      row.innerHTML = `
+        <span class="ch-check">${done ? '✓' : '○'}</span>
+        <div>
+          <span class="ch-name">${ch.name}</span>
+          <span class="ch-hint">${ch.hint}</span>
+        </div>
+      `;
+      list.appendChild(row);
+    }
+    document.getElementById('ch-progress').textContent = `${doneCount} / ${CHALLENGES.length}`;
+  }
+
+  function jumpToCoords(reStr, imStr, zoom, iter) {
+    view.cr = decToBig(reStr);
+    view.ci = decToBig(imStr);
+    view.zoom = Math.max(0.5, Math.min(MAX_ZOOM, zoom));
+    if (iter) {
+      view.maxIter = Math.max(80, Math.min(4000, iter));
+      document.getElementById('sl-iter').value = String(view.maxIter);
+      document.getElementById('val-iter').textContent = String(view.maxIter);
+    }
+    if (!juliaPinned) {
+      juliaCr = bigToFloat(view.cr);
+      juliaCi = bigToFloat(view.ci);
+      juliaDirty = true;
+    }
+    startMandelRender();
+  }
+
+  function renderDiveSitesUI() {
+    const el = document.getElementById('dive-sites-list');
+    el.innerHTML = '';
+    for (const s of DIVE_SITES) {
+      const btn = document.createElement('button');
+      btn.className = 'site-btn';
+      btn.innerHTML = `
+        <span>${s.minibrot ? '✦ ' : ''}${s.name}</span>
+        <span class="depth-tag">${formatZoom(s.zoom)}</span>
+      `;
+      btn.addEventListener('click', () => jumpToCoords(s.re, s.im, s.zoom, s.iter));
+      el.appendChild(btn);
+    }
+  }
+
+  function renderDiveLogUI() {
+    document.getElementById('log-deepest').textContent = formatZoom(diveLog.deepestZoom);
+    const totalMini = DIVE_SITES.filter((s) => s.minibrot).length;
+    const foundMini = Object.keys(diveLog.minibrots).length;
+    document.getElementById('log-minibrots').textContent = `${foundMini} / ${totalMini}`;
+
+    const bmEl = document.getElementById('bookmark-list');
+    bmEl.innerHTML = '';
+    if (diveLog.bookmarks.length === 0) {
+      bmEl.innerHTML = '<div style="font-size:10px;color:var(--text-muted);text-align:center;padding:4px;">No bookmarks yet — click "+ Bookmark" at any depth.</div>';
+      return;
+    }
+    diveLog.bookmarks.forEach((bm, idx) => {
+      const row = document.createElement('div');
+      row.className = 'bm-row';
+      const jumpBtn = document.createElement('button');
+      jumpBtn.className = 'bm-jump';
+      jumpBtn.textContent = `${bm.label} · ${formatZoom(bm.zoom)}`;
+      jumpBtn.addEventListener('click', () => jumpToCoords(bm.re, bm.im, bm.zoom, bm.iter));
+
+      const delBtn = document.createElement('button');
+      delBtn.style.cssText = 'padding:1px 5px;font-size:9.5px;';
+      delBtn.textContent = '✕';
+      delBtn.addEventListener('click', () => {
+        diveLog.bookmarks.splice(idx, 1);
+        saveDiveLog();
+        renderDiveLogUI();
+      });
+
+      row.appendChild(jumpBtn);
+      row.appendChild(delBtn);
+      bmEl.appendChild(row);
+    });
+  }
+
+  // =========================================================================
+  // INTERACTION: ZOOM BOX DRAG, CLICK RE-CENTER, SCROLL ZOOM, PAN, LIVE JULIA
+  // =========================================================================
+  const zoomBoxEl = document.getElementById('zoom-box');
+  const zoomBoxLabel = document.getElementById('zoom-box-label');
+
+  const pointer = {
+    mode: null, // 'box' | 'pan'
+    startX: 0, startY: 0,
+    currX: 0, currY: 0,
+    panStartCr: 0n, panStartCi: 0n
+  };
+
+  function screenDeltaToComplex(dxCss, dyCss) {
+    const rect = mandelCanvas.getBoundingClientRect();
+    const minDim = Math.min(rect.width, rect.height);
+    const scale = (BASE_HALF_WIDTH * 2) / (view.zoom * minDim);
+    return { dRe: dxCss * scale, dIm: -dyCss * scale };
+  }
+
+  mandelCanvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+  mandelCanvas.addEventListener('pointerdown', (e) => {
+    mandelCanvas.setPointerCapture(e.pointerId);
+    const rect = mandelCanvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    pointer.startX = x;
+    pointer.startY = y;
+    pointer.currX = x;
+    pointer.currY = y;
+
+    if (e.button === 2 || e.button === 1 || e.shiftKey) {
+      pointer.mode = 'pan';
+      pointer.panStartCr = view.cr;
+      pointer.panStartCi = view.ci;
+    } else if (e.button === 0) {
+      pointer.mode = 'box';
+    }
+  });
+
+  mandelCanvas.addEventListener('pointermove', (e) => {
+    const rect = mandelCanvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    // Live-linked Julia update on pointer hover!
+    if (juliaOpen && !juliaPinned && !pointer.mode) {
+      const { dRe, dIm } = screenDeltaToComplex(x - rect.width * 0.5, y - rect.height * 0.5);
+      juliaCr = bigToFloat(view.cr) + dRe;
+      juliaCi = bigToFloat(view.ci) + dIm;
+      juliaDirty = true;
+    }
+
+    if (!pointer.mode) return;
+    pointer.currX = x;
+    pointer.currY = y;
+
+    if (pointer.mode === 'box') {
+      const bw = Math.abs(x - pointer.startX);
+      const bh = Math.abs(y - pointer.startY);
+      if (bw > 6 || bh > 6) {
+        const lx = Math.min(x, pointer.startX);
+        const ly = Math.min(y, pointer.startY);
+        zoomBoxEl.style.display = 'block';
+        zoomBoxEl.style.left = `${lx}px`;
+        zoomBoxEl.style.top = `${ly}px`;
+        zoomBoxEl.style.width = `${bw}px`;
+        zoomBoxEl.style.height = `${bh}px`;
+        const boxMin = Math.max(8, Math.min(bw, bh));
+        const mult = Math.min(rect.width, rect.height) / boxMin;
+        zoomBoxLabel.textContent = `→ ${formatZoom(Math.min(MAX_ZOOM, view.zoom * mult))}`;
+      } else {
+        zoomBoxEl.style.display = 'none';
+      }
+    } else if (pointer.mode === 'pan') {
+      const { dRe, dIm } = screenDeltaToComplex(x - pointer.startX, y - pointer.startY);
+      view.cr = pointer.panStartCr - floatToBig(dRe);
+      view.ci = pointer.panStartCi - floatToBig(dIm);
+      startMandelRender();
+    }
+  });
+
+  mandelCanvas.addEventListener('pointerup', (e) => {
+    if (!pointer.mode) return;
+    const rect = mandelCanvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const m = pointer.mode;
+    pointer.mode = null;
+    zoomBoxEl.style.display = 'none';
+
+    if (m === 'box') {
+      const bw = Math.abs(x - pointer.startX);
+      const bh = Math.abs(y - pointer.startY);
+      if (bw < 6 && bh < 6) {
+        // Click -> Re-center on clicked point (and bloom Julia if unpinned)
+        const { dRe, dIm } = screenDeltaToComplex(x - rect.width * 0.5, y - rect.height * 0.5);
+        view.cr += floatToBig(dRe);
+        view.ci += floatToBig(dIm);
+        if (juliaOpen && !juliaPinned) {
+          juliaCr = bigToFloat(view.cr);
+          juliaCi = bigToFloat(view.ci);
+          juliaDirty = true;
+        }
+        startMandelRender();
+      } else {
+        // Drag Box -> Zoom into selected box!
+        const cx = (x + pointer.startX) * 0.5;
+        const cy = (y + pointer.startY) * 0.5;
+        const { dRe, dIm } = screenDeltaToComplex(cx - rect.width * 0.5, cy - rect.height * 0.5);
+        const boxSpan = Math.max(8, Math.max(bw / rect.width, bh / rect.height) * Math.min(rect.width, rect.height));
+        const mult = Math.min(rect.width, rect.height) / boxSpan;
+        view.cr += floatToBig(dRe);
+        view.ci += floatToBig(dIm);
+        const nextZoom = view.zoom * Math.max(1.2, mult);
+        if (nextZoom >= MAX_ZOOM) {
+          view.zoom = MAX_ZOOM;
+          showToast('Reached 256-bit perturbation precision floor (~10⁵⁰×)');
+        } else {
+          view.zoom = nextZoom;
+        }
+        startMandelRender();
+      }
+    }
+  });
+
+  mandelCanvas.addEventListener('pointercancel', () => {
+    pointer.mode = null;
+    zoomBoxEl.style.display = 'none';
+  });
+
+  // Scroll wheel zoom centered on cursor
+  mandelCanvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const rect = mandelCanvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const factor = e.deltaY < 0 ? 1.55 : 1 / 1.55;
+    const nextZoom = Math.max(0.5, Math.min(MAX_ZOOM, view.zoom * factor));
+    if (nextZoom === view.zoom) {
+      if (nextZoom >= MAX_ZOOM) showToast('Reached 256-bit perturbation precision floor (~10⁵⁰×)');
+      return;
+    }
+
+    // Keep complex coordinate under cursor fixed while zooming
+    const { dRe, dIm } = screenDeltaToComplex(x - rect.width * 0.5, y - rect.height * 0.5);
+    const keepRatio = 1 - view.zoom / nextZoom;
+    view.cr += floatToBig(dRe * keepRatio);
+    view.ci += floatToBig(dIm * keepRatio);
+    view.zoom = nextZoom;
+    startMandelRender();
+  }, { passive: false });
+
+  // =========================================================================
+  // BUTTONS, SLIDERS & SHORTCUTS
+  // =========================================================================
+  const slIter = document.getElementById('sl-iter');
+  slIter.addEventListener('input', () => {
+    view.maxIter = parseInt(slIter.value, 10);
+    document.getElementById('val-iter').textContent = String(view.maxIter);
+    startMandelRender();
+    juliaDirty = true;
+  });
+
+  document.getElementById('btn-julia-toggle').addEventListener('click', () => {
+    juliaOpen = !juliaOpen;
+    document.getElementById('stage-wrap').classList.toggle('julia-open', juliaOpen);
+    document.getElementById('btn-julia-toggle').classList.toggle('active-violet', juliaOpen);
+    requestAnimationFrame(resizeCanvases);
+  });
+
+  function toggleJuliaPin() {
+    juliaPinned = !juliaPinned;
+    const btn = document.getElementById('btn-julia-pin');
+    btn.textContent = juliaPinned ? 'Pinned (L)' : 'Pin c (L)';
+    btn.classList.toggle('active-gold', juliaPinned);
+    document.getElementById('julia-hint').textContent = juliaPinned
+      ? 'c is pinned · Press L to resume live morphing'
+      : 'Move pointer across Mandelbrot to morph · Press L to pin';
+  }
+  document.getElementById('btn-julia-pin').addEventListener('click', toggleJuliaPin);
+
+  function toggleBreathe() {
+    breatheMode = !breatheMode;
+    document.getElementById('btn-breathe').classList.toggle('active-cyan', breatheMode);
+  }
+  document.getElementById('btn-breathe').addEventListener('click', toggleBreathe);
+
+  document.getElementById('btn-zoom-out').addEventListener('click', () => {
+    view.zoom = Math.max(0.5, view.zoom * 0.45);
+    startMandelRender();
+  });
+
+  document.getElementById('btn-reset').addEventListener('click', () => {
+    jumpToCoords('-0.5', '0.0', 1.0, 500);
+  });
+
+  function toggleZen() {
+    document.body.classList.toggle('zen-mode');
+    requestAnimationFrame(resizeCanvases);
+  }
+  document.getElementById('btn-zen').addEventListener('click', toggleZen);
+  document.getElementById('btn-zen-restore').addEventListener('click', toggleZen);
+
+  document.getElementById('btn-bookmark').addEventListener('click', () => {
+    const digits = Math.min(50, Math.max(10, Math.ceil(Math.log10(Math.max(1, view.zoom))) + 6));
+    const re = bigToDecimal(view.cr, digits);
+    const im = bigToDecimal(view.ci, digits);
+    diveLog.bookmarks.unshift({
+      label: `Dive #${diveLog.bookmarks.length + 1}`,
+      re, im,
+      zoom: view.zoom,
+      iter: view.maxIter
+    });
+    if (diveLog.bookmarks.length > 16) diveLog.bookmarks.pop();
+    saveDiveLog();
+    renderDiveLogUI();
+    showToast(`Saved bookmark at ${formatZoom(view.zoom)}`);
+  });
+
+  document.getElementById('btn-jump-deepest').addEventListener('click', () => {
+    jumpToCoords(diveLog.deepestRe, diveLog.deepestIm, diveLog.deepestZoom, diveLog.deepestIter);
+  });
+
+  document.getElementById('btn-clear-log').addEventListener('click', () => {
+    try { localStorage.removeItem(STORAGE_LOG_KEY); } catch {}
+    diveLog = loadDiveLog();
+    renderChallengesUI();
+    renderDiveLogUI();
+    showToast('Dive log cleared');
+  });
+
+  window.addEventListener('keydown', (e) => {
+    if (e.target && e.target.tagName === 'INPUT') return;
+    if (e.key === 'j' || e.key === 'J') document.getElementById('btn-julia-toggle').click();
+    else if (e.key === 'l' || e.key === 'L') toggleJuliaPin();
+    else if (e.key === 'b' || e.key === 'B') toggleBreathe();
+    else if (e.key === 'r' || e.key === 'R') document.getElementById('btn-reset').click();
+    else if (e.key === 'h' || e.key === 'H') toggleZen();
+    else if (e.key === '-' || e.key === '_') document.getElementById('btn-zoom-out').click();
+  });
+
+  window.addEventListener('resize', resizeCanvases);
+
+  // =========================================================================
+  // MAIN ANIMATION LOOP (PROGRESSIVE RENDER + SMOOTH BREATHE + LIVE JULIA)
+  // =========================================================================
+  let lastMs = performance.now();
+
+  function frame(nowMs) {
+    const dt = Math.min(0.05, Math.max(0, (nowMs - lastMs) * 0.001));
+    lastMs = nowMs;
+
+    if (renderJob.active) {
+      stepMandelRender(11); // 11ms render slices keep UI & Julia butter-smooth
+    }
+
+    if (juliaOpen && juliaDirty) {
+      renderJulia();
+    }
+
+    if (breatheMode) {
+      colorPhase = (colorPhase + dt * 0.11) % 1;
+      recolorBuffer(mIterBuf, mImgU32, mImgData, mandelCtx, mW, mH);
+      if (juliaOpen) {
+        recolorBuffer(jIterBuf, jImgU32, jImgData, juliaCtx, jW, jH);
+      }
+    }
+
+    requestAnimationFrame(frame);
+  }
+
+  // Boot UI & start rendering immediately
+  renderPaletteUI();
+  renderChallengesUI();
+  renderDiveSitesUI();
+  renderDiveLogUI();
+  resizeCanvases();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

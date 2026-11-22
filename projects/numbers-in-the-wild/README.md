@@ -21,3 +21,8 @@ Begin with a familiar number. Ask learners to predict, try, explain, then give a
 ## Check and share
 
 Run `node test-math.cjs` if Node.js is installed; it is only needed for development checks. Includes all 3999 supported Roman round trips, invalid and oversized inputs, clock wrapping, packs, and proportional scaling. Code is MIT; original writing is CC BY 4.0. External resources keep their own rights. See `THIRD-PARTY.md` and `COLLECTION.md`.
+
+
+## Yahtzee (added 22 November 2026)
+
+The dice game with its odds counted live by exact enumeration — no simulation. Play `yahtzee.html`; the lesson is `yahtzee-lesson.html`.

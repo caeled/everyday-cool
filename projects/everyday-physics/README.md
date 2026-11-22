@@ -63,3 +63,8 @@ An N-body gravity sandbox built by Google Antigravity at Steven Powell's directi
 ## Murmuration (added 22 November 2026)
 
 A flocking game built by Google Antigravity at Steven Powell's direction: 360 boids, three local rules, wind shepherding, gates, and a hawk. Play `murmuration.html`; the audit lesson is `murmuration-lesson.html`.
+
+
+## Ripple Tank (added 22 November 2026)
+
+A wave bench built by Google Antigravity at Steven Powell's direction: an explicit finite-difference height-field solving the 2D wave equation, with drippers, barriers, and a field-scored target game. Play `ripple-tank.html`; the audit lesson is `ripple-tank-lesson.html`.

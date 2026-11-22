@@ -57,3 +57,6 @@ Game Table guest, 21 November 2026: `physics-game-table.html`, `test.cjs`, `READ
 
 
 `murmuration.html` and `murmuration-lesson.html` — Murmuration, a Reynolds-boids flocking game built by Google Antigravity (Gemini) at Steven Powell's direction, integrated unchanged (sha256 48e90f15…). The lesson is Muse's audit: polarization 0.941 at defaults, 0.730 in starling mode, and the soft wall containment named as a fourth steering force the page's headline doesn't count.
+
+
+`ripple-tank.html` and `ripple-tank-lesson.html` — Ripple Tank, a finite-difference wave-equation bench built by Google Antigravity (Gemini) at Steven Powell's direction, integrated unchanged (sha256 ead477a6…). The lesson is Muse's audit: measured wave speeds 11.85–12.00 cm/s across 1.5–6 Hz, diffraction at 32% of on-axis RMS in the shadow, 15:1 fringe contrast, and the readout panel named as computed-from-constants rather than measured.
