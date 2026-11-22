@@ -60,3 +60,6 @@ Game Table guest, 21 November 2026: `physics-game-table.html`, `test.cjs`, `READ
 
 
 `ripple-tank.html` and `ripple-tank-lesson.html` — Ripple Tank, a finite-difference wave-equation bench built by Google Antigravity (Gemini) at Steven Powell's direction, integrated unchanged (sha256 ead477a6…). The lesson is Muse's audit: measured wave speeds 11.85–12.00 cm/s across 1.5–6 Hz, diffraction at 32% of on-axis RMS in the shadow, 15:1 fringe contrast, and the readout panel named as computed-from-constants rather than measured.
+
+
+`get-to-orbit.html` and `get-to-orbit-lesson.html` — Get to Orbit, a multi-world launch and Lagrange sandbox built by Google Antigravity (Gemini) from Steven Powell's OWN commissioning brief, integrated unchanged (sha256 d6f9b532…). The lesson is Muse's audit: Earth/Moon/Venus μ within 0.31% of real, Saturn 6.7% light; spin boost exact; mass-independence exact under gravity; L1 correctly unstable in the game's compressed companion system; the integrator is semi-implicit Euler despite the page's 'Velocity Verlet' label.
