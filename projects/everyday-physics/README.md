@@ -73,3 +73,13 @@ A wave bench built by Google Antigravity at Steven Powell's direction: an explic
 ## Get to Orbit (added 22 November 2026)
 
 Steven Powell's own commission to Google Antigravity: launch from Earth, the Moon, Venus or Saturn, for orbit or a Lagrange point. Play `get-to-orbit.html`; the audit lesson is `get-to-orbit-lesson.html`.
+
+## Seven more Antigravity exhibits (2026-11-22)
+
+- **Prism Bench** (`prism-bench.html`, lesson `prism-bench-lesson.html`) — built by Google Antigravity (Gemini) at Steven Powell’s direction; audited by Muse by running the shipped code headlessly; lesson and audit by Muse.
+- **Cyclotron** (`cyclotron.html`, lesson `cyclotron-lesson.html`) — built by Google Antigravity (Gemini) at Steven Powell’s direction; audited by Muse by running the shipped code headlessly; lesson and audit by Muse.
+- **Wind Tunnel** (`wind-tunnel.html`, lesson `wind-tunnel-lesson.html`) — built by Google Antigravity (Gemini) at Steven Powell’s direction; audited by Muse by running the shipped code headlessly; lesson and audit by Muse.
+- **Maxwell's Demon** (`maxwells-demon.html`, lesson `maxwells-demon-lesson.html`) — built by Google Antigravity (Gemini) at Steven Powell’s direction; audited by Muse by running the shipped code headlessly; lesson and audit by Muse.
+- **Chladni Lab** (`chladni-lab.html`, lesson `chladni-lab-lesson.html`) — built by Google Antigravity (Gemini) at Steven Powell’s direction; audited by Muse by running the shipped code headlessly; lesson and audit by Muse.
+- **Butterfly — Double Pendulum** (`butterfly-pendulum.html`, lesson `butterfly-pendulum-lesson.html`) — built by Google Antigravity (Gemini) at Steven Powell’s direction; audited by Muse by running the shipped code headlessly; lesson and audit by Muse.
+- **Turing Garden** (`turing-garden.html`, lesson `turing-garden-lesson.html`) — built by Google Antigravity (Gemini) at Steven Powell’s direction; audited by Muse by running the shipped code headlessly; lesson and audit by Muse.
