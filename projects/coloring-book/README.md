@@ -16,13 +16,13 @@ Pick a crayon, tap a patch to fill it. The stripy white crayon is the eraser cra
 
 ## Your own picture
 
-Drop in any photo (or choose one) and the page converts it to an outline — grayscale, Sobel edge detection, and a threshold you control with the **Line strength** slider — then you colour it by tapping patches, filled by flood fill under the lines. Print and save work here too.
+Drop in any photo (or choose one) and the page converts it to an outline with a Canny-style pipeline — grayscale, a Gaussian blur, Sobel edge detection, thinning, and hysteresis thresholding (a faint line counts if it is connected to a strong one), finished with a one-pixel sealing growth so patches don't leak. Two sliders steer it: **Line strength** sets the bar for a definite line, and **Detail** trades calm for fineness (Simple blurs more and suits busy photos; Detailed keeps fainter lines). Then you colour it by tapping patches, filled by flood fill under the lines. Print and save work here too.
 
 **Privacy: your picture never leaves this device.** The outline is drawn right in the page, on your own machine. Nothing is uploaded, nothing is sent anywhere — close the page and the picture is gone.
 
 ## The back door
 
-Colouring a patch is a targeting task, and small patches are harder targets — that is Fitts's law, and it is why the pages are graded. The lesson page (`coloring-book-lesson.html`, also under the 📖 Lesson button in the app) tells the whole story: aim as the real curriculum, the Solitaire-and-Minesweeper lineage of learning by playing, how edge detection finds a line, and what a flood fill is. It also names the limits honestly: busy photos make busy outlines, and the slider is a fix, not a cure.
+Colouring a patch is a targeting task, and small patches are harder targets — that is Fitts's law, and it is why the pages are graded. The lesson page (`coloring-book-lesson.html`, also under the 📖 Lesson button in the app) tells the whole story: aim as the real curriculum, the Solitaire-and-Minesweeper lineage of learning by playing, how edge detection finds a line, and what a flood fill is. It also names the limits honestly: busy photos still make busier outlines — the pipeline narrows that gap without closing it — and the sliders are a fix, not a cure.
 
 ## Files
 
