@@ -1,0 +1,2329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Murmuration — Reynolds Boids Flocking Game</title>
+<style>
+  :root {
+    --panel-bg: rgba(14, 15, 30, 0.72);
+    --panel-bg-strong: rgba(14, 15, 30, 0.88);
+    --panel-border: rgba(255, 206, 158, 0.17);
+    --panel-border-hi: rgba(255, 206, 158, 0.38);
+    --text-main: #fdf3e7;
+    --text-dim: #cfc1d6;
+    --text-muted: #998ba6;
+    --accent-amber: #f7b267;
+    --accent-gold: #ffd98a;
+    --accent-rose: #f2798f;
+    --accent-mint: #7ce6b8;
+    --accent-sky: #9dc6ff;
+    --radius-lg: 14px;
+    --radius-md: 10px;
+    --radius-sm: 7px;
+    --mono: ui-monospace, "Cascadia Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #0d142b;
+    color: var(--text-main);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    touch-action: none;
+  }
+
+  #sky-canvas {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    cursor: none;
+  }
+
+  /* HUD Layer */
+  .hud {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 10;
+    transition: opacity 0.25s ease;
+  }
+  body.zen-mode .hud > :not(.zen-restore):not(.round-modal) {
+    opacity: 0;
+    pointer-events: none !important;
+  }
+
+  .panel {
+    pointer-events: auto;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-lg);
+    backdrop-filter: blur(11px);
+    -webkit-backdrop-filter: blur(11px);
+    box-shadow: 0 10px 32px rgba(6, 7, 18, 0.45), inset 0 1px 0 rgba(255, 232, 204, 0.06);
+  }
+
+  /* Top-Left Brand + Lesson */
+  .top-left {
+    position: fixed;
+    top: 14px;
+    left: 14px;
+    max-width: min(410px, calc(100vw - 290px));
+    padding: 12px 15px;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+  }
+
+  .brand-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .brand-wrap {
+    display: flex;
+    align-items: baseline;
+    gap: 9px;
+    flex-wrap: wrap;
+  }
+
+  .brand-title {
+    font-size: 18px;
+    font-weight: 750;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+    background: linear-gradient(120deg, #fff5e6 0%, #f7b267 52%, #f2849e 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .brand-tag {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    padding: 2px 7px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 206, 158, 0.22);
+    background: rgba(255, 206, 158, 0.08);
+  }
+
+  .lesson-line {
+    font-size: 12px;
+    line-height: 1.4;
+    color: #f9e8d7;
+    font-style: italic;
+    border-left: 2px solid rgba(247, 178, 103, 0.72);
+    padding-left: 9px;
+  }
+
+  .meta-line {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text-muted);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .meta-line strong {
+    color: var(--text-dim);
+    font-weight: 600;
+  }
+
+  /* Top-Right Score & Round Timer */
+  .top-right {
+    position: fixed;
+    top: 14px;
+    right: 14px;
+    width: 256px;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .score-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .timer-display {
+    font-family: var(--mono);
+    font-size: 22px;
+    font-weight: 750;
+    font-variant-numeric: tabular-nums;
+    color: #fff;
+    letter-spacing: -0.02em;
+  }
+  .timer-display.urgent {
+    color: var(--accent-rose);
+  }
+
+  .best-box {
+    text-align: right;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text-muted);
+  }
+  .best-box strong {
+    display: block;
+    font-size: 13px;
+    color: var(--accent-gold);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .score-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .stat-cell {
+    background: rgba(255, 255, 255, 0.035);
+    border: 1px solid rgba(255, 206, 158, 0.12);
+    border-radius: var(--radius-sm);
+    padding: 5px 7px;
+    text-align: center;
+  }
+  .stat-label {
+    display: block;
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+  }
+  .stat-val {
+    font-family: var(--mono);
+    font-size: 15px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-main);
+  }
+  .stat-val.pos { color: var(--accent-mint); }
+  .stat-val.neg { color: var(--accent-rose); }
+  .stat-val.gold { color: var(--accent-gold); }
+
+  .score-sub {
+    font-size: 10.5px;
+    color: var(--text-muted);
+    line-height: 1.35;
+  }
+
+  .score-actions {
+    display: flex;
+    gap: 6px;
+  }
+
+  /* Bottom-Left Controls (Sliders & Starling Mode) */
+  .bottom-left {
+    position: fixed;
+    left: 14px;
+    bottom: 14px;
+    width: 306px;
+    max-width: calc(100vw - 28px);
+    overflow: hidden;
+  }
+
+  /* Bottom-Right Honesty Card */
+  .bottom-right {
+    position: fixed;
+    right: 14px;
+    bottom: 14px;
+    width: 300px;
+    max-width: calc(100vw - 28px);
+    overflow: hidden;
+  }
+
+  .card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 9px 12px;
+    cursor: pointer;
+    border-bottom: 1px solid transparent;
+  }
+  .card-head:hover {
+    background: rgba(255, 255, 255, 0.03);
+  }
+  .card-expanded .card-head {
+    border-bottom-color: rgba(255, 206, 158, 0.13);
+  }
+
+  .card-title {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--accent-amber);
+  }
+  .bottom-right .card-title {
+    color: var(--accent-gold);
+  }
+
+  .collapse-icon {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text-dim);
+    width: 18px;
+    height: 18px;
+    display: grid;
+    place-items: center;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.06);
+  }
+
+  .card-body {
+    padding: 10px 12px 12px;
+    display: none;
+  }
+  .card-expanded .card-body {
+    display: block;
+  }
+
+  /* Sliders */
+  .slider-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .slider-row {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .slider-row.dimmed {
+    opacity: 0.45;
+  }
+
+  .slider-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-size: 11px;
+  }
+  .slider-name {
+    color: var(--text-main);
+    font-weight: 550;
+  }
+  .slider-val {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--accent-gold);
+    font-variant-numeric: tabular-nums;
+  }
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 5px;
+    border-radius: 99px;
+    background: rgba(255, 224, 190, 0.16);
+    outline: none;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 13px;
+    height: 13px;
+    border-radius: 50%;
+    background: var(--accent-amber);
+    border: 2px solid #1a162c;
+    box-shadow: 0 0 8px rgba(247, 178, 103, 0.55);
+    cursor: pointer;
+    transition: transform 0.1s ease;
+  }
+  input[type="range"]::-webkit-slider-thumb:hover {
+    transform: scale(1.18);
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 13px;
+    height: 13px;
+    border-radius: 50%;
+    background: var(--accent-amber);
+    border: 2px solid #1a162c;
+    cursor: pointer;
+  }
+
+  .starling-row {
+    margin-top: 9px;
+    padding-top: 9px;
+    border-top: 1px solid rgba(255, 206, 158, 0.12);
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+  }
+
+  .toggle-btn {
+    width: 100%;
+    justify-content: space-between;
+    padding: 7px 10px;
+  }
+  .toggle-pill {
+    font-family: var(--mono);
+    font-size: 9.5px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-dim);
+  }
+  button.active-mint .toggle-pill {
+    background: rgba(124, 230, 184, 0.22);
+    color: var(--accent-mint);
+  }
+
+  .chip-row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 5px;
+  }
+
+  /* Honesty list */
+  .honesty-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 5.5px;
+    font-size: 11px;
+    line-height: 1.38;
+    color: var(--text-dim);
+  }
+  .honesty-list li {
+    position: relative;
+    padding-left: 11px;
+  }
+  .honesty-list li::before {
+    content: "•";
+    position: absolute;
+    left: 0;
+    color: var(--accent-amber);
+  }
+  .honesty-list strong {
+    color: var(--text-main);
+    font-weight: 600;
+  }
+
+  /* Bottom-Center Hint Pill */
+  .hint-pill {
+    position: fixed;
+    left: 50%;
+    bottom: 16px;
+    transform: translateX(-50%);
+    padding: 6px 14px;
+    border-radius: 999px;
+    background: rgba(14, 15, 30, 0.65);
+    border: 1px solid rgba(255, 206, 158, 0.15);
+    font-size: 11px;
+    color: var(--text-dim);
+    white-space: nowrap;
+    pointer-events: none;
+  }
+  .hint-pill strong {
+    color: var(--accent-gold);
+    font-weight: 600;
+  }
+
+  /* Hawk Banner */
+  .hawk-banner {
+    position: fixed;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%) translateY(-16px);
+    padding: 7px 15px;
+    border-radius: 999px;
+    background: rgba(45, 14, 26, 0.86);
+    border: 1px solid rgba(242, 121, 143, 0.55);
+    color: #ffd0d9;
+    font-size: 12px;
+    font-weight: 650;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    box-shadow: 0 6px 24px rgba(242, 121, 143, 0.25);
+  }
+  .hawk-banner.visible {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+
+  /* Buttons */
+  button {
+    font-family: var(--sans);
+    color: var(--text-main);
+    background: rgba(255, 255, 255, 0.055);
+    border: 1px solid rgba(255, 206, 158, 0.18);
+    border-radius: var(--radius-sm);
+    padding: 6px 9px;
+    font-size: 11px;
+    font-weight: 550;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease, transform 0.08s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    white-space: nowrap;
+  }
+  button:hover {
+    background: rgba(255, 206, 158, 0.14);
+    border-color: var(--panel-border-hi);
+  }
+  button:active {
+    transform: scale(0.97);
+  }
+  button.active-amber {
+    background: rgba(247, 178, 103, 0.2);
+    border-color: rgba(247, 178, 103, 0.65);
+    color: #fff6e8;
+  }
+  button.active-mint {
+    background: rgba(124, 230, 184, 0.16);
+    border-color: rgba(124, 230, 184, 0.55);
+    color: #e9fff5;
+  }
+  button.danger-btn {
+    border-color: rgba(242, 121, 143, 0.35);
+    color: #ffd5de;
+  }
+  button.danger-btn:hover {
+    background: rgba(242, 121, 143, 0.18);
+    border-color: rgba(242, 121, 143, 0.65);
+  }
+
+  /* Round End Modal */
+  .round-modal {
+    position: fixed;
+    inset: 0;
+    display: none;
+    place-items: center;
+    background: rgba(8, 10, 22, 0.48);
+    backdrop-filter: blur(4px);
+    pointer-events: auto;
+    z-index: 30;
+  }
+  .round-modal.visible {
+    display: grid;
+  }
+  .modal-card {
+    width: min(370px, calc(100vw - 32px));
+    padding: 22px 22px 20px;
+    background: var(--panel-bg-strong);
+    border: 1px solid var(--panel-border-hi);
+    border-radius: 16px;
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    text-align: center;
+  }
+  .modal-kicker {
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent-amber);
+  }
+  .modal-title {
+    font-size: 24px;
+    font-weight: 750;
+    color: #fff;
+  }
+  .modal-badge {
+    display: none;
+    align-self: center;
+    padding: 3px 10px;
+    border-radius: 999px;
+    background: rgba(255, 217, 138, 0.18);
+    border: 1px solid rgba(255, 217, 138, 0.5);
+    color: var(--accent-gold);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+  }
+  .modal-badge.visible {
+    display: inline-block;
+  }
+  .modal-stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+  .modal-formula {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+  .modal-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 2px;
+  }
+  .modal-actions button {
+    flex: 1;
+    padding: 9px 12px;
+    font-size: 12.5px;
+  }
+
+  /* Zen Restore */
+  .zen-restore {
+    position: fixed;
+    top: 14px;
+    right: 14px;
+    pointer-events: auto;
+    opacity: 0;
+    transform: translateY(-6px);
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    background: var(--panel-bg-strong);
+  }
+  body.zen-mode .zen-restore {
+    opacity: 0.85;
+    transform: translateY(0);
+  }
+
+  @media (max-width: 980px) {
+    .hint-pill { display: none; }
+    .bottom-left, .bottom-right { width: 266px; }
+  }
+  @media (max-width: 640px) {
+    .top-left { max-width: calc(100vw - 28px); }
+    .bottom-right { display: none; }
+    .top-right { top: auto; bottom: 14px; right: 14px; width: 210px; }
+    .bottom-left { bottom: 14px; left: 14px; width: calc(100vw - 246px); }
+  }
+</style>
+</head>
+<body>
+
+<canvas id="sky-canvas"></canvas>
+
+<div class="hud">
+  <!-- Top-Left: Brand & Lesson -->
+  <section class="panel top-left" aria-label="Murmuration Info">
+    <div class="brand-row">
+      <div class="brand-wrap">
+        <h1 class="brand-title">Murmuration</h1>
+        <span class="brand-tag">Reynolds Boids</span>
+      </div>
+      <button id="btn-zen" title="Hide UI to watch the sky uninterrupted (Hotkey: H)">Zen</button>
+    </div>
+    <p class="lesson-line">
+      Nobody choreographs it — the whole sky-show is three local rules and no leader.
+    </p>
+    <div class="meta-line">
+      <span>Flock: <strong id="meta-birds">360</strong></span>
+      <span>Rule view: <strong id="meta-mode">64 px radius</strong></span>
+      <span>Hawk catch: <strong>15 px</strong></span>
+      <span id="meta-fps">60 fps</span>
+    </div>
+  </section>
+
+  <!-- Hawk Incoming Banner -->
+  <div class="hawk-banner" id="hawk-banner">⚠ Hawk Diving — Part the Flock</div>
+
+  <!-- Top-Right: Round Timer & Score -->
+  <aside class="panel top-right" aria-label="Round Score">
+    <div class="score-top">
+      <div>
+        <div style="font-size:9.5px;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);" id="mode-label">90s Round</div>
+        <div class="timer-display" id="timer-display">1:30</div>
+      </div>
+      <div class="best-box">
+        BEST SCORE
+        <strong id="best-display">0</strong>
+      </div>
+    </div>
+
+    <div class="score-grid">
+      <div class="stat-cell">
+        <span class="stat-label">Gates</span>
+        <span class="stat-val pos" id="stat-gates">0</span>
+      </div>
+      <div class="stat-cell">
+        <span class="stat-label">Lost</span>
+        <span class="stat-val neg" id="stat-lost">0</span>
+      </div>
+      <div class="stat-cell">
+        <span class="stat-label">Score</span>
+        <span class="stat-val gold" id="stat-score">0</span>
+      </div>
+    </div>
+
+    <div class="score-sub">
+      Score = <strong>Gates threaded − Birds lost</strong>. Guide the flock's center reticle through each fading ring.
+    </div>
+
+    <div class="score-actions">
+      <button id="btn-new-round" class="active-amber" style="flex:1;" title="Start a fresh 90-second round with 360 birds (Hotkey: R)">↺ New Round</button>
+      <button id="btn-freefly" style="flex:1;" title="Toggle Free-Fly sandbox mode (no timer)">Free-Fly</button>
+    </div>
+  </aside>
+
+  <!-- Bottom-Left: Flocking Rules Sliders -->
+  <aside class="panel bottom-left card-expanded" id="controls-card" aria-label="Flocking Rules">
+    <div class="card-head" id="controls-toggle">
+      <span class="card-title">Local Boid Rules</span>
+      <span class="collapse-icon" id="controls-icon">−</span>
+    </div>
+    <div class="card-body">
+      <div class="slider-stack">
+        <div class="slider-row">
+          <div class="slider-meta">
+            <span class="slider-name">Separation <span style="color:var(--text-muted);font-weight:400;">(avoid crowding + hawk)</span></span>
+            <span class="slider-val" id="val-sep">1.50</span>
+          </div>
+          <input type="range" id="sl-sep" min="0" max="3" step="0.05" value="1.50" />
+        </div>
+
+        <div class="slider-row">
+          <div class="slider-meta">
+            <span class="slider-name">Alignment <span style="color:var(--text-muted);font-weight:400;">(match heading)</span></span>
+            <span class="slider-val" id="val-ali">1.30</span>
+          </div>
+          <input type="range" id="sl-ali" min="0" max="3" step="0.05" value="1.30" />
+        </div>
+
+        <div class="slider-row">
+          <div class="slider-meta">
+            <span class="slider-name">Cohesion <span style="color:var(--text-muted);font-weight:400;">(drift to local center)</span></span>
+            <span class="slider-val" id="val-coh">1.10</span>
+          </div>
+          <input type="range" id="sl-coh" min="0" max="3" step="0.05" value="1.10" />
+        </div>
+
+        <div class="slider-row" id="row-radius">
+          <div class="slider-meta">
+            <span class="slider-name">Perception Radius</span>
+            <span class="slider-val" id="val-rad">64 px</span>
+          </div>
+          <input type="range" id="sl-rad" min="20" max="140" step="2" value="64" />
+        </div>
+
+        <div class="slider-row">
+          <div class="slider-meta">
+            <span class="slider-name">Max Speed</span>
+            <span class="slider-val" id="val-spd">235 px/s</span>
+          </div>
+          <input type="range" id="sl-spd" min="120" max="420" step="5" value="235" />
+        </div>
+      </div>
+
+      <div class="starling-row">
+        <button id="btn-starling" class="toggle-btn" title="Track only the 7 nearest neighbors topologically, like real European starlings">
+          <span>Starling Mode (7 nearest)</span>
+          <span class="toggle-pill" id="starling-pill">OFF</span>
+        </button>
+
+        <div class="chip-row">
+          <button id="btn-preset-default" title="Restore flowing murmuration defaults">Reset Defaults</button>
+          <button id="btn-summon-hawk" class="danger-btn" title="Trigger a hawk dive now">Summon Hawk</button>
+          <button id="btn-preset-explode" title="All separation = flock explodes outward">Break: Explode</button>
+          <button id="btn-preset-ball" title="All cohesion = flock collapses into a ball">Break: Ball</button>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Bottom-Center Subtle Cue -->
+  <div class="hint-pill">
+    Move your <strong>cursor or finger</strong> to create wind and shepherd the flock through sky gates
+  </div>
+
+  <!-- Bottom-Right: "What this leaves out" Honesty Card -->
+  <aside class="panel bottom-right card-expanded" id="honesty-card" aria-label="What this simulation leaves out">
+    <div class="card-head" id="honesty-toggle">
+      <span class="card-title">What this leaves out</span>
+      <span class="collapse-icon" id="honesty-icon">−</span>
+    </div>
+    <div class="card-body">
+      <ul class="honesty-list">
+        <li><strong>2D &amp; far smaller:</strong> Real murmurations fold in 3D with tens or hundreds of thousands of starlings, not 360 in a flat plane.</li>
+        <li><strong>7 nearest neighbors:</strong> Real starlings watch ~7 closest neighbors regardless of distance — try <strong>Starling Mode</strong> to switch from a fixed radius to topological 7-nearest tracking.</li>
+        <li><strong>Spatial grid shortcut:</strong> The background grid partitioning is purely a performance shortcut so 360+ birds run smoothly — not a rule or boundary the birds know about.</li>
+        <li><strong>Hawk is pure separation:</strong> Birds have no special "predator AI"; the hawk simply enters their separation rule as a nearby obstacle (catch distance = 15 px).</li>
+        <li><strong>Toy physics &amp; sky edges:</strong> No real lift, drag, thermals, or roosting instinct; soft viewport margins keep the flock on screen.</li>
+      </ul>
+    </div>
+  </aside>
+
+  <!-- Round Complete Modal -->
+  <div class="round-modal" id="round-modal" role="dialog" aria-modal="true" aria-label="Round Summary">
+    <div class="modal-card">
+      <div class="modal-kicker">Dusk Falls · 90s Complete</div>
+      <div class="modal-title" id="modal-score-title">Score: 0</div>
+      <div class="modal-badge" id="modal-best-badge">★ New Best Score</div>
+      <div class="modal-stats">
+        <div class="stat-cell">
+          <span class="stat-label">Gates</span>
+          <span class="stat-val pos" id="modal-gates">0</span>
+        </div>
+        <div class="stat-cell">
+          <span class="stat-label">Lost</span>
+          <span class="stat-val neg" id="modal-lost">0</span>
+        </div>
+        <div class="stat-cell">
+          <span class="stat-label">Best</span>
+          <span class="stat-val gold" id="modal-best">0</span>
+        </div>
+      </div>
+      <div class="modal-formula" id="modal-formula">0 gates − 0 birds lost = 0</div>
+      <div class="modal-actions">
+        <button id="btn-modal-replay" class="active-amber">Fly Again (90s)</button>
+        <button id="btn-modal-free">Keep Watching</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Zen Restore Button -->
+  <button class="panel zen-restore" id="btn-zen-restore">Exit Zen (H)</button>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // =========================================================================
+  // CONSTANTS & CONFIGURATION
+  // =========================================================================
+  const INITIAL_BIRDS = 360;
+  const ROUND_SECONDS = 90;
+  const GATE_RADIUS = 56;
+  const GATE_LIFETIME = 16.0;
+  const HAWK_CATCH_RADIUS = 15;
+  const HAWK_CATCH_RADIUS2 = HAWK_CATCH_RADIUS * HAWK_CATCH_RADIUS;
+  const WIND_RADIUS = 142;
+  const TRAIL_LEN = 13;
+  const STORAGE_BEST_KEY = 'murmuration_best_score_v1';
+
+  const DEFAULTS = {
+    wSep: 1.50,
+    wAli: 1.30,
+    wCoh: 1.10,
+    percR: 64,
+    maxSpeed: 235
+  };
+
+  const cfg = { ...DEFAULTS, starlingMode: false };
+
+  // =========================================================================
+  // CANVAS & VIEWPORT
+  // =========================================================================
+  const canvas = document.getElementById('sky-canvas');
+  const ctx = canvas.getContext('2d');
+
+  let viewW = window.innerWidth;
+  let viewH = window.innerHeight;
+  let dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+  // Offscreen cached dusk backdrop (gradient + horizon ridge + twilight stars)
+  const bgCanvas = document.createElement('canvas');
+  const bgCtx = bgCanvas.getContext('2d');
+
+  function renderStaticSky() {
+    bgCanvas.width = Math.floor(viewW * dpr);
+    bgCanvas.height = Math.floor(viewH * dpr);
+    bgCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    // Rich dusk gradient (zenith indigo -> plum -> dusty rose -> warm sunset apricot)
+    const sky = bgCtx.createLinearGradient(0, 0, 0, viewH);
+    sky.addColorStop(0.00, '#0b1024');
+    sky.addColorStop(0.24, '#1b1b3b');
+    sky.addColorStop(0.48, '#462c4f');
+    sky.addColorStop(0.70, '#8d4857');
+    sky.addColorStop(0.87, '#d17b54');
+    sky.addColorStop(1.00, '#f0b673');
+    bgCtx.fillStyle = sky;
+    bgCtx.fillRect(0, 0, viewW, viewH);
+
+    // Soft sunset afterglow bloom near low center-left horizon
+    const glow = bgCtx.createRadialGradient(
+      viewW * 0.44, viewH * 0.96, 20,
+      viewW * 0.44, viewH * 0.96, Math.max(viewW, viewH) * 0.62
+    );
+    glow.addColorStop(0.0, 'rgba(255, 214, 148, 0.34)');
+    glow.addColorStop(0.35, 'rgba(244, 146, 98, 0.16)');
+    glow.addColorStop(1.0, 'rgba(0, 0, 0, 0)');
+    bgCtx.fillStyle = glow;
+    bgCtx.fillRect(0, 0, viewW, viewH);
+
+    // Subtle twilight stars in the upper 40% of the sky
+    let seed = 918273;
+    const rand = () => {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      return seed / 4294967296;
+    };
+    for (let i = 0; i < 65; i++) {
+      const sx = rand() * viewW;
+      const sy = rand() * viewH * 0.42;
+      const fade = 1 - sy / (viewH * 0.42);
+      bgCtx.fillStyle = `rgba(255, 244, 230, ${(0.12 + rand() * 0.48) * fade})`;
+      bgCtx.beginPath();
+      bgCtx.arc(sx, sy, 0.6 + rand() * 1.1, 0, Math.PI * 2);
+      bgCtx.fill();
+    }
+
+    // Soft atmospheric twilight cloud bands
+    bgCtx.save();
+    for (let i = 0; i < 6; i++) {
+      const cx = (0.12 + i * 0.17 + (rand() - 0.5) * 0.08) * viewW;
+      const cy = (0.56 + rand() * 0.24) * viewH;
+      const rw = 140 + rand() * 220;
+      const rh = 16 + rand() * 24;
+      const cg = bgCtx.createRadialGradient(cx, cy, 4, cx, cy, rw);
+      cg.addColorStop(0, 'rgba(54, 28, 52, 0.22)');
+      cg.addColorStop(1, 'rgba(54, 28, 52, 0)');
+      bgCtx.fillStyle = cg;
+      bgCtx.beginPath();
+      bgCtx.ellipse(cx, cy, rw, rh, 0, 0, Math.PI * 2);
+      bgCtx.fill();
+    }
+    bgCtx.restore();
+
+    // Low distant evening horizon silhouette (marshland ridge & faint treeline)
+    const baseH = viewH - 22;
+    bgCtx.fillStyle = '#120e1c';
+    bgCtx.beginPath();
+    bgCtx.moveTo(0, viewH);
+    bgCtx.lineTo(0, baseH);
+    const steps = 48;
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      const x = t * viewW;
+      const ridge =
+        Math.sin(t * Math.PI * 3.1) * 7 +
+        Math.sin(t * Math.PI * 11.7) * 3.5 +
+        Math.cos(t * Math.PI * 27.3) * 2.0;
+      bgCtx.lineTo(x, baseH - 4 + ridge);
+    }
+    bgCtx.lineTo(viewW, viewH);
+    bgCtx.closePath();
+    bgCtx.fill();
+  }
+
+  function resize() {
+    viewW = window.innerWidth;
+    viewH = window.innerHeight;
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.floor(viewW * dpr);
+    canvas.height = Math.floor(viewH * dpr);
+    canvas.style.width = `${viewW}px`;
+    canvas.style.height = `${viewH}px`;
+    renderStaticSky();
+    rebuildGridAllocation();
+  }
+
+  // =========================================================================
+  // SPATIAL HASH GRID (PERFORMANCE SHORTCUT ONLY — ZERO PER-FRAME ALLOCS)
+  // =========================================================================
+  let gridCols = 1;
+  let gridRows = 1;
+  let gridCellSize = 64;
+  let cellHead = new Int32Array(1);
+  let birdNext = new Int32Array(INITIAL_BIRDS);
+
+  function rebuildGridAllocation() {
+    gridCellSize = cfg.starlingMode ? 60 : Math.max(24, Math.round(cfg.percR));
+    gridCols = Math.max(1, Math.ceil(viewW / gridCellSize));
+    gridRows = Math.max(1, Math.ceil(viewH / gridCellSize));
+    const total = gridCols * gridRows;
+    if (cellHead.length < total) {
+      cellHead = new Int32Array(total);
+    }
+  }
+
+  // =========================================================================
+  // FLOCK DATA (FLAT ARRAYS FOR 60 FPS CACHE-FRIENDLY PERFORMANCE)
+  // =========================================================================
+  const bx = new Float32Array(INITIAL_BIRDS);
+  const by = new Float32Array(INITIAL_BIRDS);
+  const bvx = new Float32Array(INITIAL_BIRDS);
+  const bvy = new Float32Array(INITIAL_BIRDS);
+  const bfx = new Float32Array(INITIAL_BIRDS);
+  const bfy = new Float32Array(INITIAL_BIRDS);
+  const bBank = new Float32Array(INITIAL_BIRDS);
+  const bFlap = new Float32Array(INITIAL_BIRDS);
+  const bFlapSpd = new Float32Array(INITIAL_BIRDS);
+  const bAlive = new Uint8Array(INITIAL_BIRDS);
+
+  // Per-bird smoke trail ring buffers (flat: index = i * TRAIL_LEN + slot)
+  const trailX = new Float32Array(INITIAL_BIRDS * TRAIL_LEN);
+  const trailY = new Float32Array(INITIAL_BIRDS * TRAIL_LEN);
+  let trailHead = 0;
+  let trailSampleAccum = 0;
+
+  // Scratch arrays for Starling Mode 7-nearest lookup (zero heap alloc)
+  const kBestD2 = new Float64Array(7);
+  const kBestIdx = new Int32Array(7);
+
+  let aliveCount = INITIAL_BIRDS;
+  let flockCx = viewW * 0.5;
+  let flockCy = viewH * 0.45;
+
+  function spawnFlock() {
+    aliveCount = INITIAL_BIRDS;
+    const cx = viewW * 0.48;
+    const cy = viewH * 0.46;
+    const baseAngle = -0.25;
+    for (let i = 0; i < INITIAL_BIRDS; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const r = Math.sqrt(Math.random()) * Math.min(viewW, viewH) * 0.16;
+      const x = Math.max(60, Math.min(viewW - 60, cx + Math.cos(a) * r * 1.35));
+      const y = Math.max(60, Math.min(viewH - 90, cy + Math.sin(a) * r * 0.85));
+      const heading = baseAngle + (Math.random() - 0.5) * 0.55;
+      const spd = cfg.maxSpeed * (0.76 + Math.random() * 0.18);
+      bx[i] = x;
+      by[i] = y;
+      bvx[i] = Math.cos(heading) * spd;
+      bvy[i] = Math.sin(heading) * spd;
+      bBank[i] = 0;
+      bFlap[i] = Math.random() * Math.PI * 2;
+      bFlapSpd[i] = 10 + Math.random() * 5;
+      bAlive[i] = 1;
+      const base = i * TRAIL_LEN;
+      for (let t = 0; t < TRAIL_LEN; t++) {
+        trailX[base + t] = x;
+        trailY[base + t] = y;
+      }
+    }
+    trailHead = 0;
+    flockCx = cx;
+    flockCy = cy;
+  }
+
+  // =========================================================================
+  // GAME STATE (GATES, HAWK, WIND, ROUNDS, SCORE)
+  // =========================================================================
+  let gatesThreaded = 0;
+  let birdsLost = 0;
+  let bestScore = loadBestScore();
+  let roundTimeLeft = ROUND_SECONDS;
+  let roundActive = true;
+  let freeFlyMode = false;
+
+  // Active gate
+  let gate = null;
+  let gateRespawnTimer = 0;
+
+  // Hawk predator state
+  const hawk = {
+    state: 'idle', // 'idle' | 'warning' | 'diving'
+    cooldown: 13.5,
+    warnTimer: 0,
+    x: 0, y: 0,
+    vx: 0, vy: 0,
+    tx: 0, ty: 0,
+    edgeX: 0, edgeY: 0,
+    bank: 0,
+    trail: []
+  };
+
+  // Wind cursor / touch state
+  const wind = {
+    active: false,
+    x: viewW * 0.5,
+    y: viewH * 0.5,
+    prevX: viewW * 0.5,
+    prevY: viewH * 0.5,
+    vx: 0,
+    vy: 0,
+    streaks: []
+  };
+
+  // Visual particles (gate ripples, feathers, floating score popups)
+  const ripples = [];
+  const feathers = [];
+  const popups = [];
+
+  function loadBestScore() {
+    try {
+      const raw = localStorage.getItem(STORAGE_BEST_KEY);
+      if (raw === null) return null;
+      const v = parseInt(raw, 10);
+      return Number.isFinite(v) ? v : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function saveBestScore(val) {
+    try {
+      localStorage.setItem(STORAGE_BEST_KEY, String(val));
+    } catch {
+      // Ignore private-mode storage errors
+    }
+  }
+
+  function spawnGate(avoidX, avoidY) {
+    const padX = Math.max(115, Math.min(180, viewW * 0.14));
+    const padTop = 105;
+    const padBot = Math.max(135, viewH * 0.19);
+    let gx = viewW * 0.5;
+    let gy = viewH * 0.42;
+    for (let tries = 0; tries < 24; tries++) {
+      const cx = padX + Math.random() * Math.max(80, viewW - padX * 2);
+      const cy = padTop + Math.random() * Math.max(80, viewH - padTop - padBot);
+      const dAvoid = avoidX !== undefined ? Math.hypot(cx - avoidX, cy - avoidY) : 9999;
+      const dFlock = Math.hypot(cx - flockCx, cy - flockCy);
+      if (dAvoid > 210 && dFlock > 180) {
+        gx = cx;
+        gy = cy;
+        break;
+      }
+      gx = cx;
+      gy = cy;
+    }
+    gate = {
+      x: gx,
+      y: gy,
+      r: GATE_RADIUS,
+      timer: GATE_LIFETIME,
+      maxTimer: GATE_LIFETIME,
+      pulse: 0,
+      birdsInside: 0
+    };
+  }
+
+  function triggerHawkWarning() {
+    if (hawk.state !== 'idle' || aliveCount < 5) return;
+    // Choose a random sky edge (left, right, or top)
+    const side = Math.floor(Math.random() * 3);
+    let sx, sy;
+    if (side === 0) {
+      sx = -35;
+      sy = 70 + Math.random() * (viewH * 0.55);
+    } else if (side === 1) {
+      sx = viewW + 35;
+      sy = 70 + Math.random() * (viewH * 0.55);
+    } else {
+      sx = 100 + Math.random() * (viewW - 200);
+      sy = -35;
+    }
+    hawk.state = 'warning';
+    hawk.warnTimer = 1.6;
+    hawk.x = sx;
+    hawk.y = sy;
+    hawk.edgeX = Math.max(30, Math.min(viewW - 30, sx));
+    hawk.edgeY = Math.max(30, Math.min(viewH - 80, sy));
+    hawk.trail.length = 0;
+    document.getElementById('hawk-banner').classList.add('visible');
+  }
+
+  function launchHawkDive() {
+    hawk.state = 'diving';
+    hawk.tx = flockCx + (Math.random() - 0.5) * 40;
+    hawk.ty = flockCy + (Math.random() - 0.5) * 30;
+    const dx = hawk.tx - hawk.x;
+    const dy = hawk.ty - hawk.y;
+    const dist = Math.hypot(dx, dy) || 1;
+    const diveSpeed = 435;
+    hawk.vx = (dx / dist) * diveSpeed;
+    hawk.vy = (dy / dist) * diveSpeed;
+    hawk.bank = 0;
+  }
+
+  function startRound(isFreeFly = false) {
+    freeFlyMode = isFreeFly;
+    gatesThreaded = 0;
+    birdsLost = 0;
+    roundTimeLeft = ROUND_SECONDS;
+    roundActive = !isFreeFly;
+    ripples.length = 0;
+    feathers.length = 0;
+    popups.length = 0;
+    hawk.state = 'idle';
+    hawk.cooldown = 14 + Math.random() * 4;
+    hawk.trail.length = 0;
+    document.getElementById('hawk-banner').classList.remove('visible');
+    document.getElementById('round-modal').classList.remove('visible');
+
+    spawnFlock();
+    if (!freeFlyMode) {
+      spawnGate();
+    } else {
+      gate = null;
+    }
+    updateScoreUI();
+  }
+
+  function endRound() {
+    roundActive = false;
+    gate = null;
+    hawk.state = 'idle';
+    document.getElementById('hawk-banner').classList.remove('visible');
+
+    const finalScore = gatesThreaded - birdsLost;
+    const isNewBest = bestScore === null || finalScore > bestScore;
+    if (isNewBest) {
+      bestScore = finalScore;
+      saveBestScore(bestScore);
+    }
+
+    document.getElementById('modal-score-title').textContent = `Score: ${finalScore}`;
+    document.getElementById('modal-gates').textContent = String(gatesThreaded);
+    document.getElementById('modal-lost').textContent = String(birdsLost);
+    document.getElementById('modal-best').textContent = String(bestScore);
+    document.getElementById('modal-formula').textContent =
+      `${gatesThreaded} gates − ${birdsLost} birds lost = ${finalScore}`;
+    document.getElementById('modal-best-badge').classList.toggle('visible', isNewBest);
+    document.getElementById('round-modal').classList.add('visible');
+    updateScoreUI();
+  }
+
+  // =========================================================================
+  // SIMULATION STEP — EXACTLY THREE LOCAL REYNOLDS RULES
+  // =========================================================================
+  function populateGrid() {
+    const neededSize = cfg.starlingMode ? 60 : Math.max(24, Math.round(cfg.percR));
+    if (neededSize !== gridCellSize) {
+      rebuildGridAllocation();
+    }
+    const total = gridCols * gridRows;
+    cellHead.fill(-1, 0, total);
+    const invCell = 1 / gridCellSize;
+
+    for (let i = 0; i < INITIAL_BIRDS; i++) {
+      if (!bAlive[i]) continue;
+      let cx = Math.floor(bx[i] * invCell);
+      let cy = Math.floor(by[i] * invCell);
+      if (cx < 0) cx = 0; else if (cx >= gridCols) cx = gridCols - 1;
+      if (cy < 0) cy = 0; else if (cy >= gridRows) cy = gridRows - 1;
+      const cell = cy * gridCols + cx;
+      birdNext[i] = cellHead[cell];
+      cellHead[cell] = i;
+    }
+  }
+
+  function stepFlock(dt) {
+    populateGrid();
+
+    const maxSpeed = cfg.maxSpeed;
+    const minSpeed = maxSpeed * 0.56;
+    const maxForce = 440;
+    const wSep = cfg.wSep;
+    const wAli = cfg.wAli;
+    const wCoh = cfg.wCoh;
+    const percR = cfg.percR;
+    const percR2 = percR * percR;
+    const sepR = cfg.starlingMode ? 22 : Math.min(28, percR * 0.44);
+    const sepR2 = sepR * sepR;
+    const starlingMode = cfg.starlingMode;
+    const invCell = 1 / gridCellSize;
+
+    const hawkActive = hawk.state === 'diving';
+    const hawkX = hawk.x;
+    const hawkY = hawk.y;
+    const hawkSenseR = Math.max(percR, 94);
+    const hawkSenseR2 = hawkSenseR * hawkSenseR;
+
+    // 1. Evaluate the 3 local Reynolds rules for every living bird
+    for (let i = 0; i < INITIAL_BIRDS; i++) {
+      if (!bAlive[i]) continue;
+
+      const x = bx[i];
+      const y = by[i];
+      const vx = bvx[i];
+      const vy = bvy[i];
+
+      let cx = Math.floor(x * invCell);
+      let cy = Math.floor(y * invCell);
+      if (cx < 0) cx = 0; else if (cx >= gridCols) cx = gridCols - 1;
+      if (cy < 0) cy = 0; else if (cy >= gridRows) cy = gridRows - 1;
+
+      let sepX = 0, sepY = 0, sepCount = 0;
+      let aliX = 0, aliY = 0;
+      let cohX = 0, cohY = 0;
+      let nCount = 0;
+
+      if (!starlingMode) {
+        // METRIC MODE: every neighbor within perception radius R
+        const minCx = cx > 0 ? cx - 1 : 0;
+        const maxCx = cx < gridCols - 1 ? cx + 1 : gridCols - 1;
+        const minCy = cy > 0 ? cy - 1 : 0;
+        const maxCy = cy < gridRows - 1 ? cy + 1 : gridRows - 1;
+
+        for (let gy = minCy; gy <= maxCy; gy++) {
+          const rowOff = gy * gridCols;
+          for (let gx = minCx; gx <= maxCx; gx++) {
+            let j = cellHead[rowOff + gx];
+            while (j !== -1) {
+              if (j !== i) {
+                const dx = bx[j] - x;
+                const dy = by[j] - y;
+                const d2 = dx * dx + dy * dy;
+                if (d2 < percR2 && d2 > 1e-5) {
+                  if (d2 < sepR2) {
+                    const invD = 1 / d2;
+                    sepX -= dx * invD;
+                    sepY -= dy * invD;
+                    sepCount++;
+                  }
+                  aliX += bvx[j];
+                  aliY += bvy[j];
+                  cohX += bx[j];
+                  cohY += by[j];
+                  nCount++;
+                }
+              }
+              j = birdNext[j];
+            }
+          }
+        }
+      } else {
+        // STARLING MODE: topological 7 nearest neighbors (expanding grid rings)
+        for (let k = 0; k < 7; k++) {
+          kBestD2[k] = 1e12;
+          kBestIdx[k] = -1;
+        }
+        let found = 0;
+        const maxRing = Math.max(gridCols, gridRows);
+        for (let ring = 0; ring <= maxRing; ring++) {
+          const minCx = Math.max(0, cx - ring);
+          const maxCx = Math.min(gridCols - 1, cx + ring);
+          const minCy = Math.max(0, cy - ring);
+          const maxCy = Math.min(gridRows - 1, cy + ring);
+
+          for (let gy = minCy; gy <= maxCy; gy++) {
+            const rowOff = gy * gridCols;
+            for (let gx = minCx; gx <= maxCx; gx++) {
+              // On ring > 0, only visit perimeter cells of this ring
+              if (ring > 0 && gx > cx - ring && gx < cx + ring && gy > cy - ring && gy < cy + ring) {
+                continue;
+              }
+              let j = cellHead[rowOff + gx];
+              while (j !== -1) {
+                if (j !== i) {
+                  const dx = bx[j] - x;
+                  const dy = by[j] - y;
+                  const d2 = dx * dx + dy * dy;
+                  if (d2 > 1e-5 && d2 < kBestD2[6]) {
+                    let k = 6;
+                    while (k > 0 && d2 < kBestD2[k - 1]) {
+                      kBestD2[k] = kBestD2[k - 1];
+                      kBestIdx[k] = kBestIdx[k - 1];
+                      k--;
+                    }
+                    kBestD2[k] = d2;
+                    kBestIdx[k] = j;
+                    if (found < 7) found++;
+                  }
+                }
+                j = birdNext[j];
+              }
+            }
+          }
+          // Stop once we have 7 neighbors and the next ring's minimum possible distance exceeds our 7th-closest
+          if (found >= 7) {
+            const minNextRingDist = Math.max(0, ring * gridCellSize);
+            if (minNextRingDist * minNextRingDist >= kBestD2[6]) break;
+          }
+        }
+
+        for (let k = 0; k < 7; k++) {
+          const j = kBestIdx[k];
+          if (j === -1) break;
+          const d2 = kBestD2[k];
+          if (d2 < sepR2) {
+            const invD = 1 / d2;
+            sepX -= (bx[j] - x) * invD;
+            sepY -= (by[j] - y) * invD;
+            sepCount++;
+          }
+          aliX += bvx[j];
+          aliY += bvy[j];
+          cohX += bx[j];
+          cohY += by[j];
+          nCount++;
+        }
+      }
+
+      // Hawk enters strictly as an obstacle inside the Separation rule (nothing else!)
+      if (hawkActive) {
+        const hdx = hawkX - x;
+        const hdy = hawkY - y;
+        const hd2 = hdx * hdx + hdy * hdy;
+        if (hd2 < hawkSenseR2 && hd2 > 1e-4) {
+          // Strong local repulsion weighted inside separation
+          const boost = 14 / hd2;
+          sepX -= hdx * boost;
+          sepY -= hdy * boost;
+          sepCount++;
+        }
+      }
+
+      let fx = 0;
+      let fy = 0;
+
+      // Rule 1: Separation
+      if (sepCount > 0 && wSep > 0) {
+        const mag = Math.hypot(sepX, sepY);
+        if (mag > 1e-6) {
+          let sx = (sepX / mag) * maxSpeed - vx;
+          let sy = (sepY / mag) * maxSpeed - vy;
+          const sm = Math.hypot(sx, sy);
+          const sepLimit = hawkActive ? maxForce * 1.45 : maxForce;
+          if (sm > sepLimit) {
+            sx *= sepLimit / sm;
+            sy *= sepLimit / sm;
+          }
+          fx += sx * wSep;
+          fy += sy * wSep;
+        }
+      }
+
+      // Rule 2: Alignment
+      if (nCount > 0 && wAli > 0) {
+        const ax = aliX / nCount;
+        const ay = aliY / nCount;
+        const mag = Math.hypot(ax, ay);
+        if (mag > 1e-6) {
+          let stx = (ax / mag) * maxSpeed - vx;
+          let sty = (ay / mag) * maxSpeed - vy;
+          const sm = Math.hypot(stx, sty);
+          if (sm > maxForce) {
+            stx *= maxForce / sm;
+            sty *= maxForce / sm;
+          }
+          fx += stx * wAli;
+          fy += sty * wAli;
+        }
+      }
+
+      // Rule 3: Cohesion
+      if (nCount > 0 && wCoh > 0) {
+        const dx = cohX / nCount - x;
+        const dy = cohY / nCount - y;
+        const mag = Math.hypot(dx, dy);
+        if (mag > 1e-6) {
+          let stx = (dx / mag) * maxSpeed - vx;
+          let sty = (dy / mag) * maxSpeed - vy;
+          const sm = Math.hypot(stx, sty);
+          if (sm > maxForce) {
+            stx *= maxForce / sm;
+            sty *= maxForce / sm;
+          }
+          fx += stx * wCoh;
+          fy += sty * wCoh;
+        }
+      }
+
+      // External physical wind from player's cursor/touch
+      if (wind.active) {
+        const wdx = x - wind.x;
+        const wdy = y - wind.y;
+        const wd = Math.hypot(wdx, wdy);
+        if (wd < WIND_RADIUS && wd > 1e-3) {
+          const falloff = 1 - wd / WIND_RADIUS;
+          const falloff2 = falloff * falloff;
+          // Directional sweep from cursor motion + gentle radial parting if still
+          fx += wind.vx * 1.65 * falloff2 + (wdx / wd) * 190 * falloff2;
+          fy += wind.vy * 1.65 * falloff2 + (wdy / wd) * 190 * falloff2;
+        }
+      }
+
+      // Soft viewport sky containment margins (keeps flock on screen; noted in honesty card)
+      const marginX = 68;
+      const marginTop = 64;
+      const marginBot = 96;
+      const wallStrength = 520;
+      if (x < marginX) fx += ((marginX - x) / marginX) * wallStrength;
+      else if (x > viewW - marginX) fx -= ((x - (viewW - marginX)) / marginX) * wallStrength;
+      if (y < marginTop) fy += ((marginTop - y) / marginTop) * wallStrength;
+      else if (y > viewH - marginBot) fy -= ((y - (viewH - marginBot)) / marginBot) * wallStrength;
+
+      bfx[i] = fx;
+      bfy[i] = fy;
+    }
+
+    // 2. Integrate positions, update banking angle & flock centroid
+    let sumX = 0;
+    let sumY = 0;
+    let count = 0;
+
+    for (let i = 0; i < INITIAL_BIRDS; i++) {
+      if (!bAlive[i]) continue;
+
+      const oldVx = bvx[i];
+      const oldVy = bvy[i];
+      const oldSpd = Math.hypot(oldVx, oldVy) || 1;
+
+      let nvx = oldVx + bfx[i] * dt;
+      let nvy = oldVy + bfy[i] * dt;
+      let spd = Math.hypot(nvx, nvy);
+      if (spd < 1e-4) {
+        nvx = oldVx;
+        nvy = oldVy;
+        spd = oldSpd;
+      }
+      if (spd > maxSpeed) {
+        nvx *= maxSpeed / spd;
+        nvy *= maxSpeed / spd;
+        spd = maxSpeed;
+      } else if (spd < minSpeed) {
+        nvx *= minSpeed / spd;
+        nvy *= minSpeed / spd;
+        spd = minSpeed;
+      }
+
+      // Instantaneous turn rate (cross product of unit headings / dt) -> smooth banking
+      const cross = (oldVx * nvy - oldVy * nvx) / (oldSpd * spd);
+      const turnRate = cross / Math.max(0.004, dt);
+      const targetBank = Math.max(-1, Math.min(1, turnRate * 0.24));
+      bBank[i] += (targetBank - bBank[i]) * Math.min(1, dt * 8.5);
+      bFlap[i] += bFlapSpd[i] * dt * (0.85 + 0.35 * (spd / maxSpeed));
+
+      bvx[i] = nvx;
+      bvy[i] = nvy;
+
+      let nx = bx[i] + nvx * dt;
+      let ny = by[i] + nvy * dt;
+      // Hard safety clamp just inside viewport
+      if (nx < 6) { nx = 6; bvx[i] = Math.abs(bvx[i]); }
+      else if (nx > viewW - 6) { nx = viewW - 6; bvx[i] = -Math.abs(bvx[i]); }
+      if (ny < 6) { ny = 6; bvy[i] = Math.abs(bvy[i]); }
+      else if (ny > viewH - 28) { ny = viewH - 28; bvy[i] = -Math.abs(bvy[i]); }
+
+      bx[i] = nx;
+      by[i] = ny;
+      sumX += nx;
+      sumY += ny;
+      count++;
+    }
+
+    aliveCount = count;
+    if (count > 0) {
+      flockCx = sumX / count;
+      flockCy = sumY / count;
+    }
+
+    // Record smoke-trail ring buffer ~30 times/sec for silky-long wisps
+    trailSampleAccum += dt;
+    if (trailSampleAccum >= 0.032) {
+      trailSampleAccum = 0;
+      trailHead = (trailHead + 1) % TRAIL_LEN;
+      for (let i = 0; i < INITIAL_BIRDS; i++) {
+        if (!bAlive[i]) continue;
+        trailX[i * TRAIL_LEN + trailHead] = bx[i];
+        trailY[i * TRAIL_LEN + trailHead] = by[i];
+      }
+    }
+  }
+
+  function stepGameLogic(dt) {
+    // Decay wind velocity smoothly between mouse moves
+    wind.vx *= Math.pow(0.04, dt);
+    wind.vy *= Math.pow(0.04, dt);
+
+    // Update wind streaks
+    for (let i = wind.streaks.length - 1; i >= 0; i--) {
+      const s = wind.streaks[i];
+      s.life -= dt;
+      if (s.life <= 0) {
+        wind.streaks.splice(i, 1);
+        continue;
+      }
+      s.x += s.vx * dt;
+      s.y += s.vy * dt;
+    }
+
+    // Round timer
+    if (roundActive) {
+      roundTimeLeft -= dt;
+      if (roundTimeLeft <= 0) {
+        roundTimeLeft = 0;
+        endRound();
+        return;
+      }
+    }
+
+    // Active gate logic
+    if (roundActive) {
+      if (gate) {
+        gate.timer -= dt;
+        gate.pulse += dt * 3.5;
+
+        // Count birds currently inside ring for visual glow feedback
+        let inside = 0;
+        const gr2 = gate.r * gate.r;
+        for (let i = 0; i < INITIAL_BIRDS; i++) {
+          if (!bAlive[i]) continue;
+          const dx = bx[i] - gate.x;
+          const dy = by[i] - gate.y;
+          if (dx * dx + dy * dy <= gr2) inside++;
+        }
+        gate.birdsInside = inside;
+
+        // Check if the flock's center threads the gate
+        const dCenter = Math.hypot(flockCx - gate.x, flockCy - gate.y);
+        if (dCenter <= gate.r) {
+          gatesThreaded++;
+          ripples.push({ x: gate.x, y: gate.y, r: gate.r, maxR: gate.r * 2.4, alpha: 1, color: '#ffd98a' });
+          popups.push({ x: gate.x, y: gate.y - 12, text: '+1 GATE', life: 1.25, maxLife: 1.25, color: '#7ce6b8' });
+          const prevX = gate.x, prevY = gate.y;
+          gate = null;
+          gateRespawnTimer = 0.45;
+          spawnGate(prevX, prevY);
+          gateRespawnTimer = 0;
+          updateScoreUI();
+        } else if (gate.timer <= 0) {
+          ripples.push({ x: gate.x, y: gate.y, r: gate.r, maxR: gate.r * 1.4, alpha: 0.55, color: '#f2798f' });
+          popups.push({ x: gate.x, y: gate.y, text: 'FADED', life: 0.9, maxLife: 0.9, color: '#f2798f' });
+          const prevX = gate.x, prevY = gate.y;
+          gate = null;
+          gateRespawnTimer = 0.7;
+          // Store previous coords for respawn
+          gateRespawnTimer = 0.7;
+          setTimeout(() => {
+            if (roundActive && !gate) spawnGate(prevX, prevY);
+          }, 700);
+        }
+      }
+    }
+
+    // Hawk predator scheduler & dive physics
+    if (hawk.state === 'idle') {
+      if (roundActive) {
+        hawk.cooldown -= dt;
+        if (hawk.cooldown <= 0) {
+          triggerHawkWarning();
+        }
+      }
+    } else if (hawk.state === 'warning') {
+      hawk.warnTimer -= dt;
+      if (hawk.warnTimer <= 0) {
+        launchHawkDive();
+      }
+    } else if (hawk.state === 'diving') {
+      // Subtle steering toward flock during first half of dive, then sweeps cleanly through
+      const dx = flockCx - hawk.x;
+      const dy = flockCy - hawk.y;
+      const distToFlock = Math.hypot(dx, dy) || 1;
+      const spd = Math.hypot(hawk.vx, hawk.vy) || 430;
+      const dot = (hawk.vx * dx + hawk.vy * dy) / (spd * distToFlock);
+
+      // Only gently adjust aim while flock is still ahead of hawk
+      if (dot > 0.25 && distToFlock > 70) {
+        const desX = (dx / distToFlock) * spd;
+        const desY = (dy / distToFlock) * spd;
+        const turnGain = 1.45 * dt;
+        const oldVx = hawk.vx, oldVy = hawk.vy;
+        hawk.vx += (desX - hawk.vx) * turnGain;
+        hawk.vy += (desY - hawk.vy) * turnGain;
+        const nSpd = Math.hypot(hawk.vx, hawk.vy) || 1;
+        hawk.vx *= spd / nSpd;
+        hawk.vy *= spd / nSpd;
+        const cross = (oldVx * hawk.vy - oldVy * hawk.vx) / (spd * spd);
+        hawk.bank += (Math.max(-1, Math.min(1, cross / Math.max(0.005, dt) * 0.4)) - hawk.bank) * Math.min(1, dt * 8);
+      }
+
+      hawk.x += hawk.vx * dt;
+      hawk.y += hawk.vy * dt;
+      hawk.trail.push({ x: hawk.x, y: hawk.y });
+      if (hawk.trail.length > 26) hawk.trail.shift();
+
+      // Check hawk catches (stated catch radius = 15 px)
+      let caughtNow = 0;
+      for (let i = 0; i < INITIAL_BIRDS; i++) {
+        if (!bAlive[i]) continue;
+        const bdx = bx[i] - hawk.x;
+        const bdy = by[i] - hawk.y;
+        if (bdx * bdx + bdy * bdy <= HAWK_CATCH_RADIUS2) {
+          bAlive[i] = 0;
+          aliveCount--;
+          caughtNow++;
+          if (roundActive) birdsLost++;
+          // Puff of dark feathers
+          for (let f = 0; f < 5; f++) {
+            const ang = Math.random() * Math.PI * 2;
+            const fs = 20 + Math.random() * 65;
+            feathers.push({
+              x: bx[i], y: by[i],
+              vx: Math.cos(ang) * fs + hawk.vx * 0.15,
+              vy: Math.sin(ang) * fs + 15,
+              rot: Math.random() * Math.PI * 2,
+              vrot: (Math.random() - 0.5) * 7,
+              life: 0.7 + Math.random() * 0.5,
+              maxLife: 1.2
+            });
+          }
+        }
+      }
+      if (caughtNow > 0) {
+        popups.push({
+          x: hawk.x,
+          y: hawk.y - 16,
+          text: `-${caughtNow} CAUGHT`,
+          life: 1.0,
+          maxLife: 1.0,
+          color: '#f2798f'
+        });
+        updateScoreUI();
+      }
+
+      // End dive once off-screen
+      if (hawk.x < -90 || hawk.x > viewW + 90 || hawk.y < -90 || hawk.y > viewH + 90) {
+        hawk.state = 'idle';
+        hawk.cooldown = 15 + Math.random() * 6;
+        document.getElementById('hawk-banner').classList.remove('visible');
+      }
+    }
+
+    // Visual effects decay
+    for (let i = ripples.length - 1; i >= 0; i--) {
+      const rp = ripples[i];
+      rp.r += (rp.maxR - rp.r) * Math.min(1, dt * 5.2);
+      rp.alpha -= dt * 1.4;
+      if (rp.alpha <= 0) ripples.splice(i, 1);
+    }
+    for (let i = feathers.length - 1; i >= 0; i--) {
+      const f = feathers[i];
+      f.life -= dt;
+      if (f.life <= 0) { feathers.splice(i, 1); continue; }
+      f.x += f.vx * dt;
+      f.y += f.vy * dt;
+      f.vx *= 0.94;
+      f.vy = f.vy * 0.94 + 28 * dt;
+      f.rot += f.vrot * dt;
+    }
+    for (let i = popups.length - 1; i >= 0; i--) {
+      const p = popups[i];
+      p.life -= dt;
+      if (p.life <= 0) { popups.splice(i, 1); continue; }
+      p.y -= 28 * dt;
+    }
+  }
+
+  // =========================================================================
+  // RENDERING
+  // =========================================================================
+  function drawSmokeTrails() {
+    ctx.save();
+    ctx.lineCap = 'round';
+    // 4 alpha passes from tail to head so the entire flock leaves soft dusk-smoke ribbons
+    const bands = [
+      { from: 0, to: 3, alpha: 0.035, width: 1.3 },
+      { from: 3, to: 6, alpha: 0.070, width: 1.7 },
+      { from: 6, to: 9, alpha: 0.115, width: 2.1 },
+      { from: 9, to: TRAIL_LEN - 1, alpha: 0.17, width: 2.3 }
+    ];
+
+    for (let b = 0; b < bands.length; b++) {
+      const band = bands[b];
+      ctx.strokeStyle = `rgba(18, 14, 30, ${band.alpha})`;
+      ctx.lineWidth = band.width;
+      ctx.beginPath();
+
+      for (let i = 0; i < INITIAL_BIRDS; i++) {
+        if (!bAlive[i]) continue;
+        const base = i * TRAIL_LEN;
+        const s0 = (trailHead + 1 + band.from) % TRAIL_LEN;
+        let px = trailX[base + s0];
+        let py = trailY[base + s0];
+        ctx.moveTo(px, py);
+        for (let k = band.from + 1; k <= band.to; k++) {
+          const slot = (trailHead + 1 + k) % TRAIL_LEN;
+          const nx = trailX[base + slot];
+          const ny = trailY[base + slot];
+          // Guard against teleport jumps
+          if (Math.abs(nx - px) < 120 && Math.abs(ny - py) < 120) {
+            ctx.lineTo(nx, ny);
+          } else {
+            ctx.moveTo(nx, ny);
+          }
+          px = nx;
+          py = ny;
+        }
+        if (b === bands.length - 1) {
+          ctx.lineTo(bx[i], by[i]);
+        }
+      }
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawBirds() {
+    for (let i = 0; i < INITIAL_BIRDS; i++) {
+      if (!bAlive[i]) continue;
+
+      const x = bx[i];
+      const y = by[i];
+      const angle = Math.atan2(bvy[i], bvx[i]);
+      const bank = bBank[i]; // -1..1
+      const absBank = Math.abs(bank);
+      const flap = Math.sin(bFlap[i]);
+
+      // Dynamic wing geometry: banking rolls one wing wide and foreshortens the opposite wing
+      const baseSpan = 6.2;
+      const flapMod = 1 + 0.18 * flap;
+      const leftSpan = baseSpan * flapMod * (1 + bank * 0.42);
+      const rightSpan = baseSpan * flapMod * (1 - bank * 0.42);
+      const sweep = 2.6 + flap * 0.9;
+
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(angle);
+
+      // Subtle dusk silhouette tone: darker charcoal when flat, catching faint warm plum/amber sheen on hard banks
+      ctx.fillStyle = absBank > 0.38 ? '#1b1426' : '#0d0e1a';
+
+      ctx.beginPath();
+      // Beak / nose
+      ctx.moveTo(6.2, 0);
+      // Left swept wing
+      ctx.quadraticCurveTo(1.2, -leftSpan * 0.45, -sweep, -leftSpan);
+      ctx.quadraticCurveTo(-1.2, -leftSpan * 0.25, -4.6, -1.1);
+      // Forked starling tail
+      ctx.lineTo(-6.2, -1.8);
+      ctx.lineTo(-4.8, 0);
+      ctx.lineTo(-6.2, 1.8);
+      ctx.lineTo(-4.6, 1.1);
+      // Right swept wing
+      ctx.quadraticCurveTo(-1.2, rightSpan * 0.25, -sweep, rightSpan);
+      ctx.quadraticCurveTo(1.2, rightSpan * 0.45, 6.2, 0);
+      ctx.closePath();
+      ctx.fill();
+
+      // Tiny warm sunset glint along leading wing edge when banking hard
+      if (absBank > 0.42) {
+        ctx.strokeStyle = `rgba(255, 206, 148, ${(absBank - 0.42) * 0.6})`;
+        ctx.lineWidth = 0.7;
+        ctx.beginPath();
+        ctx.moveTo(5.6, 0);
+        ctx.lineTo(-sweep * 0.7, bank > 0 ? -leftSpan * 0.85 : rightSpan * 0.85);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+  }
+
+  function drawGateAndCentroid() {
+    // 1. Flock center reticle (subtle so player can judge threading the gate)
+    if (aliveCount > 0 && (roundActive || gate)) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255, 217, 138, 0.45)';
+      ctx.lineWidth = 1.25;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.arc(flockCx, flockCy, 14, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Tiny center dot
+      ctx.fillStyle = 'rgba(255, 217, 138, 0.85)';
+      ctx.beginPath();
+      ctx.arc(flockCx, flockCy, 2.6, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Subtle directional tick pointing toward active gate
+      if (gate) {
+        const ang = Math.atan2(gate.y - flockCy, gate.x - flockCx);
+        const dist = Math.hypot(gate.x - flockCx, gate.y - flockCy);
+        if (dist > gate.r + 18) {
+          const px = flockCx + Math.cos(ang) * 22;
+          const py = flockCy + Math.sin(ang) * 22;
+          ctx.fillStyle = 'rgba(255, 217, 138, 0.7)';
+          ctx.beginPath();
+          ctx.moveTo(px + Math.cos(ang) * 6, py + Math.sin(ang) * 6);
+          ctx.lineTo(px + Math.cos(ang + 2.4) * 5, py + Math.sin(ang + 2.4) * 5);
+          ctx.lineTo(px + Math.cos(ang - 2.4) * 5, py + Math.sin(ang - 2.4) * 5);
+          ctx.closePath();
+          ctx.fill();
+        }
+      }
+      ctx.restore();
+    }
+
+    // 2. Active sky gate ring
+    if (!gate) return;
+    const frac = Math.max(0, gate.timer / gate.maxTimer);
+    const urgent = frac < 0.28;
+    const ringCol = urgent ? '#f2798f' : (gate.birdsInside > 12 ? '#7ce6b8' : '#ffd98a');
+    const pulseR = gate.r + Math.sin(gate.pulse) * 2.2;
+
+    ctx.save();
+    // Soft radial aura
+    const aura = ctx.createRadialGradient(gate.x, gate.y, gate.r * 0.55, gate.x, gate.y, gate.r * 1.45);
+    aura.addColorStop(0, 'rgba(255, 217, 138, 0.04)');
+    aura.addColorStop(0.65, urgent ? 'rgba(242, 121, 143, 0.16)' : 'rgba(255, 217, 138, 0.16)');
+    aura.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = aura;
+    ctx.beginPath();
+    ctx.arc(gate.x, gate.y, gate.r * 1.45, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Base faint track circle
+    ctx.strokeStyle = 'rgba(255, 232, 200, 0.22)';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.arc(gate.x, gate.y, pulseR, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Decaying countdown progress arc
+    ctx.strokeStyle = ringCol;
+    ctx.lineWidth = 4;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.arc(gate.x, gate.y, pulseR, -Math.PI * 0.5, -Math.PI * 0.5 + Math.PI * 2 * frac);
+    ctx.stroke();
+
+    // Subtle inner dashed target ring
+    ctx.strokeStyle = 'rgba(255, 240, 215, 0.22)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([5, 6]);
+    ctx.beginPath();
+    ctx.arc(gate.x, gate.y, gate.r * 0.72, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Timer text just beneath ring
+    ctx.fillStyle = ringCol;
+    ctx.font = `700 11px ui-monospace, Menlo, Consolas, monospace`;
+    ctx.textAlign = 'center';
+    ctx.fillText(`${Math.ceil(gate.timer)}s`, gate.x, gate.y + gate.r + 16);
+    ctx.restore();
+  }
+
+  function drawHawk(nowSec) {
+    if (hawk.state === 'warning') {
+      // Flashing directional warning chevron at the incoming edge
+      const blink = 0.5 + 0.5 * Math.sin(nowSec * 16);
+      const ang = Math.atan2(flockCy - hawk.edgeY, flockCx - hawk.edgeX);
+      ctx.save();
+      ctx.translate(hawk.edgeX, hawk.edgeY);
+      ctx.rotate(ang);
+      ctx.globalAlpha = 0.45 + 0.55 * blink;
+      ctx.fillStyle = '#f2798f';
+      ctx.beginPath();
+      ctx.moveTo(16, 0);
+      ctx.lineTo(-10, -11);
+      ctx.lineTo(-5, 0);
+      ctx.lineTo(-10, 11);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+      return;
+    }
+
+    if (hawk.state !== 'diving') return;
+
+    // Hawk slipstream trail
+    if (hawk.trail.length > 2) {
+      ctx.save();
+      ctx.lineCap = 'round';
+      for (let i = 1; i < hawk.trail.length; i++) {
+        const frac = i / hawk.trail.length;
+        ctx.strokeStyle = `rgba(242, 121, 143, ${frac * 0.32})`;
+        ctx.lineWidth = frac * 3.5;
+        ctx.beginPath();
+        ctx.moveTo(hawk.trail[i - 1].x, hawk.trail[i - 1].y);
+        ctx.lineTo(hawk.trail[i].x, hawk.trail[i].y);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    // Subtle catch-radius danger halo (honest visual cue for the 15px catch zone)
+    ctx.save();
+    ctx.strokeStyle = 'rgba(242, 121, 143, 0.42)';
+    ctx.lineWidth = 1.2;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.arc(hawk.x, hawk.y, HAWK_CATCH_RADIUS, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Hawk predator silhouette (larger, sharp scythe-like peregrine wings)
+    const ang = Math.atan2(hawk.vy, hawk.vx);
+    ctx.translate(hawk.x, hawk.y);
+    ctx.rotate(ang);
+    ctx.fillStyle = '#190913';
+    ctx.strokeStyle = 'rgba(242, 121, 143, 0.7)';
+    ctx.lineWidth = 1.1;
+
+    ctx.beginPath();
+    ctx.moveTo(17, 0);
+    ctx.quadraticCurveTo(5, -6, -8, -22);
+    ctx.quadraticCurveTo(-4, -8, -11, -3);
+    ctx.lineTo(-18, -5);
+    ctx.lineTo(-14, 0);
+    ctx.lineTo(-18, 5);
+    ctx.lineTo(-11, 3);
+    ctx.quadraticCurveTo(-4, 8, -8, 22);
+    ctx.quadraticCurveTo(5, 6, 17, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawWindCursor(nowSec) {
+    // Flowing air-current streaks left behind cursor
+    ctx.save();
+    ctx.lineCap = 'round';
+    for (let i = 0; i < wind.streaks.length; i++) {
+      const s = wind.streaks[i];
+      const a = (s.life / s.maxLife) * 0.34;
+      ctx.strokeStyle = `rgba(255, 232, 200, ${a})`;
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(s.x, s.y);
+      ctx.lineTo(s.x - s.vx * 0.055, s.y - s.vy * 0.055);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    if (!wind.active) return;
+
+    // Gentle airy wind field indicator around cursor
+    const speed = Math.hypot(wind.vx, wind.vy);
+    const intensity = Math.min(1, 0.25 + speed / 650);
+
+    ctx.save();
+    const g = ctx.createRadialGradient(wind.x, wind.y, 4, wind.x, wind.y, WIND_RADIUS * 0.72);
+    g.addColorStop(0, `rgba(255, 234, 202, ${0.14 * intensity})`);
+    g.addColorStop(0.55, `rgba(255, 214, 165, ${0.06 * intensity})`);
+    g.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(wind.x, wind.y, WIND_RADIUS * 0.72, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Rotating delicate wind arcs
+    ctx.strokeStyle = `rgba(255, 232, 198, ${0.28 * intensity})`;
+    ctx.lineWidth = 1.25;
+    const baseRot = nowSec * 1.6;
+    for (let k = 0; k < 2; k++) {
+      ctx.beginPath();
+      ctx.arc(wind.x, wind.y, 20 + k * 14, baseRot + k * Math.PI, baseRot + k * Math.PI + 1.5);
+      ctx.stroke();
+    }
+
+    // Center breeze point
+    ctx.fillStyle = 'rgba(255, 240, 218, 0.8)';
+    ctx.beginPath();
+    ctx.arc(wind.x, wind.y, 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawEffects() {
+    // Gate ripples
+    for (let i = 0; i < ripples.length; i++) {
+      const rp = ripples[i];
+      ctx.save();
+      ctx.globalAlpha = rp.alpha;
+      ctx.strokeStyle = rp.color;
+      ctx.lineWidth = 2.6 * rp.alpha;
+      ctx.beginPath();
+      ctx.arc(rp.x, rp.y, rp.r, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Caught bird feathers
+    for (let i = 0; i < feathers.length; i++) {
+      const f = feathers[i];
+      const a = Math.max(0, f.life / f.maxLife);
+      ctx.save();
+      ctx.globalAlpha = a * 0.85;
+      ctx.translate(f.x, f.y);
+      ctx.rotate(f.rot);
+      ctx.fillStyle = '#1a1220';
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 4.2, 1.4, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // Floating score popups
+    for (let i = 0; i < popups.length; i++) {
+      const p = popups[i];
+      const a = Math.min(1, p.life / (p.maxLife * 0.55));
+      ctx.save();
+      ctx.globalAlpha = a;
+      ctx.fillStyle = p.color;
+      ctx.font = `700 12px ui-monospace, Menlo, Consolas, monospace`;
+      ctx.textAlign = 'center';
+      ctx.fillText(p.text, p.x, p.y);
+      ctx.restore();
+    }
+  }
+
+  // =========================================================================
+  // UI UPDATES & EVENT WIRING
+  // =========================================================================
+  const elTimer = document.getElementById('timer-display');
+  const elModeLabel = document.getElementById('mode-label');
+  const elBest = document.getElementById('best-display');
+  const elGates = document.getElementById('stat-gates');
+  const elLost = document.getElementById('stat-lost');
+  const elScore = document.getElementById('stat-score');
+  const elMetaBirds = document.getElementById('meta-birds');
+  const elMetaMode = document.getElementById('meta-mode');
+  const elMetaFps = document.getElementById('meta-fps');
+  const btnFreeFly = document.getElementById('btn-freefly');
+
+  function formatTime(sec) {
+    const s = Math.max(0, Math.ceil(sec));
+    const m = Math.floor(s / 60);
+    const r = s % 60;
+    return `${m}:${r < 10 ? '0' : ''}${r}`;
+  }
+
+  function updateScoreUI() {
+    if (freeFlyMode) {
+      elModeLabel.textContent = 'Free-Fly Sandbox';
+      elTimer.textContent = '∞';
+      elTimer.classList.remove('urgent');
+    } else {
+      elModeLabel.textContent = '90s Round';
+      elTimer.textContent = formatTime(roundTimeLeft);
+      elTimer.classList.toggle('urgent', roundActive && roundTimeLeft <= 15);
+    }
+    const score = gatesThreaded - birdsLost;
+    elGates.textContent = String(gatesThreaded);
+    elLost.textContent = String(birdsLost);
+    elScore.textContent = String(score);
+    elBest.textContent = bestScore === null ? '—' : String(bestScore);
+    elMetaBirds.textContent = String(aliveCount);
+    elMetaMode.textContent = cfg.starlingMode ? '7 nearest (Starling)' : `${cfg.percR} px radius`;
+    btnFreeFly.classList.toggle('active-mint', freeFlyMode);
+  }
+
+  // Sliders sync
+  const slSep = document.getElementById('sl-sep');
+  const slAli = document.getElementById('sl-ali');
+  const slCoh = document.getElementById('sl-coh');
+  const slRad = document.getElementById('sl-rad');
+  const slSpd = document.getElementById('sl-spd');
+
+  function syncSlidersUI() {
+    slSep.value = cfg.wSep;
+    slAli.value = cfg.wAli;
+    slCoh.value = cfg.wCoh;
+    slRad.value = cfg.percR;
+    slSpd.value = cfg.maxSpeed;
+    document.getElementById('val-sep').textContent = cfg.wSep.toFixed(2);
+    document.getElementById('val-ali').textContent = cfg.wAli.toFixed(2);
+    document.getElementById('val-coh').textContent = cfg.wCoh.toFixed(2);
+    document.getElementById('val-rad').textContent = `${cfg.percR} px`;
+    document.getElementById('val-spd').textContent = `${cfg.maxSpeed} px/s`;
+
+    document.getElementById('row-radius').classList.toggle('dimmed', cfg.starlingMode);
+    const btnStar = document.getElementById('btn-starling');
+    btnStar.classList.toggle('active-mint', cfg.starlingMode);
+    document.getElementById('starling-pill').textContent = cfg.starlingMode ? 'ON' : 'OFF';
+    updateScoreUI();
+  }
+
+  slSep.addEventListener('input', () => { cfg.wSep = parseFloat(slSep.value); syncSlidersUI(); });
+  slAli.addEventListener('input', () => { cfg.wAli = parseFloat(slAli.value); syncSlidersUI(); });
+  slCoh.addEventListener('input', () => { cfg.wCoh = parseFloat(slCoh.value); syncSlidersUI(); });
+  slRad.addEventListener('input', () => {
+    cfg.percR = parseInt(slRad.value, 10);
+    rebuildGridAllocation();
+    syncSlidersUI();
+  });
+  slSpd.addEventListener('input', () => { cfg.maxSpeed = parseInt(slSpd.value, 10); syncSlidersUI(); });
+
+  document.getElementById('btn-starling').addEventListener('click', () => {
+    cfg.starlingMode = !cfg.starlingMode;
+    rebuildGridAllocation();
+    syncSlidersUI();
+  });
+
+  document.getElementById('btn-preset-default').addEventListener('click', () => {
+    cfg.wSep = DEFAULTS.wSep;
+    cfg.wAli = DEFAULTS.wAli;
+    cfg.wCoh = DEFAULTS.wCoh;
+    cfg.percR = DEFAULTS.percR;
+    cfg.maxSpeed = DEFAULTS.maxSpeed;
+    rebuildGridAllocation();
+    syncSlidersUI();
+  });
+
+  document.getElementById('btn-preset-explode').addEventListener('click', () => {
+    cfg.wSep = 3.0;
+    cfg.wAli = 0.0;
+    cfg.wCoh = 0.0;
+    syncSlidersUI();
+  });
+
+  document.getElementById('btn-preset-ball').addEventListener('click', () => {
+    cfg.wSep = 0.0;
+    cfg.wAli = 0.0;
+    cfg.wCoh = 3.0;
+    syncSlidersUI();
+  });
+
+  document.getElementById('btn-summon-hawk').addEventListener('click', () => {
+    triggerHawkWarning();
+  });
+
+  document.getElementById('btn-new-round').addEventListener('click', () => startRound(false));
+  document.getElementById('btn-freefly').addEventListener('click', () => {
+    if (freeFlyMode) startRound(false);
+    else startRound(true);
+  });
+  document.getElementById('btn-modal-replay').addEventListener('click', () => startRound(false));
+  document.getElementById('btn-modal-free').addEventListener('click', () => {
+    document.getElementById('round-modal').classList.remove('visible');
+    freeFlyMode = true;
+    roundActive = false;
+    updateScoreUI();
+  });
+
+  // Collapsible panels
+  function wireCollapse(cardId, headId, iconId) {
+    const card = document.getElementById(cardId);
+    const icon = document.getElementById(iconId);
+    document.getElementById(headId).addEventListener('click', () => {
+      const open = card.classList.toggle('card-expanded');
+      icon.textContent = open ? '−' : '+';
+    });
+  }
+  wireCollapse('controls-card', 'controls-toggle', 'controls-icon');
+  wireCollapse('honesty-card', 'honesty-toggle', 'honesty-icon');
+
+  // Zen mode
+  function toggleZen() { document.body.classList.toggle('zen-mode'); }
+  document.getElementById('btn-zen').addEventListener('click', toggleZen);
+  document.getElementById('btn-zen-restore').addEventListener('click', toggleZen);
+
+  // Pointer & touch wind input
+  function updateWindPointer(clientX, clientY, dtApprox) {
+    const dx = clientX - wind.x;
+    const dy = clientY - wind.y;
+    const invDt = 1 / Math.max(0.01, dtApprox);
+    const rawVx = Math.max(-900, Math.min(900, dx * invDt));
+    const rawVy = Math.max(-900, Math.min(900, dy * invDt));
+    wind.vx = wind.vx * 0.45 + rawVx * 0.55;
+    wind.vy = wind.vy * 0.45 + rawVy * 0.55;
+    wind.prevX = wind.x;
+    wind.prevY = wind.y;
+    wind.x = clientX;
+    wind.y = clientY;
+    wind.active = true;
+
+    const moveDist = Math.hypot(dx, dy);
+    if (moveDist > 4 && wind.streaks.length < 48) {
+      const jitter = (Math.random() - 0.5) * 44;
+      const perpX = -dy / moveDist;
+      const perpY = dx / moveDist;
+      wind.streaks.push({
+        x: clientX + perpX * jitter,
+        y: clientY + perpY * jitter,
+        vx: wind.vx * 0.42,
+        vy: wind.vy * 0.42,
+        life: 0.28 + Math.random() * 0.18,
+        maxLife: 0.46
+      });
+    }
+  }
+
+  let lastMoveMs = performance.now();
+  canvas.addEventListener('pointermove', (e) => {
+    const now = performance.now();
+    const dt = (now - lastMoveMs) * 0.001;
+    lastMoveMs = now;
+    if (!wind.active) {
+      wind.x = e.clientX;
+      wind.y = e.clientY;
+    }
+    updateWindPointer(e.clientX, e.clientY, dt);
+  });
+  canvas.addEventListener('pointerdown', (e) => {
+    wind.x = e.clientX;
+    wind.y = e.clientY;
+    wind.active = true;
+  });
+  canvas.addEventListener('pointerleave', () => {
+    wind.active = false;
+  });
+
+  window.addEventListener('keydown', (e) => {
+    if (e.target && e.target.tagName === 'INPUT') return;
+    if (e.key === 'h' || e.key === 'H') toggleZen();
+    else if (e.key === 'r' || e.key === 'R') startRound(false);
+    else if (e.key === 't' || e.key === 'T') {
+      cfg.starlingMode = !cfg.starlingMode;
+      rebuildGridAllocation();
+      syncSlidersUI();
+    }
+  });
+
+  window.addEventListener('resize', resize);
+
+  // =========================================================================
+  // MAIN LOOP
+  // =========================================================================
+  let lastFrameMs = performance.now();
+  let fpsFrames = 0;
+  let fpsAccum = 0;
+  let uiAccum = 0;
+
+  function loop(nowMs) {
+    const dt = Math.min(0.035, Math.max(0.001, (nowMs - lastFrameMs) * 0.001));
+    lastFrameMs = nowMs;
+
+    stepFlock(dt);
+    stepGameLogic(dt);
+
+    // Draw scene
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.drawImage(bgCanvas, 0, 0, viewW, viewH);
+    drawSmokeTrails();
+    drawGateAndCentroid();
+    drawBirds();
+    drawHawk(nowMs * 0.001);
+    drawWindCursor(nowMs * 0.001);
+    drawEffects();
+
+    // Update FPS & live timer readout
+    fpsFrames++;
+    fpsAccum += dt;
+    if (fpsAccum >= 0.5) {
+      elMetaFps.textContent = `${Math.round(fpsFrames / fpsAccum)} fps`;
+      fpsFrames = 0;
+      fpsAccum = 0;
+    }
+    uiAccum += dt;
+    if (uiAccum >= 0.12) {
+      uiAccum = 0;
+      updateScoreUI();
+    }
+
+    requestAnimationFrame(loop);
+  }
+
+  // Boot live immediately
+  resize();
+  syncSlidersUI();
+  startRound(false);
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

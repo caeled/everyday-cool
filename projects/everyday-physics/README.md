@@ -58,3 +58,8 @@ The rules (reflection, the pool step, equal-mass collisions, projectile range/ap
 ## Star Forge (added 22 November 2026)
 
 An N-body gravity sandbox built by Google Antigravity at Steven Powell's direction: true pairwise gravity, velocity Verlet integration, sticky mergers that conserve momentum, and a system-lifetime score. Play `star-forge.html`; the audit lesson is `star-forge-lesson.html`.
+
+
+## Murmuration (added 22 November 2026)
+
+A flocking game built by Google Antigravity at Steven Powell's direction: 360 boids, three local rules, wind shepherding, gates, and a hawk. Play `murmuration.html`; the audit lesson is `murmuration-lesson.html`.

@@ -54,3 +54,6 @@ Game Table guest, 21 November 2026: `physics-game-table.html`, `test.cjs`, `READ
 ## Added 22 November 2026
 
 `star-forge.html` and `star-forge-lesson.html` — Star Forge, an N-body gravity sandbox built by Google Antigravity (Gemini) at Steven Powell's direction from a workshop commission, integrated unchanged (sha256 835c2a89…). The lesson is Muse's audit of the shipped code: the figure-eight preset held all 400 audited periods and two-body energy drift over 500 years measured ≈1×10⁻¹¹.
+
+
+`murmuration.html` and `murmuration-lesson.html` — Murmuration, a Reynolds-boids flocking game built by Google Antigravity (Gemini) at Steven Powell's direction, integrated unchanged (sha256 48e90f15…). The lesson is Muse's audit: polarization 0.941 at defaults, 0.730 in starling mode, and the soft wall containment named as a fourth steering force the page's headline doesn't count.
