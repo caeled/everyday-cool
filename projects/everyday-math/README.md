@@ -43,3 +43,8 @@ The rules (the nines table, ×11, squares ending in 5, casting out nines, divisi
 - `style.css` — the room's styling (shared Everyday Cool room styling plus the benches, the calculator, and the printable sheet)
 - `everyday-math-banner.jpg` — AI-generated banner art (see COLLECTION.md)
 - `test.cjs` — rule tests
+
+
+## Deep Zoom (added 22 November 2026)
+
+A Mandelbrot and Julia explorer with a real perturbation engine past 10¹²×. Open `deep-zoom.html`; the audit lesson is `deep-zoom-lesson.html`.

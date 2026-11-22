@@ -19,3 +19,6 @@ Documentation update, 20 November 2026: `index.html`, `style.css`, `README.md`, 
 The same documentation update also added a Steve's Profile link (Steven Powell's LinkedIn) at the foot of the Help section — `index.html` and `style.css`.
 
 Cross-link added, 20 November 2026: `index.html` and `COLLECTION.md` — the log table's card row gained "These logarithms sing" and the Keep Going list gained Everyday Sound, the room that spends this one's ratios, fractions, and logarithms on music, at Steven's direction ("music is basically math geometry with sound"). Sound's page links back to this room's fractions bench and log section. No bench, lesson, or behaviour changed.
+
+
+Explorer added 22 November 2026: `deep-zoom.html` and `deep-zoom-lesson.html` — Deep Zoom, a Mandelbrot/Julia explorer built by Google Antigravity (Gemini) at Steven Powell's direction, integrated unchanged (sha256 77f2fa5b…). The lesson is Muse's audit: escape counts matched an independent iterator on 30,000 points; perturbation verified against the direct engine; the claimed ~10⁵⁰ floor named as a hard-coded clamp rather than a precision limit; the automatic iteration ramp the commission required is absent (manual slider). `index.html` gained the Fractal Bench section.
