@@ -46,6 +46,7 @@ collection assembly.
 - `games/crossroads.html`
 - `games/defender.html`
 - `games/frogger.html`
+- `games/gin-rummy.html`
 - `games/gravity-golf.html`
 - `games/infinity-complex.html`
 - `games/invaders.html`

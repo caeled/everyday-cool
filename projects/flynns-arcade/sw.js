@@ -25,17 +25,16 @@ var PRECACHE = [
  "games/frogger.html",
  "games/ai-karts.html",
  "games/solitaire.html",
+ "games/gin-rummy.html",
  "games/tarot.html",
  "games/bulletin-board.html",
  "games/assets/arcade-banner.webp",
  "games/crossroads.html",
  "games/assets/crossroads-station.webp",
- "games/assets/media-generation-crossroads-station-1795316756.json",
  "games/infinity-complex.html",
  "games/assets/complex.webp",
  "games/wandering-hub.html",
  "games/assets/hub-valley.webp",
- "games/assets/media-generation-wandering-hub-valley-1795317071.json",
  "games/gravity-golf.html"
 ];
 self.addEventListener('install', function(e){
