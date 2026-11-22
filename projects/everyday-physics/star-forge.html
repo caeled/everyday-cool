@@ -1,0 +1,2343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Star Forge — N-Body Gravity Sandbox</title>
+<style>
+  :root {
+    --bg-deep: #04060d;
+    --panel-bg: rgba(9, 14, 28, 0.74);
+    --panel-bg-strong: rgba(9, 14, 28, 0.88);
+    --panel-border: rgba(145, 178, 255, 0.16);
+    --panel-border-hi: rgba(145, 178, 255, 0.34);
+    --text-main: #edf2ff;
+    --text-dim: #9aa9cc;
+    --text-muted: #6e7ea3;
+    --accent-gold: #ffcf6e;
+    --accent-cyan: #5ce1ff;
+    --accent-mint: #53f2b3;
+    --accent-rose: #ff6b8b;
+    --accent-violet: #a78bfa;
+    --radius-lg: 14px;
+    --radius-md: 10px;
+    --radius-sm: 7px;
+    --mono: ui-monospace, "Cascadia Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg-deep);
+    color: var(--text-main);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    touch-action: none;
+  }
+
+  #space-canvas {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    cursor: crosshair;
+  }
+  #space-canvas.panning {
+    cursor: grabbing;
+  }
+
+  /* HUD Layer */
+  .hud {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 10;
+    transition: opacity 0.25s ease;
+  }
+  body.zen-mode .hud > :not(.zen-restore) {
+    opacity: 0;
+    pointer-events: none !important;
+  }
+
+  .panel {
+    pointer-events: auto;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-lg);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    box-shadow: 0 10px 34px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  }
+
+  /* Top-Left Brand + Telemetry */
+  .top-left {
+    position: fixed;
+    top: 14px;
+    left: 14px;
+    max-width: min(440px, calc(100vw - 290px));
+    padding: 12px 15px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .brand-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .brand-title-wrap {
+    display: flex;
+    align-items: baseline;
+    gap: 9px;
+    flex-wrap: wrap;
+  }
+
+  .brand-title {
+    font-size: 18px;
+    font-weight: 750;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    background: linear-gradient(120deg, #fff6dc 0%, #ffd275 45%, #7ae6ff 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .brand-tag {
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    padding: 2px 7px;
+    border-radius: 999px;
+    border: 1px solid rgba(145, 178, 255, 0.2);
+    background: rgba(145, 178, 255, 0.07);
+  }
+
+  .lesson-line {
+    font-size: 12px;
+    line-height: 1.4;
+    color: #d6e2ff;
+    font-style: italic;
+    border-left: 2px solid rgba(255, 207, 110, 0.6);
+    padding-left: 9px;
+  }
+
+  .telemetry-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 7px;
+    margin-top: 2px;
+  }
+
+  .metric {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(145, 178, 255, 0.1);
+    border-radius: var(--radius-sm);
+    padding: 6px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .metric-label {
+    font-size: 9.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 4px;
+  }
+
+  .metric-val {
+    font-family: var(--mono);
+    font-size: 13.5px;
+    font-weight: 650;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-main);
+    white-space: nowrap;
+  }
+
+  .metric-sub {
+    font-family: var(--mono);
+    font-size: 9.5px;
+    color: var(--text-dim);
+  }
+
+  .energy-pill {
+    font-size: 8.5px;
+    font-weight: 700;
+    padding: 1px 5px;
+    border-radius: 4px;
+    letter-spacing: 0.05em;
+  }
+  .energy-pill.bound {
+    background: rgba(83, 242, 179, 0.16);
+    color: var(--accent-mint);
+  }
+  .energy-pill.unbound {
+    background: rgba(255, 107, 139, 0.18);
+    color: var(--accent-rose);
+  }
+
+  .integrator-note {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text-muted);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+  }
+  .integrator-note span {
+    color: var(--text-dim);
+  }
+
+  /* Top-Right Score Panel */
+  .top-right {
+    position: fixed;
+    top: 14px;
+    right: 14px;
+    width: 248px;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .score-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+  }
+
+  .score-title {
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-dim);
+  }
+
+  .status-pill {
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .status-pill::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+  .status-pill.active {
+    background: rgba(83, 242, 179, 0.14);
+    color: var(--accent-mint);
+    border: 1px solid rgba(83, 242, 179, 0.3);
+  }
+  .status-pill.waiting {
+    background: rgba(92, 225, 255, 0.14);
+    color: var(--accent-cyan);
+    border: 1px solid rgba(92, 225, 255, 0.28);
+  }
+  .status-pill.ended {
+    background: rgba(255, 107, 139, 0.16);
+    color: var(--accent-rose);
+    border: 1px solid rgba(255, 107, 139, 0.35);
+  }
+
+  .score-numbers {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .score-current {
+    font-family: var(--mono);
+    font-size: 24px;
+    font-weight: 750;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+    color: #fff;
+  }
+  .score-current small {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-dim);
+    margin-left: 2px;
+  }
+
+  .score-best {
+    text-align: right;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+  .score-best strong {
+    display: block;
+    font-size: 13px;
+    color: var(--accent-gold);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .score-rule {
+    font-size: 10.5px;
+    line-height: 1.35;
+    color: var(--text-muted);
+  }
+
+  .end-reason {
+    display: none;
+    font-size: 11px;
+    line-height: 1.35;
+    color: #ffb8c7;
+    background: rgba(255, 107, 139, 0.12);
+    border: 1px solid rgba(255, 107, 139, 0.28);
+    border-radius: var(--radius-sm);
+    padding: 6px 8px;
+  }
+  .end-reason.visible {
+    display: block;
+  }
+
+  .top-right-actions {
+    display: flex;
+    gap: 6px;
+  }
+
+  /* Bottom-Left Honesty Card */
+  .bottom-left {
+    position: fixed;
+    left: 14px;
+    bottom: 14px;
+    width: 286px;
+    max-width: calc(100vw - 28px);
+    overflow: hidden;
+  }
+
+  .card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 9px 12px;
+    cursor: pointer;
+    border-bottom: 1px solid transparent;
+  }
+  .card-head:hover {
+    background: rgba(255, 255, 255, 0.03);
+  }
+  .card-expanded .card-head {
+    border-bottom-color: rgba(145, 178, 255, 0.12);
+  }
+
+  .card-title {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--accent-gold);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .collapse-icon {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text-dim);
+    width: 18px;
+    height: 18px;
+    display: grid;
+    place-items: center;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.05);
+  }
+
+  .card-body {
+    padding: 9px 12px 11px;
+    display: none;
+  }
+  .card-expanded .card-body {
+    display: block;
+  }
+
+  .honesty-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    font-size: 11px;
+    line-height: 1.38;
+    color: var(--text-dim);
+  }
+  .honesty-list li {
+    position: relative;
+    padding-left: 11px;
+  }
+  .honesty-list li::before {
+    content: "•";
+    position: absolute;
+    left: 0;
+    color: var(--accent-gold);
+  }
+  .honesty-list strong {
+    color: var(--text-main);
+    font-weight: 600;
+  }
+
+  /* Bottom-Right Event & Merger Log */
+  .bottom-right {
+    position: fixed;
+    right: 14px;
+    bottom: 14px;
+    width: 280px;
+    max-width: calc(100vw - 28px);
+    overflow: hidden;
+  }
+
+  .bottom-right .card-title {
+    color: var(--accent-cyan);
+  }
+
+  .log-list {
+    max-height: 148px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding-right: 3px;
+  }
+  .log-list::-webkit-scrollbar {
+    width: 4px;
+  }
+  .log-list::-webkit-scrollbar-thumb {
+    background: rgba(145, 178, 255, 0.25);
+    border-radius: 99px;
+  }
+
+  .log-entry {
+    font-size: 11px;
+    line-height: 1.32;
+    color: var(--text-dim);
+    display: flex;
+    gap: 7px;
+    padding: 4px 6px;
+    border-radius: 5px;
+    background: rgba(255, 255, 255, 0.025);
+  }
+  .log-entry.merger {
+    background: rgba(255, 207, 110, 0.09);
+    border-left: 2px solid var(--accent-gold);
+    color: #ffe9b8;
+  }
+  .log-entry.ignition {
+    background: rgba(92, 225, 255, 0.12);
+    border-left: 2px solid var(--accent-cyan);
+    color: #d9f8ff;
+  }
+  .log-entry.alert {
+    background: rgba(255, 107, 139, 0.11);
+    border-left: 2px solid var(--accent-rose);
+    color: #ffc2cf;
+  }
+  .log-time {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text-muted);
+    flex-shrink: 0;
+    min-width: 46px;
+  }
+
+  /* Bottom-Center Controls Dock */
+  .dock-wrap {
+    position: fixed;
+    left: 50%;
+    bottom: 14px;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 7px;
+    max-width: calc(100vw - 610px);
+    min-width: min(540px, calc(100vw - 28px));
+  }
+
+  .preset-bar {
+    padding: 6px 8px;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 5px;
+  }
+
+  .controls-dock {
+    padding: 8px 10px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+  }
+
+  .control-group {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  .group-sep {
+    width: 1px;
+    height: 24px;
+    background: rgba(145, 178, 255, 0.16);
+  }
+
+  /* Buttons */
+  button {
+    font-family: var(--sans);
+    color: var(--text-main);
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(145, 178, 255, 0.16);
+    border-radius: var(--radius-sm);
+    padding: 6px 10px;
+    font-size: 11.5px;
+    font-weight: 550;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease, transform 0.08s ease, box-shadow 0.15s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+  }
+  button:hover {
+    background: rgba(145, 178, 255, 0.13);
+    border-color: var(--panel-border-hi);
+  }
+  button:active {
+    transform: scale(0.97);
+  }
+
+  button.active {
+    background: rgba(92, 225, 255, 0.16);
+    border-color: rgba(92, 225, 255, 0.55);
+    color: #fff;
+    box-shadow: 0 0 14px rgba(92, 225, 255, 0.18);
+  }
+
+  button.active-gold {
+    background: rgba(255, 207, 110, 0.16);
+    border-color: rgba(255, 207, 110, 0.6);
+    color: #fff7e0;
+    box-shadow: 0 0 14px rgba(255, 207, 110, 0.2);
+  }
+
+  button.active-mint {
+    background: rgba(83, 242, 179, 0.15);
+    border-color: rgba(83, 242, 179, 0.55);
+    color: #e6fff4;
+  }
+
+  button.small-btn {
+    padding: 4px 8px;
+    font-size: 11px;
+  }
+
+  button.speed-btn {
+    font-family: var(--mono);
+    padding: 5px 8px;
+    font-size: 11px;
+    min-width: 38px;
+    justify-content: center;
+  }
+
+  .orb-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .orb-asteroid {
+    width: 7px;
+    height: 7px;
+    background: radial-gradient(circle at 35% 35%, #e2e8f0, #7c8aa5);
+    box-shadow: 0 0 6px rgba(180, 198, 230, 0.5);
+  }
+  .orb-planet {
+    width: 10px;
+    height: 10px;
+    background: radial-gradient(circle at 35% 35%, #a5f3fc, #0ea5e9);
+    box-shadow: 0 0 8px rgba(56, 189, 248, 0.7);
+  }
+  .orb-star {
+    width: 12px;
+    height: 12px;
+    background: radial-gradient(circle at 40% 40%, #ffffff, #ffd166 55%, #f97316 100%);
+    box-shadow: 0 0 11px rgba(255, 209, 102, 0.9);
+  }
+
+  .mass-tag {
+    font-family: var(--mono);
+    font-size: 9.5px;
+    color: var(--text-muted);
+  }
+  button.active .mass-tag,
+  button.active-gold .mass-tag {
+    color: rgba(255, 255, 255, 0.78);
+  }
+
+  .hint-strip {
+    font-size: 11px;
+    color: var(--text-dim);
+    background: rgba(7, 11, 22, 0.66);
+    border: 1px solid rgba(145, 178, 255, 0.12);
+    border-radius: 999px;
+    padding: 4px 12px;
+    pointer-events: none;
+    text-align: center;
+  }
+  .hint-strip strong {
+    color: var(--text-main);
+    font-weight: 600;
+  }
+
+  /* Zen Restore Button */
+  .zen-restore {
+    position: fixed;
+    top: 14px;
+    right: 14px;
+    pointer-events: auto;
+    opacity: 0;
+    transform: translateY(-6px);
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    background: var(--panel-bg-strong);
+  }
+  body.zen-mode .zen-restore {
+    opacity: 0.85;
+    transform: translateY(0);
+  }
+  body.zen-mode .zen-restore:hover {
+    opacity: 1;
+  }
+
+  /* Responsive compact layout for narrower viewports */
+  @media (max-width: 1160px) {
+    .bottom-left, .bottom-right {
+      width: 244px;
+    }
+    .dock-wrap {
+      min-width: 0;
+      max-width: calc(100vw - 28px);
+      bottom: 12px;
+    }
+    .bottom-left {
+      bottom: 132px;
+    }
+    .bottom-right {
+      bottom: 132px;
+    }
+  }
+  @media (max-width: 720px) {
+    .top-left {
+      max-width: calc(100vw - 28px);
+    }
+    .top-right {
+      top: auto;
+      bottom: 148px;
+      width: 215px;
+    }
+    .bottom-left, .bottom-right {
+      display: none;
+    }
+  }
+</style>
+</head>
+<body>
+
+<canvas id="space-canvas"></canvas>
+
+<div class="hud">
+  <!-- Top-Left: Title, Lesson, Live Physics Telemetry -->
+  <section class="panel top-left" aria-label="Simulation Readouts">
+    <div class="brand-row">
+      <div class="brand-title-wrap">
+        <h1 class="brand-title">Star Forge</h1>
+        <span class="brand-tag">N-Body Sandbox</span>
+      </div>
+      <button id="btn-zen" class="small-btn" title="Hide HUD to watch uninterrupted (Hotkey: H)">Zen</button>
+    </div>
+
+    <p class="lesson-line">
+      Gravity is mutual — the star moves too — and stability is earned by the launch, not granted.
+    </p>
+
+    <div class="telemetry-grid">
+      <div class="metric">
+        <span class="metric-label">Elapsed</span>
+        <span class="metric-val" id="readout-years">0.00 yr</span>
+        <span class="metric-sub" id="readout-speed-label">1× speed</span>
+      </div>
+      <div class="metric">
+        <span class="metric-label">Bodies</span>
+        <span class="metric-val" id="readout-bodies">2</span>
+        <span class="metric-sub" id="readout-breakdown">1★ · 1●</span>
+      </div>
+      <div class="metric" title="Total mechanical energy E = K + U (softened Newtonian potential), in M☉·AU²/yr². Conserved between sticky mergers and new launches; negative E means bound.">
+        <span class="metric-label">
+          Energy E
+          <span class="energy-pill bound" id="readout-bound-pill">BOUND</span>
+        </span>
+        <span class="metric-val" id="readout-energy">-0.493</span>
+        <span class="metric-sub">M☉·AU²/yr²</span>
+      </div>
+    </div>
+
+    <div class="integrator-note">
+      Velocity Verlet (symplectic) · <span>dt = 0.0005 yr</span> · Softening <span>ε = 4 wu (0.027 AU)</span>
+    </div>
+  </section>
+
+  <!-- Top-Right: Survival Lifetime Score -->
+  <aside class="panel top-right" aria-label="System Lifetime Score">
+    <div class="score-header">
+      <span class="score-title">System Lifetime</span>
+      <span class="status-pill active" id="status-pill">Active</span>
+    </div>
+    <div class="score-numbers">
+      <div class="score-current"><span id="score-lifetime">0.00</span><small>yr</small></div>
+      <div class="score-best">
+        BEST
+        <strong id="score-best">0.00 yr</strong>
+      </div>
+    </div>
+    <div class="score-rule">
+      Score runs while ≥ 2 bodies remain bound inside <strong>8.0 AU</strong> (1200 wu) of the system center of mass.
+    </div>
+    <div class="end-reason" id="end-reason"></div>
+    <div class="top-right-actions">
+      <button id="btn-reset" class="small-btn" style="flex:1;justify-content:center;" title="Restart current preset (Hotkey: R)">↺ Restart</button>
+      <button id="btn-center" class="small-btn" style="flex:1;justify-content:center;" title="Center &amp; track system Center of Mass (Hotkey: C)">⌖ Track CoM</button>
+    </div>
+  </aside>
+
+  <!-- Bottom-Left: "What this leaves out" Honesty Card -->
+  <aside class="panel bottom-left card-expanded" id="honesty-card" aria-label="What this simulation leaves out">
+    <div class="card-head" id="honesty-toggle">
+      <span class="card-title">What this leaves out</span>
+      <span class="collapse-icon" id="honesty-icon">−</span>
+    </div>
+    <div class="card-body">
+      <ul class="honesty-list">
+        <li><strong>2D, not 3D:</strong> Every body moves in a single flat orbital plane.</li>
+        <li><strong>Toy G &amp; toy scale:</strong> 1 AU = 150 wu, 1 M☉ = 1000 mass units, calibrated so a 1 AU orbit takes 1 simulated year.</li>
+        <li><strong>Gravitational softening (ε = 4 wu):</strong> Force uses (r² + ε²)<sup>−3/2</sup> so ultra-close passes slingshot cleanly instead of blowing up numerically.</li>
+        <li><strong>Perfectly sticky mergers:</strong> Colliding bodies fuse conserving mass, momentum, and volume (r ∝ V<sup>1/3</sup>), losing kinetic energy to heat/flash — real impacts shatter and scatter debris.</li>
+        <li><strong>No relativity:</strong> Pure Newtonian gravity; no perihelion precession or gravitational waves.</li>
+        <li><strong>No tides:</strong> Rigid point-mass spheres; no Roche limits, tidal heating, or spin-orbit coupling.</li>
+      </ul>
+    </div>
+  </aside>
+
+  <!-- Bottom-Center: Presets + Palette + Speed + Helper -->
+  <div class="dock-wrap">
+    <div class="hint-strip" id="hint-strip">
+      <strong>Drag back</strong> from empty space like a slingshot to launch · <strong>Right-drag</strong> to pan · <strong>Scroll</strong> to zoom
+    </div>
+
+    <div class="panel preset-bar" role="group" aria-label="Presets">
+      <button class="small-btn" data-preset="starter" title="Central star + 1 planet (starter scenario)">Starter</button>
+      <button class="small-btn" data-preset="solar" title="Toy-scale multi-planet system">Solar System (toy scale)</button>
+      <button class="small-btn" data-preset="binary" title="Two mutually orbiting stars + circumbinary planet">Binary Stars</button>
+      <button class="small-btn" data-preset="figure8" title="Chenciner-Montgomery stable three-body figure-eight orbit">Figure-Eight</button>
+      <button class="small-btn" data-preset="chaos" title="Random swirling cluster of stars, planets &amp; asteroids">Chaos Cluster (random)</button>
+      <button class="small-btn" id="btn-clear" title="Clear all bodies and build from scratch">Clear</button>
+    </div>
+
+    <div class="panel controls-dock" role="toolbar" aria-label="Forge Controls">
+      <!-- Mass Palette -->
+      <div class="control-group" role="group" aria-label="Body Mass Palette">
+        <button data-mass="asteroid" title="Place Asteroid (Hotkey: A)">
+          <span class="orb-dot orb-asteroid"></span>
+          Asteroid <span class="mass-tag">m=1</span>
+        </button>
+        <button data-mass="planet" class="active" title="Place Planet (Hotkey: P)">
+          <span class="orb-dot orb-planet"></span>
+          Planet <span class="mass-tag">m=15</span>
+        </button>
+        <button data-mass="star" title="Place Star (Hotkey: S)">
+          <span class="orb-dot orb-star"></span>
+          Star <span class="mass-tag">m=1000</span>
+        </button>
+      </div>
+
+      <div class="group-sep"></div>
+
+      <!-- Speed Controls -->
+      <div class="control-group" role="group" aria-label="Simulation Speed">
+        <button class="speed-btn" data-speed="0" title="Pause (Hotkey: Space)">⏸</button>
+        <button class="speed-btn" data-speed="0.25" title="0.25× speed (Hotkey: 1)">0.25×</button>
+        <button class="speed-btn active" data-speed="1" title="1× speed (Hotkey: 2)">1×</button>
+        <button class="speed-btn" data-speed="2" title="2× speed (Hotkey: 3)">2×</button>
+        <button class="speed-btn" data-speed="4" title="4× speed (Hotkey: 4)">4×</button>
+      </div>
+
+      <div class="group-sep"></div>
+
+      <!-- Stable Orbit Helper -->
+      <div class="control-group">
+        <button id="btn-helper" class="active-mint" title="Show ghost circular-orbit velocity arrow around system CoM when placing a body (Hotkey: G)">
+          ◎ Stable Orbit Helper
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom-Right: Merger & Event Log -->
+  <aside class="panel bottom-right card-expanded" id="log-card" aria-label="Event and Merger Log">
+    <div class="card-head" id="log-toggle">
+      <span class="card-title">Observatory Log</span>
+      <span class="collapse-icon" id="log-icon">−</span>
+    </div>
+    <div class="card-body">
+      <div class="log-list" id="log-list"></div>
+    </div>
+  </aside>
+
+  <!-- Zen Restore Button -->
+  <button class="panel zen-restore small-btn" id="btn-zen-restore">Exit Zen (H)</button>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // =========================================================================
+  // PHYSICAL CONSTANTS & CALIBRATION
+  // =========================================================================
+  // 1 AU = 150 world units; 1 M_sun = 1000 mass units.
+  // G is calibrated so a circular 1 AU orbit around 1 M_sun has period T = 1.00 simulated year.
+  const AU = 150;
+  const STAR_MASS = 1000;
+  const G = (4 * Math.PI * Math.PI * AU * AU * AU) / STAR_MASS; // ~133239.67
+  const SOFTENING = 4.0;                  // world units (~0.0267 AU)
+  const SOFTENING2 = SOFTENING * SOFTENING;
+  const FIXED_DT = 0.0005;                // fixed symplectic timestep (simulated years; 2000 steps/yr)
+  const BASE_YEARS_PER_SEC = 0.25;        // at 1× speed, 1 simulated year = 4 real seconds
+  const R_EJECT = 8.0 * AU;               // 1200 wu = 8.0 AU ejection boundary from system CoM
+  const ENERGY_UNIT_DIV = STAR_MASS * AU * AU; // displays energy in M_sun * AU^2 / yr^2
+  const LAUNCH_VEL_SCALE = 5.4;           // world-units/yr per world-unit of slingshot pullback
+  const STORAGE_BEST_KEY = 'star_forge_best_lifetime_v1';
+
+  const MASS_PALETTE = {
+    asteroid: { label: 'Asteroid', mass: 1,    radius: 3.5, class: 'asteroid' },
+    planet:   { label: 'Planet',   mass: 15,   radius: 7.2, class: 'planet'   },
+    star:     { label: 'Star',     mass: 1000, radius: 16.0, class: 'star'    }
+  };
+
+  const PLANET_COLORS = [
+    { core: '#7ce8ff', mid: '#1ea7e1', glow: 'rgba(56, 189, 248, 0.55)', trail: '#4fd1ff' },
+    { core: '#99f6d8', mid: '#10b981', glow: 'rgba(16, 185, 129, 0.52)', trail: '#34d399' },
+    { core: '#ffd0a6', mid: '#f97316', glow: 'rgba(249, 115, 22, 0.52)', trail: '#fb923c' },
+    { core: '#d8b4fe', mid: '#8b5cf6', glow: 'rgba(139, 92, 246, 0.52)', trail: '#a78bfa' },
+    { core: '#fda4af', mid: '#ec4899', glow: 'rgba(236, 72, 153, 0.50)', trail: '#f472b6' },
+    { core: '#bae6fd', mid: '#3b82f6', glow: 'rgba(59, 130, 246, 0.52)', trail: '#60a5fa' },
+  ];
+
+  // =========================================================================
+  // STATE
+  // =========================================================================
+  const canvas = document.getElementById('space-canvas');
+  const ctx = canvas.getContext('2d');
+
+  let viewW = window.innerWidth;
+  let viewH = window.innerHeight;
+  let dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+  // Camera in world coordinates (center of viewport)
+  const camera = {
+    x: 0,
+    y: 0,
+    zoom: 1.0,
+    targetZoom: 1.0,
+    autoTrack: true
+  };
+
+  let bodies = [];
+  let nextBodyId = 1;
+  let planetColorIdx = 0;
+
+  let simTime = 0;            // total simulated years in current scenario
+  let lifetime = 0;           // active bound survival score (years)
+  let bestLifetime = loadBestScore();
+  let lastSavedBest = bestLifetime;
+  let runState = 'active';    // 'active' | 'waiting' | 'ended'
+  let endReason = '';
+  let currentPreset = 'starter';
+
+  let speedMult = 1;
+  let lastNonZeroSpeed = 1;
+  let selectedClass = 'planet';
+  let helperEnabled = true;
+
+  let accumulator = 0;
+  let lastFrameMs = performance.now();
+
+  // Visual effects
+  const flashes = [];   // merger shockwaves + core flashes
+  const sparks = [];    // merger ember particles
+  const floatLabels = []; // transient merger popups in world space
+
+  // Background starfield (deterministic layered parallax stars)
+  const bgStars = [];
+  function buildStarfield() {
+    bgStars.length = 0;
+    let seed = 133742;
+    const rand = () => {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      return seed / 4294967296;
+    };
+    const tints = ['#dbeafe', '#ffffff', '#fef3c7', '#e0e7ff', '#ffedd5'];
+    for (let i = 0; i < 300; i++) {
+      const layer = rand() < 0.65 ? 0 : (rand() < 0.85 ? 1 : 2);
+      bgStars.push({
+        nx: rand(), // normalized 0..1 screen wrap coordinates
+        ny: rand(),
+        size: layer === 0 ? 0.6 + rand() * 0.7 : (layer === 1 ? 1.0 + rand() * 0.9 : 1.5 + rand() * 1.1),
+        alpha: 0.18 + rand() * (layer === 2 ? 0.65 : 0.42),
+        parallax: layer === 0 ? 0.03 : (layer === 1 ? 0.07 : 0.13),
+        phase: rand() * Math.PI * 2,
+        twinkleSpeed: 0.4 + rand() * 1.4,
+        color: tints[Math.floor(rand() * tints.length)]
+      });
+    }
+  }
+  buildStarfield();
+
+  // Interaction state
+  const pointer = {
+    screenX: 0,
+    screenY: 0,
+    onCanvas: false,
+    draggingLaunch: false,
+    dragStartWorldX: 0,
+    dragStartWorldY: 0,
+    dragCurrWorldX: 0,
+    dragCurrWorldY: 0,
+    panning: false,
+    panStartScreenX: 0,
+    panStartScreenY: 0,
+    panStartCamX: 0,
+    panStartCamY: 0,
+    activePointerId: null
+  };
+
+  // =========================================================================
+  // UTILITIES & PERSISTENCE
+  // =========================================================================
+  function loadBestScore() {
+    try {
+      const raw = localStorage.getItem(STORAGE_BEST_KEY);
+      const v = parseFloat(raw);
+      return Number.isFinite(v) && v >= 0 ? v : 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  function saveBestScore(val) {
+    try {
+      localStorage.setItem(STORAGE_BEST_KEY, val.toFixed(3));
+    } catch {
+      // Ignore storage errors in private / restricted contexts
+    }
+  }
+
+  function classifyMass(m) {
+    if (m >= 250) return 'star';
+    if (m >= 2) return 'planet';
+    return 'asteroid';
+  }
+
+  function getVisualStyle(mass, customColor) {
+    const cls = classifyMass(mass);
+    if (cls === 'star') {
+      if (mass >= 1800) {
+        // Blue-white giant
+        return {
+          core: '#ffffff',
+          mid: '#93ddff',
+          edge: '#3b82f6',
+          glow: 'rgba(115, 205, 255, 0.72)',
+          trail: '#8cd8ff'
+        };
+      }
+      if (mass < 680) {
+        // Warm amber-crimson dwarf
+        return {
+          core: '#fff4dc',
+          mid: '#ff9b42',
+          edge: '#ea580c',
+          glow: 'rgba(255, 138, 60, 0.65)',
+          trail: '#ff9d52'
+        };
+      }
+      // Classic solar gold
+      return {
+        core: '#ffffff',
+        mid: '#ffe082',
+        edge: '#f59e0b',
+        glow: 'rgba(255, 205, 92, 0.72)',
+        trail: '#ffd166'
+      };
+    }
+    if (cls === 'planet') {
+      return customColor || PLANET_COLORS[(planetColorIdx++) % PLANET_COLORS.length];
+    }
+    // Asteroid
+    return {
+      core: '#e2e8f0',
+      mid: '#94a3b8',
+      edge: '#475569',
+      glow: 'rgba(168, 184, 212, 0.42)',
+      trail: '#9fb0cc'
+    };
+  }
+
+  function createBody(x, y, vx, vy, mass, radius, customColor, name) {
+    const style = getVisualStyle(mass, customColor);
+    const cls = classifyMass(mass);
+    const id = nextBodyId++;
+    return {
+      id,
+      name: name || `${cls[0].toUpperCase() + cls.slice(1)}-${id}`,
+      x, y, vx, vy,
+      ax: 0, ay: 0,
+      m: mass,
+      r: radius,
+      cls,
+      style,
+      trail: [{ x, y }],
+      trailMax: cls === 'star' ? 280 : (cls === 'planet' ? 320 : 180),
+      lastTrailX: x,
+      lastTrailY: y
+    };
+  }
+
+  function screenToWorld(sx, sy) {
+    return {
+      x: (sx - viewW * 0.5) / camera.zoom + camera.x,
+      y: (sy - viewH * 0.5) / camera.zoom + camera.y
+    };
+  }
+
+  function worldToScreen(wx, wy) {
+    return {
+      x: (wx - camera.x) * camera.zoom + viewW * 0.5,
+      y: (wy - camera.y) * camera.zoom + viewH * 0.5
+    };
+  }
+
+  function computeSystemCoM(list = bodies) {
+    let totalM = 0, cx = 0, cy = 0, vx = 0, vy = 0;
+    for (let i = 0; i < list.length; i++) {
+      const b = list[i];
+      totalM += b.m;
+      cx += b.m * b.x;
+      cy += b.m * b.y;
+      vx += b.m * b.vx;
+      vy += b.m * b.vy;
+    }
+    if (totalM === 0) return { m: 0, x: 0, y: 0, vx: 0, vy: 0 };
+    return { m: totalM, x: cx / totalM, y: cy / totalM, vx: vx / totalM, vy: vy / totalM };
+  }
+
+  function zeroCenterOfMass(list) {
+    const cm = computeSystemCoM(list);
+    for (let i = 0; i < list.length; i++) {
+      list[i].x -= cm.x;
+      list[i].y -= cm.y;
+      list[i].vx -= cm.vx;
+      list[i].vy -= cm.vy;
+      list[i].trail = [{ x: list[i].x, y: list[i].y }];
+      list[i].lastTrailX = list[i].x;
+      list[i].lastTrailY = list[i].y;
+    }
+    return list;
+  }
+
+  function computeTotalEnergy() {
+    let ke = 0;
+    let pe = 0;
+    const n = bodies.length;
+    for (let i = 0; i < n; i++) {
+      const a = bodies[i];
+      ke += 0.5 * a.m * (a.vx * a.vx + a.vy * a.vy);
+      for (let j = i + 1; j < n; j++) {
+        const b = bodies[j];
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        pe -= (G * a.m * b.m) / Math.sqrt(dx * dx + dy * dy + SOFTENING2);
+      }
+    }
+    return (ke + pe) / ENERGY_UNIT_DIV;
+  }
+
+  // Exact circular-orbit velocity vector for placing a new body of mass `newMass`
+  // at world position (px, py) around the existing system's center of mass.
+  function computeCircularOrbitHelper(px, py, newMass, preferDirVec) {
+    if (bodies.length === 0) return null;
+    const cm = computeSystemCoM(bodies);
+    const rx = px - cm.x;
+    const ry = py - cm.y;
+    const dist = Math.hypot(rx, ry);
+    if (dist < 12) return null;
+
+    // Softened circular relative speed: v_rel^2 / d = G (M_tot + m_new) d / (d^2 + eps^2)^(3/2)
+    const r2 = dist * dist + SOFTENING2;
+    const vRel = Math.sqrt((G * (cm.m + newMass) * dist * dist) / (r2 * Math.sqrt(r2)));
+
+    // Unit tangent (counter-clockwise on canvas: (-ry, rx) / dist, or flip to CW if user aims that way)
+    let tx = -ry / dist;
+    let ty = rx / dist;
+    if (preferDirVec) {
+      const dot = preferDirVec.x * tx + preferDirVec.y * ty;
+      if (dot < -0.05) {
+        tx = -tx;
+        ty = -ty;
+      }
+    }
+
+    return {
+      cm,
+      dist,
+      vRel,
+      vx: cm.vx + tx * vRel,
+      vy: cm.vy + ty * vRel
+    };
+  }
+
+  // =========================================================================
+  // LOGGING
+  // =========================================================================
+  const logListEl = document.getElementById('log-list');
+  function addLog(message, type = 'info') {
+    const item = document.createElement('div');
+    item.className = `log-entry ${type}`;
+    const timeSpan = document.createElement('span');
+    timeSpan.className = 'log-time';
+    timeSpan.textContent = `${simTime.toFixed(2)}y`;
+    const msgSpan = document.createElement('span');
+    msgSpan.textContent = message;
+    item.appendChild(timeSpan);
+    item.appendChild(msgSpan);
+    logListEl.prepend(item);
+    while (logListEl.children.length > 35) {
+      logListEl.removeChild(logListEl.lastChild);
+    }
+  }
+
+  // =========================================================================
+  // PHYSICS ENGINE — TRUE PAIRWISE NEWTONIAN GRAVITY + VELOCITY VERLET
+  // =========================================================================
+  function computeAccelerations() {
+    const n = bodies.length;
+    for (let i = 0; i < n; i++) {
+      bodies[i].ax = 0;
+      bodies[i].ay = 0;
+    }
+    for (let i = 0; i < n; i++) {
+      const a = bodies[i];
+      for (let j = i + 1; j < n; j++) {
+        const b = bodies[j];
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const r2 = dx * dx + dy * dy + SOFTENING2;
+        const invR3 = G / (r2 * Math.sqrt(r2));
+        const fx = dx * invR3;
+        const fy = dy * invR3;
+        a.ax += fx * b.m;
+        a.ay += fy * b.m;
+        b.ax -= fx * a.m;
+        b.ay -= fy * a.m;
+      }
+    }
+  }
+
+  function spawnMergerFX(x, y, vx, vy, newRadius, color, labelText, isIgnition) {
+    flashes.push({
+      x, y,
+      r: newRadius * 0.8,
+      maxR: Math.max(46, newRadius * (isIgnition ? 6.5 : 4.2)),
+      alpha: 1.0,
+      color: isIgnition ? '#7ce8ff' : color,
+      isIgnition
+    });
+    const count = isIgnition ? 28 : 16;
+    for (let i = 0; i < count; i++) {
+      const ang = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.3;
+      const spd = (55 + Math.random() * 145) * (isIgnition ? 1.45 : 1.0);
+      sparks.push({
+        x, y,
+        vx: vx * 0.35 + Math.cos(ang) * spd,
+        vy: vy * 0.35 + Math.sin(ang) * spd,
+        life: 0.45 + Math.random() * 0.5,
+        maxLife: 0.95,
+        size: 1.5 + Math.random() * 2.2,
+        color: isIgnition ? (i % 2 === 0 ? '#ffffff' : '#67e8f9') : (i % 2 === 0 ? '#fff6d6' : color)
+      });
+    }
+    floatLabels.push({
+      x, y: y - newRadius - 8,
+      text: labelText,
+      life: 1.4,
+      maxLife: 1.4,
+      color: isIgnition ? '#7ce8ff' : '#ffd166'
+    });
+  }
+
+  function resolveCollisions() {
+    let mergedAny = false;
+    let safety = 0;
+    while (safety++ < 64) {
+      let hitI = -1, hitJ = -1;
+      const n = bodies.length;
+      outer: for (let i = 0; i < n; i++) {
+        const a = bodies[i];
+        for (let j = i + 1; j < n; j++) {
+          const b = bodies[j];
+          const dx = b.x - a.x;
+          const dy = b.y - a.y;
+          const minDist = a.r + b.r;
+          if (dx * dx + dy * dy <= minDist * minDist) {
+            hitI = i;
+            hitJ = j;
+            break outer;
+          }
+        }
+      }
+      if (hitI === -1) break;
+
+      mergedAny = true;
+      // Ensure primary is the more massive body
+      let primary = bodies[hitI];
+      let secondary = bodies[hitJ];
+      if (secondary.m > primary.m) {
+        const tmp = primary;
+        primary = secondary;
+        secondary = tmp;
+      }
+
+      const oldPrimaryClass = primary.cls;
+      const oldSecondaryClass = secondary.cls;
+      const totalM = primary.m + secondary.m;
+
+      // Exact conservation of mass, momentum, center-of-mass, and 3D volume (r = cbrt(r1^3 + r2^3))
+      const nx = (primary.m * primary.x + secondary.m * secondary.x) / totalM;
+      const ny = (primary.m * primary.y + secondary.m * secondary.y) / totalM;
+      const nvx = (primary.m * primary.vx + secondary.m * secondary.vx) / totalM;
+      const nvy = (primary.m * primary.vy + secondary.m * secondary.vy) / totalM;
+      const nr = Math.cbrt(primary.r * primary.r * primary.r + secondary.r * secondary.r * secondary.r);
+
+      const newClass = classifyMass(totalM);
+      const ignitedStar = oldPrimaryClass !== 'star' && newClass === 'star';
+
+      primary.x = nx;
+      primary.y = ny;
+      primary.vx = nvx;
+      primary.vy = nvy;
+      primary.m = totalM;
+      primary.r = nr;
+      primary.cls = newClass;
+
+      // Update appearance if class promoted or star grew significantly
+      if (newClass === 'star' || newClass !== oldPrimaryClass) {
+        primary.style = getVisualStyle(totalM, newClass === 'planet' ? primary.style : null);
+        primary.trailMax = newClass === 'star' ? 280 : 300;
+      }
+      primary.trail.push({ x: nx, y: ny });
+      primary.lastTrailX = nx;
+      primary.lastTrailY = ny;
+
+      // Remove secondary body
+      const removeIdx = bodies.indexOf(secondary);
+      if (removeIdx !== -1) bodies.splice(removeIdx, 1);
+
+      const cap = (s) => s[0].toUpperCase() + s.slice(1);
+      if (ignitedStar) {
+        spawnMergerFX(nx, ny, nvx, nvy, nr, '#7ce8ff', '★ STAR IGNITED!', true);
+        addLog(`★ IGNITION! ${cap(oldPrimaryClass)} + ${cap(oldSecondaryClass)} fused into a Star (m=${Math.round(totalM)})`, 'ignition');
+      } else {
+        const fxCol = primary.style.trail || '#ffd166';
+        spawnMergerFX(nx, ny, nvx, nvy, nr, fxCol, 'MERGER', false);
+        addLog(`Merged ${cap(oldPrimaryClass)} + ${cap(oldSecondaryClass)} → ${cap(newClass)} (m=${totalM < 10 ? totalM.toFixed(1) : Math.round(totalM)})`, 'merger');
+      }
+    }
+
+    if (mergedAny) {
+      computeAccelerations();
+    }
+    return mergedAny;
+  }
+
+  function physicsStep(dt) {
+    const n = bodies.length;
+    if (n === 0) return;
+
+    // Velocity Verlet (2nd-order symplectic):
+    // 1. Half-step velocity kick & full-step position drift
+    for (let i = 0; i < n; i++) {
+      const b = bodies[i];
+      b.vx += 0.5 * dt * b.ax;
+      b.vy += 0.5 * dt * b.ay;
+      b.x += dt * b.vx;
+      b.y += dt * b.vy;
+    }
+
+    // 2. Recompute pairwise gravitational accelerations at new positions
+    computeAccelerations();
+
+    // 3. Second half-step velocity kick
+    for (let i = 0; i < n; i++) {
+      const b = bodies[i];
+      b.vx += 0.5 * dt * b.ax;
+      b.vy += 0.5 * dt * b.ay;
+    }
+
+    simTime += dt;
+
+    // Resolve sticky mergers (recomputes accelerations if any occurred)
+    resolveCollisions();
+
+    // Record smooth orbit trail samples (distance-throttled)
+    const minDistSq = 2.6 * 2.6;
+    for (let i = 0; i < bodies.length; i++) {
+      const b = bodies[i];
+      const dx = b.x - b.lastTrailX;
+      const dy = b.y - b.lastTrailY;
+      if (dx * dx + dy * dy >= minDistSq) {
+        b.trail.push({ x: b.x, y: b.y });
+        b.lastTrailX = b.x;
+        b.lastTrailY = b.y;
+        if (b.trail.length > b.trailMax) {
+          b.trail.shift();
+        }
+      }
+    }
+
+    // Check survival rules while active
+    if (runState === 'active') {
+      if (bodies.length < 2) {
+        endRun('Total collapse — fewer than 2 bodies remain.');
+      } else {
+        const cm = computeSystemCoM(bodies);
+        let escapedBody = null;
+        for (let i = 0; i < bodies.length; i++) {
+          const b = bodies[i];
+          const d = Math.hypot(b.x - cm.x, b.y - cm.y);
+          if (d > R_EJECT) {
+            escapedBody = b;
+            break;
+          }
+        }
+        if (escapedBody) {
+          endRun(`${escapedBody.cls[0].toUpperCase() + escapedBody.cls.slice(1)} ejected beyond 8.0 AU from system CoM.`);
+        } else {
+          lifetime += dt;
+          if (lifetime > bestLifetime) {
+            bestLifetime = lifetime;
+          }
+        }
+      }
+    }
+  }
+
+  function endRun(reason) {
+    if (runState === 'ended') return;
+    runState = 'ended';
+    endReason = reason;
+    if (bestLifetime > lastSavedBest) {
+      saveBestScore(bestLifetime);
+      lastSavedBest = bestLifetime;
+    }
+    addLog(`Run ended at ${lifetime.toFixed(2)} yr: ${reason}`, 'alert');
+    updateScoreUI();
+  }
+
+  // =========================================================================
+  // PRESET SCENARIOS
+  // =========================================================================
+  function resetSimulationState(presetName) {
+    bodies = [];
+    flashes.length = 0;
+    sparks.length = 0;
+    floatLabels.length = 0;
+    nextBodyId = 1;
+    planetColorIdx = 0;
+    simTime = 0;
+    lifetime = 0;
+    accumulator = 0;
+    endReason = '';
+    currentPreset = presetName;
+    camera.x = 0;
+    camera.y = 0;
+    camera.autoTrack = true;
+    logListEl.innerHTML = '';
+  }
+
+  function circularSpeed(massSum, dist) {
+    const r2 = dist * dist + SOFTENING2;
+    return Math.sqrt((G * massSum * dist * dist) / (r2 * Math.sqrt(r2)));
+  }
+
+  function loadPreset(name) {
+    resetSimulationState(name);
+
+    if (name === 'starter') {
+      const mStar = 1000;
+      const mPlanet = 25;
+      const dist = 1.0 * AU;
+      const vRel = circularSpeed(mStar + mPlanet, dist);
+      bodies.push(createBody(0, 0, 0, 0, mStar, 16.0, null, 'Sol'));
+      bodies.push(createBody(dist, 0, 0, vRel, mPlanet, 7.5, PLANET_COLORS[0], 'Terra'));
+      zeroCenterOfMass(bodies);
+      camera.zoom = camera.targetZoom = 1.15;
+      runState = 'active';
+      addLog('Loaded Starter: 1 Star + 1 Planet at 1.0 AU (watch the star wobble!).', 'info');
+    } else if (name === 'solar') {
+      // Toy-scale Solar System: 4 spaced planets with Hill-stable masses
+      const mStar = 1000;
+      bodies.push(createBody(0, 0, 0, 0, mStar, 16.0, null, 'Helios'));
+      const specs = [
+        { d: 0.52 * AU, m: 2.2, r: 4.8, ang: 0.35, col: PLANET_COLORS[2] },
+        { d: 0.96 * AU, m: 3.4, r: 6.4, ang: 2.15, col: PLANET_COLORS[0] },
+        { d: 1.62 * AU, m: 5.2, r: 8.2, ang: 4.05, col: PLANET_COLORS[1] },
+        { d: 2.52 * AU, m: 3.8, r: 7.4, ang: 5.50, col: PLANET_COLORS[3] },
+      ];
+      let enclosed = mStar;
+      for (const s of specs) {
+        const v = circularSpeed(enclosed + s.m, s.d);
+        bodies.push(createBody(
+          Math.cos(s.ang) * s.d,
+          Math.sin(s.ang) * s.d,
+          -Math.sin(s.ang) * v,
+          Math.cos(s.ang) * v,
+          s.m, s.r, s.col
+        ));
+        enclosed += s.m;
+      }
+      zeroCenterOfMass(bodies);
+      camera.zoom = camera.targetZoom = 0.82;
+      runState = 'active';
+      addLog('Loaded Solar System (toy scale): 1 Star + 4 Planets.', 'info');
+    } else if (name === 'binary') {
+      // Twin mutually orbiting stars + outer circumbinary planet
+      const m1 = 850, m2 = 700, sep = 0.85 * AU;
+      const M = m1 + m2;
+      const vRel = circularSpeed(M, sep);
+      const r1 = -sep * (m2 / M), r2 = sep * (m1 / M);
+      const v1 = -vRel * (m2 / M), v2 = vRel * (m1 / M);
+      const dp = 2.65 * AU, mp = 16;
+      const vp = circularSpeed(M + mp, dp);
+      bodies.push(createBody(r1, 0, 0, v1, m1, 15.2));
+      bodies.push(createBody(r2, 0, 0, v2, m2, 14.2));
+      bodies.push(createBody(0, dp, -vp, 0, mp, 7.4, PLANET_COLORS[0]));
+      zeroCenterOfMass(bodies);
+      camera.zoom = camera.targetZoom = 0.78;
+      runState = 'active';
+      addLog('Loaded Binary Stars: twin stars + circumbinary planet.', 'info');
+    } else if (name === 'figure8') {
+      // Chenciner & Montgomery (2000) famous stable 3-body Figure-Eight orbit
+      const L = 190;
+      const m = STAR_MASS;
+      const vScale = Math.sqrt((G * m) / L);
+      const starPalette = [
+        { core: '#ffffff', mid: '#ffe082', edge: '#f59e0b', glow: 'rgba(255, 209, 102, 0.72)', trail: '#ffd166' },
+        { core: '#ffffff', mid: '#93ddff', edge: '#38bdf8', glow: 'rgba(92, 225, 255, 0.72)', trail: '#5ce1ff' },
+        { core: '#ffffff', mid: '#fbcfe8', edge: '#f472b6', glow: 'rgba(244, 114, 182, 0.68)', trail: '#f472b6' },
+      ];
+      bodies.push(createBody(-0.97000436 * L,  0.24308753 * L,  0.466203685 * vScale,  0.43236573 * vScale, m, 14.5, null));
+      bodies.push(createBody( 0.97000436 * L, -0.24308753 * L,  0.466203685 * vScale,  0.43236573 * vScale, m, 14.5, null));
+      bodies.push(createBody( 0,               0,              -0.93240737  * vScale, -0.86473146 * vScale, m, 14.5, null));
+      // Tint the three equal stars subtly so you can follow their braid!
+      for (let i = 0; i < 3; i++) {
+        bodies[i].style = starPalette[i];
+        bodies[i].trailMax = 360;
+      }
+      zeroCenterOfMass(bodies);
+      camera.zoom = camera.targetZoom = 1.05;
+      runState = 'active';
+      addLog('Loaded Figure-Eight: 3 equal stars on the Chenciner-Montgomery periodic orbit.', 'info');
+    } else if (name === 'chaos') {
+      // Swirling random cluster: 2 stars, 5 planets, 10 asteroids
+      const countStars = 2;
+      const countPlanets = 5;
+      const countAsteroids = 10;
+      // Place 2 stars off-center with gentle mutual swirl
+      for (let i = 0; i < countStars; i++) {
+        const ang = i * Math.PI + (Math.random() - 0.5) * 0.6;
+        const dist = (0.55 + Math.random() * 0.55) * AU;
+        const m = 650 + Math.random() * 550;
+        const v = (240 + Math.random() * 200);
+        bodies.push(createBody(
+          Math.cos(ang) * dist, Math.sin(ang) * dist,
+          -Math.sin(ang) * v + (Math.random() - 0.5) * 140,
+           Math.cos(ang) * v + (Math.random() - 0.5) * 140,
+          m, 14 + (m - 650) / 220
+        ));
+      }
+      const totalStarM = bodies.reduce((s, b) => s + b.m, 0);
+      for (let i = 0; i < countPlanets + countAsteroids; i++) {
+        const isPlanet = i < countPlanets;
+        const ang = Math.random() * Math.PI * 2;
+        const dist = (0.9 + Math.random() * 2.2) * AU;
+        const vApprox = circularSpeed(totalStarM, dist) * (0.55 + Math.random() * 0.55);
+        const jitter = (Math.random() - 0.5) * 200;
+        const m = isPlanet ? (10 + Math.random() * 22) : (0.8 + Math.random() * 1.1);
+        const r = isPlanet ? (6.4 + Math.random() * 2.2) : (3.1 + Math.random() * 1.0);
+        bodies.push(createBody(
+          Math.cos(ang) * dist, Math.sin(ang) * dist,
+          -Math.sin(ang) * vApprox + jitter,
+           Math.cos(ang) * vApprox + (Math.random() - 0.5) * 200,
+          m, r
+        ));
+      }
+      zeroCenterOfMass(bodies);
+      camera.zoom = camera.targetZoom = 0.72;
+      runState = 'active';
+      addLog('Loaded Chaos Cluster: 17 random bodies — brace for slingshots & mergers!', 'info');
+    } else if (name === 'clear') {
+      camera.zoom = camera.targetZoom = 1.0;
+      runState = 'waiting';
+      addLog('Canvas cleared. Launch at least 2 bodies to start a survival run.', 'info');
+    }
+
+    computeAccelerations();
+    syncPresetButtons();
+    updateScoreUI();
+    updateTelemetryUI();
+  }
+
+  // =========================================================================
+  // RENDERING
+  // =========================================================================
+  function resizeCanvas() {
+    viewW = window.innerWidth;
+    viewH = window.innerHeight;
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.floor(viewW * dpr);
+    canvas.height = Math.floor(viewH * dpr);
+    canvas.style.width = `${viewW}px`;
+    canvas.style.height = `${viewH}px`;
+  }
+  resizeCanvas();
+  window.addEventListener('resize', resizeCanvas);
+
+  function drawBackground(nowSec) {
+    // Deep-space radial gradient + faint cosmic nebula wash
+    const bgGrad = ctx.createRadialGradient(
+      viewW * 0.45, viewH * 0.42, 40,
+      viewW * 0.5, viewH * 0.5, Math.max(viewW, viewH) * 0.85
+    );
+    bgGrad.addColorStop(0, '#091024');
+    bgGrad.addColorStop(0.5, '#050814');
+    bgGrad.addColorStop(1, '#02040a');
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, viewW, viewH);
+
+    // Subtle colored nebula clouds
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const neb1 = ctx.createRadialGradient(viewW * 0.24, viewH * 0.30, 0, viewW * 0.24, viewH * 0.30, viewW * 0.38);
+    neb1.addColorStop(0, 'rgba(38, 72, 160, 0.09)');
+    neb1.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = neb1;
+    ctx.fillRect(0, 0, viewW, viewH);
+
+    const neb2 = ctx.createRadialGradient(viewW * 0.78, viewH * 0.68, 0, viewW * 0.78, viewH * 0.68, viewW * 0.35);
+    neb2.addColorStop(0, 'rgba(116, 48, 138, 0.075)');
+    neb2.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = neb2;
+    ctx.fillRect(0, 0, viewW, viewH);
+    ctx.restore();
+
+    // Multi-layer parallax twinkling starfield
+    for (let i = 0; i < bgStars.length; i++) {
+      const s = bgStars[i];
+      const sx = ((s.nx * viewW - camera.x * s.parallax) % viewW + viewW) % viewW;
+      const sy = ((s.ny * viewH - camera.y * s.parallax) % viewH + viewH) % viewH;
+      const tw = 0.72 + 0.28 * Math.sin(nowSec * s.twinkleSpeed + s.phase);
+      ctx.globalAlpha = s.alpha * tw;
+      ctx.fillStyle = s.color;
+      ctx.beginPath();
+      ctx.arc(sx, sy, s.size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function drawWorldGuides(cm) {
+    // 1. Escape boundary ring (8.0 AU around system CoM)
+    if (bodies.length > 0) {
+      ctx.save();
+      ctx.strokeStyle = runState === 'ended' ? 'rgba(255, 107, 139, 0.28)' : 'rgba(130, 165, 255, 0.14)';
+      ctx.lineWidth = 1.25 / camera.zoom;
+      ctx.setLineDash([10 / camera.zoom, 10 / camera.zoom]);
+      ctx.beginPath();
+      ctx.arc(cm.x, cm.y, R_EJECT, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Subtle boundary label at top of ring
+      ctx.fillStyle = 'rgba(154, 178, 224, 0.42)';
+      ctx.font = `${11 / camera.zoom}px ${getComputedStyle(document.documentElement).getPropertyValue('--mono')}`;
+      ctx.textAlign = 'center';
+      ctx.fillText('8.0 AU EJECTION HORIZON', cm.x, cm.y - R_EJECT - 8 / camera.zoom);
+
+      // Subtle Center-of-Mass crosshair (makes star reflex wobble visibly unmistakable!)
+      const cross = 6 / camera.zoom;
+      ctx.strokeStyle = 'rgba(145, 178, 255, 0.28)';
+      ctx.lineWidth = 1 / camera.zoom;
+      ctx.beginPath();
+      ctx.moveTo(cm.x - cross, cm.y);
+      ctx.lineTo(cm.x + cross, cm.y);
+      ctx.moveTo(cm.x, cm.y - cross);
+      ctx.lineTo(cm.x, cm.y + cross);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  function drawTrails() {
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    for (let i = 0; i < bodies.length; i++) {
+      const b = bodies[i];
+      const tr = b.trail;
+      const len = tr.length;
+      if (len < 2) continue;
+
+      const baseWidth = b.cls === 'star' ? 2.6 : (b.cls === 'planet' ? 2.0 : 1.25);
+      const maxWidth = baseWidth / Math.sqrt(camera.zoom);
+      ctx.strokeStyle = b.style.trail;
+
+      // Draw fading trail in smooth batched chunks (fast + silky gradient)
+      const chunks = Math.min(24, len - 1);
+      for (let c = 0; c < chunks; c++) {
+        const startIdx = Math.floor((c * (len - 1)) / chunks);
+        const endIdx = Math.floor(((c + 1) * (len - 1)) / chunks);
+        if (endIdx <= startIdx) continue;
+        const frac = (c + 0.5) / chunks;
+        ctx.globalAlpha = frac * frac * 0.68;
+        ctx.lineWidth = Math.max(0.5 / camera.zoom, maxWidth * (0.25 + 0.75 * frac));
+        ctx.beginPath();
+        ctx.moveTo(tr[startIdx].x, tr[startIdx].y);
+        for (let k = startIdx + 1; k <= endIdx; k++) {
+          ctx.lineTo(tr[k].x, tr[k].y);
+        }
+        // Connect final chunk seamlessly to live body position
+        if (c === chunks - 1) {
+          ctx.lineTo(b.x, b.y);
+        }
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+
+  function drawBodies(nowSec) {
+    for (let i = 0; i < bodies.length; i++) {
+      const b = bodies[i];
+      const r = b.r;
+      const st = b.style;
+
+      // Outer luminous aura / corona
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      if (b.cls === 'star') {
+        const pulse = 1 + 0.05 * Math.sin(nowSec * 3.1 + b.id * 1.7);
+        const glowR = r * 4.4 * pulse;
+        const g = ctx.createRadialGradient(b.x, b.y, r * 0.4, b.x, b.y, glowR);
+        g.addColorStop(0, st.glow);
+        g.addColorStop(0.28, st.glow.replace(/[\d.]+\)$/, '0.26)'));
+        g.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, glowR, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (b.cls === 'planet') {
+        const glowR = r * 2.7;
+        const g = ctx.createRadialGradient(b.x, b.y, r * 0.6, b.x, b.y, glowR);
+        g.addColorStop(0, st.glow);
+        g.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, glowR, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        const glowR = r * 2.2;
+        const g = ctx.createRadialGradient(b.x, b.y, r * 0.4, b.x, b.y, glowR);
+        g.addColorStop(0, st.glow);
+        g.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, glowR, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+
+      // Solid glowing sphere body
+      const bodyGrad = ctx.createRadialGradient(
+        b.x - r * 0.28, b.y - r * 0.28, r * 0.1,
+        b.x, b.y, r
+      );
+      bodyGrad.addColorStop(0, st.core);
+      bodyGrad.addColorStop(0.65, st.mid);
+      bodyGrad.addColorStop(1, st.edge || st.mid);
+      ctx.fillStyle = bodyGrad;
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  function drawEffects(dtReal) {
+    // Merger shockwaves & radial flashes
+    for (let i = flashes.length - 1; i >= 0; i--) {
+      const f = flashes[i];
+      f.r += (f.maxR - f.r) * Math.min(1, dtReal * 5.8);
+      f.alpha -= dtReal * (f.isIgnition ? 0.9 : 1.35);
+      if (f.alpha <= 0) {
+        flashes.splice(i, 1);
+        continue;
+      }
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      // Bright core flash
+      const coreGrad = ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, f.r * 0.75);
+      coreGrad.addColorStop(0, `rgba(255, 255, 255, ${f.alpha * 0.85})`);
+      coreGrad.addColorStop(0.45, f.color);
+      coreGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.globalAlpha = f.alpha * 0.7;
+      ctx.fillStyle = coreGrad;
+      ctx.beginPath();
+      ctx.arc(f.x, f.y, f.r * 0.75, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Expanding shockwave ring
+      ctx.globalAlpha = f.alpha * 0.9;
+      ctx.strokeStyle = f.color;
+      ctx.lineWidth = (2.6 * f.alpha) / camera.zoom;
+      ctx.beginPath();
+      ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Merger debris sparks
+    for (let i = sparks.length - 1; i >= 0; i--) {
+      const p = sparks[i];
+      p.life -= dtReal;
+      if (p.life <= 0) {
+        sparks.splice(i, 1);
+        continue;
+      }
+      p.x += p.vx * dtReal;
+      p.y += p.vy * dtReal;
+      p.vx *= 0.96;
+      p.vy *= 0.96;
+      const a = p.life / p.maxLife;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = a;
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size / Math.sqrt(camera.zoom), 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // Transient floating merger labels
+    for (let i = floatLabels.length - 1; i >= 0; i--) {
+      const l = floatLabels[i];
+      l.life -= dtReal;
+      if (l.life <= 0) {
+        floatLabels.splice(i, 1);
+        continue;
+      }
+      l.y -= (24 * dtReal) / camera.zoom;
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, l.life / (l.maxLife * 0.6));
+      ctx.fillStyle = l.color;
+      ctx.font = `700 ${11.5 / camera.zoom}px ${getComputedStyle(document.documentElement).getPropertyValue('--mono')}`;
+      ctx.textAlign = 'center';
+      ctx.fillText(l.text, l.x, l.y);
+      ctx.restore();
+    }
+  }
+
+  function drawArrow(x1, y1, x2, y2, color, lineWidth, dashed = false) {
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const len = Math.hypot(dx, dy);
+    if (len < 1e-3) return;
+    const ux = dx / len;
+    const uy = dy / len;
+    const head = Math.min(13 / camera.zoom, len * 0.32);
+
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = lineWidth;
+    ctx.lineCap = 'round';
+    if (dashed) ctx.setLineDash([6 / camera.zoom, 5 / camera.zoom]);
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2 - ux * head * 0.65, y2 - uy * head * 0.65);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Arrowhead
+    ctx.beginPath();
+    ctx.moveTo(x2, y2);
+    ctx.lineTo(x2 - ux * head - uy * head * 0.48, y2 - uy * head + ux * head * 0.48);
+    ctx.lineTo(x2 - ux * head + uy * head * 0.48, y2 - uy * head - ux * head * 0.48);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawPlacementOverlay() {
+    if (!pointer.onCanvas && !pointer.draggingLaunch) return;
+    if (pointer.panning) return;
+
+    const spec = MASS_PALETTE[selectedClass];
+    const origin = pointer.draggingLaunch
+      ? { x: pointer.dragStartWorldX, y: pointer.dragStartWorldY }
+      : screenToWorld(pointer.screenX, pointer.screenY);
+
+    let launchVx = 0, launchVy = 0, dragDist = 0;
+    if (pointer.draggingLaunch) {
+      // Slingshot: pull back from origin -> launch forward opposite to pull
+      const pullX = pointer.dragCurrWorldX - origin.x;
+      const pullY = pointer.dragCurrWorldY - origin.y;
+      dragDist = Math.hypot(pullX, pullY);
+      launchVx = -pullX * LAUNCH_VEL_SCALE;
+      launchVy = -pullY * LAUNCH_VEL_SCALE;
+    }
+
+    const preferDir = dragDist > 3 ? { x: launchVx, y: launchVy } : null;
+    const helper = helperEnabled ? computeCircularOrbitHelper(origin.x, origin.y, spec.mass, preferDir) : null;
+
+    // 1. Stable Orbit Helper ghost orbit ring & ghost circular velocity arrow
+    let circularMatch = false;
+    if (helper) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(83, 242, 179, 0.16)';
+      ctx.lineWidth = 1.2 / camera.zoom;
+      ctx.setLineDash([5 / camera.zoom, 6 / camera.zoom]);
+      ctx.beginPath();
+      ctx.arc(helper.cm.x, helper.cm.y, helper.dist, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+
+      const ghostEndX = origin.x + helper.vx / LAUNCH_VEL_SCALE;
+      const ghostEndY = origin.y + helper.vy / LAUNCH_VEL_SCALE;
+
+      if (pointer.draggingLaunch && dragDist > 4) {
+        const diff = Math.hypot(launchVx - helper.vx, launchVy - helper.vy);
+        const speedRef = Math.hypot(helper.vx, helper.vy) || 1;
+        circularMatch = (diff / speedRef) < 0.09;
+      }
+
+      drawArrow(
+        origin.x, origin.y, ghostEndX, ghostEndY,
+        circularMatch ? 'rgba(83, 242, 179, 0.92)' : 'rgba(83, 242, 179, 0.50)',
+        (circularMatch ? 2.4 : 1.8) / camera.zoom,
+        true
+      );
+
+      // Subtle label on ghost arrow when hovering or dragging
+      ctx.save();
+      ctx.fillStyle = circularMatch ? '#6ee7b7' : 'rgba(134, 239, 172, 0.72)';
+      ctx.font = `600 ${10.5 / camera.zoom}px ${getComputedStyle(document.documentElement).getPropertyValue('--mono')}`;
+      ctx.textAlign = 'left';
+      const labelTxt = circularMatch
+        ? '✓ Circular orbit match'
+        : `v_circ (${(helper.dist / AU).toFixed(2)} AU)`;
+      ctx.fillText(labelTxt, ghostEndX + 8 / camera.zoom, ghostEndY - 6 / camera.zoom);
+      ctx.restore();
+    }
+
+    // 2. Preview ghost body at placement point
+    ctx.save();
+    const previewStyle = getVisualStyle(spec.mass, PLANET_COLORS[planetColorIdx % PLANET_COLORS.length]);
+    ctx.globalAlpha = pointer.draggingLaunch ? 0.92 : 0.55;
+    ctx.fillStyle = previewStyle.mid;
+    ctx.beginPath();
+    ctx.arc(origin.x, origin.y, spec.radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.75)';
+    ctx.lineWidth = 1.2 / camera.zoom;
+    ctx.stroke();
+    ctx.restore();
+
+    // 3. Active slingshot pullback tether & live launch velocity vector
+    if (pointer.draggingLaunch && dragDist > 3) {
+      // Pullback elastic tether behind body
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.28)';
+      ctx.lineWidth = 1.4 / camera.zoom;
+      ctx.setLineDash([4 / camera.zoom, 4 / camera.zoom]);
+      ctx.beginPath();
+      ctx.moveTo(origin.x, origin.y);
+      ctx.lineTo(pointer.dragCurrWorldX, pointer.dragCurrWorldY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Small pull handle dot
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+      ctx.beginPath();
+      ctx.arc(pointer.dragCurrWorldX, pointer.dragCurrWorldY, 3.5 / camera.zoom, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      // Forward launch velocity arrow
+      const launchEndX = origin.x + launchVx / LAUNCH_VEL_SCALE;
+      const launchEndY = origin.y + launchVy / LAUNCH_VEL_SCALE;
+      const arrowCol = circularMatch ? '#53f2b3' : '#ffd166';
+      drawArrow(origin.x, origin.y, launchEndX, launchEndY, arrowCol, 2.5 / camera.zoom, false);
+
+      // Speed readout next to launch tip
+      const speedAU = Math.hypot(launchVx, launchVy) / AU;
+      let speedText = `${speedAU.toFixed(2)} AU/yr`;
+      if (helper && helper.vRel > 1) {
+        const ratio = Math.hypot(launchVx - helper.cm.vx, launchVy - helper.cm.vy) / helper.vRel;
+        speedText += ` (${ratio.toFixed(2)}× v_circ)`;
+      }
+      ctx.save();
+      ctx.fillStyle = arrowCol;
+      ctx.font = `600 ${11 / camera.zoom}px ${getComputedStyle(document.documentElement).getPropertyValue('--mono')}`;
+      ctx.textAlign = 'left';
+      ctx.fillText(speedText, launchEndX + 8 / camera.zoom, launchEndY + 14 / camera.zoom);
+      ctx.restore();
+    }
+  }
+
+  function renderFrame(nowMs, dtReal) {
+    const nowSec = nowMs * 0.001;
+
+    // Smooth zoom & optional CoM auto-tracking
+    camera.zoom += (camera.targetZoom - camera.zoom) * Math.min(1, dtReal * 10);
+
+    const trueCoM = computeSystemCoM(bodies);
+    if (camera.autoTrack && bodies.length > 0 && !pointer.panning) {
+      // Track bound cluster CoM (bodies within 12 AU of true CoM, or all if none)
+      let tm = 0, tx = 0, ty = 0;
+      for (let i = 0; i < bodies.length; i++) {
+        const b = bodies[i];
+        if (Math.hypot(b.x - trueCoM.x, b.y - trueCoM.y) < 12 * AU) {
+          tm += b.m; tx += b.m * b.x; ty += b.m * b.y;
+        }
+      }
+      const targetX = tm > 0 ? tx / tm : trueCoM.x;
+      const targetY = tm > 0 ? ty / tm : trueCoM.y;
+      camera.x += (targetX - camera.x) * Math.min(1, dtReal * 5);
+      camera.y += (targetY - camera.y) * Math.min(1, dtReal * 5);
+    }
+
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    drawBackground(nowSec);
+
+    // Enter world space
+    ctx.save();
+    ctx.translate(viewW * 0.5, viewH * 0.5);
+    ctx.scale(camera.zoom, camera.zoom);
+    ctx.translate(-camera.x, -camera.y);
+
+    drawWorldGuides(trueCoM);
+    drawTrails();
+    drawBodies(nowSec);
+    drawEffects(dtReal);
+    drawPlacementOverlay();
+
+    ctx.restore();
+  }
+
+  // =========================================================================
+  // UI SYNCHRONIZATION
+  // =========================================================================
+  const elYears = document.getElementById('readout-years');
+  const elSpeedLabel = document.getElementById('readout-speed-label');
+  const elBodies = document.getElementById('readout-bodies');
+  const elBreakdown = document.getElementById('readout-breakdown');
+  const elEnergy = document.getElementById('readout-energy');
+  const elBoundPill = document.getElementById('readout-bound-pill');
+  const elLifetime = document.getElementById('score-lifetime');
+  const elBest = document.getElementById('score-best');
+  const elStatusPill = document.getElementById('status-pill');
+  const elEndReason = document.getElementById('end-reason');
+  const btnCenter = document.getElementById('btn-center');
+
+  function updateTelemetryUI() {
+    elYears.textContent = `${simTime.toFixed(2)} yr`;
+    elSpeedLabel.textContent = speedMult === 0 ? 'Paused' : `${speedMult}× speed`;
+    elBodies.textContent = String(bodies.length);
+
+    let nS = 0, nP = 0, nA = 0;
+    for (let i = 0; i < bodies.length; i++) {
+      if (bodies[i].cls === 'star') nS++;
+      else if (bodies[i].cls === 'planet') nP++;
+      else nA++;
+    }
+    const parts = [];
+    if (nS) parts.push(`${nS}★`);
+    if (nP) parts.push(`${nP}●`);
+    if (nA) parts.push(`${nA}·`);
+    elBreakdown.textContent = parts.length ? parts.join(' ') : 'Empty';
+
+    if (bodies.length < 2) {
+      const E = computeTotalEnergy();
+      elEnergy.textContent = bodies.length === 0 ? '0.000' : E.toFixed(3);
+      elBoundPill.textContent = bodies.length === 0 ? 'EMPTY' : 'SINGLE';
+      elBoundPill.className = 'energy-pill bound';
+    } else {
+      const E = computeTotalEnergy();
+      elEnergy.textContent = (E >= 0 ? '+' : '') + E.toFixed(3);
+      const isBound = E < 0;
+      elBoundPill.textContent = isBound ? 'BOUND' : 'UNBOUND';
+      elBoundPill.className = `energy-pill ${isBound ? 'bound' : 'unbound'}`;
+    }
+  }
+
+  function updateScoreUI() {
+    elLifetime.textContent = lifetime.toFixed(2);
+    elBest.textContent = `${bestLifetime.toFixed(2)} yr`;
+
+    if (runState === 'active') {
+      elStatusPill.textContent = 'Active';
+      elStatusPill.className = 'status-pill active';
+      elEndReason.classList.remove('visible');
+    } else if (runState === 'waiting') {
+      elStatusPill.textContent = 'Build';
+      elStatusPill.className = 'status-pill waiting';
+      elEndReason.classList.remove('visible');
+    } else {
+      elStatusPill.textContent = 'Ended';
+      elStatusPill.className = 'status-pill ended';
+      elEndReason.textContent = endReason;
+      elEndReason.classList.add('visible');
+    }
+
+    btnCenter.classList.toggle('active', camera.autoTrack);
+  }
+
+  function syncPresetButtons() {
+    document.querySelectorAll('[data-preset]').forEach((btn) => {
+      btn.classList.toggle('active-gold', btn.dataset.preset === currentPreset);
+    });
+  }
+
+  function setSelectedClass(cls) {
+    selectedClass = cls;
+    document.querySelectorAll('[data-mass]').forEach((btn) => {
+      const isSel = btn.dataset.mass === cls;
+      btn.classList.remove('active', 'active-gold');
+      if (isSel) btn.classList.add(cls === 'star' ? 'active-gold' : 'active');
+    });
+  }
+
+  function setSpeed(mult) {
+    speedMult = mult;
+    if (mult > 0) lastNonZeroSpeed = mult;
+    document.querySelectorAll('[data-speed]').forEach((btn) => {
+      btn.classList.toggle('active', parseFloat(btn.dataset.speed) === mult);
+    });
+    updateTelemetryUI();
+  }
+
+  function setHelperEnabled(on) {
+    helperEnabled = on;
+    document.getElementById('btn-helper').classList.toggle('active-mint', on);
+  }
+
+  // =========================================================================
+  // POINTER, WHEEL & KEYBOARD INTERACTION
+  // =========================================================================
+  canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+  canvas.addEventListener('pointerdown', (e) => {
+    if (pointer.activePointerId !== null && pointer.activePointerId !== e.pointerId) return;
+    canvas.setPointerCapture(e.pointerId);
+    pointer.activePointerId = e.pointerId;
+    pointer.screenX = e.clientX;
+    pointer.screenY = e.clientY;
+    pointer.onCanvas = true;
+
+    // Right-click, middle-click, or Shift+click => Pan camera
+    if (e.button === 2 || e.button === 1 || e.shiftKey) {
+      if (pointer.draggingLaunch) {
+        // Right-click cancels active slingshot drag
+        pointer.draggingLaunch = false;
+        return;
+      }
+      pointer.panning = true;
+      pointer.panStartScreenX = e.clientX;
+      pointer.panStartScreenY = e.clientY;
+      pointer.panStartCamX = camera.x;
+      pointer.panStartCamY = camera.y;
+      camera.autoTrack = false;
+      canvas.classList.add('panning');
+      updateScoreUI();
+      return;
+    }
+
+    // Left-click => Begin slingshot body placement
+    if (e.button === 0) {
+      const w = screenToWorld(e.clientX, e.clientY);
+      pointer.draggingLaunch = true;
+      pointer.dragStartWorldX = w.x;
+      pointer.dragStartWorldY = w.y;
+      pointer.dragCurrWorldX = w.x;
+      pointer.dragCurrWorldY = w.y;
+    }
+  });
+
+  canvas.addEventListener('pointermove', (e) => {
+    pointer.screenX = e.clientX;
+    pointer.screenY = e.clientY;
+    pointer.onCanvas = true;
+
+    if (pointer.panning) {
+      const dx = (e.clientX - pointer.panStartScreenX) / camera.zoom;
+      const dy = (e.clientY - pointer.panStartScreenY) / camera.zoom;
+      camera.x = pointer.panStartCamX - dx;
+      camera.y = pointer.panStartCamY - dy;
+      return;
+    }
+
+    if (pointer.draggingLaunch) {
+      const w = screenToWorld(e.clientX, e.clientY);
+      pointer.dragCurrWorldX = w.x;
+      pointer.dragCurrWorldY = w.y;
+    }
+  });
+
+  function finishPointer(e, cancelled) {
+    if (pointer.activePointerId !== null && e.pointerId !== pointer.activePointerId) return;
+    pointer.activePointerId = null;
+
+    if (pointer.panning) {
+      pointer.panning = false;
+      canvas.classList.remove('panning');
+      return;
+    }
+
+    if (pointer.draggingLaunch) {
+      pointer.draggingLaunch = false;
+      if (cancelled) return;
+
+      const ox = pointer.dragStartWorldX;
+      const oy = pointer.dragStartWorldY;
+      const pullX = pointer.dragCurrWorldX - ox;
+      const pullY = pointer.dragCurrWorldY - oy;
+      const pullDist = Math.hypot(pullX, pullY);
+
+      // Ignore tiny accidental clicks (< 4 world-px scaled) so focusing the window never ruins a run
+      if (pullDist * camera.zoom < 4) return;
+
+      const vx = -pullX * LAUNCH_VEL_SCALE;
+      const vy = -pullY * LAUNCH_VEL_SCALE;
+      const spec = MASS_PALETTE[selectedClass];
+
+      const body = createBody(ox, oy, vx, vy, spec.mass, spec.radius);
+      bodies.push(body);
+      computeAccelerations();
+
+      // If building from cleared canvas, start survival timer once ≥ 2 bodies exist
+      if (runState === 'waiting' && bodies.length >= 2) {
+        runState = 'active';
+        lifetime = 0;
+      }
+
+      const speedAU = Math.hypot(vx, vy) / AU;
+      addLog(`Launched ${spec.label} (m=${spec.mass}) at ${speedAU.toFixed(2)} AU/yr.`, 'info');
+      updateScoreUI();
+      updateTelemetryUI();
+    }
+  }
+
+  canvas.addEventListener('pointerup', (e) => finishPointer(e, false));
+  canvas.addEventListener('pointercancel', (e) => finishPointer(e, true));
+  canvas.addEventListener('pointerleave', () => {
+    if (!pointer.draggingLaunch && !pointer.panning) {
+      pointer.onCanvas = false;
+    }
+  });
+
+  // Smooth zoom centered on cursor
+  canvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const factor = e.deltaY < 0 ? 1.14 : 1 / 1.14;
+    const nextZoom = Math.max(0.22, Math.min(3.5, camera.targetZoom * factor));
+    camera.targetZoom = nextZoom;
+  }, { passive: false });
+
+  // Button wiring
+  document.querySelectorAll('[data-preset]').forEach((btn) => {
+    btn.addEventListener('click', () => loadPreset(btn.dataset.preset));
+  });
+  document.getElementById('btn-clear').addEventListener('click', () => loadPreset('clear'));
+  document.getElementById('btn-reset').addEventListener('click', () => {
+    loadPreset(currentPreset === 'clear' ? 'starter' : currentPreset);
+  });
+  document.getElementById('btn-center').addEventListener('click', () => {
+    camera.autoTrack = !camera.autoTrack;
+    if (camera.autoTrack && bodies.length > 0) {
+      const cm = computeSystemCoM(bodies);
+      camera.x = cm.x;
+      camera.y = cm.y;
+    }
+    updateScoreUI();
+  });
+
+  document.querySelectorAll('[data-mass]').forEach((btn) => {
+    btn.addEventListener('click', () => setSelectedClass(btn.dataset.mass));
+  });
+  document.querySelectorAll('[data-speed]').forEach((btn) => {
+    btn.addEventListener('click', () => setSpeed(parseFloat(btn.dataset.speed)));
+  });
+  document.getElementById('btn-helper').addEventListener('click', () => setHelperEnabled(!helperEnabled));
+
+  // Collapsible cards
+  function wireCollapsible(cardId, toggleId, iconId) {
+    const card = document.getElementById(cardId);
+    const toggle = document.getElementById(toggleId);
+    const icon = document.getElementById(iconId);
+    toggle.addEventListener('click', () => {
+      const expanded = card.classList.toggle('card-expanded');
+      icon.textContent = expanded ? '−' : '+';
+    });
+  }
+  wireCollapsible('honesty-card', 'honesty-toggle', 'honesty-icon');
+  wireCollapsible('log-card', 'log-toggle', 'log-icon');
+
+  // Zen mode
+  function toggleZen() {
+    document.body.classList.toggle('zen-mode');
+  }
+  document.getElementById('btn-zen').addEventListener('click', toggleZen);
+  document.getElementById('btn-zen-restore').addEventListener('click', toggleZen);
+
+  // Keyboard shortcuts
+  window.addEventListener('keydown', (e) => {
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+    if (e.code === 'Space') {
+      e.preventDefault();
+      setSpeed(speedMult === 0 ? lastNonZeroSpeed : 0);
+    } else if (e.key === '1') {
+      setSpeed(0.25);
+    } else if (e.key === '2') {
+      setSpeed(1);
+    } else if (e.key === '3') {
+      setSpeed(2);
+    } else if (e.key === '4') {
+      setSpeed(4);
+    } else if (e.key === 'a' || e.key === 'A') {
+      setSelectedClass('asteroid');
+    } else if (e.key === 'p' || e.key === 'P') {
+      setSelectedClass('planet');
+    } else if (e.key === 's' || e.key === 'S') {
+      setSelectedClass('star');
+    } else if (e.key === 'g' || e.key === 'G') {
+      setHelperEnabled(!helperEnabled);
+    } else if (e.key === 'c' || e.key === 'C') {
+      camera.autoTrack = true;
+      updateScoreUI();
+    } else if (e.key === 'r' || e.key === 'R') {
+      loadPreset(currentPreset === 'clear' ? 'starter' : currentPreset);
+    } else if (e.key === 'h' || e.key === 'H') {
+      toggleZen();
+    } else if (e.key === 'Escape') {
+      pointer.draggingLaunch = false;
+    }
+  });
+
+  // =========================================================================
+  // MAIN LOOP (FIXED-TIMESTEP ACCUMULATOR)
+  // =========================================================================
+  let uiTickAccum = 0;
+  let saveTickAccum = 0;
+
+  function mainLoop(nowMs) {
+    const dtReal = Math.min(0.05, Math.max(0, (nowMs - lastFrameMs) * 0.001));
+    lastFrameMs = nowMs;
+
+    if (speedMult > 0 && bodies.length > 0) {
+      accumulator += dtReal * BASE_YEARS_PER_SEC * speedMult;
+      // Cap substeps per frame to guard against background-tab stalls
+      let steps = 0;
+      const maxSteps = 120;
+      while (accumulator >= FIXED_DT && steps < maxSteps) {
+        physicsStep(FIXED_DT);
+        accumulator -= FIXED_DT;
+        steps++;
+      }
+      if (steps === maxSteps) accumulator = 0;
+    }
+
+    renderFrame(nowMs, dtReal);
+
+    uiTickAccum += dtReal;
+    if (uiTickAccum >= 0.06) {
+      uiTickAccum = 0;
+      updateTelemetryUI();
+      updateScoreUI();
+    }
+
+    saveTickAccum += dtReal;
+    if (saveTickAccum >= 0.5) {
+      saveTickAccum = 0;
+      if (bestLifetime > lastSavedBest) {
+        saveBestScore(bestLifetime);
+        lastSavedBest = bestLifetime;
+      }
+    }
+
+    requestAnimationFrame(mainLoop);
+  }
+
+  // Boot immediately into the live Starter scenario
+  setSelectedClass('planet');
+  setSpeed(1);
+  setHelperEnabled(true);
+  loadPreset('starter');
+  requestAnimationFrame(mainLoop);
+})();
+</script>
+</body>
+</html>

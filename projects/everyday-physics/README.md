@@ -53,3 +53,8 @@ The rules (reflection, the pool step, equal-mass collisions, projectile range/ap
 - `ballast-lesson.html` — the game's lesson page: the physics, the math, worked examples from the proof runs, and the coding choices (opens inside the game from its 📖 Lesson button)
 - The supplied games' lesson pages — the back door for each Antigravity-built game on the Table, written for Everyday Cool from a close read of each game's own code (the physics, the math, worked examples from the game's real constants, the coding choices, and the simplifications named — including where a game's label outruns its code): `lunar-lander-cave-lesson.html`, `orbital-gravity-golf-lesson.html`, `pendulum-grapple-swinger-lesson.html`, `bridge-builder-truss-lesson.html`, `hill-climb-suspension-lesson.html`, `jelly-softbody-platformer-lesson.html`, `falling-sand-sandbox-lesson.html`, `air-hockey-curl-lesson.html`, `ragdoll-archery-duel-lesson.html`, `siege-demolition-lesson.html`, `marble-run-lesson.html`, `orbital-pinball-lesson.html`, `pool-table-physics-lesson.html`
 - `test.cjs` — rule tests
+
+
+## Star Forge (added 22 November 2026)
+
+An N-body gravity sandbox built by Google Antigravity at Steven Powell's direction: true pairwise gravity, velocity Verlet integration, sticky mergers that conserve momentum, and a system-lifetime score. Play `star-forge.html`; the audit lesson is `star-forge-lesson.html`.

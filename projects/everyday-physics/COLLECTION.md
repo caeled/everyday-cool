@@ -49,3 +49,8 @@ Game Table guests, 21 November 2026 (third wave): `physics-game-table.html`, `te
 Game Table guest, 21 November 2026: `physics-game-table.html`, `test.cjs`, `README.md`, and `COLLECTION.md`. Anchors from Everyday Measure took a guest seat, bringing the table to thirty-one cards. `test.cjs` asserts thirty-one targets with a cross-list check for the new guest and a resolving lesson for every card.
 
 Game Table guest, 21 November 2026: `physics-game-table.html`, `test.cjs`, `README.md`, and `COLLECTION.md`. Corrected by Halves from Nerd Heaven — Gemini Neon's ten-op halving suite in its expanded Educational Arcade Edition — took a guest seat, bringing the table to thirty-two cards. `test.cjs` asserts thirty-two targets with a cross-list check for the new guest and a resolving lesson for every card.
+
+
+## Added 22 November 2026
+
+`star-forge.html` and `star-forge-lesson.html` — Star Forge, an N-body gravity sandbox built by Google Antigravity (Gemini) at Steven Powell's direction from a workshop commission, integrated unchanged (sha256 835c2a89…). The lesson is Muse's audit of the shipped code: the figure-eight preset held all 400 audited periods and two-body energy drift over 500 years measured ≈1×10⁻¹¹.
