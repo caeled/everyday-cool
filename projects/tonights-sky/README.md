@@ -44,6 +44,10 @@ python tests/check-package.py   # links, ids, files, only the documented network
 
 `tools/build-sky-data.py` rebuilds `sky-data.js` from the downloaded catalogue files (not bundled). Text alternatives: the status line and a text summary under the dome describe what is up; the "What's up tonight" and pass lists are plain buttons.
 
+## Starfield Atlas (added 23 November 2026)
+
+`starfield-atlas.html` is a guest exhibit built by Google Antigravity (Gemini) at Steven Powell's direction, shipped byte-for-byte: a flyable 3D star field whose 59-star catalog uses real J2000 positions and distances, wrapped in 3,200 procedural stars. `starfield-atlas-lesson.html` is its back-door lesson and audit by Muse — the catalog checked star by star against the published catalogues, the controls driven headlessly (picking returned the correct star for all 59), and the bends named: the Crab Pulsar and Cygnus X-1 are drawn rescaled to a ~2,500 ly shell, and 55 Cancri's planet list shows four of its five known planets.
+
 ## License
 
 Original code: MIT (`LICENSE`). Original educational writing: CC BY 4.0 (`LICENSE-CONTENT.md`). Third-party data and code keep their own terms (`THIRD-PARTY.md`); `vendor/satellite.min.js` is MIT with its own notice. The backyard radio telescope plan PDF is Steven Powell's family document, included with his permission and not relicensed by these notices.

@@ -1,0 +1,2257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Star Atlas — 3D Explorable Star Field &amp; Stellar Explorer</title>
+<style>
+  :root {
+    --bg-deep: #03050c;
+    --panel-bg: rgba(9, 14, 28, 0.80);
+    --panel-border: rgba(145, 180, 255, 0.17);
+    --text-main: #edf3ff;
+    --text-dim: #9aaad0;
+    --text-muted: #68789e;
+    --cyan: #5ce1ff;
+    --amber: #ffbf5e;
+    --mint: #4cf2b2;
+    --rose: #ff6488;
+    --violet: #b08cff;
+    --radius-lg: 14px;
+    --radius-md: 10px;
+    --radius-sm: 7px;
+    --mono: ui-monospace, "Cascadia Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Inter, Helvetica, Arial, sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg-deep);
+    color: var(--text-main);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    touch-action: none;
+  }
+
+  #sky-canvas {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    cursor: grab;
+  }
+  #sky-canvas.dragging { cursor: grabbing; }
+  #sky-canvas.hovering-star { cursor: pointer; }
+
+  .hud {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 10;
+  }
+  body.zen-mode .hud > :not(.zen-restore) {
+    opacity: 0;
+    pointer-events: none !important;
+  }
+
+  .panel {
+    pointer-events: auto;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-lg);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    box-shadow: 0 12px 38px rgba(0, 0, 0, 0.52), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    transition: opacity 0.25s ease, transform 0.25s ease;
+  }
+
+  /* Top-Left Selected Star Telemetry */
+  .top-left {
+    position: fixed;
+    top: 14px;
+    left: 14px;
+    width: min(415px, calc(100vw - 365px));
+    min-width: 285px;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .brand-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .brand-title {
+    font-size: 15px;
+    font-weight: 800;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+    background: linear-gradient(120deg, #fff5dc 0%, #ffbf5e 45%, #6ee7ff 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .spec-pill {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 999px;
+    border: 1px solid rgba(92, 225, 255, 0.4);
+    background: rgba(92, 225, 255, 0.14);
+    color: var(--cyan);
+  }
+
+  .star-hero {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+  }
+  .star-orb {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    border: 1px solid rgba(255, 255, 255, 0.24);
+    box-shadow: 0 0 22px rgba(255, 210, 130, 0.55);
+  }
+  .star-head {
+    flex: 1;
+    min-width: 0;
+  }
+  .star-name {
+    font-size: 17px;
+    font-weight: 800;
+    color: #fff;
+    line-height: 1.15;
+  }
+  .star-sub {
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-top: 2px;
+  }
+
+  .tele-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 5px;
+  }
+  .tele-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(145, 180, 255, 0.1);
+    border-radius: var(--radius-sm);
+    padding: 5px 7px;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+  .tele-lbl {
+    font-size: 9px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .tele-val {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-main);
+  }
+
+  .star-note {
+    font-size: 11px;
+    color: #c9d8f5;
+    line-height: 1.38;
+    padding: 6px 8px;
+    border-radius: var(--radius-sm);
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(145, 180, 255, 0.1);
+  }
+
+  .travel-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--text-dim);
+    padding-top: 4px;
+    border-top: 1px solid rgba(145, 180, 255, 0.1);
+  }
+  .travel-row strong { color: var(--amber); }
+
+  /* Right Drawer */
+  .drawer {
+    position: fixed;
+    top: 14px;
+    right: 14px;
+    bottom: 14px;
+    width: 336px;
+    max-width: calc(100vw - 28px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .drawer.collapsed {
+    transform: translateX(calc(100% + 26px));
+    pointer-events: none;
+  }
+
+  .drawer-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+    padding: 8px 8px 6px;
+    border-bottom: 1px solid var(--panel-border);
+    background: rgba(4, 7, 16, 0.45);
+  }
+  .tab-btn {
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 11.5px;
+    font-weight: 700;
+    padding: 7px 5px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+  }
+  .tab-btn:hover { color: #fff; background: rgba(255, 255, 255, 0.04); }
+  .tab-btn.active {
+    color: #fff;
+    background: rgba(92, 225, 255, 0.16);
+    border-color: rgba(92, 225, 255, 0.42);
+  }
+
+  .drawer-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 11px 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .drawer-body::-webkit-scrollbar { width: 5px; }
+  .drawer-body::-webkit-scrollbar-thumb { background: rgba(145, 180, 255, 0.24); border-radius: 999px; }
+
+  .tab-pane { display: none; flex-direction: column; gap: 11px; }
+  .tab-pane.active { display: flex; }
+
+  .section {
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(145, 180, 255, 0.11);
+    border-radius: var(--radius-md);
+    padding: 10px 11px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .section-title {
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .search-input {
+    width: 100%;
+    background: rgba(5, 9, 20, 0.85);
+    border: 1px solid rgba(145, 180, 255, 0.22);
+    border-radius: var(--radius-sm);
+    padding: 7px 10px;
+    color: #fff;
+    font-size: 12px;
+    outline: none;
+  }
+  .search-input:focus { border-color: var(--cyan); }
+
+  .star-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 255px;
+    overflow-y: auto;
+    padding-right: 2px;
+  }
+  .star-list::-webkit-scrollbar { width: 4px; }
+  .star-list::-webkit-scrollbar-thumb { background: rgba(145, 180, 255, 0.22); border-radius: 999px; }
+
+  .star-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(145, 180, 255, 0.11);
+    background: rgba(255, 255, 255, 0.025);
+    color: var(--text-main);
+    cursor: pointer;
+    text-align: left;
+    transition: all 0.13s ease;
+  }
+  .star-row:hover {
+    border-color: rgba(92, 225, 255, 0.45);
+    background: rgba(92, 225, 255, 0.08);
+  }
+  .star-row.active {
+    border-color: var(--amber);
+    background: rgba(255, 191, 94, 0.13);
+  }
+  .s-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .s-meta {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .s-nm {
+    font-size: 11.5px;
+    font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .s-info {
+    font-family: var(--mono);
+    font-size: 9.5px;
+    color: var(--text-muted);
+  }
+  .s-dist {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--cyan);
+    white-space: nowrap;
+  }
+
+  .seg-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(56px, 1fr));
+    gap: 4px;
+  }
+  .seg-btn {
+    border: 1px solid rgba(145, 180, 255, 0.16);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-dim);
+    font-size: 10.5px;
+    font-weight: 650;
+    padding: 5px 4px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.13s ease;
+  }
+  .seg-btn:hover { color: #fff; border-color: rgba(145, 180, 255, 0.36); }
+  .seg-btn.active {
+    color: #fff;
+    background: rgba(92, 225, 255, 0.18);
+    border-color: var(--cyan);
+  }
+
+  .btn-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .btn {
+    border: 1px solid rgba(145, 180, 255, 0.22);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-main);
+    font-size: 11.5px;
+    font-weight: 700;
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+  }
+  .btn:hover { background: rgba(255, 255, 255, 0.1); border-color: rgba(145, 180, 255, 0.45); }
+  .btn.primary {
+    background: linear-gradient(135deg, rgba(92, 225, 255, 0.26), rgba(88, 120, 255, 0.24));
+    border-color: rgba(92, 225, 255, 0.55);
+    color: #eafaff;
+  }
+  .btn.amber {
+    background: linear-gradient(135deg, rgba(255, 191, 94, 0.26), rgba(255, 118, 66, 0.22));
+    border-color: rgba(255, 191, 94, 0.55);
+    color: #fff4df;
+  }
+  .btn.active-glow {
+    box-shadow: 0 0 18px rgba(92, 225, 255, 0.38);
+    border-color: var(--cyan);
+  }
+
+  .control-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .control-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11.5px;
+    color: var(--text-dim);
+  }
+  .control-head .val {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--text-main);
+    font-weight: 650;
+  }
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 5px;
+    border-radius: 999px;
+    background: rgba(145, 180, 255, 0.2);
+    outline: none;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--cyan);
+    border: 2px solid #081120;
+    box-shadow: 0 0 10px rgba(92, 225, 255, 0.65);
+    cursor: pointer;
+  }
+
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11.5px;
+    color: var(--text-dim);
+    cursor: pointer;
+  }
+  .toggle-row input { display: none; }
+  .switch {
+    width: 34px;
+    height: 18px;
+    border-radius: 999px;
+    background: rgba(145, 180, 255, 0.2);
+    border: 1px solid rgba(145, 180, 255, 0.25);
+    position: relative;
+    transition: all 0.18s ease;
+    flex-shrink: 0;
+  }
+  .switch::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #c8d7f5;
+    transition: transform 0.18s ease, background 0.18s ease;
+  }
+  .toggle-row input:checked + .switch {
+    background: rgba(92, 225, 255, 0.32);
+    border-color: var(--cyan);
+  }
+  .toggle-row input:checked + .switch::after {
+    transform: translateX(16px);
+    background: #fff;
+  }
+
+  /* HR Diagram canvas */
+  #hr-canvas {
+    width: 100%;
+    height: 175px;
+    border-radius: var(--radius-sm);
+    background: rgba(3, 6, 15, 0.85);
+    border: 1px solid rgba(145, 180, 255, 0.18);
+    cursor: pointer;
+    display: block;
+  }
+
+  .note-small {
+    font-size: 10.5px;
+    color: var(--text-muted);
+    line-height: 1.38;
+  }
+
+  /* Bottom Transport Bar */
+  .bottom-bar {
+    position: fixed;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 7px 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .bar-btn {
+    border: 1px solid rgba(145, 180, 255, 0.16);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-main);
+    font-size: 11.5px;
+    font-weight: 650;
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    white-space: nowrap;
+  }
+  .bar-btn:hover { background: rgba(255, 255, 255, 0.1); border-color: rgba(145, 180, 255, 0.42); }
+  .bar-btn.active { background: rgba(92, 225, 255, 0.2); border-color: var(--cyan); color: #fff; }
+  .bar-btn.amber { border-color: rgba(255, 191, 94, 0.45); color: #ffe1ab; }
+  .bar-divider { width: 1px; height: 20px; background: rgba(145, 180, 255, 0.16); margin: 0 2px; }
+
+  .hint-pill {
+    position: fixed;
+    bottom: 14px;
+    left: 14px;
+    padding: 7px 11px;
+    font-size: 11px;
+    color: var(--text-dim);
+    max-width: 315px;
+    line-height: 1.4;
+  }
+  .hint-pill kbd {
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #fff;
+  }
+
+  .zen-restore {
+    position: fixed;
+    bottom: 14px;
+    right: 14px;
+    opacity: 0;
+    pointer-events: none;
+  }
+  body.zen-mode .zen-restore {
+    opacity: 0.9;
+    pointer-events: auto;
+  }
+
+  @media (max-width: 920px) {
+    .top-left { width: calc(100vw - 28px); max-width: none; }
+    .drawer { top: auto; bottom: 62px; height: 48vh; width: calc(100vw - 28px); }
+    .hint-pill { display: none; }
+  }
+</style>
+</head>
+<body>
+<canvas id="sky-canvas"></canvas>
+
+<div class="hud">
+  <!-- Top-Left Star Telemetry Card -->
+  <div class="panel top-left">
+    <div class="brand-row">
+      <div class="brand-title">Star Atlas · 3D</div>
+      <span id="tel-spec" class="spec-pill">G2V · Yellow Dwarf</span>
+    </div>
+
+    <div class="star-hero">
+      <div id="star-orb" class="star-orb"></div>
+      <div class="star-head">
+        <div id="tel-name" class="star-name">Sol (The Sun)</div>
+        <div id="tel-const" class="star-sub">Local Bubble · Home System · 8 Planets</div>
+      </div>
+    </div>
+
+    <div class="tele-grid">
+      <div class="tele-card">
+        <span class="tele-lbl">Dist from Sol</span>
+        <span id="tel-dist" class="tele-val" style="color:var(--cyan)">0.00 ly</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-lbl">Temp (T_eff)</span>
+        <span id="tel-temp" class="tele-val" style="color:var(--amber)">5,778 K</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-lbl">Luminosity</span>
+        <span id="tel-lum" class="tele-val">1.00 L☉</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-lbl">Radius</span>
+        <span id="tel-rad" class="tele-val">1.00 R☉</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-lbl">Mass</span>
+        <span id="tel-mass" class="tele-val">1.00 M☉</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-lbl">Cam Range</span>
+        <span id="tel-cam" class="tele-val" style="color:var(--mint)">35.0 ly</span>
+      </div>
+    </div>
+
+    <div id="tel-note" class="star-note">
+      Our home G2V main-sequence star. Zoom in to inspect its 8 planets and habitable zone, or zoom out to watch 3D constellations warp as you leave Earth!
+    </div>
+
+    <div class="travel-row">
+      <span>At 1.0c: <strong id="tel-c">0 yr</strong></span>
+      <span>At 0.1c: <strong id="tel-01c">0 yr</strong></span>
+      <span>Voyager 1: <strong id="tel-voy">0 yr</strong></span>
+    </div>
+  </div>
+
+  <!-- Right Collapsible Control Drawer -->
+  <aside id="drawer" class="panel drawer">
+    <div class="drawer-tabs">
+      <button class="tab-btn active" data-tab="explore">Catalog</button>
+      <button class="tab-btn" data-tab="hr">H–R &amp; System</button>
+      <button class="tab-btn" data-tab="view">Sky &amp; View</button>
+    </div>
+
+    <div class="drawer-body">
+      <!-- TAB 1: STAR CATALOG & SEARCH -->
+      <div id="tab-explore" class="tab-pane active">
+        <div class="section">
+          <div class="section-title">
+            <span>Star Catalog &amp; Quick Jump</span>
+            <span id="lbl-cat-count" style="font-family:var(--mono); color:var(--cyan);">56 Notable</span>
+          </div>
+
+          <input id="star-search" class="search-input" type="text" placeholder="Search star, constellation, or type..." />
+
+          <div class="seg-row" id="filter-row">
+            <button class="seg-btn active" data-filt="all">All</button>
+            <button class="seg-btn" data-filt="near">&lt;25 ly</button>
+            <button class="seg-btn" data-filt="exo">Planets</button>
+            <button class="seg-btn" data-filt="giant">Giants</button>
+            <button class="seg-btn" data-filt="exotic">Exotic</button>
+          </div>
+
+          <div id="star-list" class="star-list"></div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Quick Scale Jumps</span></div>
+          <div class="btn-row">
+            <button id="btn-zoom-sys" class="btn primary">🔭 Inspect System</button>
+            <button id="btn-zoom-near" class="btn">✦ 35 ly Local</button>
+          </div>
+          <div class="btn-row">
+            <button id="btn-zoom-const" class="btn">✧ 450 ly Orion</button>
+            <button id="btn-zoom-gal" class="btn amber">🌌 2,800 ly Arm</button>
+          </div>
+          <button id="btn-tour" class="btn primary">▶ Guided Galactic Tour</button>
+        </div>
+      </div>
+
+      <!-- TAB 2: H-R DIAGRAM & EXOPLANETS -->
+      <div id="tab-hr" class="tab-pane">
+        <div class="section">
+          <div class="section-title">
+            <span>Hertzsprung–Russell Diagram</span>
+            <span style="font-size:9.5px; color:var(--cyan);">Click star to fly!</span>
+          </div>
+          <canvas id="hr-canvas" width="300" height="175"></canvas>
+          <p class="note-small">
+            Plots surface temperature (hot blue <strong>O/B</strong> left → cool red <strong>M</strong> right) vs. luminosity. Click any plotted star dot to jump directly to it in 3D space.
+          </p>
+        </div>
+
+        <div class="section">
+          <div class="section-title">
+            <span>Selected Star System</span>
+            <span id="lbl-planet-cnt" style="font-family:var(--mono); color:var(--mint);">8 Planets</span>
+          </div>
+          <div id="planet-list" class="star-list" style="max-height:170px;"></div>
+          <button id="btn-fly-close" class="btn amber">Zoom Right Into Orbit</button>
+        </div>
+      </div>
+
+      <!-- TAB 3: SKY OVERLAYS & CAMERA -->
+      <div id="tab-view" class="tab-pane">
+        <div class="section">
+          <div class="section-title"><span>3D Camera &amp; Zoom</span></div>
+          <div class="control-row">
+            <div class="control-head">
+              <span>Log Zoom Distance</span>
+              <span id="val-zoom" class="val">35.0 ly</span>
+            </div>
+            <input id="sl-zoom" type="range" min="-2.6" max="3.55" step="0.01" value="1.54" />
+          </div>
+          <div class="control-row">
+            <div class="control-head">
+              <span>Star Brightness / Bloom</span>
+              <span id="val-bloom" class="val">1.0×</span>
+            </div>
+            <input id="sl-bloom" type="range" min="0.4" max="2.0" step="0.05" value="1.0" />
+          </div>
+          <div class="control-row">
+            <div class="control-head">
+              <span>Orbital Speed (Exoplanets)</span>
+              <span id="val-ospeed" class="val">1.0×</span>
+            </div>
+            <input id="sl-ospeed" type="range" min="0.1" max="4.0" step="0.1" value="1.0" />
+          </div>
+          <button id="btn-earth-pov" class="btn primary">🌍 Reset to Earth / Sol View</button>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Astronomical Overlays</span></div>
+          <label class="toggle-row">
+            <span>3D Constellation Lines (Warp in 3D!)</span>
+            <input id="chk-const" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Star Name Labels</span>
+            <input id="chk-labels" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Galactic Distance Rings (ly)</span>
+            <input id="chk-rings" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Habitable Zone Ring (Close-Up)</span>
+            <input id="chk-hz" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Distance Vector from Sol</span>
+            <input id="chk-ruler" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Gentle Auto-Orbit Drift</span>
+            <input id="chk-drift" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Bottom-Left Hints -->
+  <div class="panel hint-pill">
+    <div><strong>Click any star</strong> to fly to it · <strong>Scroll</strong> zoom (planets ↔ galaxy)</div>
+    <div><strong>Drag</strong> rotate 3D sky (watch constellations warp!) · <kbd>H</kbd> Cinema · <kbd>G</kbd> Home</div>
+  </div>
+
+  <!-- Bottom Transport Bar -->
+  <div class="panel bottom-bar">
+    <button id="btn-home" class="bar-btn">☀ Sol</button>
+    <button id="btn-inspect-bar" class="bar-btn amber">🔭 System</button>
+    <button id="btn-const-bar" class="bar-btn active">✦ Constellations</button>
+    <div class="bar-divider"></div>
+    <button id="btn-play" class="bar-btn active">⏸ Motion</button>
+    <button id="btn-sound" class="bar-btn">🔇 Audio</button>
+    <button id="btn-toggle-drawer" class="bar-btn active">Catalog</button>
+    <button id="btn-zen" class="bar-btn">Cinema</button>
+  </div>
+
+  <button id="btn-zen-restore" class="panel bar-btn zen-restore">Show HUD (H)</button>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // =========================================================================
+  // 1. REAL ASTRONOMICAL 3D STAR CATALOG
+  //    Coordinates converted from real J2000 (RA hours, Dec deg, Distance ly)
+  //    into 3D Cartesian light-year coordinates centered on Sol (0, 0, 0).
+  // =========================================================================
+  function raDecDistToXYZ(raH, decD, distLy) {
+    const ra = (raH / 24) * Math.PI * 2;
+    const dec = (decD * Math.PI) / 180;
+    const cosD = Math.cos(dec);
+    return {
+      x: distLy * cosD * Math.cos(ra),
+      y: distLy * Math.sin(dec),
+      z: distLy * cosD * Math.sin(ra)
+    };
+  }
+
+  function tempToRGB(K) {
+    // Smooth blackbody stellar color approximation
+    const t = Math.max(1800, Math.min(40000, K)) / 100;
+    let r, g, b;
+    if (t <= 66) {
+      r = 255;
+      g = Math.max(0, Math.min(255, 99.47 * Math.log(t) - 161.12));
+      b = t <= 19 ? 0 : Math.max(0, Math.min(255, 138.52 * Math.log(t - 10) - 305.04));
+    } else {
+      r = Math.max(0, Math.min(255, 329.70 * Math.pow(t - 60, -0.1332)));
+      g = Math.max(0, Math.min(255, 288.12 * Math.pow(t - 60, -0.0755)));
+      b = 255;
+    }
+    // Lift saturation subtly for cosmic beauty
+    return { r: Math.round(r), g: Math.round(g), b: Math.round(b), css: `rgb(${Math.round(r)},${Math.round(g)},${Math.round(b)})` };
+  }
+
+  // Real catalog: [id, name, constellation, raH, decD, distLy, spec, typeLabel, tempK, lumSun, radSun, massSun, planets[], note]
+  const CATALOG_RAW = [
+    ['sol','Sol (The Sun)','Local Bubble',0,0,0,'G2V','Yellow Dwarf',5778,1.0,1.0,1.0,
+      [
+        { name:'Mercury', r:0.39, sz:2.2, col:'#b9b3a9', period:0.24 },
+        { name:'Venus',   r:0.72, sz:3.3, col:'#e8c98a', period:0.62 },
+        { name:'Earth',   r:1.00, sz:3.6, col:'#58b8ff', period:1.00 },
+        { name:'Mars',    r:1.52, sz:2.8, col:'#e27b58', period:1.88 },
+        { name:'Jupiter', r:2.45, sz:7.2, col:'#d9b28a', period:4.2 },
+        { name:'Saturn',  r:3.25, sz:6.2, col:'#ecd29d', period:6.6, ring:true },
+        { name:'Uranus',  r:4.00, sz:4.6, col:'#92e3f0', period:9.5 },
+        { name:'Neptune', r:4.65, sz:4.4, col:'#5386ff', period:12.4 }
+      ],
+      'Our home G2V star at the center of the Solar System. Zoom in to watch all 8 planets orbit across the green Goldilocks Habitable Zone.'
+    ],
+    ['proxima','Proxima Centauri','Centaurus',14.495,-62.68,4.246,'M5.5Ve','Red Dwarf',3042,0.0017,0.154,0.122,
+      [
+        { name:'Proxima d', r:0.42, sz:2.3, col:'#b89d8a', period:0.35 },
+        { name:'Proxima b (HZ)', r:0.86, sz:3.5, col:'#68d8c4', period:0.85 }
+      ],
+      'The closest known star to the Sun (4.25 ly). Hosts Earth-mass Proxima b orbiting right inside its tight habitable zone.'
+    ],
+    ['acen','Alpha Centauri A','Centaurus',14.660,-60.83,4.37,'G2V','Yellow Dwarf',5790,1.52,1.22,1.10,
+      [{ name:'Candidate C1', r:1.15, sz:4.2, col:'#8ec8e8', period:1.1 }],
+      'Brightest star in the Alpha Centauri triple system — a near twin of our Sun shining beside K1V companion Alpha Centauri B.'
+    ],
+    ['barnard',"Barnard's Star",'Ophiuchus',17.963,4.69,5.96,'M4Ve','Red Dwarf',3134,0.0035,0.196,0.144,
+      [{ name:'Barnard b', r:0.55, sz:2.5, col:'#9ab0c4', period:0.45 }],
+      'Has the highest proper motion of any star in Earth’s sky, streaking across Ophiuchus as it approaches within 3.8 ly in ~9,800 years.'
+    ],
+    ['wolf359','Wolf 359','Leo',10.941,7.01,7.86,'M6.5Ve','Flare Red Dwarf',2800,0.0011,0.16,0.09,
+      [],
+      'One of the faintest, lowest-mass stars known, prone to violent magnetic superflares despite being under 8 light-years away.'
+    ],
+    ['sirius','Sirius A','Canis Major',6.752,-16.72,8.60,'A1V','Blue-White Main Seq',9940,25.4,1.71,2.06,
+      [{ name:'Sirius B (White Dwarf)', r:2.3, sz:2.8, col:'#dff4ff', period:3.8 }],
+      'The brightest star in Earth’s night sky! Orbited every 50 years by Sirius B, an Earth-sized white dwarf as massive as the Sun.'
+    ],
+    ['epseri','Epsilon Eridani','Eridanus',3.549,-9.46,10.48,'K2V','Orange Dwarf',5084,0.34,0.74,0.82,
+      [
+        { name:'AEgir (Eps Eri b)', r:2.1, sz:6.2, col:'#c9a97c', period:3.5 },
+        { name:'Outer Debris Belt', r:3.3, sz:2.4, col:'#7a8ea8', period:6.2 }
+      ],
+      'A young, active orange dwarf surrounded by twin asteroid belts and a Jupiter-class exoplanet (AEgir).'
+    ],
+    ['procyon','Procyon A','Canis Minor',7.655,5.22,11.46,'F5IV-V','Yellow-White Subgiant',6530,6.93,2.05,1.50,
+      [{ name:'Procyon B (WD)', r:2.1, sz:2.4, col:'#cfeaff', period:3.4 }],
+      'Eighth-brightest star in the night sky, paired with a faint white dwarf companion in a 40.8-year orbit.'
+    ],
+    ['61cyg','61 Cygni A','Cygnus',21.115,38.75,11.40,'K5V','Orange Dwarf',4526,0.153,0.665,0.70,
+      [{ name:'61 Cygni B (K7V)', r:2.6, sz:4.8, col:'#ffaa66', period:4.8 }],
+      'In 1838 Friedrich Bessel used 61 Cygni to make the very first successful parallax distance measurement to another star!'
+    ],
+    ['tauceti','Tau Ceti','Cetus',1.735,-15.94,11.91,'G8V','Yellow-Orange Dwarf',5344,0.52,0.793,0.783,
+      [
+        { name:'Tau Ceti g', r:0.50, sz:2.6, col:'#c4a486', period:0.42 },
+        { name:'Tau Ceti e (HZ)', r:1.05, sz:3.7, col:'#62d4b8', period:0.95 },
+        { name:'Tau Ceti f', r:1.68, sz:3.8, col:'#7ba6d9', period:1.90 }
+      ],
+      'Closest solitary G-type star to the Sun and a prime SETI & exoplanet target, ringed by a massive dusty debris disk.'
+    ],
+    ['altair','Altair','Aquila',19.846,8.87,16.73,'A7V','Fast-Spinning A-Star',7550,10.6,1.8,1.86,
+      [],
+      'Rotates so furiously (~9 hours!) that centrifugal force flattens Altair by 20% into an oblate spheroid.'
+    ],
+    ['gliese581','Gliese 581','Libra',15.324,-7.72,20.55,'M3V','Red Dwarf',3480,0.013,0.30,0.31,
+      [
+        { name:'Gliese 581 e', r:0.45, sz:2.6, col:'#d19c7b', period:0.32 },
+        { name:'Gliese 581 b', r:0.75, sz:4.5, col:'#80b3ff', period:0.65 },
+        { name:'Gliese 581 c', r:1.12, sz:3.5, col:'#7ee2b8', period:1.15 }
+      ],
+      'Well-studied red dwarf hosting a compact multi-planet super-Earth and Neptune-mass system.'
+    ],
+    ['vega','Vega','Lyra',18.616,38.78,25.04,'A0V','Blue-White Main Seq',9602,40.1,2.36,2.14,
+      [{ name:'Warm Dust Ring', r:2.2, sz:2.8, col:'#9cb4d9', period:3.2 }],
+      'The zero-point reference star for astronomical magnitudes, and Earth’s future North Star around the year 13,727 CE.'
+    ],
+    ['fomalhaut','Fomalhaut','Piscis Austrinus',22.961,-29.62,25.13,'A3V','Young A-Star',8590,16.6,1.84,1.92,
+      [{ name:'Fomalhaut Dust Belt', r:2.8, sz:3.0, col:'#e8c89e', period:4.5 }],
+      'Surrounded by a dramatic razor-sharp icy debris ring imaged directly by Hubble and JWST ("Eye of Sauron").'
+    ],
+    ['pollux','Pollux','Gemini',7.755,28.03,33.78,'K0III','Orange Giant',4666,32.7,9.06,1.91,
+      [{ name:'Thestias (Pollux b)', r:2.1, sz:6.4, col:'#d8a57a', period:3.1 }],
+      'Closest giant star to the Sun — an evolved orange giant orbited by gas giant Thestias.'
+    ],
+    ['arcturus','Arcturus','Boötes',14.261,19.18,36.7,'K1.5III','Red-Orange Giant',4286,170,25.4,1.08,
+      [],
+      'Ancient halo interloper plunging nearly perpendicular through the Milky Way disk; brightest star in the northern celestial hemisphere.'
+    ],
+    ['trappist1','TRAPPIST-1','Aquarius',23.108,-5.04,40.66,'M8V','Ultra-Cool Dwarf',2566,0.00055,0.119,0.09,
+      [
+        { name:'TRAPPIST-1b', r:0.42, sz:2.7, col:'#d48a6a', period:0.25 },
+        { name:'TRAPPIST-1c', r:0.60, sz:2.7, col:'#d9b382', period:0.40 },
+        { name:'TRAPPIST-1d (HZ)', r:0.82, sz:2.5, col:'#6ce5c2', period:0.62 },
+        { name:'TRAPPIST-1e (HZ)', r:1.05, sz:3.1, col:'#4ecbff', period:0.92 },
+        { name:'TRAPPIST-1f (HZ)', r:1.30, sz:3.2, col:'#6ba8ff', period:1.35 },
+        { name:'TRAPPIST-1g (HZ)', r:1.56, sz:3.4, col:'#7a8dff', period:1.85 },
+        { name:'TRAPPIST-1h', r:1.92, sz:2.3, col:'#a8b8d8', period:2.65 }
+      ],
+      'Jupiter-sized ultra-cool red dwarf hosting SEVEN resonant Earth-sized rocky worlds—four inside or bordering its Habitable Zone!'
+    ],
+    ['55cnc','55 Cancri A','Cancer',8.877,28.33,41.06,'G8V','Yellow Dwarf',5196,0.58,0.94,0.91,
+      [
+        { name:'Janssen (55 Cnc e)', r:0.38, sz:3.2, col:'#ff7b4a', period:0.22 },
+        { name:'Galileo (55 Cnc b)', r:0.85, sz:5.6, col:'#d8b58a', period:0.75 },
+        { name:'Brahe (55 Cnc c)', r:1.45, sz:4.4, col:'#92c2e8', period:1.65 },
+        { name:'Harriot (55 Cnc f)', r:2.15, sz:4.2, col:'#6ad6c8', period:2.9 }
+      ],
+      'Famous 5-planet system anchored by ultra-hot molten lava super-Earth 55 Cancri e ("Janssen") skimming its star every 18 hours.'
+    ],
+    ['capella','Capella','Auriga',5.278,46.00,42.9,'G8III+G0III','Quadruple Giant',4970,155,11.98,2.57,
+      [],
+      'A gleaming golden quadruple star system composed of two giant stars whirling around each other plus a distant red-dwarf pair.'
+    ],
+    ['castor','Castor','Gemini',7.577,31.89,51.0,'A1V (×6)','Sextuple Star System',10286,52.4,2.4,2.76,
+      [],
+      'A remarkable gravitationally bound SEXTUPLE system — three binary star pairs dancing together!'
+    ],
+    ['aldebaran','Aldebaran','Taurus',4.599,16.51,65.3,'K5III','Orange Giant',3910,439,44.1,1.16,
+      [{ name:'Aldebaran b', r:2.5, sz:6.5, col:'#d8a27a', period:3.9 }],
+      'The fiery red "Eye of the Bull" in Taurus, 44 times wider than our Sun and glowing in the foreground of the Hyades cluster.'
+    ],
+    ['regulus','Regulus','Leo',10.139,11.97,79.3,'B8IVn','Blue-White Subgiant',12460,288,3.2,3.8,
+      [],
+      'Heart of Leo the Lion — a quadruple star whose primary spins near breakup speed in under 16 hours.'
+    ],
+    ['dubhe','Dubhe (α UMa)','Ursa Major',11.062,61.75,123,'K0III','Orange Giant',4660,316,30,4.25,
+      [],
+      'Pointer star of the Big Dipper’s bowl — notice how orbiting away from Sol stretches the Big Dipper in 3D depth!'
+    ],
+    ['merak','Merak (β UMa)','Ursa Major',11.031,56.38,79.7,'A1IV','Subgiant',9377,63,3.0,2.7,
+      [],
+      'Lower pointer star of the Big Dipper, nearly 43 light-years closer to Earth than its bowl neighbor Dubhe.'
+    ],
+    ['phecda','Phecda (γ UMa)','Ursa Major',11.897,53.69,83.2,'A0Ve','Main Sequence',9355,65,3.0,2.9,
+      [],
+      'Bottom-inner corner of the Big Dipper bowl and member of the Ursa Major Moving Group.'
+    ],
+    ['megrez','Megrez (δ UMa)','Ursa Major',12.257,57.03,80.5,'A3V','Main Sequence',9480,14,1.4,1.6,
+      [],
+      'Connects the Big Dipper’s bowl to its handle.'
+    ],
+    ['alioth','Alioth (ε UMa)','Ursa Major',12.900,55.96,82.6,'A1III-IV','Chemically Peculiar',9020,102,4.1,2.9,
+      [],
+      'Brightest star in Ursa Major, showing strong magnetic chemical patches across its surface.'
+    ],
+    ['mizar','Mizar (ζ UMa)','Ursa Major',13.399,54.93,82.9,'A2Vp','Quadruple Binary',9000,70,2.4,2.2,
+      [],
+      'Famous naked-eye double with Alcor in the Big Dipper handle — itself a quadruple star system!'
+    ],
+    ['alkaid','Alkaid (η UMa)','Ursa Major',13.792,49.31,103.9,'B3V','Blue Main Seq',15540,594,3.4,6.1,
+      [],
+      'Hot blue tip of the Big Dipper handle, moving independently from the rest of the Dipper’s core group.'
+    ],
+    ['achernar','Achernar','Eridanus',1.629,-57.24,139,'B6Vep','Oblate Blue Star',15000,3150,9.2,6.7,
+      [],
+      'Most flattened star known in the Milky Way: its equatorial diameter is over 50% wider than its polar diameter!'
+    ],
+    ['spica','Spica','Virgo',13.420,-11.16,250,'B1III-IV','Blue Giant Binary',25300,20500,7.5,11.4,
+      [],
+      'Two massive blue stars whipped into egg-shaped tidal distortion, orbiting each other every 4.0 days.'
+    ],
+    ['bellatrix','Bellatrix (γ Ori)','Orion',5.419,6.35,250,'B2III','Blue Giant',22000,9211,5.75,8.6,
+      [],
+      'Orion’s left shoulder — much closer to Earth (250 ly) than Betelgeuse (548 ly) or Orion’s Belt (1,200–2,000 ly)!'
+    ],
+    ['canopus','Canopus','Carina',6.399,-52.70,310,'A9II','Bright Supergiant',7400,10700,71,8.0,
+      [],
+      'Second-brightest star in Earth’s night sky and the primary celestial navigation lock for interplanetary spacecraft.'
+    ],
+    ['acrux','Acrux (α Cru)','Crux',12.443,-63.10,321,'B0.5IV','Blue Multiple',28000,25000,7.8,17.8,
+      [],
+      'Foot of the Southern Cross — a blazing triple system of hot B-type stars.'
+    ],
+    ['mimosa','Mimosa (β Cru)','Crux',12.795,-59.69,280,'B0.5III','Blue Giant',27000,34000,8.4,16.0,
+      [],
+      'Eastern arm of the Southern Cross.'
+    ],
+    ['gacrux','Gacrux (γ Cru)','Crux',12.519,-57.11,88.6,'M3.5III','Red Giant',3689,820,84,1.5,
+      [],
+      'Top of the Southern Cross — at 89 ly it is over 3× closer than Acrux at the foot of the cross!'
+    ],
+    ['imai','Imai (δ Cru)','Crux',12.252,-58.75,345,'B2IV','Blue Subgiant',22570,10000,8.0,8.9,
+      [],
+      'Western arm of the Southern Cross.'
+    ],
+    ['schedar','Schedar (α Cas)','Cassiopeia',0.675,56.54,228,'K0IIIa','Orange Giant',4552,676,45,4.0,
+      [],
+      'Golden anchor of Cassiopeia’s W-shaped constellation.'
+    ],
+    ['caph','Caph (β Cas)','Cassiopeia',0.153,59.15,54.7,'F2III','Delta Scuti Giant',7079,27.3,3.5,1.9,
+      [],
+      'Rapidly spinning pulsating giant at the western edge of Cassiopeia — 10× closer than Gamma Cassiopeiae!'
+    ],
+    ['gammacas','Gamma Cas','Cassiopeia',0.945,60.72,550,'B0.5IVpe','Be Shell Star',25000,34000,10,17,
+      [],
+      'Central peak of Cassiopeia’s W, shedding an equatorial glowing gas disk as it rotates near breakup velocity.'
+    ],
+    ['ruchbah','Ruchbah (δ Cas)','Cassiopeia',1.430,60.24,99.4,'A5IV','Eclipsing Binary',8400,63,3.9,2.5,
+      [],
+      'Bright A-type eclipsing binary in Cassiopeia.'
+    ],
+    ['segin','Segin (ε Cas)','Cassiopeia',1.907,63.67,410,'B3III','Blue Giant',15174,2500,6.2,9.2,
+      [],
+      'Eastern end of Cassiopeia’s W.'
+    ],
+    ['polaris','Polaris','Ursa Minor',2.530,89.26,433,'F7Ib','Cepheid Supergiant',6015,1260,37.5,5.4,
+      [],
+      'Our current North Star — a classical Cepheid variable supergiant pulsing gently every 3.97 days.'
+    ],
+    ['pleiades','Alcyone (Pleiades)','Taurus',3.791,24.11,444,'B7IIIe','Blue Cluster Giant',12258,2400,8.2,6.0,
+      [],
+      'Brightest jewel of the Seven Sisters (M45) open star cluster, wrapped in gossamer blue reflection nebulosity.'
+    ],
+    ['betelgeuse','Betelgeuse (α Ori)','Orion',5.919,7.41,548,'M1-2Ia','Red Supergiant',3600,126000,764,16.5,
+      [],
+      'Colossal red supergiant in Orion’s shoulder: if placed at our Sun, its boiling photosphere would engulf Mars and reach toward Jupiter! Destined to go supernova.'
+    ],
+    ['antares','Antares (α Sco)','Scorpius',16.490,-26.43,550,'M1.5Iab','Red Supergiant',3660,75900,680,12.0,
+      [],
+      'Fiery crimson "Rival of Mars" at the heart of Scorpius, paired with hot blue companion Antares B.'
+    ],
+    ['shaula','Shaula (λ Sco)','Scorpius',17.560,-37.10,570,'B1.5IV','Blue Triple',25000,36300,8.8,14.5,
+      [],
+      'Bright triple system forming the stinger at the tail of Scorpius.'
+    ],
+    ['sargas','Sargas (θ Sco)','Scorpius',17.622,-43.00,300,'F0II','Bright Giant',7268,1834,26,5.7,
+      [],
+      'Luminous yellow-white giant curving along Scorpius’s tail.'
+    ],
+    ['kepler186','Kepler-186','Cygnus',19.910,43.95,582,'M1V','Red Dwarf',3755,0.055,0.52,0.54,
+      [
+        { name:'Kepler-186b', r:0.45, sz:2.5, col:'#d19874', period:0.25 },
+        { name:'Kepler-186c', r:0.68, sz:2.7, col:'#c4a48a', period:0.46 },
+        { name:'Kepler-186d', r:0.95, sz:2.9, col:'#b0a8c0', period:0.80 },
+        { name:'Kepler-186e', r:1.25, sz:2.7, col:'#88b0d8', period:1.25 },
+        { name:'Kepler-186f (HZ!)', r:1.78, sz:3.2, col:'#50e8b8', period:2.15 }
+      ],
+      'Home to Kepler-186f — the very first validated Earth-sized exoplanet discovered in the Habitable Zone of another star!'
+    ],
+    ['saiph','Saiph (κ Ori)','Orion',5.796,-9.67,650,'B0.5Ia','Blue Supergiant',26500,56880,22.2,15.5,
+      [],
+      'Orion’s blazing blue-white right knee, radiating most of its prodigious output in extreme ultraviolet.'
+    ],
+    ['rigel','Rigel (β Ori)','Orion',5.242,-8.20,863,'B8Ia','Blue Supergiant',12100,120000,78.9,21.0,
+      [],
+      'Brilliant blue supergiant at Orion’s foot, shining 120,000 times brighter than our Sun.'
+    ],
+    ['mintaka','Mintaka (δ Ori)','Orion',5.533,-0.30,1200,'O9.5II','Blue Belt Giant',29500,190000,16.5,24.0,
+      [],
+      'Western star of Orion’s Belt — a complex quintuple O-type eclipsing system.'
+    ],
+    ['alnitak','Alnitak (ζ Ori)','Orion',5.679,-1.94,1260,'O9.7Ib','Blue Belt Supergiant',29500,250000,20,33.0,
+      [],
+      'Eastern star of Orion’s Belt, illuminating the iconic Flame and Horsehead Nebulae.'
+    ],
+    ['alnilam','Alnilam (ε Ori)','Orion',5.603,-1.20,2000,'B0Ia','Blue Belt Supergiant',27500,537000,32.4,40.0,
+      [],
+      'Middle jewel of Orion’s Belt: though it looks side-by-side with Mintaka & Alnitak from Earth, it lies ~750 ly deeper in 3D space!'
+    ],
+    ['sadr','Sadr (γ Cyg)','Cygnus',20.370,40.26,1800,'F8Ib','Yellow Supergiant',6100,33000,150,12.1,
+      [],
+      'Heart of the Northern Cross in Cygnus, shining amidst vast H-II emission nebulosity.'
+    ],
+    ['deneb','Deneb (α Cyg)','Cygnus',20.690,45.28,2615,'A2Ia','White Supergiant',8525,196000,203,19.0,
+      [],
+      'One of the most intrinsically luminous stars visible to the naked eye — still a beacon across 2,600 light-years!'
+    ],
+    ['albireo','Albireo (β Cyg)','Cygnus',19.512,27.96,430,'K3II+B8V','Gold & Sapphire Pair',4270,1200,69,5.2,
+      [{ name:'Albireo B (Sapphire)', r:2.5, sz:4.5, col:'#70b8ff', period:4.2 }],
+      'Beloved telescope showpiece at the beak of Cygnus the Swan, contrasting a warm amber giant against a sapphire companion.'
+    ],
+    ['crab','Crab Pulsar (M1)','Taurus',5.575,22.01,6500,'PSR','Neutron Star Pulsar',1600000,75000,0.000014,1.4,
+      [],
+      'Spinning 30 times per second inside the supernova remnant recorded by astronomers in 1054 CE! (Scaled inward to ~2,450 ly for 3D atlas viewing.)'
+    ],
+    ['cygx1','Cygnus X-1','Cygnus',19.973,35.20,7200,'BH+O9.7Iab','Stellar Black Hole',31000,370000,22,21.2,
+      [{ name:'HDE 226868 Companion', r:1.8, sz:6.5, col:'#80c2ff', period:1.9 }],
+      'First widely confirmed black hole (21 M☉) feeding on the stellar wind of a blue supergiant companion! (Scaled to ~2,550 ly edge for viewing.)'
+    ]
+  ];
+
+  // Real 3D Constellation Line Segments (pairs of catalog IDs)
+  const CONSTELLATIONS = [
+    { name: 'Orion', color: 'rgba(110, 210, 255, 0.42)', links: [
+      ['betelgeuse','bellatrix'], ['betelgeuse','alnitak'], ['bellatrix','mintaka'],
+      ['mintaka','alnilam'], ['alnilam','alnitak'], ['alnitak','saiph'],
+      ['mintaka','rigel'], ['rigel','saiph']
+    ]},
+    { name: 'Ursa Major (Big Dipper)', color: 'rgba(255, 206, 115, 0.42)', links: [
+      ['dubhe','merak'], ['merak','phecda'], ['phecda','megrez'],
+      ['megrez','dubhe'], ['megrez','alioth'], ['alioth','mizar'], ['mizar','alkaid']
+    ]},
+    { name: 'Cassiopeia', color: 'rgba(182, 145, 255, 0.42)', links: [
+      ['caph','schedar'], ['schedar','gammacas'], ['gammacas','ruchbah'], ['ruchbah','segin']
+    ]},
+    { name: 'Crux (Southern Cross)', color: 'rgba(92, 240, 195, 0.44)', links: [
+      ['gacrux','acrux'], ['mimosa','imai']
+    ]},
+    { name: 'Cygnus', color: 'rgba(130, 195, 255, 0.36)', links: [
+      ['deneb','sadr'], ['sadr','albireo'], ['sadr','61cyg']
+    ]},
+    { name: 'Scorpius', color: 'rgba(255, 118, 140, 0.40)', links: [
+      ['antares','sargas'], ['sargas','shaula']
+    ]}
+  ];
+
+  const catalogStars = [];
+  const catalogById = {};
+
+  for (const row of CATALOG_RAW) {
+    const [id, name, constellation, raH, decD, distLy, spec, typeLabel, tempK, lumSun, radSun, massSun, planets, note] = row;
+    // Scale extreme exotic edge objects (Crab / Cyg X-1) smoothly onto outer shell (~2450 ly) while preserving true distLy telemetry
+    const renderDist = distLy > 3000 ? 2450 + (distLy - 6000) * 0.08 : distLy;
+    const pos = raDecDistToXYZ(raH, decD, renderDist);
+    const col = tempToRGB(tempK);
+    const isExotic = id === 'crab' || id === 'cygx1';
+    const star = {
+      id, name, constellation,
+      x: pos.x, y: pos.y, z: pos.z,
+      distLy, spec, typeLabel, tempK, lumSun, radSun, massSun,
+      planets: planets || [],
+      note,
+      color: col,
+      isCatalog: true,
+      isExotic,
+      isGiant: radSun >= 8 || lumSun >= 500,
+      screenX: 0, screenY: 0, screenR: 0, visible: false
+    };
+    catalogStars.push(star);
+    catalogById[id] = star;
+  }
+
+  // =========================================================================
+  // 2. PROCEDURAL 3D GALACTIC NEIGHBORHOOD (~3,200 EXPLORABLE STARS!)
+  // =========================================================================
+  // Deterministic PRNG so the galaxy is repeatable and rich
+  let seed = 133742;
+  function rand() {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    return seed / 4294967296;
+  }
+
+  const fieldStars = [];
+  const SPEC_CLASSES = [
+    { spec:'M4V', type:'Red Dwarf',     temp:3100, lum:0.01, rad:0.28, mass:0.25, w:0.46 },
+    { spec:'K3V', type:'Orange Dwarf',  temp:4700, lum:0.35, rad:0.75, mass:0.74, w:0.24 },
+    { spec:'G5V', type:'Yellow Dwarf',  temp:5650, lum:0.92, rad:0.96, mass:0.95, w:0.14 },
+    { spec:'F4V', type:'Yellow-White',  temp:6750, lum:3.4,  rad:1.35, mass:1.32, w:0.08 },
+    { spec:'A2V', type:'White Star',    temp:9100, lum:22,   rad:1.9,  mass:2.0,  w:0.045 },
+    { spec:'B3V', type:'Blue-White',    temp:17500,lum:1200, rad:4.5,  mass:7.5,  w:0.025 },
+    { spec:'K2III',type:'Orange Giant', temp:4350, lum:140,  rad:21,   mass:1.6,  w:0.01 }
+  ];
+
+  function pickSpectral() {
+    let r = rand();
+    for (const s of SPEC_CLASSES) {
+      r -= s.w;
+      if (r <= 0) return s;
+    }
+    return SPEC_CLASSES[0];
+  }
+
+  const GREEK_PREFIX = ['HD', 'HIP', 'Gliese', 'TYC', 'Gaia'];
+  for (let i = 0; i < 3200; i++) {
+    // Multi-scale radial shells so every zoom level (15 ly, 100 ly, 600 ly, 2600 ly) feels lush & alive!
+    let r;
+    const band = rand();
+    if (band < 0.14) r = 6 + Math.pow(rand(), 0.7) * 55;
+    else if (band < 0.42) r = 45 + Math.pow(rand(), 0.85) * 420;
+    else r = 250 + Math.pow(rand(), 0.9) * 2800;
+
+    // Subtle Galactic plane flattening for distant stars
+    const phi = rand() * Math.PI * 2;
+    const diskFlatten = r > 350 ? 0.34 : 0.82;
+    const cosTheta = (rand() * 2 - 1) * diskFlatten;
+    const sinTheta = Math.sqrt(Math.max(0, 1 - cosTheta * cosTheta));
+    // Tilt Galactic plane by ~62° relative to celestial equator for realism
+    const gx = r * sinTheta * Math.cos(phi);
+    const gy = r * cosTheta;
+    const gz = r * sinTheta * Math.sin(phi);
+    const tilt = 0.82;
+    const x = gx;
+    const y = gy * Math.cos(tilt) - gz * Math.sin(tilt);
+    const z = gy * Math.sin(tilt) + gz * Math.cos(tilt);
+
+    const sp = pickSpectral();
+    const tempK = Math.round(sp.temp * (0.9 + rand() * 0.2));
+    const col = tempToRGB(tempK);
+    const distLy = Math.hypot(x, y, z);
+
+    // Give ~25% procedural stars generated exoplanets if user clicks & zooms into them!
+    const planets = [];
+    if (rand() < 0.26) {
+      const pCnt = 1 + Math.floor(rand() * 4);
+      const pCols = ['#c8a07e', '#65c4ff', '#7ce5be', '#e0be8a', '#95a8e8'];
+      for (let p = 0; p < pCnt; p++) {
+        planets.push({
+          name: `Planet ${String.fromCharCode(98 + p)}`,
+          r: 0.45 + p * 0.65 + rand() * 0.25,
+          sz: 2.2 + rand() * 3.5,
+          col: pCols[Math.floor(rand() * pCols.length)],
+          period: 0.35 + p * 0.85 + rand() * 0.4,
+          ring: rand() < 0.18
+        });
+      }
+    }
+
+    fieldStars.push({
+      id: `f_${i}`,
+      name: `${GREEK_PREFIX[i % GREEK_PREFIX.length]} ${10400 + i * 37}`,
+      constellation: 'Milky Way Field',
+      x, y, z,
+      distLy,
+      spec: sp.spec,
+      typeLabel: sp.type,
+      tempK,
+      lumSun: sp.lum * (0.7 + rand() * 0.6),
+      radSun: sp.rad * (0.85 + rand() * 0.3),
+      massSun: sp.mass * (0.85 + rand() * 0.3),
+      planets,
+      note: `Procedural ${sp.type} located ${distLy.toFixed(1)} light-years from Sol in the Orion–Cygnus Spur.`,
+      color: col,
+      isCatalog: false,
+      isExotic: false,
+      isGiant: sp.rad >= 8,
+      screenX: 0, screenY: 0, screenR: 0, visible: false
+    });
+  }
+
+  const allStars = [...catalogStars, ...fieldStars];
+
+  // =========================================================================
+  // 3. CANVAS, AUDIO & SIMULATION STATE
+  // =========================================================================
+  const canvas = document.getElementById('sky-canvas');
+  const ctx = canvas.getContext('2d', { alpha: false });
+  const hrCanvas = document.getElementById('hr-canvas');
+  const hrCtx = hrCanvas.getContext('2d');
+
+  let W = window.innerWidth;
+  let H = window.innerHeight;
+  let DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+  function resize() {
+    W = window.innerWidth;
+    H = window.innerHeight;
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.floor(W * DPR);
+    canvas.height = Math.floor(H * DPR);
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  }
+
+  const audio = {
+    enabled: false,
+    ctx: null,
+    toggle() {
+      this.enabled = !this.enabled;
+      if (this.enabled && !this.ctx) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (AC) this.ctx = new AC();
+      }
+      if (this.enabled && this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
+      return this.enabled;
+    },
+    warpChime(tempK = 5778) {
+      if (!this.enabled || !this.ctx) return;
+      const now = this.ctx.currentTime;
+      const base = 220 + Math.min(620, (tempK / 25000) * 520);
+      [1, 1.5].forEach((mult, idx) => {
+        const osc = this.ctx.createOscillator();
+        const g = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(base * mult * 0.85, now + idx * 0.04);
+        osc.frequency.exponentialRampToValueAtTime(base * mult, now + 0.25 + idx * 0.04);
+        g.gain.setValueAtTime(0.06, now + idx * 0.04);
+        g.gain.exponentialRampToValueAtTime(0.0008, now + 0.55 + idx * 0.04);
+        osc.connect(g);
+        g.connect(this.ctx.destination);
+        osc.start(now + idx * 0.04);
+        osc.stop(now + 0.6 + idx * 0.04);
+      });
+    }
+  };
+
+  const state = {
+    selected: catalogById.sol,
+    hovered: null,
+    // Camera target (smoothly interpolates to selected star!)
+    tgtX: 0, tgtY: 0, tgtZ: 0,
+    curX: 0, curY: 0, curZ: 0,
+    // Spherical camera orbit around (curX, curY, curZ)
+    yaw: 0.45,
+    pitch: 0.28,
+    velYaw: 0,
+    velPitch: 0,
+    // Log10 camera distance in light-years: -2.6 (0.0025 ly system closeup) -> 3.55 (3550 ly galactic)
+    logDist: 1.54,
+    targetLogDist: 1.54,
+
+    bloom: 1.0,
+    orbitSpeed: 1.0,
+    paused: false,
+    showConst: true,
+    showLabels: true,
+    showRings: true,
+    showHZ: true,
+    showRuler: true,
+    autoDrift: true,
+
+    filter: 'all',
+    search: '',
+    tourActive: false,
+    tourTimer: 0,
+    tourIndex: 0
+  };
+
+  const TOUR_STOPS = [
+    { id: 'sol', logDist: -1.9 },
+    { id: 'proxima', logDist: -1.7 },
+    { id: 'sirius', logDist: 1.25 },
+    { id: 'trappist1', logDist: -1.85 },
+    { id: 'vega', logDist: 1.55 },
+    { id: 'betelgeuse', logDist: 2.65 },
+    { id: 'alnilam', logDist: 2.95 },
+    { id: 'cygx1', logDist: 2.75 },
+    { id: 'sol', logDist: 1.85 }
+  ];
+
+  function selectStar(star, newLogDist = null) {
+    if (!star) return;
+    state.selected = star;
+    state.tgtX = star.x;
+    state.tgtY = star.y;
+    state.tgtZ = star.z;
+    if (newLogDist !== null) {
+      state.targetLogDist = Math.max(-2.6, Math.min(3.55, newLogDist));
+    }
+    audio.warpChime(star.tempK);
+    updateTelemetryUI();
+    renderHRDiagram();
+    highlightListSelection();
+  }
+
+  // =========================================================================
+  // 4. 3D PROJECTION & RENDERING
+  // =========================================================================
+  function getCameraBasis() {
+    const dist = Math.pow(10, state.logDist);
+    const cy = Math.cos(state.yaw), sy = Math.sin(state.yaw);
+    const cp = Math.cos(state.pitch), sp = Math.sin(state.pitch);
+    // Camera eye position in world space
+    const ex = state.curX + dist * cp * Math.cos(state.yaw);
+    const ey = state.curY + dist * sp;
+    const ez = state.curZ + dist * cp * Math.sin(state.yaw);
+
+    // Forward vector from eye to target
+    const fx = -cp * cy;
+    const fy = -sp;
+    const fz = -cp * sy;
+
+    // Right vector = normalize(cross(forward, worldUp(0,1,0)))
+    let rx = -fz;
+    let ry = 0;
+    let rz = fx;
+    const rLen = Math.hypot(rx, rz) || 1;
+    rx /= rLen; rz /= rLen;
+
+    // Up vector = cross(right, forward)
+    const ux = ry * fz - rz * fy;
+    const uy = rz * fx - rx * fz;
+    const uz = rx * fy - ry * fx;
+
+    const fov = Math.min(W, H) * 0.88;
+    return { ex, ey, ez, fx, fy, fz, rx, ry, rz, ux, uy, uz, fov, dist };
+  }
+
+  function projectPoint(wx, wy, wz, cam) {
+    const dx = wx - cam.ex;
+    const dy = wy - cam.ey;
+    const dz = wz - cam.ez;
+    const zCam = dx * cam.fx + dy * cam.fy + dz * cam.fz;
+    if (zCam <= 1e-5) return null;
+    const xCam = dx * cam.rx + dy * cam.ry + dz * cam.rz;
+    const yCam = dx * cam.ux + dy * cam.uy + dz * cam.uz;
+    const scale = cam.fov / zCam;
+    return {
+      x: W * 0.5 + xCam * scale,
+      y: H * 0.5 - yCam * scale,
+      z: zCam,
+      scale
+    };
+  }
+
+  function render(nowSec) {
+    // Deep galactic nebula backdrop
+    const bg = ctx.createRadialGradient(W * 0.5, H * 0.5, 20, W * 0.5, H * 0.5, Math.max(W, H) * 0.8);
+    bg.addColorStop(0, '#070c1b');
+    bg.addColorStop(0.55, '#040712');
+    bg.addColorStop(1, '#020308');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, W, H);
+
+    const cam = getCameraBasis();
+
+    // 1) Subtle Galactic Plane Dust Glow Band
+    drawMilkyWayBand(cam);
+
+    // 2) Galactic Distance Reference Rings (centered on current target)
+    if (state.showRings && cam.dist > 0.35) {
+      drawDistanceRings(cam);
+    }
+
+    // 3) 3D Constellation Lines (true 3D star-to-star segments!)
+    if (state.showConst && cam.dist > 1.5) {
+      drawConstellations(cam);
+    }
+
+    // 4) Distance Vector from Sol to Selected Star
+    if (state.showRuler && state.selected !== catalogById.sol && cam.dist > 0.4) {
+      drawSolRuler(cam);
+    }
+
+    // 5) Project & Render Starfield (depth-sorted)
+    const drawList = [];
+    for (let i = 0; i < allStars.length; i++) {
+      const st = allStars[i];
+      st.visible = false;
+      const p = projectPoint(st.x, st.y, st.z, cam);
+      if (!p) continue;
+      if (p.x < -80 || p.x > W + 80 || p.y < -80 || p.y > H + 80) continue;
+
+      // Skip rendering selected star as tiny dot when zoomed into full System Close-Up (handled separately below!)
+      const isCloseSelected = st === state.selected && cam.dist < 0.22;
+
+      // Apparent visual size scales with intrinsic luminosity & camera proximity
+      const lumBoost = Math.pow(Math.max(0.002, st.lumSun), 0.14);
+      const distFactor = Math.max(0.4, Math.min(4.2, Math.pow(cam.dist / Math.max(p.z, 0.01), 0.65)));
+      let radius = (st.isCatalog ? 2.1 : 1.05) * lumBoost * distFactor * state.bloom;
+      radius = Math.max(0.75, Math.min(isCloseSelected ? 60 : 12, radius));
+
+      st.screenX = p.x;
+      st.screenY = p.y;
+      st.screenR = Math.max(radius, st.isCatalog ? 5 : 3);
+      st.visible = true;
+
+      if (!isCloseSelected) {
+        drawList.push({ st, x: p.x, y: p.y, z: p.z, r: radius });
+      }
+    }
+
+    // Draw background field stars fast, then glowing catalog stars
+    for (let i = 0; i < drawList.length; i++) {
+      const item = drawList[i];
+      const st = item.st;
+      const { r, g, b } = st.color;
+
+      if (!st.isCatalog) {
+        const alpha = Math.min(0.95, 0.25 + item.r * 0.35);
+        ctx.fillStyle = `rgba(${r},${g},${b},${alpha})`;
+        if (item.r < 1.55) {
+          ctx.fillRect(item.x - item.r * 0.5, item.y - item.r * 0.5, item.r, item.r);
+        } else {
+          ctx.beginPath();
+          ctx.arc(item.x, item.y, item.r, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      } else {
+        // Luminous catalog star with corona & diffraction spikes for bright stars
+        const glowR = item.r * (st.isExotic ? 5.5 : 4.2);
+        const grd = ctx.createRadialGradient(item.x, item.y, 0, item.x, item.y, glowR);
+        grd.addColorStop(0, '#ffffff');
+        grd.addColorStop(0.24, `rgba(${r},${g},${b},0.92)`);
+        grd.addColorStop(0.6, `rgba(${r},${g},${b},0.24)`);
+        grd.addColorStop(1, `rgba(${r},${g},${b},0)`);
+        ctx.fillStyle = grd;
+        ctx.beginPath();
+        ctx.arc(item.x, item.y, glowR, 0, Math.PI * 2);
+        ctx.fill();
+
+        if (item.r > 2.6 || st === state.selected) {
+          ctx.save();
+          ctx.strokeStyle = `rgba(${r},${g},${b},0.32)`;
+          ctx.lineWidth = 1;
+          const spk = item.r * 4.5;
+          ctx.beginPath();
+          ctx.moveTo(item.x - spk, item.y); ctx.lineTo(item.x + spk, item.y);
+          ctx.moveTo(item.x, item.y - spk); ctx.lineTo(item.x, item.y + spk);
+          ctx.stroke();
+          ctx.restore();
+        }
+
+        // Catalog label
+        if (state.showLabels && (st === state.selected || st === state.hovered || item.z < cam.dist * 1.9 || st.lumSun > 40)) {
+          const isSel = st === state.selected;
+          ctx.font = isSel ? '700 11.5px system-ui, sans-serif' : '600 10px system-ui, sans-serif';
+          ctx.fillStyle = isSel ? '#ffffff' : 'rgba(215, 228, 255, 0.72)';
+          ctx.textAlign = 'left';
+          ctx.fillText(st.name, item.x + item.r + 7, item.y + 3);
+        }
+      }
+    }
+
+    // 6) Close-Up Animated Star Photosphere & Exoplanet System View!
+    if (cam.dist < 0.25) {
+      const blend = Math.max(0, Math.min(1, (0.25 - cam.dist) / 0.19));
+      drawSelectedSystemCloseUp(state.selected, cam, nowSec, blend);
+    }
+
+    // 7) Selection Reticle & Hover Ring
+    if (state.selected && state.selected.visible && cam.dist >= 0.22) {
+      drawReticle(state.selected.screenX, state.selected.screenY, Math.max(13, state.selected.screenR + 7), '#5ce1ff', nowSec);
+    }
+    if (state.hovered && state.hovered.visible && state.hovered !== state.selected) {
+      drawHoverTag(state.hovered);
+    }
+  }
+
+  function drawMilkyWayBand(cam) {
+    // Subtle tilted Milky Way glow across deep sky
+    ctx.save();
+    ctx.translate(W * 0.5, H * 0.5);
+    ctx.rotate(state.yaw * 0.35 + 0.52);
+    const band = ctx.createLinearGradient(0, -H * 0.32, 0, H * 0.32);
+    band.addColorStop(0, 'rgba(62, 92, 165, 0)');
+    band.addColorStop(0.5, 'rgba(72, 108, 192, 0.08)');
+    band.addColorStop(1, 'rgba(62, 92, 165, 0)');
+    ctx.fillStyle = band;
+    ctx.fillRect(-W, -H * 0.32, W * 2, H * 0.64);
+    ctx.restore();
+  }
+
+  function drawDistanceRings(cam) {
+    // Choose clean power-of-10 / 2.5x reference radii matching current zoom!
+    const candidates = [1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500];
+    ctx.save();
+    ctx.font = '600 9.5px ui-monospace, monospace';
+    ctx.textAlign = 'center';
+
+    for (const rLy of candidates) {
+      if (rLy < cam.dist * 0.14 || rLy > cam.dist * 1.45) continue;
+      const alpha = Math.max(0.05, Math.min(0.24, 0.26 - Math.abs(Math.log10(rLy / (cam.dist * 0.5))) * 0.16));
+      ctx.strokeStyle = `rgba(110, 165, 255, ${alpha})`;
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 6]);
+      ctx.beginPath();
+      let started = false;
+      const segs = 64;
+      let labelPt = null;
+      for (let i = 0; i <= segs; i++) {
+        const a = (i / segs) * Math.PI * 2;
+        const p = projectPoint(state.curX + Math.cos(a) * rLy, state.curY, state.curZ + Math.sin(a) * rLy, cam);
+        if (!p) { started = false; continue; }
+        if (!started) { ctx.moveTo(p.x, p.y); started = true; }
+        else ctx.lineTo(p.x, p.y);
+        if (i === 16) labelPt = p;
+      }
+      ctx.stroke();
+      if (labelPt) {
+        ctx.setLineDash([]);
+        ctx.fillStyle = `rgba(135, 195, 255, ${alpha * 2.4})`;
+        ctx.fillText(`${rLy} ly`, labelPt.x, labelPt.y - 5);
+      }
+    }
+    ctx.restore();
+  }
+
+  function drawConstellations(cam) {
+    ctx.save();
+    ctx.lineWidth = 1.15;
+    for (const c of CONSTELLATIONS) {
+      ctx.strokeStyle = c.color;
+      ctx.beginPath();
+      let midX = 0, midY = 0, cnt = 0;
+      for (const [idA, idB] of c.links) {
+        const a = catalogById[idA];
+        const b = catalogById[idB];
+        if (!a || !b) continue;
+        const pa = projectPoint(a.x, a.y, a.z, cam);
+        const pb = projectPoint(b.x, b.y, b.z, cam);
+        if (!pa || !pb) continue;
+        ctx.moveTo(pa.x, pa.y);
+        ctx.lineTo(pb.x, pb.y);
+        midX += (pa.x + pb.x) * 0.5;
+        midY += (pa.y + pb.y) * 0.5;
+        cnt++;
+      }
+      ctx.stroke();
+      if (cnt > 0 && state.showLabels) {
+        ctx.fillStyle = c.color.replace('0.4', '0.78').replace('0.3', '0.72');
+        ctx.font = '700 10px system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(c.name.toUpperCase(), midX / cnt, midY / cnt - 8);
+      }
+    }
+    ctx.restore();
+  }
+
+  function drawSolRuler(cam) {
+    const sol = catalogById.sol;
+    const tgt = state.selected;
+    const p0 = projectPoint(sol.x, sol.y, sol.z, cam);
+    const p1 = projectPoint(tgt.x, tgt.y, tgt.z, cam);
+    if (!p0 || !p1) return;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255, 191, 94, 0.45)';
+    ctx.setLineDash([5, 5]);
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(p0.x, p0.y);
+    ctx.lineTo(p1.x, p1.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    const mx = (p0.x + p1.x) * 0.5;
+    const my = (p0.y + p1.y) * 0.5;
+    ctx.fillStyle = '#ffcf7d';
+    ctx.font = '700 10.5px ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(`${tgt.distLy.toFixed(1)} ly from Sol`, mx, my - 6);
+    ctx.restore();
+  }
+
+  function drawSelectedSystemCloseUp(star, cam, nowSec, alpha) {
+    const center = projectPoint(star.x, star.y, star.z, cam);
+    if (!center) return;
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+
+    // Visual scale in pixels based on close-up zoom
+    const sysUnitPx = Math.min(W, H) * (0.095 / Math.max(0.0022, cam.dist)) * 0.015;
+    const orbitScale = Math.max(36, Math.min(260, 14 / Math.max(0.003, cam.dist)));
+    const starPx = Math.max(14, Math.min(62, (16 + Math.pow(Math.min(star.radSun, 100), 0.25) * 9) * (0.045 / Math.max(0.006, cam.dist))));
+    const { r, g, b } = star.color;
+
+    // 1) Translucent Habitable Zone Ring (Goldilocks Zone)
+    if (state.showHZ && !star.isExotic) {
+      const hzInner = orbitScale * 0.78;
+      const hzOuter = orbitScale * 1.28;
+      const tiltY = Math.max(0.22, Math.abs(Math.sin(state.pitch)) * 0.92 + 0.18);
+      ctx.save();
+      ctx.translate(center.x, center.y);
+      ctx.scale(1, tiltY);
+      ctx.beginPath();
+      ctx.arc(0, 0, hzOuter, 0, Math.PI * 2);
+      ctx.arc(0, 0, hzInner, 0, Math.PI * 2, true);
+      ctx.fillStyle = 'rgba(76, 242, 178, 0.08)';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(76, 242, 178, 0.28)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 5]);
+      ctx.beginPath(); ctx.arc(0, 0, hzInner, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(0, 0, hzOuter, 0, Math.PI * 2); ctx.stroke();
+      ctx.restore();
+
+      ctx.fillStyle = 'rgba(110, 248, 195, 0.75)';
+      ctx.font = '600 10px ui-monospace, monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('Habitable Zone', center.x, center.y - hzOuter * tiltY - 6);
+    }
+
+    // 2) Orbiting Exoplanets (back half -> star -> front half!)
+    const tiltY = Math.max(0.22, Math.abs(Math.sin(state.pitch)) * 0.92 + 0.18);
+    const backP = [];
+    const frontP = [];
+
+    for (let i = 0; i < star.planets.length; i++) {
+      const pl = star.planets[i];
+      const radPx = pl.r * orbitScale;
+
+      // Orbit ellipse
+      ctx.strokeStyle = 'rgba(145, 185, 255, 0.18)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.ellipse(center.x, center.y, radPx, radPx * tiltY, 0, 0, Math.PI * 2);
+      ctx.stroke();
+
+      const ang = (nowSec * 0.75 * state.orbitSpeed) / Math.max(0.2, pl.period) + i * 1.4;
+      const px = center.x + Math.cos(ang) * radPx;
+      const py = center.y + Math.sin(ang) * radPx * tiltY;
+      const item = { pl, x: px, y: py, sinA: Math.sin(ang) };
+      if (item.sinA < 0) backP.push(item);
+      else frontP.push(item);
+    }
+
+    const drawPlanet = (item) => {
+      const { pl, x, y } = item;
+      const sz = Math.max(2.5, pl.sz * Math.min(1.6, orbitScale / 85));
+      if (pl.ring) {
+        ctx.save();
+        ctx.strokeStyle = 'rgba(238, 214, 162, 0.65)';
+        ctx.lineWidth = 2.2;
+        ctx.beginPath();
+        ctx.ellipse(x, y, sz * 2.2, sz * 0.72, 0.25, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+      const pg = ctx.createRadialGradient(x - sz * 0.3, y - sz * 0.3, sz * 0.1, x, y, sz);
+      pg.addColorStop(0, '#ffffff');
+      pg.addColorStop(0.4, pl.col);
+      pg.addColorStop(1, '#091020');
+      ctx.fillStyle = pg;
+      ctx.beginPath();
+      ctx.arc(x, y, sz, 0, Math.PI * 2);
+      ctx.fill();
+
+      if (state.showLabels) {
+        ctx.fillStyle = 'rgba(225, 238, 255, 0.85)';
+        ctx.font = '600 10px system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(pl.name, x, y - sz - 6);
+      }
+    };
+
+    backP.forEach(drawPlanet);
+
+    // 3) Animated Star Photosphere / Black Hole / Pulsar
+    if (star.id === 'cygx1') {
+      // Accretion disk + Event Horizon shadow!
+      const cor = ctx.createRadialGradient(center.x, center.y, starPx * 0.6, center.x, center.y, starPx * 3.8);
+      cor.addColorStop(0, 'rgba(255, 225, 165, 0.9)');
+      cor.addColorStop(0.35, 'rgba(130, 190, 255, 0.42)');
+      cor.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = cor;
+      ctx.beginPath(); ctx.arc(center.x, center.y, starPx * 3.8, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#000';
+      ctx.beginPath(); ctx.arc(center.x, center.y, starPx * 0.72, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#ffcf7d';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    } else if (star.id === 'crab') {
+      // Spinning relativistic pulsar beams!
+      ctx.save();
+      ctx.translate(center.x, center.y);
+      ctx.rotate(nowSec * 14);
+      const beam = ctx.createLinearGradient(-starPx * 4.5, 0, starPx * 4.5, 0);
+      beam.addColorStop(0, 'rgba(120, 225, 255, 0)');
+      beam.addColorStop(0.5, 'rgba(220, 250, 255, 0.95)');
+      beam.addColorStop(1, 'rgba(120, 225, 255, 0)');
+      ctx.strokeStyle = beam;
+      ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.moveTo(-starPx * 4.5, 0); ctx.lineTo(starPx * 4.5, 0); ctx.stroke();
+      ctx.restore();
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath(); ctx.arc(center.x, center.y, starPx * 0.55, 0, Math.PI * 2); ctx.fill();
+    } else {
+      // Luminous convective photosphere + pulsing corona
+      const pulse = 1 + 0.03 * Math.sin(nowSec * 3.2);
+      const cor = ctx.createRadialGradient(center.x, center.y, starPx * 0.5, center.x, center.y, starPx * 3.6 * pulse);
+      cor.addColorStop(0, `rgba(${r},${g},${b},0.92)`);
+      cor.addColorStop(0.32, `rgba(${r},${g},${b},0.35)`);
+      cor.addColorStop(1, `rgba(${r},${g},${b},0)`);
+      ctx.fillStyle = cor;
+      ctx.beginPath();
+      ctx.arc(center.x, center.y, starPx * 3.6 * pulse, 0, Math.PI * 2);
+      ctx.fill();
+
+      const surf = ctx.createRadialGradient(center.x - starPx * 0.25, center.y - starPx * 0.25, starPx * 0.1, center.x, center.y, starPx);
+      surf.addColorStop(0, '#ffffff');
+      surf.addColorStop(0.55, `rgb(${r},${g},${b})`);
+      surf.addColorStop(1, `rgb(${Math.floor(r * 0.58)},${Math.floor(g * 0.45)},${Math.floor(b * 0.45)})`);
+      ctx.fillStyle = surf;
+      ctx.beginPath();
+      ctx.arc(center.x, center.y, starPx, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    frontP.forEach(drawPlanet);
+    ctx.restore();
+  }
+
+  function drawReticle(x, y, rad, color, nowSec) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(nowSec * 0.45);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.4;
+    for (let i = 0; i < 4; i++) {
+      const a0 = i * (Math.PI / 2) + 0.22;
+      const a1 = a0 + 0.72;
+      ctx.beginPath();
+      ctx.arc(0, 0, rad, a0, a1);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawHoverTag(st) {
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255, 225, 145, 0.8)';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.arc(st.screenX, st.screenY, Math.max(10, st.screenR + 5), 0, Math.PI * 2);
+    ctx.stroke();
+
+    const text = `${st.name} (${st.spec}, ${st.distLy.toFixed(1)} ly)`;
+    ctx.font = '650 11px system-ui, sans-serif';
+    const tw = ctx.measureText(text).width;
+    const bx = st.screenX + 14;
+    const by = st.screenY - 22;
+    ctx.fillStyle = 'rgba(8, 13, 26, 0.9)';
+    ctx.strokeStyle = 'rgba(145, 185, 255, 0.35)';
+    ctx.beginPath();
+    ctx.roundRect(bx, by, tw + 14, 22, 6);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'left';
+    ctx.fillText(text, bx + 7, by + 14.5);
+    ctx.restore();
+  }
+
+  // =========================================================================
+  // 5. INTERACTIVE HERTZSPRUNG-RUSSELL (H-R) DIAGRAM
+  // =========================================================================
+  const hrPlotPts = [];
+  function renderHRDiagram() {
+    const w = hrCanvas.width;
+    const h = hrCanvas.height;
+    hrCtx.clearRect(0, 0, w, h);
+
+    // Subtle spectral background tint
+    const bg = hrCtx.createLinearGradient(0, 0, w, 0);
+    bg.addColorStop(0, 'rgba(90, 150, 255, 0.14)');
+    bg.addColorStop(0.5, 'rgba(255, 240, 210, 0.06)');
+    bg.addColorStop(1, 'rgba(255, 95, 70, 0.14)');
+    hrCtx.fillStyle = bg;
+    hrCtx.fillRect(0, 0, w, h);
+
+    // Axes & region labels
+    hrCtx.strokeStyle = 'rgba(145, 180, 255, 0.15)';
+    hrCtx.lineWidth = 1;
+    hrCtx.strokeRect(26, 12, w - 34, h - 32);
+
+    hrCtx.fillStyle = 'rgba(160, 185, 230, 0.45)';
+    hrCtx.font = '600 8.5px ui-monospace, monospace';
+    hrCtx.fillText('Supergiants', 100, 26);
+    hrCtx.fillText('Giants', 215, 58);
+    hrCtx.fillText('Main Sequence', 108, 108);
+    hrCtx.fillText('O   B   A   F   G   K   M', 36, h - 6);
+
+    const mapX = T => {
+      const logT = Math.log10(Math.max(2200, Math.min(40000, T)));
+      const norm = (Math.log10(40000) - logT) / (Math.log10(40000) - Math.log10(2200));
+      return 28 + norm * (w - 38);
+    };
+    const mapY = L => {
+      const logL = Math.log10(Math.max(0.0003, Math.min(800000, L)));
+      const norm = (Math.log10(800000) - logL) / (Math.log10(800000) - Math.log10(0.0003));
+      return 14 + norm * (h - 36);
+    };
+
+    hrPlotPts.length = 0;
+    for (const st of catalogStars) {
+      if (st.isExotic) continue;
+      const x = mapX(st.tempK);
+      const y = mapY(st.lumSun);
+      hrPlotPts.push({ st, x, y });
+      const isSel = st === state.selected;
+      hrCtx.fillStyle = st.color.css;
+      hrCtx.beginPath();
+      hrCtx.arc(x, y, isSel ? 4.8 : 2.6, 0, Math.PI * 2);
+      hrCtx.fill();
+      if (isSel) {
+        hrCtx.strokeStyle = '#ffffff';
+        hrCtx.lineWidth = 1.6;
+        hrCtx.beginPath();
+        hrCtx.arc(x, y, 8, 0, Math.PI * 2);
+        hrCtx.stroke();
+      }
+    }
+  }
+
+  hrCanvas.addEventListener('click', e => {
+    const rect = hrCanvas.getBoundingClientRect();
+    const mx = ((e.clientX - rect.left) / rect.width) * hrCanvas.width;
+    const my = ((e.clientY - rect.top) / rect.height) * hrCanvas.height;
+    let best = null, bestD = 18;
+    for (const pt of hrPlotPts) {
+      const d = Math.hypot(mx - pt.x, my - pt.y);
+      if (d < bestD) { bestD = d; best = pt.st; }
+    }
+    if (best) selectStar(best, Math.min(state.targetLogDist, 2.2));
+  });
+
+  // =========================================================================
+  // 6. TELEMETRY & CATALOG UI
+  // =========================================================================
+  function formatLum(L) {
+    if (L >= 1000) return `${Math.round(L).toLocaleString()} L☉`;
+    if (L >= 10) return `${L.toFixed(1)} L☉`;
+    if (L >= 0.1) return `${L.toFixed(2)} L☉`;
+    return `${L.toFixed(4)} L☉`;
+  }
+  function formatTime(yrs) {
+    if (yrs === 0) return '0 yr';
+    if (yrs >= 1e6) return `${(yrs / 1e6).toFixed(1)} Myr`;
+    if (yrs >= 1e3) return `${(yrs / 1e3).toFixed(1)} kyr`;
+    return `${yrs.toFixed(1)} yr`;
+  }
+
+  function updateTelemetryUI() {
+    const st = state.selected;
+    if (!st) return;
+
+    document.getElementById('tel-name').textContent = st.name;
+    document.getElementById('tel-spec').textContent = `${st.spec} · ${st.typeLabel}`;
+    const plText = st.planets.length ? `${st.planets.length} World${st.planets.length > 1 ? 's' : ''}` : 'No known planets';
+    document.getElementById('tel-const').textContent = `${st.constellation} · ${plText}`;
+    document.getElementById('tel-dist').textContent = `${st.distLy.toFixed(2)} ly`;
+    document.getElementById('tel-temp').textContent = st.tempK > 100000 ? `${(st.tempK / 1e6).toFixed(1)}M K` : `${st.tempK.toLocaleString()} K`;
+    document.getElementById('tel-lum').textContent = formatLum(st.lumSun);
+    document.getElementById('tel-rad').textContent = st.radSun < 0.01 ? '10 km' : `${st.radSun >= 10 ? st.radSun.toFixed(1) : st.radSun.toFixed(2)} R☉`;
+    document.getElementById('tel-mass').textContent = `${st.massSun.toFixed(2)} M☉`;
+    document.getElementById('tel-note').textContent = st.note;
+
+    const orb = document.getElementById('star-orb');
+    const { r, g, b } = st.color;
+    orb.style.background = st.id === 'cygx1'
+      ? 'radial-gradient(circle, #000 38%, #ffbe5c 58%, #5ce1ff 100%)'
+      : `radial-gradient(circle at 35% 35%, #fff 0%, rgb(${r},${g},${b}) 58%, rgb(${Math.floor(r * 0.45)},${Math.floor(g * 0.38)},${Math.floor(b * 0.4)}) 100%)`;
+    orb.style.boxShadow = `0 0 22px rgba(${r},${g},${b},0.65)`;
+
+    document.getElementById('tel-c').textContent = formatTime(st.distLy);
+    document.getElementById('tel-01c').textContent = formatTime(st.distLy * 10);
+    // Voyager 1 ~ 17 km/s => ~17,600 years per light-year
+    document.getElementById('tel-voy').textContent = formatTime(st.distLy * 17600);
+
+    // Planet list in Tab 2
+    document.getElementById('lbl-planet-cnt').textContent = plText;
+    const plWrap = document.getElementById('planet-list');
+    if (st.planets.length === 0) {
+      plWrap.innerHTML = '<div class="note-small">No confirmed exoplanets in catalog for this star. Zoom in to inspect its convective photosphere &amp; corona!</div>';
+    } else {
+      plWrap.innerHTML = st.planets.map(p => `
+        <div class="star-row" style="cursor:default;">
+          <span class="s-dot" style="background:${p.col}; box-shadow:0 0 8px ${p.col};"></span>
+          <div class="s-meta">
+            <span class="s-nm">${p.name}</span>
+            <span class="s-info">Rel. Orbit ${p.r.toFixed(2)} · Period ${p.period.toFixed(2)}</span>
+          </div>
+        </div>
+      `).join('');
+    }
+  }
+
+  function renderCatalogList() {
+    const q = state.search.trim().toLowerCase();
+    const list = catalogStars.filter(st => {
+      if (state.filter === 'near' && st.distLy > 25) return false;
+      if (state.filter === 'exo' && st.planets.length === 0) return false;
+      if (state.filter === 'giant' && !st.isGiant) return false;
+      if (state.filter === 'exotic' && !st.isExotic) return false;
+      if (q && !(st.name.toLowerCase().includes(q) || st.constellation.toLowerCase().includes(q) || st.spec.toLowerCase().includes(q) || st.typeLabel.toLowerCase().includes(q))) return false;
+      return true;
+    });
+
+    document.getElementById('lbl-cat-count').textContent = `${list.length} Notable`;
+    const wrap = document.getElementById('star-list');
+    wrap.innerHTML = list.map(st => `
+      <button class="star-row ${st === state.selected ? 'active' : ''}" data-sid="${st.id}">
+        <span class="s-dot" style="background:${st.color.css}; box-shadow:0 0 8px ${st.color.css};"></span>
+        <div class="s-meta">
+          <span class="s-nm">${st.name}</span>
+          <span class="s-info">${st.spec} · ${st.constellation}</span>
+        </div>
+        <span class="s-dist">${st.distLy === 0 ? 'Home' : st.distLy < 100 ? st.distLy.toFixed(1) + ' ly' : Math.round(st.distLy) + ' ly'}</span>
+      </button>
+    `).join('');
+  }
+
+  function highlightListSelection() {
+    document.querySelectorAll('#star-list .star-row').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.sid === state.selected.id);
+    });
+  }
+
+  // =========================================================================
+  // 7. INPUT & EVENT LISTENERS
+  // =========================================================================
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById(`tab-${btn.dataset.tab}`).classList.add('active');
+      if (btn.dataset.tab === 'hr') renderHRDiagram();
+    });
+  });
+
+  document.getElementById('star-search').addEventListener('input', e => {
+    state.search = e.target.value;
+    renderCatalogList();
+  });
+
+  document.querySelectorAll('#filter-row .seg-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.filter = btn.dataset.filt;
+      document.querySelectorAll('#filter-row .seg-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      renderCatalogList();
+    });
+  });
+
+  document.getElementById('star-list').addEventListener('click', e => {
+    const row = e.target.closest('[data-sid]');
+    if (!row) return;
+    const st = catalogById[row.dataset.sid];
+    if (st) {
+      state.tourActive = false;
+      document.getElementById('btn-tour').textContent = '▶ Guided Galactic Tour';
+      // Pick a nice framing zoom depending on distance or planets
+      const niceZoom = st.planets.length > 0 && state.targetLogDist < 0.2 ? -1.8 : Math.min(state.targetLogDist, Math.max(0.8, Math.log10(Math.max(18, st.distLy * 0.45))));
+      selectStar(st, niceZoom);
+    }
+  });
+
+  // Scale jumps
+  const zoomToSystem = () => { state.targetLogDist = -1.88; };
+  document.getElementById('btn-zoom-sys').addEventListener('click', zoomToSystem);
+  document.getElementById('btn-fly-close').addEventListener('click', zoomToSystem);
+  document.getElementById('btn-inspect-bar').addEventListener('click', zoomToSystem);
+  document.getElementById('btn-zoom-near').addEventListener('click', () => { state.targetLogDist = 1.54; });
+  document.getElementById('btn-zoom-const').addEventListener('click', () => { state.targetLogDist = 2.65; });
+  document.getElementById('btn-zoom-gal').addEventListener('click', () => { state.targetLogDist = 3.45; });
+
+  const btnTour = document.getElementById('btn-tour');
+  btnTour.addEventListener('click', () => {
+    state.tourActive = !state.tourActive;
+    state.tourTimer = 0;
+    btnTour.textContent = state.tourActive ? '⏹ Stop Galactic Tour' : '▶ Guided Galactic Tour';
+    btnTour.classList.toggle('active-glow', state.tourActive);
+    if (state.tourActive) {
+      state.tourIndex = 0;
+      const stop = TOUR_STOPS[0];
+      selectStar(catalogById[stop.id], stop.logDist);
+    }
+  });
+
+  // View controls
+  document.getElementById('sl-zoom').addEventListener('input', e => {
+    state.targetLogDist = Number(e.target.value);
+  });
+  document.getElementById('sl-bloom').addEventListener('input', e => {
+    state.bloom = Number(e.target.value);
+    document.getElementById('val-bloom').textContent = `${state.bloom.toFixed(2)}×`;
+  });
+  document.getElementById('sl-ospeed').addEventListener('input', e => {
+    state.orbitSpeed = Number(e.target.value);
+    document.getElementById('val-ospeed').textContent = `${state.orbitSpeed.toFixed(1)}×`;
+  });
+
+  function resetToEarth() {
+    state.tourActive = false;
+    btnTour.textContent = '▶ Guided Galactic Tour';
+    state.yaw = 0.45;
+    state.pitch = 0.28;
+    selectStar(catalogById.sol, 1.54);
+  }
+  document.getElementById('btn-earth-pov').addEventListener('click', resetToEarth);
+  document.getElementById('btn-home').addEventListener('click', resetToEarth);
+
+  const chkConst = document.getElementById('chk-const');
+  const btnConstBar = document.getElementById('btn-const-bar');
+  chkConst.addEventListener('change', e => {
+    state.showConst = e.target.checked;
+    btnConstBar.classList.toggle('active', state.showConst);
+  });
+  btnConstBar.addEventListener('click', () => {
+    state.showConst = !state.showConst;
+    chkConst.checked = state.showConst;
+    btnConstBar.classList.toggle('active', state.showConst);
+  });
+
+  document.getElementById('chk-labels').addEventListener('change', e => state.showLabels = e.target.checked);
+  document.getElementById('chk-rings').addEventListener('change', e => state.showRings = e.target.checked);
+  document.getElementById('chk-hz').addEventListener('change', e => state.showHZ = e.target.checked);
+  document.getElementById('chk-ruler').addEventListener('change', e => state.showRuler = e.target.checked);
+  document.getElementById('chk-drift').addEventListener('change', e => state.autoDrift = e.target.checked);
+
+  // Bottom bar
+  const btnPlay = document.getElementById('btn-play');
+  btnPlay.addEventListener('click', () => {
+    state.paused = !state.paused;
+    btnPlay.textContent = state.paused ? '▶ Motion' : '⏸ Motion';
+    btnPlay.classList.toggle('active', !state.paused);
+  });
+  document.getElementById('btn-sound').addEventListener('click', e => {
+    const on = audio.toggle();
+    e.target.textContent = on ? '🔊 Audio' : '🔇 Audio';
+    e.target.classList.toggle('active', on);
+  });
+  document.getElementById('btn-toggle-drawer').addEventListener('click', e => {
+    document.getElementById('drawer').classList.toggle('collapsed');
+    e.target.classList.toggle('active', !document.getElementById('drawer').classList.contains('collapsed'));
+  });
+  function toggleZen() { document.body.classList.toggle('zen-mode'); }
+  document.getElementById('btn-zen').addEventListener('click', toggleZen);
+  document.getElementById('btn-zen-restore').addEventListener('click', toggleZen);
+
+  // Pointer interaction: Drag to orbit 3D sky, Click any star to fly to it!
+  const ptr = { down: false, moved: false, startX: 0, startY: 0, lastX: 0, lastY: 0 };
+
+  function pickStarAt(mx, my) {
+    let best = null;
+    let bestScore = Infinity;
+    // Prefer catalog stars within 18px, else procedural field star within 12px
+    for (let i = 0; i < allStars.length; i++) {
+      const st = allStars[i];
+      if (!st.visible) continue;
+      const d = Math.hypot(mx - st.screenX, my - st.screenY);
+      const limit = st.isCatalog ? 18 : 11;
+      if (d < limit) {
+        const score = st.isCatalog ? d * 0.55 : d;
+        if (score < bestScore) { bestScore = score; best = st; }
+      }
+    }
+    return best;
+  }
+
+  canvas.addEventListener('pointerdown', e => {
+    canvas.setPointerCapture(e.pointerId);
+    ptr.down = true;
+    ptr.moved = false;
+    ptr.startX = ptr.lastX = e.clientX;
+    ptr.startY = ptr.lastY = e.clientY;
+    canvas.classList.add('dragging');
+  });
+
+  canvas.addEventListener('pointermove', e => {
+    if (ptr.down) {
+      const dx = e.clientX - ptr.lastX;
+      const dy = e.clientY - ptr.lastY;
+      ptr.lastX = e.clientX;
+      ptr.lastY = e.clientY;
+      if (Math.hypot(e.clientX - ptr.startX, e.clientY - ptr.startY) > 4) ptr.moved = true;
+
+      state.yaw -= dx * 0.0055;
+      state.pitch = Math.max(-1.48, Math.min(1.48, state.pitch + dy * 0.0055));
+      state.velYaw = -dx * 0.0007;
+      state.velPitch = dy * 0.0007;
+    } else {
+      state.hovered = pickStarAt(e.clientX, e.clientY);
+      canvas.classList.toggle('hovering-star', !!state.hovered);
+    }
+  });
+
+  canvas.addEventListener('pointerup', e => {
+    ptr.down = false;
+    canvas.classList.remove('dragging');
+    if (!ptr.moved) {
+      const hit = pickStarAt(e.clientX, e.clientY);
+      if (hit) {
+        state.tourActive = false;
+        btnTour.textContent = '▶ Guided Galactic Tour';
+        // Clicking the already-selected star zooms right into its planetary system!
+        if (hit === state.selected) {
+          state.targetLogDist = state.targetLogDist < -1.0 ? 1.5 : -1.88;
+        } else {
+          selectStar(hit);
+        }
+      }
+    }
+  });
+
+  canvas.addEventListener('wheel', e => {
+    e.preventDefault();
+    state.targetLogDist = Math.max(-2.6, Math.min(3.55, state.targetLogDist + e.deltaY * 0.0012));
+  }, { passive: false });
+
+  window.addEventListener('keydown', e => {
+    if (e.target.tagName === 'INPUT') return;
+    if (e.key === 'h' || e.key === 'H') toggleZen();
+    else if (e.key === 'g' || e.key === 'G') resetToEarth();
+    else if (e.key === '+' || e.key === '=') state.targetLogDist = Math.max(-2.6, state.targetLogDist - 0.18);
+    else if (e.key === '-' || e.key === '_') state.targetLogDist = Math.min(3.55, state.targetLogDist + 0.18);
+    else if (e.code === 'Space') { e.preventDefault(); btnPlay.click(); }
+  });
+
+  window.addEventListener('resize', resize);
+
+  // =========================================================================
+  // 8. ANIMATION LOOP
+  // =========================================================================
+  let lastNow = performance.now();
+  let frame = 0;
+
+  function loop(now) {
+    const dt = Math.min(0.05, (now - lastNow) / 1000);
+    lastNow = now;
+
+    // Smooth camera fly-to target star
+    const ease = 1 - Math.exp(-4.6 * dt);
+    state.curX += (state.tgtX - state.curX) * ease;
+    state.curY += (state.tgtY - state.curY) * ease;
+    state.curZ += (state.tgtZ - state.curZ) * ease;
+    state.logDist += (state.targetLogDist - state.logDist) * (1 - Math.exp(-6.5 * dt));
+
+    if (!ptr.down) {
+      state.yaw += state.velYaw;
+      state.pitch = Math.max(-1.48, Math.min(1.48, state.pitch + state.velPitch));
+      state.velYaw *= 0.92;
+      state.velPitch *= 0.92;
+      if (state.autoDrift && !state.paused) {
+        state.yaw += dt * 0.055;
+      }
+    }
+
+    // Guided Galactic Tour
+    if (state.tourActive && !state.paused) {
+      state.tourTimer += dt;
+      if (state.tourTimer > 4.6) {
+        state.tourTimer = 0;
+        state.tourIndex = (state.tourIndex + 1) % TOUR_STOPS.length;
+        const stop = TOUR_STOPS[state.tourIndex];
+        selectStar(catalogById[stop.id], stop.logDist);
+      }
+    }
+
+    render(now / 1000);
+
+    if (frame % 4 === 0) {
+      const dist = Math.pow(10, state.logDist);
+      const distStr = dist < 0.05 ? `${(dist * 63241).toFixed(0)} AU` : dist < 10 ? `${dist.toFixed(2)} ly` : `${dist.toFixed(1)} ly`;
+      document.getElementById('tel-cam').textContent = distStr;
+      document.getElementById('val-zoom').textContent = distStr;
+      document.getElementById('sl-zoom').value = state.logDist.toFixed(2);
+    }
+
+    frame++;
+    requestAnimationFrame(loop);
+  }
+
+  // Boot
+  resize();
+  renderCatalogList();
+  updateTelemetryUI();
+  renderHRDiagram();
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
