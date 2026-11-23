@@ -12,3 +12,5 @@ Documentation update (20 November 2026): at Steven Powell's direction, `index.ht
 
 
 Game added 22 November 2026: `yahtzee.html` and `yahtzee-lesson.html` — Yahtzee, built by Muse at Steven Powell's direction. Full classic rules with Yahtzee-bonus joker rules; all probabilities computed by exact enumeration (252-multiset engine, multinomial weights); the build's 42-check proof suite passed, including P(Yahtzee in a full turn, best play) = 4.6029% and the hold advisor's expected values matched against an independent brute force. `index.html` gained the Yahtzee nav link and section 07.
+
+Staleness fix, 22 November 2026: `yahtzee-lesson.html` — the history line corrected: Yahtzee was sold by the E.S. Lowe Company from 1956; Milton Bradley bought Lowe in 1973.

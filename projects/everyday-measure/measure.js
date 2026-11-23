@@ -160,7 +160,7 @@ const THINGS = [
  { id: "bathtub", name: "A full bathtub", kind: "volume", value: 300, unit: "L", approx: true,
    note: "A standard tub filled to the overflow takes roughly 300 litres. Your tub, your fill line, and a person in it all move the number." },
  { id: "pool", name: "An Olympic swimming pool", kind: "volume", value: 2500000, unit: "L", approx: false,
-   note: "The Olympic minimum: 2,500,000 litres of water, set by the FINA rules (50 m × 25 m × at least 2 m deep). Real pools hold a little more." }
+   note: "The Olympic minimum: 2,500,000 litres of water, set by the World Aquatics rules (the body was called FINA until 2023) (50 m × 25 m × at least 2 m deep). Real pools hold a little more." }
 ];
 function thingById(id) {
  for (const t of THINGS) if (t.id === id) return t;

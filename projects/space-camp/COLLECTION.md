@@ -9,3 +9,5 @@ Local changes to `space-camp.html`: added collection navigation and license/down
 Banner added November 15, 2026: space-camp-banner.jpg (AI/robots theme), part of the collection-wide banner pass.
 
 Documentation update (20 November 2026): at Steven Powell's direction, `space-camp.html` gained a professional Documentation & source panel with the room README, GitHub source, sources and limitations, workshop download, collection documentation index, and curator profile link. Changed files: `space-camp.html`, `COLLECTION.md`. The addition is documentation and navigation only; no lesson content or workshop behaviour was changed.
+
+Staleness fix, 22 November 2026: `space-camp.html` — the "still ahead" sentence updated: on Flight 15 the Starbase tower caught Ship 42 returning from orbit on 14 November 2026, the first catch of a Starship upper stage; rapid reflight of both stages and in-orbit propellant transfer remain ahead. The page's reviewed-on line now reads 22 November 2026.

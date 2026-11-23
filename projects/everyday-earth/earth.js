@@ -108,7 +108,7 @@ const EARTH_LAYERS = [
  { name: "Crust", top: 0, bottom: 70, what: "The thin skin everything lives on — 5 to 10 km thick under the oceans, 30 to 50 under the continents, up to about 70 under the highest mountains. Every mine, well, and borehole ever dug is still in it." },
  { name: "Mantle", top: 70, bottom: 2900, what: "Hot rock that is solid but able to creep, over millions of years, like very stiff toffee — its slow churning is what drags the continents around. This is most of the planet: everything from under the crust to 2,900 km down." },
  { name: "Outer core", top: 2900, bottom: 5150, what: "Liquid iron and nickel, hot enough to glow — its swirling is what generates the Earth's magnetic field, the one the Survival Guide's compass needles follow." },
- { name: "Inner core", top: 5150, bottom: 6371, what: "A solid ball of iron and nickel about 1,220 km in radius, squeezed solid by pressure despite being roughly 5,200 °C — about as hot as the surface of the Sun. Nobody has been there; we know it from earthquake waves that pass through it." }
+ { name: "Inner core", top: 5150, bottom: 6371, what: "A ball of iron and nickel about 1,220 km in radius, squeezed solid by pressure despite being roughly 5,100–6,000 °C — about as hot as the surface of the Sun. Even 'solid' is seismology's best reading rather than a certainty: research published in February 2025 found its near-surface seems to deform and shift shape over time, less rigid than once thought. Nobody has been there; we know it from earthquake waves that pass through it." }
 ];
 function depthLayer(km) {
  if (typeof km !== "number" || !isFinite(km) || km < 0) return { ok: false };

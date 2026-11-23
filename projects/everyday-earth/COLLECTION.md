@@ -21,3 +21,5 @@ The same documentation update also added a Steve's Profile link (Steven Powell's
 Cross-link added, 20 November 2026: the Keep Going section gained an Everyday Time card — the day and the year are this room's motions, counted — `index.html` and `COLLECTION.md`. Everyday Time links back from its own sister rooms. No bench, lesson, or behaviour changed.
 
 Cross-link added, 20 November 2026: the Keep Going section gained an Everyday Food card — the new room's plant section grows out of this room's soil and seasons, and Everyday Food links back here from its plants and sister rooms — `index.html` and `COLLECTION.md`. No bench, lesson, or behaviour changed.
+
+Staleness fix, 22 November 2026: `earth.js` — the inner-core card now gives the published temperature range (about 5,100–6,000 °C) and notes the February 2025 Nature Geoscience finding that the inner core's near-surface appears to deform and shift shape over time.
