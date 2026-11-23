@@ -39,3 +39,17 @@ The rules (element data, shell sums, neutron maths, the formula parser, molar ma
 - `style.css` — the room's styling (shared Everyday Cool room styling plus the benches)
 - `everyday-chemistry-banner.jpg` — AI-generated banner art (see COLLECTION.md)
 - `test.cjs` — rule tests
+
+## The Chemistry Wave (23 November 2026)
+
+Nine full laboratories built by Google Antigravity (Gemini) at Steven Powell's direction, shipped byte-for-byte as delivered, each with a back-door lesson by Muse auditing the shipped code against real chemistry:
+
+- `vsepr-molecular-3d.html` + `vsepr-molecular-3d-lesson.html` — 3D VSEPR geometries, lone pairs, dipoles
+- `reaction-kinetics.html` + `reaction-kinetics-lesson.html` — collision theory, catalysis, Le Chatelier
+- `acid-base-titration.html` + `acid-base-titration-lesson.html` — titration curves, buffers, indicators
+- `electrochem-cell.html` + `electrochem-cell-lesson.html` — galvanic/electrolytic cells, Nernst, plating
+- `spectroscopy-lab.html` + `spectroscopy-lab-lesson.html` — emission spectra and IR vibrations
+- `bz-oscillator.html` + `bz-oscillator-lesson.html` — the Belousov–Zhabotinsky oscillating reaction
+- `organic-mechanisms.html` + `organic-mechanisms-lesson.html` — SN2, SN1, E2, Diels–Alder, acyl
+- `protein-polymer-fold.html` + `protein-polymer-fold-lesson.html` — folding, membranes, polymer recoil
+- `solvation-water.html` + `solvation-water-lesson.html` — H-bonds, hydration shells, osmosis

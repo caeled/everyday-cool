@@ -1,0 +1,2739 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Oscillator — Belousov–Zhabotinsky Chemical Waves &amp; Clock</title>
+<style>
+  :root {
+    --bg-deep: #040711;
+    --panel-bg: rgba(9, 13, 24, 0.78);
+    --panel-bg-strong: rgba(8, 12, 22, 0.92);
+    --panel-border: rgba(148, 179, 255, 0.16);
+    --panel-border-hi: rgba(148, 179, 255, 0.36);
+    --text-main: #eef3ff;
+    --text-dim: #9aa9cc;
+    --text-muted: #68789c;
+    --accent-amber: #ffbe5c;
+    --accent-cyan: #58dcff;
+    --accent-mint: #4af2b2;
+    --accent-rose: #ff6083;
+    --accent-violet: #a78bfa;
+    --radius-lg: 14px;
+    --radius-md: 10px;
+    --radius-sm: 7px;
+    --mono: ui-monospace, "Cascadia Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Inter, Helvetica, Arial, sans-serif;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg-deep);
+    color: var(--text-main);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    touch-action: none;
+  }
+
+  #sim-canvas {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    cursor: crosshair;
+  }
+  #sim-canvas.grab-probe {
+    cursor: grab;
+  }
+  #sim-canvas.grabbing-probe {
+    cursor: grabbing;
+  }
+
+  /* HUD Layer */
+  .hud {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 10;
+  }
+  body.zen-mode .hud > :not(.zen-restore) {
+    opacity: 0;
+    pointer-events: none !important;
+  }
+
+  .panel {
+    pointer-events: auto;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-lg);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.52), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    transition: opacity 0.25s ease, transform 0.25s ease;
+  }
+
+  /* Top-Left Brand + Telemetry + Scope */
+  .top-left {
+    position: fixed;
+    top: 14px;
+    left: 14px;
+    width: min(404px, calc(100vw - 362px));
+    min-width: 286px;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .brand-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .brand-title-wrap {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .brand-title {
+    font-size: 16px;
+    font-weight: 800;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+    background: linear-gradient(120deg, #ffd6e2 0%, #ff6c99 34%, #58dcff 74%, #d6fbff 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .mode-badge {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 999px;
+    border: 1px solid rgba(88, 220, 255, 0.4);
+    background: rgba(88, 220, 255, 0.12);
+    color: var(--accent-cyan);
+  }
+  .mode-badge.stirred {
+    border-color: rgba(255, 190, 92, 0.45);
+    background: rgba(255, 190, 92, 0.14);
+    color: var(--accent-amber);
+  }
+
+  .status-pill {
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: rgba(74, 242, 178, 0.14);
+    color: var(--accent-mint);
+    border: 1px solid rgba(74, 242, 178, 0.35);
+    white-space: nowrap;
+  }
+  .status-pill.osc {
+    background: rgba(255, 190, 92, 0.16);
+    color: var(--accent-amber);
+    border-color: rgba(255, 190, 92, 0.42);
+  }
+  .status-pill.chaos {
+    background: rgba(255, 96, 131, 0.18);
+    color: var(--accent-rose);
+    border-color: rgba(255, 96, 131, 0.45);
+  }
+  .status-pill.cyan {
+    background: rgba(88, 220, 255, 0.16);
+    color: var(--accent-cyan);
+    border-color: rgba(88, 220, 255, 0.42);
+  }
+
+  .telemetry-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+  }
+
+  .tele-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(148, 179, 255, 0.1);
+    border-radius: var(--radius-sm);
+    padding: 5px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .tele-label {
+    font-size: 9.5px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .tele-val {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--text-main);
+  }
+  .tele-val.amber { color: var(--accent-amber); }
+  .tele-val.cyan { color: var(--accent-cyan); }
+  .tele-val.mint { color: var(--accent-mint); }
+  .tele-val.rose { color: var(--accent-rose); }
+  .tele-val.violet { color: var(--accent-violet); }
+
+  /* Phase-Space & Time-Series Inset */
+  .scope-box {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding-top: 4px;
+    border-top: 1px solid rgba(148, 179, 255, 0.1);
+  }
+
+  .scope-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+
+  .scope-legend {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--mono);
+    font-size: 9.5px;
+    text-transform: none;
+  }
+  .leg-dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    margin-right: 3px;
+    vertical-align: middle;
+  }
+
+  #scope-canvas {
+    width: 100%;
+    height: 104px;
+    display: block;
+    border-radius: var(--radius-sm);
+    background: rgba(4, 7, 17, 0.72);
+    border: 1px solid rgba(148, 179, 255, 0.12);
+  }
+
+  .clock-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding-top: 4px;
+    border-top: 1px solid rgba(148, 179, 255, 0.1);
+    font-size: 10.5px;
+    color: var(--text-dim);
+    font-family: var(--mono);
+  }
+  .clock-row span strong {
+    color: var(--text-main);
+    font-weight: 600;
+  }
+
+  /* Right Control Drawer */
+  .drawer {
+    position: fixed;
+    top: 14px;
+    right: 14px;
+    bottom: 14px;
+    width: 330px;
+    max-width: calc(100vw - 28px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: transform 0.25s ease, opacity 0.25s ease;
+  }
+  .drawer.collapsed {
+    transform: translateX(calc(100% + 24px));
+    pointer-events: none;
+  }
+
+  .drawer-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+    padding: 8px 8px 6px;
+    border-bottom: 1px solid var(--panel-border);
+    background: rgba(4, 7, 15, 0.42);
+  }
+
+  .tab-btn {
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 11.5px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    padding: 7px 6px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .tab-btn:hover {
+    color: var(--text-main);
+    background: rgba(255, 255, 255, 0.04);
+  }
+  .tab-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.16);
+    border-color: rgba(88, 220, 255, 0.42);
+  }
+
+  .drawer-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 13px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .drawer-body::-webkit-scrollbar {
+    width: 5px;
+  }
+  .drawer-body::-webkit-scrollbar-thumb {
+    background: rgba(148, 179, 255, 0.22);
+    border-radius: 999px;
+  }
+
+  .tab-pane {
+    display: none;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .tab-pane.active {
+    display: flex;
+  }
+
+  .section {
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(148, 179, 255, 0.11);
+    border-radius: var(--radius-md);
+    padding: 10px 11px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .section-title {
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  /* Presets grid */
+  .preset-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .preset-btn {
+    text-align: left;
+    padding: 7px 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(148, 179, 255, 0.14);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-main);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .preset-btn:hover {
+    border-color: rgba(88, 220, 255, 0.45);
+    background: rgba(88, 220, 255, 0.08);
+  }
+  .preset-btn.active {
+    border-color: var(--accent-cyan);
+    background: rgba(88, 220, 255, 0.15);
+  }
+  .preset-name {
+    font-size: 11.2px;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+  .preset-sub {
+    font-size: 9.4px;
+    color: var(--text-muted);
+    line-height: 1.25;
+  }
+
+  /* Palette cards */
+  .palette-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .pal-btn {
+    text-align: left;
+    padding: 7px 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(148, 179, 255, 0.14);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-main);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+  .pal-btn:hover {
+    border-color: rgba(148, 179, 255, 0.4);
+  }
+  .pal-btn.active {
+    border-color: var(--accent-cyan);
+    background: rgba(88, 220, 255, 0.14);
+  }
+  .pal-swatch {
+    width: 100%;
+    height: 12px;
+    border-radius: 4px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+  }
+
+  /* Sliders */
+  .control-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .control-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11.5px;
+    color: var(--text-dim);
+  }
+  .control-head .val {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--text-main);
+    font-weight: 600;
+  }
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 5px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.18);
+    outline: none;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent-cyan);
+    border: 2px solid #08101f;
+    box-shadow: 0 0 10px rgba(88, 220, 255, 0.65);
+    cursor: pointer;
+  }
+  input[type="range"].amber::-webkit-slider-thumb {
+    background: var(--accent-amber);
+    box-shadow: 0 0 10px rgba(255, 190, 92, 0.65);
+  }
+  input[type="range"].rose::-webkit-slider-thumb {
+    background: var(--accent-rose);
+    box-shadow: 0 0 10px rgba(255, 96, 131, 0.65);
+  }
+
+  /* Segmented pills */
+  .seg-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 5px;
+  }
+  .seg-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-dim);
+    font-size: 11px;
+    font-weight: 650;
+    padding: 7px 5px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-align: center;
+  }
+  .seg-btn:hover {
+    color: #fff;
+    border-color: rgba(148, 179, 255, 0.35);
+  }
+  .seg-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.18);
+    border-color: var(--accent-cyan);
+  }
+  .seg-btn.active.amber {
+    background: rgba(255, 190, 92, 0.2);
+    border-color: var(--accent-amber);
+    color: #ffdfaa;
+  }
+  .seg-btn.active.rose {
+    background: rgba(255, 96, 131, 0.2);
+    border-color: var(--accent-rose);
+    color: #ffd0dc;
+  }
+
+  /* Action Buttons */
+  .btn-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .btn {
+    border: 1px solid rgba(148, 179, 255, 0.22);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-main);
+    font-size: 11.2px;
+    font-weight: 700;
+    padding: 7px 9px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+  }
+  .btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 179, 255, 0.45);
+  }
+  .btn:active {
+    transform: scale(0.98);
+  }
+  .btn.primary {
+    background: linear-gradient(135deg, rgba(88, 220, 255, 0.28), rgba(56, 140, 255, 0.24));
+    border-color: rgba(88, 220, 255, 0.55);
+    color: #e6f9ff;
+  }
+  .btn.amber {
+    background: linear-gradient(135deg, rgba(255, 190, 92, 0.25), rgba(255, 120, 60, 0.22));
+    border-color: rgba(255, 190, 92, 0.55);
+    color: #fff3db;
+  }
+  .btn.danger {
+    background: rgba(255, 96, 131, 0.14);
+    border-color: rgba(255, 96, 131, 0.4);
+    color: #ffc2d0;
+  }
+
+  /* Toggle switches */
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    font-size: 11.5px;
+    color: var(--text-dim);
+    cursor: pointer;
+  }
+  .toggle-row strong {
+    color: var(--text-main);
+    font-weight: 650;
+  }
+  .toggle-row input {
+    display: none;
+  }
+  .switch {
+    width: 34px;
+    height: 18px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.2);
+    border: 1px solid rgba(148, 179, 255, 0.25);
+    position: relative;
+    transition: all 0.18s ease;
+    flex-shrink: 0;
+  }
+  .switch::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #c8d7f5;
+    transition: transform 0.18s ease, background 0.18s ease;
+  }
+  .toggle-row input:checked + .switch {
+    background: rgba(88, 220, 255, 0.34);
+    border-color: var(--accent-cyan);
+  }
+  .toggle-row input:checked + .switch::after {
+    transform: translateX(16px);
+    background: #fff;
+  }
+  .toggle-row.amber-toggle input:checked + .switch {
+    background: rgba(255, 190, 92, 0.38);
+    border-color: var(--accent-amber);
+  }
+
+  .eq-card {
+    font-family: var(--mono);
+    font-size: 10px;
+    line-height: 1.55;
+    color: #c2d4f5;
+    background: rgba(4, 7, 17, 0.65);
+    border: 1px solid rgba(148, 179, 255, 0.12);
+    border-radius: var(--radius-sm);
+    padding: 7px 9px;
+  }
+  .eq-card .eq-hi { color: var(--accent-cyan); }
+  .eq-card .eq-v { color: var(--accent-amber); }
+
+  /* Bottom Transport Bar */
+  .bottom-bar {
+    position: fixed;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 7px 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: nowrap;
+  }
+
+  .bar-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-main);
+    font-size: 11.5px;
+    font-weight: 650;
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    white-space: nowrap;
+  }
+  .bar-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 179, 255, 0.4);
+  }
+  .bar-btn.active {
+    background: rgba(88, 220, 255, 0.2);
+    border-color: var(--accent-cyan);
+    color: #fff;
+  }
+  .bar-btn.active-amber {
+    background: rgba(255, 190, 92, 0.22);
+    border-color: var(--accent-amber);
+    color: #ffebc7;
+  }
+
+  .bar-divider {
+    width: 1px;
+    height: 20px;
+    background: rgba(148, 179, 255, 0.16);
+    margin: 0 2px;
+  }
+
+  /* Bottom-left interaction hint */
+  .hint-pill {
+    position: fixed;
+    bottom: 14px;
+    left: 14px;
+    padding: 7px 11px;
+    font-size: 10.8px;
+    color: var(--text-dim);
+    max-width: 325px;
+    line-height: 1.45;
+  }
+  .hint-pill kbd {
+    font-family: var(--mono);
+    font-size: 9.8px;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #fff;
+  }
+
+  /* Toast Banner */
+  .toast-banner {
+    position: fixed;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%) translateY(-10px);
+    padding: 8px 15px;
+    border-radius: var(--radius-md);
+    background: rgba(8, 16, 28, 0.9);
+    border: 1px solid rgba(88, 220, 255, 0.48);
+    color: #dbf6ff;
+    font-size: 12px;
+    font-weight: 650;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.24s ease, transform 0.24s ease;
+    z-index: 25;
+    backdrop-filter: blur(12px);
+    white-space: nowrap;
+  }
+  .toast-banner.visible {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+
+  .zen-restore {
+    position: fixed;
+    bottom: 14px;
+    right: 14px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+  }
+  body.zen-mode .zen-restore {
+    opacity: 0.9;
+    pointer-events: auto;
+  }
+
+  .note-small {
+    font-size: 10.4px;
+    color: var(--text-muted);
+    line-height: 1.38;
+  }
+
+  @media (max-width: 960px) {
+    .top-left {
+      width: calc(100vw - 28px);
+      max-width: none;
+    }
+    .drawer {
+      top: auto;
+      bottom: 62px;
+      height: 50vh;
+      width: calc(100vw - 28px);
+    }
+    .hint-pill {
+      display: none;
+    }
+    .bottom-bar {
+      max-width: calc(100vw - 24px);
+      overflow-x: auto;
+    }
+  }
+</style>
+</head>
+<body>
+<canvas id="sim-canvas"></canvas>
+
+<div class="hud">
+  <!-- Top-Left Brand + Live Probe Telemetry + Phase-Space / Time-Series Plot -->
+  <div class="panel top-left">
+    <div class="brand-row">
+      <div class="brand-title-wrap">
+        <div class="brand-title">Oscillator</div>
+        <span id="mode-badge" class="mode-badge">2D BZ Petri Dish</span>
+      </div>
+      <span id="regime-pill" class="status-pill">Excitable</span>
+    </div>
+
+    <div class="telemetry-grid">
+      <div class="tele-card">
+        <span class="tele-label">[HBrO₂] Activator</span>
+        <span id="tel-u" class="tele-val cyan">0.004</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">[Fe³⁺] Catalyst</span>
+        <span id="tel-v" class="tele-val amber">0.004</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">[Br⁻] Inhibitor</span>
+        <span id="tel-w" class="tele-val rose">0.620</span>
+      </div>
+    </div>
+
+    <div class="scope-box">
+      <div class="scope-head">
+        <span>Limit Cycle (u vs v) &amp; Probe Trace</span>
+        <span class="scope-legend">
+          <span><i class="leg-dot" style="background:#58dcff"></i>u</span>
+          <span><i class="leg-dot" style="background:#ffbe5c"></i>v</span>
+          <span><i class="leg-dot" style="background:#ff6083"></i>Br⁻</span>
+        </span>
+      </div>
+      <canvas id="scope-canvas"></canvas>
+    </div>
+
+    <div class="clock-row">
+      <span>Period T: <strong id="tel-period">—</strong></span>
+      <span>Oxidized: <strong id="tel-oxidized" style="color:var(--accent-cyan)">0.0%</strong></span>
+      <span>τ: <strong id="tel-time">0.0</strong></span>
+    </div>
+  </div>
+
+  <!-- Toast Banner -->
+  <div id="toast-banner" class="toast-banner">Counter-Rotating Spirals Loaded</div>
+
+  <!-- Right Control Drawer (330px collapsible) -->
+  <aside id="drawer" class="panel drawer">
+    <div class="drawer-tabs">
+      <button class="tab-btn active" data-tab="chemistry">Chemistry</button>
+      <button class="tab-btn" data-tab="tools">Petri Tools</button>
+      <button class="tab-btn" data-tab="display">Display</button>
+    </div>
+
+    <div class="drawer-body">
+      <!-- TAB 1: CHEMISTRY -->
+      <div id="tab-chemistry" class="tab-pane active">
+        <div class="section">
+          <div class="section-title">
+            <span>Curated Chemical States</span>
+            <span style="font-family:var(--mono);font-size:9.5px;color:var(--text-muted)">Oregonator</span>
+          </div>
+          <div class="preset-grid">
+            <button class="preset-btn active" data-preset="spirals">
+              <span class="preset-name">Counter-Rotating Spirals</span>
+              <span class="preset-sub">Twin chiral Archimedean waves</span>
+            </button>
+            <button class="preset-btn" data-preset="targets">
+              <span class="preset-name">Target Pacemakers</span>
+              <span class="preset-sub">Colliding concentric rings</span>
+            </button>
+            <button class="preset-btn" data-preset="chaos">
+              <span class="preset-name">Spiral Breakup</span>
+              <span class="preset-sub">Multi-core chemical chaos</span>
+            </button>
+            <button class="preset-btn" data-preset="clock">
+              <span class="preset-name">Stirred BZ Clock</span>
+              <span class="preset-sub">0D well-mixed pulsing CSTR</span>
+            </button>
+            <button class="preset-btn" data-preset="doubleslit">
+              <span class="preset-name">Double-Slit Wave</span>
+              <span class="preset-sub">Diffraction &amp; annihilation</span>
+            </button>
+            <button class="preset-btn" data-preset="labyrinth">
+              <span class="preset-name">Labyrinth Obstacles</span>
+              <span class="preset-sub">Waves navigating glass maze</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Reactor Mixing Mode</span></div>
+          <label class="toggle-row amber-toggle">
+            <span><strong>Stirred Chemical Clock</strong> (0D CSTR)</span>
+            <input type="checkbox" id="chk-stirred" />
+            <span class="switch"></span>
+          </label>
+          <p class="note-small">Engages a virtual PTFE magnetic stir bar to homogenize spatial gradients into a periodic bulk color heartbeat.</p>
+        </div>
+
+        <div class="section">
+          <div class="section-title">
+            <span>Oregonator Kinetics</span>
+            <span id="kinetics-tag" style="font-family:var(--mono);font-size:9.5px;color:var(--accent-mint)">Excitable</span>
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Excitability ε (timescale ratio)</span>
+              <span id="val-eps" class="val">0.032</span>
+            </div>
+            <input type="range" id="sl-eps" min="0.015" max="0.120" step="0.001" value="0.032" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Stoichiometry f (Br⁻ yield)</span>
+              <span id="val-f" class="val">2.45</span>
+            </div>
+            <input type="range" id="sl-f" class="amber" min="0.60" max="3.20" step="0.02" value="2.45" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Threshold q (rate constant)</span>
+              <span id="val-q" class="val">0.0020</span>
+            </div>
+            <input type="range" id="sl-q" min="0.0005" max="0.0200" step="0.0005" value="0.0020" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Diffusion Ratio Dᵥ / Dᵤ</span>
+              <span id="val-diff" class="val">0.20</span>
+            </div>
+            <input type="range" id="sl-diff" min="0.00" max="1.20" step="0.05" value="0.20" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Simulation Speed</span>
+              <span id="val-speed" class="val">1.0×</span>
+            </div>
+            <input type="range" id="sl-speed" class="rose" min="0.2" max="3.0" step="0.1" value="1.0" />
+          </div>
+        </div>
+
+        <div class="eq-card">
+          <div><span class="eq-hi">∂u/∂t</span> = Dᵤ∇²u + (1/ε)[u(1−u) − f·v·(u−q)/(u+q)]</div>
+          <div><span class="eq-v">∂v/∂t</span> = Dᵥ∇²v + (u − v) &nbsp;·&nbsp; <span style="color:var(--accent-rose)">Br⁻</span> ≈ f·v/(u+q)</div>
+        </div>
+      </div>
+
+      <!-- TAB 2: PETRI TOOLS -->
+      <div id="tab-tools" class="tab-pane">
+        <div class="section">
+          <div class="section-title">
+            <span>Interactive Brush Mode</span>
+            <span id="tool-hint-tag" style="font-family:var(--mono);font-size:9.5px;color:var(--accent-cyan)">Pipette</span>
+          </div>
+          <div class="seg-grid">
+            <button class="seg-btn active" data-tool="activator">Activator</button>
+            <button class="seg-btn" data-tool="slicer">Wave Slicer</button>
+            <button class="seg-btn" data-tool="inhibitor">Inhibitor</button>
+            <button class="seg-btn" data-tool="wall">Glass Wall</button>
+            <button class="seg-btn" data-tool="erase">Erase Wall</button>
+            <button class="seg-btn" data-tool="probe">Move Probe</button>
+          </div>
+          <p id="tool-desc" class="note-small">Left-drag to drop fresh autocatalytic HBrO₂ pulses and launch expanding concentric target waves.</p>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Brush Radius</span>
+              <span id="val-brush" class="val">6 px</span>
+            </div>
+            <input type="range" id="sl-brush" min="2" max="18" step="1" value="6" />
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Bench Actions</span></div>
+          <div class="btn-row">
+            <button id="btn-spawn-spiral" class="btn primary">Spawn Spiral Pair</button>
+            <button id="btn-random-drops" class="btn amber">Random Droplets</button>
+            <button id="btn-quench" class="btn">Quench Waves</button>
+            <button id="btn-clear-walls" class="btn danger">Clear Walls</button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Probe Sensor Crosshair</span></div>
+          <p class="note-small">Drag the crosshair directly on the dish—or hold <strong style="color:var(--text-main)">Shift + Click</strong> anywhere—to sample local [HBrO₂], [Fe³⁺], [Br⁻] and trace its limit cycle.</p>
+          <div class="btn-row">
+            <button id="btn-center-probe" class="btn">Center Probe</button>
+            <button id="btn-clear-trace" class="btn">Clear Trace</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 3: DISPLAY -->
+      <div id="tab-display" class="tab-pane">
+        <div class="section">
+          <div class="section-title"><span>Chemical Indicator Palette</span></div>
+          <div class="palette-grid">
+            <button class="pal-btn active" data-palette="ferroin">
+              <div class="pal-swatch" style="background:linear-gradient(90deg,#3b0817 0%,#6c1330 30%,#383892 58%,#1da8f0 82%,#d8fbff 100%)"></div>
+              <span class="preset-name">Ferroin Classic</span>
+              <span class="preset-sub">Crimson → Sky-blue Fe³⁺</span>
+            </button>
+            <button class="pal-btn" data-palette="cerium">
+              <div class="pal-swatch" style="background:linear-gradient(90deg,#090c1c 0%,#2b1c5a 34%,#943d82 60%,#f0a835 84%,#fff5cf 100%)"></div>
+              <span class="preset-name">Cerium UV-Gold</span>
+              <span class="preset-sub">Indigo → Champagne Ce⁴⁺</span>
+            </button>
+            <button class="pal-btn" data-palette="briggs">
+              <div class="pal-swatch" style="background:linear-gradient(90deg,#182030 0%,#10297d 34%,#3a74e6 60%,#f2b02c 84%,#ffe594 100%)"></div>
+              <span class="preset-name">Briggs–Rauscher</span>
+              <span class="preset-sub">Amber I₂ → Starch-blue</span>
+            </button>
+            <button class="pal-btn" data-palette="phase">
+              <div class="pal-swatch" style="background:linear-gradient(90deg,#0b1020 0%,#ff3e8d 26%,#8b5cf6 48%,#22d3ee 72%,#4ade80 88%,#fbbf24 100%)"></div>
+              <span class="preset-name">Phase Neon</span>
+              <span class="preset-sub">Limit-cycle phase wheel</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Optical Overlays</span></div>
+          <label class="toggle-row">
+            <span>Circular Glass Petri Dish</span>
+            <input type="checkbox" id="chk-petri" />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Show Probe Crosshair</span>
+            <input type="checkbox" id="chk-probe" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Phase-Space Nullclines</span>
+            <input type="checkbox" id="chk-nullclines" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Show Pacemaker Nuclei</span>
+            <input type="checkbox" id="chk-nuclei" checked />
+            <span class="switch"></span>
+          </label>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Harmonic Sonification</span></div>
+          <label class="toggle-row">
+            <span>Probe Crest Chime (Web Audio)</span>
+            <input type="checkbox" id="chk-audio" />
+            <span class="switch"></span>
+          </label>
+          <div class="control-row">
+            <div class="control-head">
+              <span>Audio Gain</span>
+              <span id="val-vol" class="val">35%</span>
+            </div>
+            <input type="range" id="sl-vol" min="0.05" max="0.80" step="0.05" value="0.35" />
+          </div>
+          <p class="note-small">Muted by default. Emits a soft pentatonic harmonic pulse synced to each [HBrO₂] excitation wave crossing the probe.</p>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Bottom-Center Transport Bar -->
+  <div class="panel bottom-bar">
+    <button id="btn-play" class="bar-btn active">Pause</button>
+    <button id="btn-reset" class="bar-btn">Reset</button>
+    <div class="bar-divider"></div>
+    <button id="btn-stirrer" class="bar-btn">Stirrer: Off</button>
+    <button id="btn-quick-slice" class="bar-btn">Slice Tool</button>
+    <div class="bar-divider"></div>
+    <button id="btn-audio" class="bar-btn">Audio: Off</button>
+    <button id="btn-drawer" class="bar-btn active">Controls</button>
+    <button id="btn-cinema" class="bar-btn">Cinema (H)</button>
+  </div>
+
+  <!-- Bottom-Left Interaction Hints -->
+  <div class="panel hint-pill">
+    <kbd>Drag</kbd> apply brush (<kbd>1</kbd>–<kbd>5</kbd>) &nbsp;·&nbsp; <kbd>Shift+Click</kbd> move probe<br/>
+    <kbd>Space</kbd> pause &nbsp;·&nbsp; <kbd>S</kbd> magnetic stirrer &nbsp;·&nbsp; <kbd>R</kbd> reset &nbsp;·&nbsp; <kbd>H</kbd> cinema
+  </div>
+
+  <!-- Cinema Restore Button -->
+  <button id="btn-zen-restore" class="panel bar-btn zen-restore">Exit Cinema (H)</button>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // =========================================================================
+  // 1. OREGONATOR BELOUSOV-ZHABOTINSKY SOLVER (240x170 Float32Array)
+  // =========================================================================
+  const GW = 240;
+  const GH = 170;
+  const GSIZE = GW * GH;
+  const Du = 1.0;
+
+  let uA = new Float32Array(GSIZE);
+  let vA = new Float32Array(GSIZE);
+  let uB = new Float32Array(GSIZE);
+  let vB = new Float32Array(GSIZE);
+  let wall = new Uint8Array(GSIZE);      // 1 = glass/wax obstacle
+  let dishMask = new Uint8Array(GSIZE);  // 1 = inside active domain
+  let wallEdge = new Uint8Array(GSIZE);  // 1 = glass edge highlight
+
+  const state = {
+    preset: 'spirals',
+    palette: 'ferroin',
+    tool: 'activator',
+    brushRadius: 6,
+    eps: 0.032,
+    f: 2.45,
+    q: 0.0020,
+    diffRatio: 0.20,
+    speed: 1.0,
+    stirred: false,
+    petriMode: false,
+    showProbe: true,
+    showNullclines: true,
+    showNuclei: true,
+    paused: false,
+    drawerOpen: true,
+    cinema: false,
+    audioOn: false,
+    audioVol: 0.35,
+    simTime: 0,
+    stirAngle: 0,
+    oxidizedPct: 0,
+    // Probe coordinates in grid space
+    probeX: Math.round(GW * 0.58),
+    probeY: Math.round(GH * 0.48),
+    probeU: 0.004,
+    probeV: 0.004,
+    probeW: 0.5,
+    // Pacemaker sites: { x, y, r, period, phase, type }
+    pacemakers: [],
+    // Oscillation period estimator
+    lastCrestTime: -1,
+    prevProbeU: 0,
+    inCrest: false,
+    measuredPeriod: null,
+    // Trace ring buffer
+    traceLen: 220,
+    traceU: new Float32Array(220),
+    traceV: new Float32Array(220),
+    traceW: new Float32Array(220),
+    traceHead: 0,
+    traceCount: 0,
+    traceAccum: 0
+  };
+
+  function computeSteadyState(f, q) {
+    const b = f + q - 1.0;
+    const disc = b * b + 4.0 * q * (f + 1.0);
+    const uStar = 0.5 * (-b + Math.sqrt(Math.max(0, disc)));
+    const clamped = Math.max(q * 1.02, Math.min(0.95, uStar));
+    return clamped;
+  }
+
+  function computeBr(u, v, f, q) {
+    // Dimensionless quasi-steady bromide concentration w = f*v / (u + q), softly scaled for readout
+    const raw = (f * v) / (u + q + 0.015);
+    return Math.max(0, Math.min(9.99, raw * 0.32));
+  }
+
+  function rebuildDishMask() {
+    const cx = (GW - 1) * 0.5;
+    const cy = (GH - 1) * 0.5;
+    const rad = Math.min(GW, GH) * 0.475;
+    const r2 = rad * rad;
+    for (let y = 0; y < GH; y++) {
+      const dy = y - cy;
+      for (let x = 0; x < GW; x++) {
+        const dx = x - cx;
+        const idx = y * GW + x;
+        if (state.petriMode) {
+          dishMask[idx] = (dx * dx + dy * dy <= r2) ? 1 : 0;
+        } else {
+          dishMask[idx] = 1;
+        }
+      }
+    }
+    rebuildWallEdges();
+  }
+
+  function rebuildWallEdges() {
+    for (let y = 0; y < GH; y++) {
+      const y0 = y > 0 ? y - 1 : y;
+      const y1 = y < GH - 1 ? y + 1 : y;
+      for (let x = 0; x < GW; x++) {
+        const idx = y * GW + x;
+        if (!wall[idx]) {
+          wallEdge[idx] = 0;
+          continue;
+        }
+        const x0 = x > 0 ? x - 1 : x;
+        const x1 = x < GW - 1 ? x + 1 : x;
+        const border = (!wall[y * GW + x0] && dishMask[y * GW + x0]) ||
+                       (!wall[y * GW + x1] && dishMask[y * GW + x1]) ||
+                       (!wall[y0 * GW + x] && dishMask[y0 * GW + x]) ||
+                       (!wall[y1 * GW + x] && dishMask[y1 * GW + x]);
+        wallEdge[idx] = border ? 1 : 0;
+      }
+    }
+  }
+
+  function fillRestingState() {
+    const uStar = computeSteadyState(state.f, state.q);
+    for (let i = 0; i < GSIZE; i++) {
+      uA[i] = uStar;
+      vA[i] = uStar;
+      uB[i] = uStar;
+      vB[i] = uStar;
+    }
+  }
+
+  function clearWalls() {
+    wall.fill(0);
+    wallEdge.fill(0);
+  }
+
+  function clearTrace() {
+    state.traceHead = 0;
+    state.traceCount = 0;
+    state.lastCrestTime = -1;
+    state.measuredPeriod = null;
+    state.inCrest = false;
+  }
+
+  // Semi-implicit Patankar / operator-split Oregonator step:
+  // Guaranteed positivity and zero NaN for all eps >= 0.015, f in [0.6, 3.2], q >= 0.0005.
+  function stepSolver(dt) {
+    const eps = state.eps;
+    const invEps = 1.0 / eps;
+    const f = state.f;
+    const q = state.q;
+    const Dv = Du * state.diffRatio;
+
+    // Adaptive substepping to keep both diffusion CFL and reaction stiffness super crisp
+    const maxDiff = Math.max(Du, Dv);
+    const maxDtDiff = 0.14 / Math.max(0.1, maxDiff);
+    const maxDtReact = Math.min(0.028, eps * 0.65);
+    const hMax = Math.min(maxDtDiff, maxDtReact);
+    const subSteps = Math.max(1, Math.min(12, Math.ceil(dt / hMax)));
+    const h = dt / subSteps;
+    const hInvEps = h * invEps;
+    const inv1PlusH = 1.0 / (1.0 + h);
+
+    if (state.stirred) {
+      // 0D Well-Mixed Stirred CSTR mode with rapid homogenization
+      for (let s = 0; s < subSteps; s++) {
+        let sumU = 0, sumV = 0, count = 0;
+        for (let i = 0; i < GSIZE; i++) {
+          if (dishMask[i] && !wall[i]) {
+            sumU += uA[i];
+            sumV += vA[i];
+            count++;
+          }
+        }
+        if (count === 0) break;
+        const meanU = sumU / count;
+        const meanV = sumV / count;
+
+        // Exact semi-implicit 0D Oregonator ODE update on bulk mean
+        const denomFrac = f * meanV / (meanU + q);
+        const uNum = meanU + hInvEps * (meanU + denomFrac * q);
+        const uDen = 1.0 + hInvEps * (meanU + denomFrac);
+        let uMeanNext = uNum / uDen;
+        if (!(uMeanNext >= 0)) uMeanNext = q;
+        else if (uMeanNext > 1) uMeanNext = 1;
+
+        let vMeanNext = (meanV + h * uMeanNext) * inv1PlusH;
+        if (!(vMeanNext >= 0)) vMeanNext = 0;
+        else if (vMeanNext > 1) vMeanNext = 1;
+
+        // Rapid convective mixing pulls any local heterogeneity into bulk oscillation
+        const mix = Math.min(1.0, 12.0 * h);
+        const keep = 1.0 - mix;
+        for (let i = 0; i < GSIZE; i++) {
+          if (dishMask[i] && !wall[i]) {
+            uA[i] = uA[i] * keep + uMeanNext * mix;
+            vA[i] = vA[i] * keep + vMeanNext * mix;
+          }
+        }
+        state.simTime += h;
+      }
+      return;
+    }
+
+    // 2D Reaction-Diffusion PDE with 9-point isotropic Laplacian & zero-flux Neumann walls
+    const dU6 = (h * Du) / 6.0;
+    const dV6 = (h * Dv) / 6.0;
+    const hasDv = Dv > 1e-6;
+
+    for (let s = 0; s < subSteps; s++) {
+      // Apply persistent pacemaker nuclei (catalytic dust specks / wave emitters)
+      for (let p = 0; p < state.pacemakers.length; p++) {
+        const pm = state.pacemakers[p];
+        pm.phase += h;
+        if (pm.phase >= pm.period) {
+          pm.phase -= pm.period;
+          if (pm.type === 'line') {
+            const xEnd = Math.min(GW - 1, pm.x + pm.w);
+            for (let y = pm.y0; y <= pm.y1; y++) {
+              const row = y * GW;
+              for (let x = pm.x; x <= xEnd; x++) {
+                const idx = row + x;
+                if (dishMask[idx] && !wall[idx] && vA[idx] < 0.22) {
+                  uA[idx] = 0.88;
+                }
+              }
+            }
+          } else {
+            const r2 = pm.r * pm.r;
+            const y0 = Math.max(0, pm.y - pm.r);
+            const y1 = Math.min(GH - 1, pm.y + pm.r);
+            const x0 = Math.max(0, pm.x - pm.r);
+            const x1 = Math.min(GW - 1, pm.x + pm.r);
+            for (let y = y0; y <= y1; y++) {
+              const dy = y - pm.y;
+              const row = y * GW;
+              for (let x = x0; x <= x1; x++) {
+                const dx = x - pm.x;
+                if (dx * dx + dy * dy <= r2) {
+                  const idx = row + x;
+                  if (dishMask[idx] && !wall[idx] && vA[idx] < 0.22) {
+                    uA[idx] = 0.88;
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
+      for (let y = 0; y < GH; y++) {
+        const ym = y > 0 ? y - 1 : 0;
+        const yp = y < GH - 1 ? y + 1 : GH - 1;
+        const row = y * GW;
+        const rowM = ym * GW;
+        const rowP = yp * GW;
+
+        for (let x = 0; x < GW; x++) {
+          const idx = row + x;
+          if (!dishMask[idx] || wall[idx]) {
+            uB[idx] = 0;
+            vB[idx] = 0;
+            continue;
+          }
+
+          const uc = uA[idx];
+          const vc = vA[idx];
+
+          const xm = x > 0 ? x - 1 : 0;
+          const xp = x < GW - 1 ? x + 1 : GW - 1;
+
+          const iL  = row + xm;
+          const iR  = row + xp;
+          const iU  = rowM + x;
+          const iD  = rowP + x;
+          const iUL = rowM + xm;
+          const iUR = rowM + xp;
+          const iDL = rowP + xm;
+          const iDR = rowP + xp;
+
+          let lapU = 0.0;
+          let lapV = 0.0;
+
+          if (dishMask[iL] && !wall[iL])   { lapU += 4.0 * (uA[iL] - uc);  if (hasDv) lapV += 4.0 * (vA[iL] - vc); }
+          if (dishMask[iR] && !wall[iR])   { lapU += 4.0 * (uA[iR] - uc);  if (hasDv) lapV += 4.0 * (vA[iR] - vc); }
+          if (dishMask[iU] && !wall[iU])   { lapU += 4.0 * (uA[iU] - uc);  if (hasDv) lapV += 4.0 * (vA[iU] - vc); }
+          if (dishMask[iD] && !wall[iD])   { lapU += 4.0 * (uA[iD] - uc);  if (hasDv) lapV += 4.0 * (vA[iD] - vc); }
+          if (dishMask[iUL] && !wall[iUL]) { lapU += (uA[iUL] - uc);       if (hasDv) lapV += (vA[iUL] - vc); }
+          if (dishMask[iUR] && !wall[iUR]) { lapU += (uA[iUR] - uc);       if (hasDv) lapV += (vA[iUR] - vc); }
+          if (dishMask[iDL] && !wall[iDL]) { lapU += (uA[iDL] - uc);       if (hasDv) lapV += (vA[iDL] - vc); }
+          if (dishMask[iDR] && !wall[iDR]) { lapU += (uA[iDR] - uc);       if (hasDv) lapV += (vA[iDR] - vc); }
+
+          let uDiff = uc + dU6 * lapU;
+          if (uDiff < 0.0) uDiff = 0.0;
+          else if (uDiff > 1.0) uDiff = 1.0;
+
+          const denomFrac = (f * vc) / (uc + q);
+          const uNum = uDiff + hInvEps * (uc + denomFrac * q);
+          const uDen = 1.0 + hInvEps * (uc + denomFrac);
+          let uNext = uNum / uDen;
+          if (!(uNext >= 0.0)) uNext = q;
+          else if (uNext > 1.0) uNext = 1.0;
+
+          let vDiff = hasDv ? (vc + dV6 * lapV) : vc;
+          if (vDiff < 0.0) vDiff = 0.0;
+          let vNext = (vDiff + h * uNext) * inv1PlusH;
+          if (!(vNext >= 0.0)) vNext = 0.0;
+          else if (vNext > 1.0) vNext = 1.0;
+
+          uB[idx] = uNext;
+          vB[idx] = vNext;
+        }
+      }
+
+      // Ping-pong swap
+      const tmpU = uA; uA = uB; uB = tmpU;
+      const tmpV = vA; vA = vB; vB = tmpV;
+      state.simTime += h;
+    }
+  }
+
+  // =========================================================================
+  // 2. SEEDING & 6 CURATED PRESETS
+  // =========================================================================
+  function injectSpiralSeed(cx, cy, halfLen, orient) {
+    // Broken planar wavefront with refractory wake behind it -> curls into twin counter-rotating spirals
+    const thick = 5;
+    const wake = 10;
+    const qVal = state.q;
+    for (let dy = -halfLen; dy <= halfLen; dy++) {
+      for (let dx = -wake; dx <= thick; dx++) {
+        const gx = orient === 'h' ? Math.round(cx + dy) : Math.round(cx + dx);
+        const gy = orient === 'h' ? Math.round(cy + dx) : Math.round(cy + dy);
+        if (gx < 2 || gx >= GW - 2 || gy < 2 || gy >= GH - 2) continue;
+        const idx = gy * GW + gx;
+        if (!dishMask[idx] || wall[idx]) continue;
+        if (dx >= 0) {
+          uA[idx] = 0.90;
+          vA[idx] = 0.05;
+        } else {
+          uA[idx] = qVal;
+          vA[idx] = 0.42;
+        }
+      }
+    }
+  }
+
+  function injectDroplet(cx, cy, radius, valU, valV) {
+    const r2 = radius * radius;
+    const y0 = Math.max(0, Math.floor(cy - radius));
+    const y1 = Math.min(GH - 1, Math.ceil(cy + radius));
+    const x0 = Math.max(0, Math.floor(cx - radius));
+    const x1 = Math.min(GW - 1, Math.ceil(cx + radius));
+    for (let y = y0; y <= y1; y++) {
+      const dy = y - cy;
+      const row = y * GW;
+      for (let x = x0; x <= x1; x++) {
+        const dx = x - cx;
+        const d2 = dx * dx + dy * dy;
+        if (d2 <= r2) {
+          const idx = row + x;
+          if (!dishMask[idx] || wall[idx]) continue;
+          const fall = 1.0 - 0.35 * (d2 / Math.max(1, r2));
+          if (valU !== null) uA[idx] = Math.max(0, Math.min(1, valU * fall + (1 - fall) * uA[idx]));
+          if (valV !== null) vA[idx] = Math.max(0, Math.min(1, valV * fall + (1 - fall) * vA[idx]));
+        }
+      }
+    }
+  }
+
+  function drawWallRect(x0, y0, x1, y1) {
+    const xa = Math.max(0, Math.min(GW - 1, Math.round(x0)));
+    const xb = Math.max(0, Math.min(GW - 1, Math.round(x1)));
+    const ya = Math.max(0, Math.min(GH - 1, Math.round(y0)));
+    const yb = Math.max(0, Math.min(GH - 1, Math.round(y1)));
+    for (let y = ya; y <= yb; y++) {
+      const row = y * GW;
+      for (let x = xa; x <= xb; x++) {
+        wall[row + x] = 1;
+      }
+    }
+  }
+
+  function loadPreset(name, silent) {
+    state.preset = name;
+    state.pacemakers = [];
+    state.simTime = 0;
+    clearWalls();
+    clearTrace();
+
+    let warmupSteps = 0;
+    let label = '';
+
+    if (name === 'spirals') {
+      state.stirred = false;
+      state.eps = 0.032;
+      state.f = 2.45;
+      state.q = 0.0020;
+      state.diffRatio = 0.15;
+      state.probeX = Math.round(GW * 0.62);
+      state.probeY = Math.round(GH * 0.50);
+      rebuildDishMask();
+      fillRestingState();
+      injectSpiralSeed(Math.round(GW * 0.48), Math.round(GH * 0.50), 28, 'v');
+      warmupSteps = 135;
+      label = 'Counter-Rotating Spirals';
+    } else if (name === 'targets') {
+      state.stirred = false;
+      state.eps = 0.030;
+      state.f = 2.65;
+      state.q = 0.0020;
+      state.diffRatio = 0.15;
+      state.probeX = Math.round(GW * 0.50);
+      state.probeY = Math.round(GH * 0.50);
+      rebuildDishMask();
+      fillRestingState();
+      state.pacemakers = [
+        { type: 'dot', x: Math.round(GW * 0.30), y: Math.round(GH * 0.36), r: 3, period: 5.4, phase: 5.2 },
+        { type: 'dot', x: Math.round(GW * 0.70), y: Math.round(GH * 0.64), r: 3, period: 6.1, phase: 4.5 },
+        { type: 'dot', x: Math.round(GW * 0.54), y: Math.round(GH * 0.28), r: 3, period: 7.0, phase: 2.0 }
+      ];
+      warmupSteps = 180;
+      label = 'Concentric Target Pacemakers';
+    } else if (name === 'chaos') {
+      state.stirred = false;
+      state.eps = 0.044;
+      state.f = 1.65;
+      state.q = 0.0020;
+      state.diffRatio = 0.65;
+      state.probeX = Math.round(GW * 0.52);
+      state.probeY = Math.round(GH * 0.48);
+      rebuildDishMask();
+      fillRestingState();
+      // Multiple colliding asymmetrical broken wave seeds for rich multi-spiral chemical turbulence
+      const seeds = [
+        [0.28, 0.32, 16, 'v'],
+        [0.68, 0.34, 15, 'h'],
+        [0.48, 0.58, 17, 'v'],
+        [0.74, 0.70, 14, 'v'],
+        [0.25, 0.72, 14, 'h']
+      ];
+      for (let i = 0; i < seeds.length; i++) {
+        injectSpiralSeed(Math.round(GW * seeds[i][0]), Math.round(GH * seeds[i][1]), seeds[i][2], seeds[i][3]);
+      }
+      warmupSteps = 150;
+      label = 'Spiral Breakup & Chemical Chaos';
+    } else if (name === 'clock') {
+      state.stirred = true;
+      state.eps = 0.042;
+      state.f = 1.18;
+      state.q = 0.0020;
+      state.diffRatio = 0.20;
+      state.probeX = Math.round(GW * 0.50);
+      state.probeY = Math.round(GH * 0.50);
+      rebuildDishMask();
+      fillRestingState();
+      // Start slightly off steady state so the chemical clock immediately pulses
+      for (let i = 0; i < GSIZE; i++) {
+        uA[i] = 0.12;
+        vA[i] = 0.04;
+      }
+      warmupSteps = 45;
+      label = 'Stirred BZ Chemical Clock (0D CSTR)';
+    } else if (name === 'doubleslit') {
+      state.stirred = false;
+      state.eps = 0.030;
+      state.f = 2.60;
+      state.q = 0.0020;
+      state.diffRatio = 0.10;
+      state.probeX = Math.round(GW * 0.68);
+      state.probeY = Math.round(GH * 0.50);
+      // Vertical glass barrier with two narrow diffraction slits
+      const bx = Math.round(GW * 0.38);
+      const slit1Y = Math.round(GH * 0.37);
+      const slit2Y = Math.round(GH * 0.63);
+      const halfGap = 5;
+      drawWallRect(bx - 2, 0, bx + 2, slit1Y - halfGap);
+      drawWallRect(bx - 2, slit1Y + halfGap, bx + 2, slit2Y - halfGap);
+      drawWallRect(bx - 2, slit2Y + halfGap, bx + 2, GH - 1);
+      rebuildDishMask();
+      fillRestingState();
+      // Periodic planar wave source along left wall
+      state.pacemakers = [
+        { type: 'line', x: 4, w: 3, y0: 10, y1: GH - 11, period: 5.8, phase: 5.7 }
+      ];
+      warmupSteps = 210;
+      label = 'Double-Slit Chemical Wave Diffraction';
+    } else if (name === 'labyrinth') {
+      state.stirred = false;
+      state.eps = 0.030;
+      state.f = 2.58;
+      state.q = 0.0020;
+      state.diffRatio = 0.10;
+      state.probeX = Math.round(GW * 0.46);
+      state.probeY = Math.round(GH * 0.50);
+      // Clean architectural labyrinth baffles with generous channels for crisp wave propagation
+      const wThick = 3;
+      drawWallRect(GW * 0.22, 0, GW * 0.22 + wThick, GH * 0.66);
+      drawWallRect(GW * 0.38, GH * 0.34, GW * 0.38 + wThick, GH - 1);
+      drawWallRect(GW * 0.54, 0, GW * 0.54 + wThick, GH * 0.62);
+      drawWallRect(GW * 0.54, GH * 0.78, GW * 0.54 + wThick, GH - 1);
+      drawWallRect(GW * 0.70, GH * 0.26, GW * 0.70 + wThick, GH * 0.80);
+      drawWallRect(GW * 0.70, GH * 0.26, GW * 0.88, GH * 0.26 + wThick);
+      drawWallRect(GW * 0.22, GH * 0.82, GW * 0.38 + wThick, GH * 0.82 + wThick);
+      rebuildDishMask();
+      fillRestingState();
+      state.pacemakers = [
+        { type: 'dot', x: Math.round(GW * 0.11), y: Math.round(GH * 0.22), r: 4, period: 6.4, phase: 6.3 }
+      ];
+      warmupSteps = 230;
+      label = 'Labyrinth Glass Obstacles';
+    }
+
+    // Synchronous warmup so the pattern is immediately alive and scenic on frame 1
+    for (let w = 0; w < warmupSteps; w++) {
+      stepSolver(0.065);
+      if (w >= warmupSteps - 140) {
+        sampleProbe(true);
+      }
+    }
+
+    syncUI();
+    if (!silent && label) showToast(label);
+  }
+
+  // =========================================================================
+  // 3. AUTHENTIC 2D CHEMICAL COLOR PALETTE LUTs (128 x 128)
+  // =========================================================================
+  const LUT_N = 128;
+  const colorLUT = new Uint32Array(LUT_N * LUT_N);
+
+  function packRGBA(r, g, b, a = 255) {
+    return ((a & 255) << 24) | ((b & 255) << 16) | ((g & 255) << 8) | (r & 255);
+  }
+
+  function lerp(a, b, t) {
+    return a + (b - a) * t;
+  }
+
+  function clamp01(x) {
+    return x < 0 ? 0 : (x > 1 ? 1 : x);
+  }
+
+  function sampleStops(stops, t) {
+    const tc = clamp01(t);
+    for (let i = 0; i < stops.length - 1; i++) {
+      const s0 = stops[i];
+      const s1 = stops[i + 1];
+      if (tc >= s0[0] && tc <= s1[0]) {
+        const local = (tc - s0[0]) / Math.max(1e-6, s1[0] - s0[0]);
+        return [
+          lerp(s0[1], s1[1], local),
+          lerp(s0[2], s1[2], local),
+          lerp(s0[3], s1[3], local)
+        ];
+      }
+    }
+    const last = stops[stops.length - 1];
+    return [last[1], last[2], last[3]];
+  }
+
+  function hsvToRgb(h, s, v) {
+    const hh = ((h % 1) + 1) % 1 * 6;
+    const i = Math.floor(hh);
+    const f = hh - i;
+    const p = v * (1 - s);
+    const q = v * (1 - f * s);
+    const t = v * (1 - (1 - f) * s);
+    let r = 0, g = 0, b = 0;
+    if (i === 0)      { r = v; g = t; b = p; }
+    else if (i === 1) { r = q; g = v; b = p; }
+    else if (i === 2) { r = p; g = v; b = t; }
+    else if (i === 3) { r = p; g = q; b = v; }
+    else if (i === 4) { r = t; g = p; b = v; }
+    else              { r = v; g = p; b = q; }
+    return [r * 255, g * 255, b * 255];
+  }
+
+  function buildPaletteLUT(name) {
+    const ferroinStops = [
+      [0.00, 46, 8, 22],     // Deep crimson-burgundy Fe(phen)3 2+ resting state
+      [0.14, 92, 16, 42],    // Rich ferroin crimson
+      [0.34, 86, 26, 98],    // Violet redox transition
+      [0.56, 28, 96, 205],   // Cobalt blue oxidation
+      [0.80, 56, 204, 252],  // Electric sky-blue Fe3+ wavefront
+      [1.00, 212, 250, 255]  // Luminous ice-cyan crest
+    ];
+    const ceriumStops = [
+      [0.00, 9, 12, 28],     // Deep UV-obsidian Ce3+
+      [0.18, 26, 20, 68],    // Deep indigo
+      [0.40, 102, 42, 118],  // Ultraviolet orchid
+      [0.64, 214, 126, 46],  // Warm amber Ce4+
+      [0.85, 255, 212, 102], // Luminous gold
+      [1.00, 255, 250, 224]  // Incandescent white-gold
+    ];
+    const briggsStops = [
+      [0.00, 22, 29, 44],    // Clear/cool slate resting
+      [0.20, 18, 42, 118],   // Deep starch-triiodide navy
+      [0.48, 34, 92, 218],   // Royal starch-blue peak
+      [0.72, 114, 160, 232], // Clearing blue-silver
+      [1.00, 214, 232, 250]  // Bright clear flash
+    ];
+
+    for (let ui = 0; ui < LUT_N; ui++) {
+      const u = ui / (LUT_N - 1);
+      for (let vi = 0; vi < LUT_N; vi++) {
+        const v = vi / (LUT_N - 1);
+        let r = 0, g = 0, b = 0;
+
+        if (name === 'ferroin') {
+          // Oxidized catalyst v drives crimson -> violet -> electric sky-blue; u adds bright cyan leading ridge
+          const vNorm = clamp01(v * 4.5);
+          const base = sampleStops(ferroinStops, vNorm * 0.90);
+          const uGlow = Math.pow(clamp01((u - 0.06) / 0.62), 0.72);
+          r = lerp(base[0], 216, uGlow * 0.88);
+          g = lerp(base[1], 251, uGlow * 0.94);
+          b = lerp(base[2], 255, uGlow * 0.96);
+        } else if (name === 'cerium') {
+          const vNorm = clamp01(v * 4.4);
+          const base = sampleStops(ceriumStops, vNorm * 0.90);
+          const uGlow = Math.pow(clamp01((u - 0.05) / 0.62), 0.75);
+          r = lerp(base[0], 255, uGlow * 0.95);
+          g = lerp(base[1], 246, uGlow * 0.90);
+          b = lerp(base[2], 210, uGlow * 0.85);
+        } else if (name === 'briggs') {
+          // Authentic Briggs-Rauscher: clear -> amber iodine flash (u) -> deep starch-blue (v) -> clear
+          const vNorm = clamp01(v * 4.6);
+          const base = sampleStops(briggsStops, vNorm * 0.84);
+          const amberFlash = Math.pow(clamp01((u - 0.05) / 0.58), 0.68);
+          r = lerp(base[0], 252, amberFlash * 0.92);
+          g = lerp(base[1], 190, amberFlash * 0.86);
+          b = lerp(base[2], 58, amberFlash * 0.85);
+        } else {
+          // Phase Neon: 2D phase angle around the limit cycle center (uC, vC)
+          const du = u - 0.14;
+          const dv = (v - 0.075) * 3.0;
+          const angle = Math.atan2(dv, du); // -PI..PI
+          const hue = (angle / (Math.PI * 2) + 1.0 + 0.58) % 1.0;
+          const mag = clamp01(Math.sqrt(du * du * 4.2 + dv * dv * 3.6));
+          const val = 0.10 + 0.87 * Math.pow(mag, 0.76);
+          const sat = 0.74 + 0.24 * clamp01(mag * 1.4);
+          const rgb = hsvToRgb(hue, sat, val);
+          const uFlash = Math.pow(clamp01((u - 0.30) / 0.45), 1.35) * 0.45;
+          r = lerp(rgb[0], 255, uFlash);
+          g = lerp(rgb[1], 255, uFlash);
+          b = lerp(rgb[2], 255, uFlash);
+        }
+
+        colorLUT[(ui << 7) | vi] = packRGBA(Math.round(r), Math.round(g), Math.round(b), 255);
+      }
+    }
+  }
+
+  // =========================================================================
+  // 4. WEB AUDIO HARMONIC CREST SONIFICATION (MUTED BY DEFAULT)
+  // =========================================================================
+  let audioCtx = null;
+  let audioScaleIdx = 0;
+  const pentatonicHz = [261.63, 293.66, 329.63, 392.00, 440.00, 523.25, 587.33];
+
+  function ensureAudio() {
+    if (!audioCtx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) audioCtx = new AC();
+    }
+    if (audioCtx && audioCtx.state === 'suspended') {
+      audioCtx.resume().catch(() => {});
+    }
+  }
+
+  function triggerCrestChime() {
+    if (!state.audioOn) return;
+    ensureAudio();
+    if (!audioCtx) return;
+
+    const now = audioCtx.currentTime;
+    const freq = pentatonicHz[audioScaleIdx % pentatonicHz.length];
+    audioScaleIdx++;
+
+    const osc1 = audioCtx.createOscillator();
+    const osc2 = audioCtx.createOscillator();
+    const filter = audioCtx.createBiquadFilter();
+    const gain = audioCtx.createGain();
+
+    osc1.type = 'sine';
+    osc2.type = 'triangle';
+    osc1.frequency.setValueAtTime(freq, now);
+    osc2.frequency.setValueAtTime(freq * 1.5, now); // gentle fifth shimmer
+
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(1400, now);
+    filter.frequency.exponentialRampToValueAtTime(340, now + 1.1);
+
+    const peak = Math.max(0.01, state.audioVol * 0.16);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.linearRampToValueAtTime(peak, now + 0.035);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 1.15);
+
+    osc1.connect(filter);
+    osc2.connect(filter);
+    filter.connect(gain);
+    gain.connect(audioCtx.destination);
+
+    osc1.start(now);
+    osc2.start(now);
+    osc1.stop(now + 1.2);
+    osc2.stop(now + 1.2);
+  }
+
+  // =========================================================================
+  // 5. PROBE SAMPLING & PERIOD ESTIMATION
+  // =========================================================================
+  function sampleProbe(isWarmup) {
+    const px = Math.max(0, Math.min(GW - 1, state.probeX));
+    const py = Math.max(0, Math.min(GH - 1, state.probeY));
+    const idx = py * GW + px;
+    const pu = (!wall[idx] && dishMask[idx]) ? uA[idx] : 0;
+    const pv = (!wall[idx] && dishMask[idx]) ? vA[idx] : 0;
+    const pw = computeBr(pu, pv, state.f, state.q);
+
+    state.probeU = pu;
+    state.probeV = pv;
+    state.probeW = pw;
+
+    // Detect upward excitation crest crossing for period measurement & harmonic audio pulse
+    if (!state.inCrest && pu > 0.36 && state.prevProbeU <= 0.36) {
+      state.inCrest = true;
+      if (state.lastCrestTime >= 0) {
+        const dtPeriod = state.simTime - state.lastCrestTime;
+        if (dtPeriod > 0.4 && dtPeriod < 40) {
+          state.measuredPeriod = state.measuredPeriod === null
+            ? dtPeriod
+            : (state.measuredPeriod * 0.6 + dtPeriod * 0.4);
+        }
+      }
+      state.lastCrestTime = state.simTime;
+      if (!isWarmup) triggerCrestChime();
+    } else if (state.inCrest && pu < 0.14) {
+      state.inCrest = false;
+    }
+    state.prevProbeU = pu;
+
+    // Record into trace ring buffer
+    const h = state.traceHead;
+    state.traceU[h] = pu;
+    state.traceV[h] = pv;
+    state.traceW[h] = Math.min(1.0, pw / 1.8);
+    state.traceHead = (h + 1) % state.traceLen;
+    if (state.traceCount < state.traceLen) state.traceCount++;
+  }
+
+  // =========================================================================
+  // 6. HIGH-DPI RENDERING & GPU-SCALED IMAGE DATA PIPELINE
+  // =========================================================================
+  const canvas = document.getElementById('sim-canvas');
+  const ctx = canvas.getContext('2d', { alpha: false });
+  const scopeCanvas = document.getElementById('scope-canvas');
+  const scopeCtx = scopeCanvas.getContext('2d');
+
+  // Offscreen grid buffer canvas for crisp GPU bilinear scaling
+  const offCanvas = document.createElement('canvas');
+  offCanvas.width = GW;
+  offCanvas.height = GH;
+  const offCtx = offCanvas.getContext('2d');
+  const imgData = offCtx.createImageData(GW, GH);
+  const pixels32 = new Uint32Array(imgData.data.buffer);
+
+  const COL_BG = packRGBA(4, 7, 17, 255);
+  const COL_WALL = packRGBA(14, 21, 36, 255);
+  const COL_WALL_EDGE = packRGBA(94, 134, 198, 255);
+
+  // Viewport transform rect for mapping between screen px and grid coords
+  const viewRect = { x: 0, y: 0, w: 1, h: 1, dpr: 1, cssW: 1, cssH: 1 };
+
+  function resizeCanvases() {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const cw = window.innerWidth;
+    const ch = window.innerHeight;
+    canvas.width = Math.round(cw * dpr);
+    canvas.height = Math.round(ch * dpr);
+    viewRect.dpr = dpr;
+    viewRect.cssW = cw;
+    viewRect.cssH = ch;
+
+    updateViewRect();
+
+    // Size scope canvas cleanly
+    const sr = scopeCanvas.getBoundingClientRect();
+    if (sr.width > 0 && sr.height > 0) {
+      scopeCanvas.width = Math.round(sr.width * dpr);
+      scopeCanvas.height = Math.round(sr.height * dpr);
+    }
+  }
+
+  function updateViewRect() {
+    const cw = viewRect.cssW;
+    const ch = viewRect.cssH;
+    const gridAspect = GW / GH;
+    const winAspect = cw / Math.max(1, ch);
+
+    if (state.petriMode) {
+      // Fit centered circular Petri dish cleanly
+      const side = Math.min(cw * 0.88, ch * 0.84);
+      const drawH = side;
+      const drawW = side * gridAspect;
+      viewRect.w = drawW;
+      viewRect.h = drawH;
+      viewRect.x = (cw - drawW) * 0.5;
+      viewRect.y = (ch - drawH) * 0.5;
+    } else {
+      // Full-bleed aspect-preserving cover
+      if (winAspect > gridAspect) {
+        viewRect.w = cw;
+        viewRect.h = cw / gridAspect;
+        viewRect.x = 0;
+        viewRect.y = (ch - viewRect.h) * 0.5;
+      } else {
+        viewRect.h = ch;
+        viewRect.w = ch * gridAspect;
+        viewRect.x = (cw - viewRect.w) * 0.5;
+        viewRect.y = 0;
+      }
+    }
+  }
+
+  function screenToGrid(sx, sy) {
+    const gx = ((sx - viewRect.x) / viewRect.w) * GW;
+    const gy = ((sy - viewRect.y) / viewRect.h) * GH;
+    return { x: gx, y: gy };
+  }
+
+  function gridToScreen(gx, gy) {
+    return {
+      x: viewRect.x + (gx / GW) * viewRect.w,
+      y: viewRect.y + (gy / GH) * viewRect.h
+    };
+  }
+
+  function renderMainField() {
+    let oxCount = 0;
+    let activeCount = 0;
+
+    for (let i = 0; i < GSIZE; i++) {
+      if (!dishMask[i]) {
+        pixels32[i] = COL_BG;
+        continue;
+      }
+      if (wall[i]) {
+        pixels32[i] = wallEdge[i] ? COL_WALL_EDGE : COL_WALL;
+        continue;
+      }
+      activeCount++;
+      const uv = uA[i];
+      const vv = vA[i];
+      if (vv > 0.14 || uv > 0.25) oxCount++;
+      let ui = (uv * 127.0) | 0;
+      let vi = (vv * 127.0) | 0;
+      if (ui < 0) ui = 0; else if (ui > 127) ui = 127;
+      if (vi < 0) vi = 0; else if (vi > 127) vi = 127;
+      pixels32[i] = colorLUT[(ui << 7) | vi];
+    }
+
+    state.oxidizedPct = activeCount > 0 ? (oxCount / activeCount) * 100.0 : 0;
+    offCtx.putImageData(imgData, 0, 0);
+
+    const dpr = viewRect.dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = '#040711';
+    ctx.fillRect(0, 0, viewRect.cssW, viewRect.cssH);
+
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(offCanvas, viewRect.x, viewRect.y, viewRect.w, viewRect.h);
+
+    // Subtle darkfield microscope optical vignette
+    const cx = viewRect.cssW * 0.5;
+    const cy = viewRect.cssH * 0.5;
+    const maxR = Math.hypot(cx, cy);
+    const vig = ctx.createRadialGradient(cx, cy, maxR * 0.35, cx, cy, maxR * 1.05);
+    vig.addColorStop(0, 'rgba(4,7,17,0)');
+    vig.addColorStop(1, 'rgba(4,7,17,0.48)');
+    ctx.fillStyle = vig;
+    ctx.fillRect(0, 0, viewRect.cssW, viewRect.cssH);
+
+    // Optional Circular Glass Petri Dish bezel & meniscus specular rim
+    if (state.petriMode) {
+      const dishCenter = gridToScreen((GW - 1) * 0.5, (GH - 1) * 0.5);
+      const radPx = (Math.min(GW, GH) * 0.475 / GH) * viewRect.h;
+
+      ctx.save();
+      // Outer glass rim shadow + crisp specular double edge
+      ctx.beginPath();
+      ctx.arc(dishCenter.x, dishCenter.y, radPx + 4, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(148, 195, 255, 0.24)';
+      ctx.lineWidth = 7;
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(dishCenter.x, dishCenter.y, radPx + 1, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(215, 240, 255, 0.58)';
+      ctx.lineWidth = 1.6;
+      ctx.stroke();
+
+      // Top-left meniscus highlight arc
+      ctx.beginPath();
+      ctx.arc(dishCenter.x, dishCenter.y, radPx - 3, Math.PI * 1.08, Math.PI * 1.56);
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.28)';
+      ctx.lineWidth = 2.5;
+      ctx.lineCap = 'round';
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Virtual PTFE Magnetic Stir Bar + Convective Vortex Rings in Stirred Clock Mode
+    if (state.stirred) {
+      const center = gridToScreen(GW * 0.5, GH * 0.5);
+      ctx.save();
+      ctx.translate(center.x, center.y);
+
+      // Subtle concentric vortex swirl arcs
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.14)';
+      ctx.lineWidth = 1.4;
+      for (let k = 0; k < 3; k++) {
+        const r = 46 + k * 34;
+        const a0 = state.stirAngle * (1.0 - k * 0.18) + k * 2.1;
+        ctx.beginPath();
+        ctx.arc(0, 0, r, a0, a0 + 1.35);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(0, 0, r, a0 + Math.PI, a0 + Math.PI + 1.35);
+        ctx.stroke();
+      }
+
+      // Rotating white PTFE capsule stir bar
+      ctx.rotate(state.stirAngle);
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.55)';
+      ctx.shadowBlur = 14;
+      ctx.fillStyle = 'rgba(242, 247, 255, 0.88)';
+      ctx.beginPath();
+      ctx.roundRect(-34, -8, 68, 16, 8);
+      ctx.fill();
+
+      // Center pivot ridge on PTFE stir bar
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = 'rgba(130, 160, 210, 0.45)';
+      ctx.beginPath();
+      ctx.roundRect(-4, -9, 8, 18, 3);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // Pacemaker nuclei markers
+    if (state.showNuclei && !state.stirred && state.pacemakers.length > 0) {
+      ctx.save();
+      for (let i = 0; i < state.pacemakers.length; i++) {
+        const pm = state.pacemakers[i];
+        if (pm.type !== 'dot') continue;
+        const pos = gridToScreen(pm.x, pm.y);
+        const pulse = 0.5 + 0.5 * Math.sin((pm.phase / pm.period) * Math.PI * 2);
+        ctx.beginPath();
+        ctx.arc(pos.x, pos.y, 4 + pulse * 3, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(255, 214, 128, ${0.35 + pulse * 0.4})`;
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(pos.x, pos.y, 2, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255, 234, 180, 0.85)';
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    // Movable Probe Crosshair
+    if (state.showProbe) {
+      const pp = gridToScreen(state.probeX, state.probeY);
+      const glow = 0.45 + 0.55 * Math.min(1, state.probeU * 1.4);
+      ctx.save();
+      ctx.translate(pp.x, pp.y);
+
+      ctx.strokeStyle = `rgba(88, 220, 255, ${0.55 + glow * 0.35})`;
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.arc(0, 0, 11, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Reticle ticks
+      ctx.beginPath();
+      ctx.moveTo(-18, 0); ctx.lineTo(-7, 0);
+      ctx.moveTo(7, 0);   ctx.lineTo(18, 0);
+      ctx.moveTo(0, -18); ctx.lineTo(0, -7);
+      ctx.moveTo(0, 7);   ctx.lineTo(0, 18);
+      ctx.stroke();
+
+      // Center indicator dot
+      ctx.fillStyle = state.probeU > 0.3 ? '#d8fbff' : '#58dcff';
+      ctx.beginPath();
+      ctx.arc(0, 0, 2.6, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Label pill
+      ctx.font = '600 9.5px ui-monospace, Menlo, Consolas, monospace';
+      ctx.fillStyle = 'rgba(8, 13, 25, 0.72)';
+      ctx.beginPath();
+      ctx.roundRect(14, -18, 44, 15, 4);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(88, 220, 255, 0.38)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.fillStyle = '#c8f4ff';
+      ctx.fillText('PROBE', 19, -7.5);
+      ctx.restore();
+    }
+
+    // Brush cursor preview ring
+    if (pointer.inside && !pointer.draggingProbe && !state.cinema) {
+      const radiusPx = (state.brushRadius / GW) * viewRect.w;
+      ctx.save();
+      ctx.translate(pointer.sx, pointer.sy);
+      let stroke = 'rgba(88, 220, 255, 0.75)';
+      let dashed = false;
+      if (state.tool === 'slicer') { stroke = 'rgba(255, 190, 92, 0.85)'; dashed = true; }
+      else if (state.tool === 'inhibitor') { stroke = 'rgba(255, 96, 131, 0.82)'; }
+      else if (state.tool === 'wall') { stroke = 'rgba(165, 198, 255, 0.85)'; }
+      else if (state.tool === 'erase') { stroke = 'rgba(230, 240, 255, 0.75)'; dashed = true; }
+      else if (state.tool === 'probe') { stroke = 'rgba(74, 242, 178, 0.85)'; dashed = true; }
+
+      if (dashed) ctx.setLineDash([4, 3]);
+      ctx.strokeStyle = stroke;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(0, 0, Math.max(6, state.tool === 'probe' ? 12 : radiusPx), 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  // Render Live Phase-Space Limit Cycle (u vs v) + Concentration Time-Series Inset
+  function renderScope() {
+    const w = scopeCanvas.width;
+    const h = scopeCanvas.height;
+    if (w < 10 || h < 10) return;
+
+    const dpr = viewRect.dpr;
+    const cw = w / dpr;
+    const ch = h / dpr;
+    scopeCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    scopeCtx.clearRect(0, 0, cw, ch);
+
+    const pad = 6;
+    const phaseSize = Math.min(ch - pad * 2, 92);
+    const phaseX = pad;
+    const phaseY = (ch - phaseSize) * 0.5;
+    const sepX = phaseX + phaseSize + 10;
+    const tsX = sepX + 6;
+    const tsW = Math.max(40, cw - tsX - pad);
+    const tsY = pad;
+    const tsH = ch - pad * 2;
+
+    // Divider line
+    scopeCtx.strokeStyle = 'rgba(148, 179, 255, 0.14)';
+    scopeCtx.lineWidth = 1;
+    scopeCtx.beginPath();
+    scopeCtx.moveTo(sepX, 4);
+    scopeCtx.lineTo(sepX, ch - 4);
+    scopeCtx.stroke();
+
+    // --- LEFT: PHASE-SPACE LIMIT CYCLE (u horizontal, v vertical) ---
+    scopeCtx.strokeStyle = 'rgba(148, 179, 255, 0.10)';
+    scopeCtx.strokeRect(phaseX, phaseY, phaseSize, phaseSize);
+
+    // Nullclines (du/dt = 0 and dv/dt = 0) mapped with v-scale = 3.2 so the limit cycle fills the phase box
+    const vScale = 3.2;
+    if (state.showNullclines) {
+      // dv/dt = 0 -> v = u
+      scopeCtx.save();
+      scopeCtx.setLineDash([2.5, 2.5]);
+      scopeCtx.strokeStyle = 'rgba(255, 190, 92, 0.28)';
+      scopeCtx.lineWidth = 1;
+      scopeCtx.beginPath();
+      scopeCtx.moveTo(phaseX, phaseY + phaseSize);
+      scopeCtx.lineTo(phaseX + Math.min(1, 1 / vScale) * phaseSize, phaseY);
+      scopeCtx.stroke();
+
+      // du/dt = 0 -> v = u(1-u)(u+q) / (f*(u-q))
+      scopeCtx.strokeStyle = 'rgba(88, 220, 255, 0.30)';
+      scopeCtx.beginPath();
+      let started = false;
+      for (let i = 1; i <= 70; i++) {
+        const uu = state.q * 1.08 + (i / 70) * (0.98 - state.q * 1.08);
+        const vv = (uu * (1 - uu) * (uu + state.q)) / (state.f * (uu - state.q));
+        const vs = vv * vScale;
+        if (vs >= 0 && vs <= 1.0) {
+          const px = phaseX + uu * phaseSize;
+          const py = phaseY + (1 - vs) * phaseSize;
+          if (!started) { scopeCtx.moveTo(px, py); started = true; }
+          else scopeCtx.lineTo(px, py);
+        } else {
+          started = false;
+        }
+      }
+      scopeCtx.stroke();
+      scopeCtx.restore();
+    }
+
+    // Phase-space trajectory trail
+    const n = state.traceCount;
+    if (n > 1) {
+      const start = (state.traceHead - n + state.traceLen) % state.traceLen;
+      for (let i = 1; i < n; i++) {
+        const idx0 = (start + i - 1) % state.traceLen;
+        const idx1 = (start + i) % state.traceLen;
+        const alpha = (i / n) * 0.85;
+        const x0 = phaseX + Math.min(1, state.traceU[idx0] * 1.25) * phaseSize;
+        const y0 = phaseY + (1 - Math.min(1, state.traceV[idx0] * vScale)) * phaseSize;
+        const x1 = phaseX + Math.min(1, state.traceU[idx1] * 1.25) * phaseSize;
+        const y1 = phaseY + (1 - Math.min(1, state.traceV[idx1] * vScale)) * phaseSize;
+        scopeCtx.strokeStyle = `rgba(88, 220, 255, ${alpha.toFixed(3)})`;
+        scopeCtx.lineWidth = 1.35;
+        scopeCtx.beginPath();
+        scopeCtx.moveTo(x0, y0);
+        scopeCtx.lineTo(x1, y1);
+        scopeCtx.stroke();
+      }
+    }
+
+    // Current state dot in phase plane
+    const dotX = phaseX + Math.min(1, state.probeU * 1.25) * phaseSize;
+    const dotY = phaseY + (1 - Math.min(1, state.probeV * vScale)) * phaseSize;
+    scopeCtx.fillStyle = '#ffffff';
+    scopeCtx.beginPath();
+    scopeCtx.arc(dotX, dotY, 2.7, 0, Math.PI * 2);
+    scopeCtx.fill();
+
+    // Axis micro-labels
+    scopeCtx.font = '600 8.5px ui-monospace, Menlo, Consolas, monospace';
+    scopeCtx.fillStyle = 'rgba(154, 169, 204, 0.72)';
+    scopeCtx.fillText('v', phaseX + 3, phaseY + 9);
+    scopeCtx.fillText('u', phaseX + phaseSize - 8, phaseY + phaseSize - 3);
+
+    // --- RIGHT: SCROLLING TIME-SERIES OSCILLOSCOPE ---
+    scopeCtx.strokeStyle = 'rgba(148, 179, 255, 0.08)';
+    scopeCtx.beginPath();
+    scopeCtx.moveTo(tsX, tsY + tsH * 0.5);
+    scopeCtx.lineTo(tsX + tsW, tsY + tsH * 0.5);
+    scopeCtx.stroke();
+
+    if (n > 1) {
+      const start = (state.traceHead - n + state.traceLen) % state.traceLen;
+      const drawSeries = (arr, color, scaleY, lineW) => {
+        scopeCtx.strokeStyle = color;
+        scopeCtx.lineWidth = lineW;
+        scopeCtx.beginPath();
+        for (let i = 0; i < n; i++) {
+          const idx = (start + i) % state.traceLen;
+          const x = tsX + (i / (state.traceLen - 1)) * tsW;
+          const y = tsY + (1 - Math.min(1, arr[idx] * scaleY)) * tsH;
+          if (i === 0) scopeCtx.moveTo(x, y);
+          else scopeCtx.lineTo(x, y);
+        }
+        scopeCtx.stroke();
+      };
+
+      drawSeries(state.traceW, 'rgba(255, 96, 131, 0.72)', 0.95, 1.15);
+      drawSeries(state.traceV, 'rgba(255, 190, 92, 0.90)', 3.20, 1.35);
+      drawSeries(state.traceU, 'rgba(88, 220, 255, 0.96)', 1.15, 1.45);
+    }
+  }
+
+  // =========================================================================
+  // 7. INTERACTIVE PETRI DISH POINTER TOOLS
+  // =========================================================================
+  const pointer = {
+    down: false,
+    inside: false,
+    draggingProbe: false,
+    sx: 0,
+    sy: 0,
+    lastGx: 0,
+    lastGy: 0
+  };
+
+  function isNearProbe(sx, sy) {
+    if (!state.showProbe) return false;
+    const pp = gridToScreen(state.probeX, state.probeY);
+    return Math.hypot(sx - pp.x, sy - pp.y) <= 20;
+  }
+
+  function applyBrushAt(gx, gy) {
+    const r = state.brushRadius;
+    const t = state.tool;
+
+    if (t === 'probe') {
+      state.probeX = Math.max(1, Math.min(GW - 2, Math.round(gx)));
+      state.probeY = Math.max(1, Math.min(GH - 2, Math.round(gy)));
+      return;
+    }
+
+    if (t === 'activator') {
+      injectDroplet(gx, gy, r, 0.92, 0.04);
+    } else if (t === 'slicer') {
+      // Cleanly resets a sharp slice through a wavefront so free ends curl into counter-rotating spirals
+      const r2 = (r * 0.95) * (r * 0.95);
+      const y0 = Math.max(0, Math.floor(gy - r));
+      const y1 = Math.min(GH - 1, Math.ceil(gy + r));
+      const x0 = Math.max(0, Math.floor(gx - r));
+      const x1 = Math.min(GW - 1, Math.ceil(gx + r));
+      const qVal = state.q;
+      for (let y = y0; y <= y1; y++) {
+        const dy = y - gy;
+        const row = y * GW;
+        for (let x = x0; x <= x1; x++) {
+          const dx = x - gx;
+          if (dx * dx + dy * dy <= r2) {
+            const idx = row + x;
+            if (!dishMask[idx] || wall[idx]) continue;
+            uA[idx] = qVal;
+            vA[idx] = Math.min(vA[idx], 0.02);
+          }
+        }
+      }
+    } else if (t === 'inhibitor') {
+      injectDroplet(gx, gy, r, state.q, 0.88);
+    } else if (t === 'wall' || t === 'erase') {
+      const val = t === 'wall' ? 1 : 0;
+      const r2 = r * r;
+      const y0 = Math.max(0, Math.floor(gy - r));
+      const y1 = Math.min(GH - 1, Math.ceil(gy + r));
+      const x0 = Math.max(0, Math.floor(gx - r));
+      const x1 = Math.min(GW - 1, Math.ceil(gx + r));
+      const uStar = computeSteadyState(state.f, state.q);
+      for (let y = y0; y <= y1; y++) {
+        const dy = y - gy;
+        const row = y * GW;
+        for (let x = x0; x <= x1; x++) {
+          const dx = x - gx;
+          if (dx * dx + dy * dy <= r2) {
+            const idx = row + x;
+            wall[idx] = val;
+            if (val === 0) {
+              uA[idx] = uStar;
+              vA[idx] = uStar;
+            }
+          }
+        }
+      }
+      rebuildWallEdges();
+    }
+  }
+
+  function applyBrushStroke(gx0, gy0, gx1, gy1) {
+    const dist = Math.hypot(gx1 - gx0, gy1 - gy0);
+    const steps = Math.max(1, Math.ceil(dist / 1.5));
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      applyBrushAt(lerp(gx0, gx1, t), lerp(gy0, gy1, t));
+    }
+  }
+
+  canvas.addEventListener('pointerdown', (e) => {
+    canvas.setPointerCapture(e.pointerId);
+    const sx = e.clientX;
+    const sy = e.clientY;
+    pointer.sx = sx;
+    pointer.sy = sy;
+    pointer.inside = true;
+    const g = screenToGrid(sx, sy);
+
+    // Shift+Click or Right-click or grabbing near the Probe moves the probe crosshair
+    if (e.shiftKey || e.button === 2 || state.tool === 'probe' || isNearProbe(sx, sy)) {
+      pointer.draggingProbe = true;
+      pointer.down = true;
+      state.probeX = Math.max(1, Math.min(GW - 2, Math.round(g.x)));
+      state.probeY = Math.max(1, Math.min(GH - 2, Math.round(g.y)));
+      canvas.classList.add('grabbing-probe');
+      return;
+    }
+
+    pointer.down = true;
+    pointer.draggingProbe = false;
+    pointer.lastGx = g.x;
+    pointer.lastGy = g.y;
+    applyBrushAt(g.x, g.y);
+  });
+
+  canvas.addEventListener('pointermove', (e) => {
+    const sx = e.clientX;
+    const sy = e.clientY;
+    pointer.sx = sx;
+    pointer.sy = sy;
+    pointer.inside = true;
+    const g = screenToGrid(sx, sy);
+
+    if (pointer.down) {
+      if (pointer.draggingProbe) {
+        state.probeX = Math.max(1, Math.min(GW - 2, Math.round(g.x)));
+        state.probeY = Math.max(1, Math.min(GH - 2, Math.round(g.y)));
+      } else {
+        applyBrushStroke(pointer.lastGx, pointer.lastGy, g.x, g.y);
+        pointer.lastGx = g.x;
+        pointer.lastGy = g.y;
+      }
+    } else {
+      if (isNearProbe(sx, sy)) canvas.classList.add('grab-probe');
+      else canvas.classList.remove('grab-probe');
+    }
+  });
+
+  function endPointer() {
+    pointer.down = false;
+    pointer.draggingProbe = false;
+    canvas.classList.remove('grabbing-probe');
+  }
+  canvas.addEventListener('pointerup', endPointer);
+  canvas.addEventListener('pointercancel', endPointer);
+  canvas.addEventListener('pointerleave', () => { pointer.inside = false; endPointer(); });
+  canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+  // =========================================================================
+  // 8. UI WIRING, TOASTS & KEYBOARD SHORTCUTS
+  // =========================================================================
+  const elModeBadge = document.getElementById('mode-badge');
+  const elRegimePill = document.getElementById('regime-pill');
+  const elTelU = document.getElementById('tel-u');
+  const elTelV = document.getElementById('tel-v');
+  const elTelW = document.getElementById('tel-w');
+  const elTelPeriod = document.getElementById('tel-period');
+  const elTelOxidized = document.getElementById('tel-oxidized');
+  const elTelTime = document.getElementById('tel-time');
+  const elToast = document.getElementById('toast-banner');
+  const elDrawer = document.getElementById('drawer');
+  const elKineticsTag = document.getElementById('kinetics-tag');
+
+  const slEps = document.getElementById('sl-eps');
+  const slF = document.getElementById('sl-f');
+  const slQ = document.getElementById('sl-q');
+  const slDiff = document.getElementById('sl-diff');
+  const slSpeed = document.getElementById('sl-speed');
+  const slBrush = document.getElementById('sl-brush');
+  const slVol = document.getElementById('sl-vol');
+
+  const valEps = document.getElementById('val-eps');
+  const valF = document.getElementById('val-f');
+  const valQ = document.getElementById('val-q');
+  const valDiff = document.getElementById('val-diff');
+  const valSpeed = document.getElementById('val-speed');
+  const valBrush = document.getElementById('val-brush');
+  const valVol = document.getElementById('val-vol');
+
+  const chkStirred = document.getElementById('chk-stirred');
+  const chkPetri = document.getElementById('chk-petri');
+  const chkProbe = document.getElementById('chk-probe');
+  const chkNullclines = document.getElementById('chk-nullclines');
+  const chkNuclei = document.getElementById('chk-nuclei');
+  const chkAudio = document.getElementById('chk-audio');
+
+  const btnPlay = document.getElementById('btn-play');
+  const btnReset = document.getElementById('btn-reset');
+  const btnStirrer = document.getElementById('btn-stirrer');
+  const btnQuickSlice = document.getElementById('btn-quick-slice');
+  const btnAudio = document.getElementById('btn-audio');
+  const btnDrawer = document.getElementById('btn-drawer');
+  const btnCinema = document.getElementById('btn-cinema');
+  const btnZenRestore = document.getElementById('btn-zen-restore');
+
+  const btnSpawnSpiral = document.getElementById('btn-spawn-spiral');
+  const btnRandomDrops = document.getElementById('btn-random-drops');
+  const btnQuench = document.getElementById('btn-quench');
+  const btnClearWalls = document.getElementById('btn-clear-walls');
+  const btnCenterProbe = document.getElementById('btn-center-probe');
+  const btnClearTrace = document.getElementById('btn-clear-trace');
+
+  const elToolHintTag = document.getElementById('tool-hint-tag');
+  const elToolDesc = document.getElementById('tool-desc');
+
+  const toolDescriptions = {
+    activator: ['Pipette', 'Left-drag to drop fresh autocatalytic HBrO₂ pulses and launch expanding concentric target waves.'],
+    slicer: ['Wave Slicer', 'Slice cleanly across any advancing wavefront—the broken ends curl inward to spawn twin counter-rotating spirals!'],
+    inhibitor: ['Br⁻ Dropper', 'Drop concentrated bromide/oxidized inhibitor to quench excitation or carve temporary refractory zones.'],
+    wall: ['Glass Barrier', 'Paint impermeable glass/wax obstacles with zero-flux boundaries to watch waves diffract and annihilate.'],
+    erase: ['Wall Eraser', 'Erase painted glass barriers back into active Belousov–Zhabotinsky solution.'],
+    probe: ['Probe Sensor', 'Click or drag anywhere on the dish to relocate the local concentration & phase-space probe crosshair.']
+  };
+
+  let toastTimer = null;
+  function showToast(msg) {
+    elToast.textContent = msg;
+    elToast.classList.add('visible');
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => elToast.classList.remove('visible'), 2300);
+  }
+
+  function setTool(tool) {
+    state.tool = tool;
+    document.querySelectorAll('.seg-btn[data-tool]').forEach((b) => {
+      b.classList.remove('active', 'amber', 'rose');
+      if (b.dataset.tool === tool) {
+        b.classList.add('active');
+        if (tool === 'slicer') b.classList.add('amber');
+        if (tool === 'inhibitor') b.classList.add('rose');
+      }
+    });
+    const meta = toolDescriptions[tool] || toolDescriptions.activator;
+    elToolHintTag.textContent = meta[0];
+    elToolDesc.textContent = meta[1];
+    btnQuickSlice.classList.toggle('active-amber', tool === 'slicer');
+  }
+
+  function toggleStirred(on) {
+    state.stirred = on;
+    if (on && state.f > 2.25) {
+      // Shift into oscillatory Hopf regime so stirring produces an immediate rhythmic chemical clock
+      state.f = 1.22;
+      showToast('Magnetic Stirrer ON — f tuned to 1.22 (Chemical Clock)');
+    } else {
+      showToast(on ? 'Magnetic Stirrer ON — 0D Well-Mixed CSTR' : 'Magnetic Stirrer OFF — 2D Reaction-Diffusion');
+    }
+    syncUI();
+  }
+
+  function toggleAudio(on) {
+    state.audioOn = on;
+    if (on) {
+      ensureAudio();
+      showToast('Harmonic Probe Sonification Enabled');
+    }
+    syncUI();
+  }
+
+  function toggleCinema(on) {
+    state.cinema = on;
+    document.body.classList.toggle('zen-mode', on);
+  }
+
+  function syncUI() {
+    slEps.value = state.eps;
+    valEps.textContent = state.eps.toFixed(3);
+    slF.value = state.f;
+    valF.textContent = state.f.toFixed(2);
+    slQ.value = state.q;
+    valQ.textContent = state.q.toFixed(4);
+    slDiff.value = state.diffRatio;
+    valDiff.textContent = state.diffRatio.toFixed(2);
+    slSpeed.value = state.speed;
+    valSpeed.textContent = state.speed.toFixed(1) + '×';
+    slBrush.value = state.brushRadius;
+    valBrush.textContent = state.brushRadius + ' px';
+    slVol.value = state.audioVol;
+    valVol.textContent = Math.round(state.audioVol * 100) + '%';
+
+    chkStirred.checked = state.stirred;
+    chkPetri.checked = state.petriMode;
+    chkProbe.checked = state.showProbe;
+    chkNullclines.checked = state.showNullclines;
+    chkNuclei.checked = state.showNuclei;
+    chkAudio.checked = state.audioOn;
+
+    // Mode & regime badges
+    elModeBadge.textContent = state.stirred ? '0D Stirred Clock' : '2D BZ Petri Dish';
+    elModeBadge.classList.toggle('stirred', state.stirred);
+
+    const isOsc = state.f < 2.38;
+    elKineticsTag.textContent = isOsc ? 'Oscillatory (f < 2.38)' : 'Excitable (f ≥ 2.38)';
+    elKineticsTag.style.color = isOsc ? 'var(--accent-amber)' : 'var(--accent-mint)';
+
+    elRegimePill.className = 'status-pill';
+    if (state.stirred) {
+      elRegimePill.textContent = isOsc ? 'Pulsing Clock' : 'Steady CSTR';
+      elRegimePill.classList.add(isOsc ? 'osc' : 'cyan');
+    } else if (state.preset === 'chaos' || (isOsc && state.diffRatio >= 0.5)) {
+      elRegimePill.textContent = 'Chemical Chaos';
+      elRegimePill.classList.add('chaos');
+    } else if (isOsc) {
+      elRegimePill.textContent = 'Self-Oscillating';
+      elRegimePill.classList.add('osc');
+    } else {
+      elRegimePill.textContent = 'Excitable Medium';
+    }
+
+    // Active preset & palette buttons
+    document.querySelectorAll('.preset-btn[data-preset]').forEach((b) => {
+      b.classList.toggle('active', b.dataset.preset === state.preset);
+    });
+    document.querySelectorAll('.pal-btn[data-palette]').forEach((b) => {
+      b.classList.toggle('active', b.dataset.palette === state.palette);
+    });
+
+    // Bottom bar states
+    btnPlay.textContent = state.paused ? 'Play' : 'Pause';
+    btnPlay.classList.toggle('active', !state.paused);
+    btnStirrer.textContent = state.stirred ? 'Stirrer: On' : 'Stirrer: Off';
+    btnStirrer.classList.toggle('active-amber', state.stirred);
+    btnAudio.textContent = state.audioOn ? 'Audio: On' : 'Audio: Off';
+    btnAudio.classList.toggle('active', state.audioOn);
+    btnDrawer.classList.toggle('active', state.drawerOpen);
+    elDrawer.classList.toggle('collapsed', !state.drawerOpen);
+  }
+
+  // Drawer tabs
+  document.querySelectorAll('.tab-btn[data-tab]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const tab = btn.dataset.tab;
+      document.querySelectorAll('.tab-btn[data-tab]').forEach((b) => b.classList.toggle('active', b === btn));
+      document.querySelectorAll('.tab-pane').forEach((p) => p.classList.toggle('active', p.id === 'tab-' + tab));
+    });
+  });
+
+  // Presets
+  document.querySelectorAll('.preset-btn[data-preset]').forEach((btn) => {
+    btn.addEventListener('click', () => loadPreset(btn.dataset.preset, false));
+  });
+
+  // Palettes
+  document.querySelectorAll('.pal-btn[data-palette]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      state.palette = btn.dataset.palette;
+      buildPaletteLUT(state.palette);
+      syncUI();
+      showToast('Palette: ' + btn.querySelector('.preset-name').textContent);
+    });
+  });
+
+  // Brush tools
+  document.querySelectorAll('.seg-btn[data-tool]').forEach((btn) => {
+    btn.addEventListener('click', () => setTool(btn.dataset.tool));
+  });
+
+  // Sliders
+  slEps.addEventListener('input', () => { state.eps = parseFloat(slEps.value); syncUI(); });
+  slF.addEventListener('input', () => { state.f = parseFloat(slF.value); syncUI(); });
+  slQ.addEventListener('input', () => { state.q = parseFloat(slQ.value); syncUI(); });
+  slDiff.addEventListener('input', () => { state.diffRatio = parseFloat(slDiff.value); syncUI(); });
+  slSpeed.addEventListener('input', () => { state.speed = parseFloat(slSpeed.value); syncUI(); });
+  slBrush.addEventListener('input', () => { state.brushRadius = parseInt(slBrush.value, 10); syncUI(); });
+  slVol.addEventListener('input', () => { state.audioVol = parseFloat(slVol.value); syncUI(); });
+
+  // Checkboxes
+  chkStirred.addEventListener('change', () => toggleStirred(chkStirred.checked));
+  chkPetri.addEventListener('change', () => {
+    state.petriMode = chkPetri.checked;
+    rebuildDishMask();
+    updateViewRect();
+    syncUI();
+  });
+  chkProbe.addEventListener('change', () => { state.showProbe = chkProbe.checked; });
+  chkNullclines.addEventListener('change', () => { state.showNullclines = chkNullclines.checked; });
+  chkNuclei.addEventListener('change', () => { state.showNuclei = chkNuclei.checked; });
+  chkAudio.addEventListener('change', () => toggleAudio(chkAudio.checked));
+
+  // Bench action buttons
+  btnSpawnSpiral.addEventListener('click', () => {
+    state.stirred = false;
+    injectSpiralSeed(Math.round(GW * (0.35 + Math.random() * 0.30)), Math.round(GH * (0.35 + Math.random() * 0.30)), 22, Math.random() < 0.5 ? 'v' : 'h');
+    syncUI();
+    showToast('Spawned Broken Wave -> Twin Counter-Rotating Spirals');
+  });
+
+  btnRandomDrops.addEventListener('click', () => {
+    for (let i = 0; i < 5; i++) {
+      injectDroplet(
+        20 + Math.random() * (GW - 40),
+        20 + Math.random() * (GH - 40),
+        5 + Math.random() * 4,
+        0.92,
+        0.04
+      );
+    }
+    showToast('Dropped 5 Autocatalytic HBrO₂ Pulses');
+  });
+
+  btnQuench.addEventListener('click', () => {
+    state.pacemakers = [];
+    fillRestingState();
+    clearTrace();
+    showToast('Chemical Medium Quenched to Resting State');
+  });
+
+  btnClearWalls.addEventListener('click', () => {
+    clearWalls();
+    showToast('Cleared Glass Obstacles');
+  });
+
+  btnCenterProbe.addEventListener('click', () => {
+    state.probeX = Math.round(GW * 0.5);
+    state.probeY = Math.round(GH * 0.5);
+    clearTrace();
+  });
+
+  btnClearTrace.addEventListener('click', () => clearTrace());
+
+  // Bottom bar buttons
+  btnPlay.addEventListener('click', () => { state.paused = !state.paused; syncUI(); });
+  btnReset.addEventListener('click', () => loadPreset(state.preset, false));
+  btnStirrer.addEventListener('click', () => toggleStirred(!state.stirred));
+  btnQuickSlice.addEventListener('click', () => {
+    const next = state.tool === 'slicer' ? 'activator' : 'slicer';
+    setTool(next);
+    showToast(next === 'slicer' ? 'Wave Slicer Active — Drag across a wave to birth spirals!' : 'Pipette Activator Active');
+  });
+  btnAudio.addEventListener('click', () => toggleAudio(!state.audioOn));
+  btnDrawer.addEventListener('click', () => { state.drawerOpen = !state.drawerOpen; syncUI(); });
+  btnCinema.addEventListener('click', () => toggleCinema(!state.cinema));
+  btnZenRestore.addEventListener('click', () => toggleCinema(false));
+
+  // Keyboard shortcuts
+  window.addEventListener('keydown', (e) => {
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+    const k = e.key.toLowerCase();
+    if (e.code === 'Space') { e.preventDefault(); state.paused = !state.paused; syncUI(); }
+    else if (k === 'r') loadPreset(state.preset, false);
+    else if (k === 's') toggleStirred(!state.stirred);
+    else if (k === 'h') toggleCinema(!state.cinema);
+    else if (k === 'c') { state.drawerOpen = !state.drawerOpen; syncUI(); }
+    else if (k === 'm') toggleAudio(!state.audioOn);
+    else if (k === '1') setTool('activator');
+    else if (k === '2') setTool('slicer');
+    else if (k === '3') setTool('inhibitor');
+    else if (k === '4') setTool('wall');
+    else if (k === '5') setTool('erase');
+    else if (k === '6') setTool('probe');
+  });
+
+  window.addEventListener('resize', resizeCanvases);
+
+  // =========================================================================
+  // 9. MAIN 60FPS ANIMATION LOOP
+  // =========================================================================
+  let lastFrameMs = performance.now();
+  let hudTick = 0;
+
+  function updateTelemetryDOM() {
+    elTelU.textContent = state.probeU.toFixed(3);
+    elTelV.textContent = state.probeV.toFixed(3);
+    elTelW.textContent = state.probeW.toFixed(3);
+    elTelPeriod.textContent = state.measuredPeriod !== null ? (state.measuredPeriod.toFixed(2) + ' τ') : '—';
+    elTelOxidized.textContent = state.oxidizedPct.toFixed(1) + '%';
+    elTelTime.textContent = state.simTime.toFixed(1);
+  }
+
+  function frame(now) {
+    const dtReal = Math.min(0.05, Math.max(0.004, (now - lastFrameMs) / 1000));
+    lastFrameMs = now;
+
+    if (!state.paused) {
+      // Scale physical dimensionless simulation time for smooth 60fps chemical wave speed
+      const simDt = dtReal * 5.2 * state.speed;
+      stepSolver(simDt);
+      if (state.stirred) {
+        state.stirAngle += dtReal * 7.5 * state.speed;
+      }
+
+      state.traceAccum += simDt;
+      if (state.traceAccum >= 0.045) {
+        state.traceAccum = 0;
+        sampleProbe(false);
+      }
+    }
+
+    renderMainField();
+    renderScope();
+
+    hudTick++;
+    if (hudTick % 3 === 0) {
+      updateTelemetryDOM();
+    }
+
+    requestAnimationFrame(frame);
+  }
+
+  // Boot
+  buildPaletteLUT(state.palette);
+  resizeCanvases();
+  setTool('activator');
+  loadPreset('spirals', true);
+  updateTelemetryDOM();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
