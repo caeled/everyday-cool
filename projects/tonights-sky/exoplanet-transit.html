@@ -1,0 +1,3308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Kepler — Exoplanet Transit &amp; Radial-Velocity Observatory</title>
+<style>
+  :root {
+    --bg-deep: #040711;
+    --panel-bg: rgba(9, 13, 24, 0.78);
+    --panel-bg-strong: rgba(8, 12, 22, 0.92);
+    --panel-border: rgba(148, 179, 255, 0.16);
+    --panel-border-hi: rgba(148, 179, 255, 0.36);
+    --text-main: #eef3ff;
+    --text-dim: #9aa9cc;
+    --text-muted: #68789c;
+    --accent-amber: #ffbe5c;
+    --accent-cyan: #58dcff;
+    --accent-mint: #4af2b2;
+    --accent-rose: #ff6083;
+    --accent-violet: #a78bfa;
+    --radius-lg: 14px;
+    --radius-md: 10px;
+    --radius-sm: 7px;
+    --mono: ui-monospace, "Cascadia Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Inter, Helvetica, Arial, sans-serif;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg-deep);
+    color: var(--text-main);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    touch-action: none;
+  }
+
+  #sim-canvas {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    cursor: grab;
+  }
+  #sim-canvas.dragging {
+    cursor: grabbing;
+  }
+
+  /* HUD Layer */
+  .hud {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 10;
+  }
+  body.zen-mode .hud > :not(.zen-restore) {
+    opacity: 0;
+    pointer-events: none !important;
+  }
+
+  .panel {
+    pointer-events: auto;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-lg);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.52), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    transition: opacity 0.25s ease, transform 0.25s ease;
+  }
+
+  /* Top-Left Brand + Telemetry */
+  .top-left {
+    position: fixed;
+    top: 14px;
+    left: 14px;
+    width: min(392px, calc(100vw - 364px));
+    min-width: 280px;
+    padding: 11px 13px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .brand-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .brand-title-wrap {
+    display: flex;
+    align-items: baseline;
+    gap: 7px;
+    flex-wrap: wrap;
+  }
+
+  .brand-title {
+    font-size: 15.5px;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    background: linear-gradient(120deg, #fff5dc 0%, #ffbe5c 45%, #58dcff 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .mode-badge {
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 190, 92, 0.42);
+    background: rgba(255, 190, 92, 0.12);
+    color: var(--accent-amber);
+  }
+  .mode-badge.cyan {
+    border-color: rgba(88, 220, 255, 0.42);
+    background: rgba(88, 220, 255, 0.12);
+    color: var(--accent-cyan);
+  }
+  .mode-badge.violet {
+    border-color: rgba(167, 139, 250, 0.48);
+    background: rgba(167, 139, 250, 0.14);
+    color: var(--accent-violet);
+  }
+
+  .status-pill {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: rgba(74, 242, 178, 0.14);
+    color: var(--accent-mint);
+    border: 1px solid rgba(74, 242, 178, 0.36);
+    white-space: nowrap;
+  }
+  .status-pill.transit {
+    background: rgba(255, 190, 92, 0.18);
+    color: var(--accent-amber);
+    border-color: rgba(255, 190, 92, 0.5);
+    box-shadow: 0 0 12px rgba(255, 190, 92, 0.25);
+  }
+  .status-pill.spot {
+    background: rgba(255, 96, 131, 0.2);
+    color: var(--accent-rose);
+    border-color: rgba(255, 96, 131, 0.5);
+  }
+  .status-pill.secondary {
+    background: rgba(88, 220, 255, 0.18);
+    color: var(--accent-cyan);
+    border-color: rgba(88, 220, 255, 0.46);
+  }
+  .status-pill.multi {
+    background: rgba(167, 139, 250, 0.22);
+    color: #d6c8ff;
+    border-color: rgba(167, 139, 250, 0.55);
+  }
+  .status-pill.muted {
+    background: rgba(148, 179, 255, 0.1);
+    color: var(--text-dim);
+    border-color: rgba(148, 179, 255, 0.25);
+  }
+
+  .telemetry-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+  }
+
+  .tele-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(148, 179, 255, 0.1);
+    border-radius: var(--radius-sm);
+    padding: 5px 7px;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+  }
+
+  .tele-label {
+    font-size: 9px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .tele-val {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--text-main);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .tele-sub {
+    font-family: var(--mono);
+    font-size: 9.5px;
+    color: var(--text-dim);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .tele-val.amber { color: var(--accent-amber); }
+  .tele-val.cyan { color: var(--accent-cyan); }
+  .tele-val.mint { color: var(--accent-mint); }
+  .tele-val.rose { color: var(--accent-rose); }
+  .tele-val.violet { color: var(--accent-violet); }
+
+  .clock-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding-top: 5px;
+    border-top: 1px solid rgba(148, 179, 255, 0.1);
+    font-size: 10.5px;
+    color: var(--text-dim);
+    font-family: var(--mono);
+  }
+  .clock-row span strong {
+    color: var(--text-main);
+    font-weight: 650;
+  }
+
+  /* Right Control Drawer (330px) */
+  .drawer {
+    position: fixed;
+    top: 14px;
+    right: 14px;
+    bottom: 14px;
+    width: 330px;
+    max-width: calc(100vw - 28px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: transform 0.25s ease, opacity 0.25s ease;
+  }
+  .drawer.collapsed {
+    transform: translateX(calc(100% + 24px));
+    pointer-events: none;
+  }
+
+  .drawer-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+    padding: 8px 8px 6px;
+    border-bottom: 1px solid var(--panel-border);
+    background: rgba(4, 7, 17, 0.46);
+  }
+
+  .tab-btn {
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    padding: 7px 5px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .tab-btn:hover {
+    color: var(--text-main);
+    background: rgba(255, 255, 255, 0.04);
+  }
+  .tab-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.16);
+    border-color: rgba(88, 220, 255, 0.42);
+  }
+
+  .drawer-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 11px 12px 15px;
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .drawer-body::-webkit-scrollbar {
+    width: 5px;
+  }
+  .drawer-body::-webkit-scrollbar-thumb {
+    background: rgba(148, 179, 255, 0.22);
+    border-radius: 999px;
+  }
+
+  .tab-pane {
+    display: none;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .tab-pane.active {
+    display: flex;
+  }
+
+  .section {
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(148, 179, 255, 0.11);
+    border-radius: var(--radius-md);
+    padding: 10px 11px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .section-title {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .preset-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .preset-btn {
+    text-align: left;
+    padding: 7px 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(148, 179, 255, 0.14);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-main);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .preset-btn:hover {
+    border-color: rgba(255, 190, 92, 0.45);
+    background: rgba(255, 190, 92, 0.08);
+  }
+  .preset-btn.active {
+    border-color: var(--accent-amber);
+    background: rgba(255, 190, 92, 0.15);
+  }
+  .preset-name {
+    font-size: 11.2px;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+  .preset-sub {
+    font-size: 9.3px;
+    color: var(--text-muted);
+    line-height: 1.25;
+  }
+
+  /* Sliders */
+  .control-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .control-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11.2px;
+    color: var(--text-dim);
+    gap: 6px;
+  }
+  .control-head .val {
+    font-family: var(--mono);
+    font-size: 11.2px;
+    color: var(--text-main);
+    font-weight: 650;
+  }
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 5px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.18);
+    outline: none;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent-cyan);
+    border: 2px solid #08101f;
+    box-shadow: 0 0 10px rgba(88, 220, 255, 0.65);
+    cursor: pointer;
+  }
+  input[type="range"].amber::-webkit-slider-thumb {
+    background: var(--accent-amber);
+    box-shadow: 0 0 10px rgba(255, 190, 92, 0.65);
+  }
+  input[type="range"].violet::-webkit-slider-thumb {
+    background: var(--accent-violet);
+    box-shadow: 0 0 10px rgba(167, 139, 250, 0.65);
+  }
+
+  /* Segmented pills */
+  .seg-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(52px, 1fr));
+    gap: 4px;
+  }
+  .seg-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-dim);
+    font-size: 10.8px;
+    font-weight: 650;
+    padding: 6px 5px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-align: center;
+  }
+  .seg-btn:hover {
+    color: #fff;
+    border-color: rgba(148, 179, 255, 0.35);
+  }
+  .seg-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.18);
+    border-color: var(--accent-cyan);
+  }
+  .seg-btn.active.amber {
+    background: rgba(255, 190, 92, 0.18);
+    border-color: var(--accent-amber);
+    color: #ffdfaa;
+  }
+  .seg-btn.active.violet {
+    background: rgba(167, 139, 250, 0.2);
+    border-color: var(--accent-violet);
+    color: #ebe2ff;
+  }
+
+  /* Action Buttons */
+  .btn-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .btn {
+    border: 1px solid rgba(148, 179, 255, 0.22);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-main);
+    font-size: 11.2px;
+    font-weight: 700;
+    padding: 7px 9px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+  }
+  .btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 179, 255, 0.45);
+  }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary {
+    background: linear-gradient(135deg, rgba(88, 220, 255, 0.26), rgba(56, 140, 255, 0.22));
+    border-color: rgba(88, 220, 255, 0.55);
+    color: #e6f9ff;
+  }
+  .btn.amber {
+    background: linear-gradient(135deg, rgba(255, 190, 92, 0.24), rgba(255, 120, 60, 0.2));
+    border-color: rgba(255, 190, 92, 0.52);
+    color: #fff3db;
+  }
+
+  /* Toggle switches */
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11.2px;
+    color: var(--text-dim);
+    cursor: pointer;
+    gap: 8px;
+  }
+  .toggle-row input { display: none; }
+  .switch {
+    width: 34px;
+    height: 18px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.2);
+    border: 1px solid rgba(148, 179, 255, 0.25);
+    position: relative;
+    transition: all 0.18s ease;
+    flex-shrink: 0;
+  }
+  .switch::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #c8d7f5;
+    transition: transform 0.18s ease, background 0.18s ease;
+  }
+  .toggle-row input:checked + .switch {
+    background: rgba(88, 220, 255, 0.32);
+    border-color: var(--accent-cyan);
+  }
+  .toggle-row input:checked + .switch::after {
+    transform: translateX(16px);
+    background: #fff;
+  }
+
+  .planet-chip-row {
+    display: flex;
+    gap: 5px;
+    flex-wrap: wrap;
+  }
+  .planet-chip {
+    flex: 1;
+    min-width: 72px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    padding: 5px 6px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-dim);
+    font-size: 10.5px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .planet-chip.active {
+    color: #fff;
+    border-color: var(--accent-cyan);
+    background: rgba(88, 220, 255, 0.16);
+  }
+  .chip-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .note-small {
+    font-size: 10.2px;
+    color: var(--text-muted);
+    line-height: 1.38;
+  }
+
+  /* Bottom Transport Bar */
+  .bottom-bar {
+    position: fixed;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 7px 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: nowrap;
+  }
+
+  .bar-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-main);
+    font-size: 11.2px;
+    font-weight: 650;
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    white-space: nowrap;
+  }
+  .bar-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 179, 255, 0.4);
+  }
+  .bar-btn.active {
+    background: rgba(88, 220, 255, 0.2);
+    border-color: var(--accent-cyan);
+    color: #fff;
+  }
+  .bar-btn.amber-active {
+    background: rgba(255, 190, 92, 0.2);
+    border-color: var(--accent-amber);
+    color: #ffe3b0;
+  }
+
+  .bar-divider {
+    width: 1px;
+    height: 20px;
+    background: rgba(148, 179, 255, 0.16);
+    margin: 0 2px;
+  }
+
+  /* Bottom-left interaction hint */
+  .hint-pill {
+    position: fixed;
+    bottom: 14px;
+    left: 14px;
+    padding: 7px 11px;
+    font-size: 10.8px;
+    color: var(--text-dim);
+    max-width: 285px;
+    line-height: 1.42;
+  }
+  .hint-pill kbd {
+    font-family: var(--mono);
+    font-size: 9.8px;
+    padding: 1px 4.5px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #fff;
+  }
+
+  .zen-restore {
+    position: fixed;
+    bottom: 14px;
+    right: 14px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+  }
+  body.zen-mode .zen-restore {
+    opacity: 0.9;
+    pointer-events: auto;
+  }
+
+  @media (max-width: 960px) {
+    .top-left {
+      width: calc(100vw - 28px);
+      max-width: none;
+    }
+    .drawer {
+      top: auto;
+      bottom: 62px;
+      height: 50vh;
+      width: calc(100vw - 28px);
+    }
+    .hint-pill {
+      display: none;
+    }
+  }
+</style>
+</head>
+<body>
+<canvas id="sim-canvas"></canvas>
+
+<div class="hud">
+  <!-- Top-Left Telemetry Card -->
+  <div class="panel top-left">
+    <div class="brand-row">
+      <div class="brand-title-wrap">
+        <div class="brand-title">Kepler</div>
+        <span id="system-badge" class="mode-badge">Hot Jupiter</span>
+      </div>
+      <span id="transit-status" class="status-pill">Out of Transit</span>
+    </div>
+
+    <div class="telemetry-grid">
+      <div class="tele-card">
+        <span class="tele-label">Transit Depth</span>
+        <span id="tel-depth-pct" class="tele-val amber">1.46%</span>
+        <span id="tel-depth-ppm" class="tele-sub">14,641 ppm</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Duration T₁₄</span>
+        <span id="tel-duration" class="tele-val cyan">3.08 hr</span>
+        <span id="tel-impact" class="tele-sub">b = 0.51</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">RV Semi-Amp K</span>
+        <span id="tel-rv-k" class="tele-val rose">85.2 m/s</span>
+        <span id="tel-rv-now" class="tele-sub">vᵣ = +0.0 m/s</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Inferred Density</span>
+        <span id="tel-density" class="tele-val violet">0.35 g/cm³</span>
+        <span id="tel-class" class="tele-sub">Hot Jupiter</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Equilibrium Temp</span>
+        <span id="tel-teq" class="tele-val mint">1,448 K</span>
+        <span id="tel-a-au" class="tele-sub">a = 0.047 AU</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Relative Flux</span>
+        <span id="tel-flux" class="tele-val">1.00000</span>
+        <span id="tel-star" class="tele-sub">G0V · 6065 K</span>
+      </div>
+    </div>
+
+    <div class="clock-row">
+      <span>Phase <strong id="tel-phase">0.250</strong></span>
+      <span>Epoch <strong id="tel-time">0.00 d</strong></span>
+      <span>Incl <strong id="tel-incl">86.7°</strong></span>
+    </div>
+  </div>
+
+  <!-- Collapsible 330px Right Control Drawer -->
+  <aside id="control-drawer" class="panel drawer">
+    <div class="drawer-tabs">
+      <button class="tab-btn active" data-tab="systems">Systems</button>
+      <button class="tab-btn" data-tab="orbit">Orbit &amp; Star</button>
+      <button class="tab-btn" data-tab="optics">Optics &amp; Lab</button>
+    </div>
+
+    <div class="drawer-body">
+      <!-- TAB 1: SYSTEMS -->
+      <div id="tab-systems" class="tab-pane active">
+        <div class="section">
+          <div class="section-title">
+            <span>Observatory Presets</span>
+            <span id="preset-tag" style="color:var(--accent-amber)">6 Targets</span>
+          </div>
+          <div class="preset-grid">
+            <button class="preset-btn active" data-preset="hotJupiter">
+              <span class="preset-name">Hot Jupiter</span>
+              <span class="preset-sub">HD 209458 b · Na halo</span>
+            </button>
+            <button class="preset-btn" data-preset="earthTwin">
+              <span class="preset-name">Earth-Twin HZ</span>
+              <span class="preset-sub">84 ppm · magnified dip</span>
+            </button>
+            <button class="preset-btn" data-preset="eccentricGiant">
+              <span class="preset-name">Eccentric Giant</span>
+              <span class="preset-sub">e = 0.65 · sawtooth RV</span>
+            </button>
+            <button class="preset-btn" data-preset="trappist">
+              <span class="preset-name">TRAPPIST 3-Planet</span>
+              <span class="preset-sub">Resonant double dips</span>
+            </button>
+            <button class="preset-btn" data-preset="grazing">
+              <span class="preset-name">Grazing Transit</span>
+              <span class="preset-sub">i = 85.5° · V-shape</span>
+            </button>
+            <button class="preset-btn" data-preset="eclipsingBinary">
+              <span class="preset-name">Eclipsing Binary</span>
+              <span class="preset-sub">Primary + secondary dip</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">
+            <span>Multi-Planet Configuration</span>
+            <span id="planet-count-label" style="color:var(--accent-cyan)">1 Body</span>
+          </div>
+          <div class="seg-row" id="planet-count-seg">
+            <button class="seg-btn active" data-count="1">1 Planet</button>
+            <button class="seg-btn" data-count="2">2 Planets</button>
+            <button class="seg-btn" data-count="3">3 Planets</button>
+          </div>
+          <div class="planet-chip-row" id="planet-selector">
+            <button class="planet-chip active" data-pidx="0">
+              <span class="chip-dot" style="background:#58dcff"></span>
+              <span>Planet b</span>
+            </button>
+          </div>
+          <div class="note-small" id="system-summary">
+            HD 209458 b orbits its G0V host every 3.52 days, producing a deep 1.46% U-shaped transit and an 85 m/s stellar Doppler wobble.
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Quick Actions</span></div>
+          <div class="btn-row">
+            <button id="btn-jump-transit" class="btn amber">Jump to Transit</button>
+            <button id="btn-clear-data" class="btn">Clear Curves</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 2: ORBIT & STAR -->
+      <div id="tab-orbit" class="tab-pane">
+        <div class="section">
+          <div class="section-title">
+            <span id="editing-body-title">Planet b Parameters</span>
+            <span id="editing-body-type" style="color:var(--accent-violet)">Hot Jupiter</span>
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Planet Radius (Rₚ / R★)</span>
+              <span id="val-radius" class="val">0.121 (1.39 Rⱼ)</span>
+            </div>
+            <input id="sl-radius" class="amber" type="range" min="0" max="1000" value="580" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span id="lbl-mass">Planet Mass</span>
+              <span id="val-mass" class="val">0.69 Mⱼ</span>
+            </div>
+            <input id="sl-mass" type="range" min="0" max="1000" value="620" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Orbital Period (P)</span>
+              <span id="val-period" class="val">3.52 d</span>
+            </div>
+            <input id="sl-period" type="range" min="0" max="1000" value="300" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Inclination (i)</span>
+              <span id="val-incl" class="val">86.70°</span>
+            </div>
+            <input id="sl-incl" class="amber" type="range" min="0" max="1000" value="835" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Eccentricity (e)</span>
+              <span id="val-ecc" class="val">0.00</span>
+            </div>
+            <input id="sl-ecc" class="violet" type="range" min="0" max="80" value="0" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Periastron Angle (ω)</span>
+              <span id="val-omega" class="val">90°</span>
+            </div>
+            <input id="sl-omega" class="violet" type="range" min="0" max="360" value="90" />
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">
+            <span>Host Star Activity</span>
+            <span id="val-ld-coeff" style="color:var(--accent-amber)">u₁=0.42 u₂=0.24</span>
+          </div>
+          <div class="control-row">
+            <div class="control-head">
+              <span>Starspots Activity</span>
+              <span id="val-spots" class="val">45%</span>
+            </div>
+            <input id="sl-spots" class="amber" type="range" min="0" max="100" value="45" />
+          </div>
+          <label class="toggle-row">
+            <span>Quadratic Limb Darkening</span>
+            <input id="chk-limb" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+        </div>
+      </div>
+
+      <!-- TAB 3: OPTICS & LAB -->
+      <div id="tab-optics" class="tab-pane">
+        <div class="section">
+          <div class="section-title"><span>Telescope Photometry &amp; Noise</span></div>
+          <div class="control-row">
+            <div class="control-head">
+              <span>Photon Shot Noise (σ)</span>
+              <span id="val-noise" class="val">450 ppm</span>
+            </div>
+            <input id="sl-noise" type="range" min="0" max="1000" value="350" />
+          </div>
+          <label class="toggle-row">
+            <span>Show Clean Theoretical Model</span>
+            <input id="chk-model" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Auto-Magnify Flux Scale</span>
+            <input id="chk-autoscale" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Atmosphere Transmission Ring</span></div>
+          <label class="toggle-row">
+            <span>Atmospheric Halo Glow</span>
+            <input id="chk-atmo" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <div class="seg-row" id="atmo-species-seg">
+            <button class="seg-btn active amber" data-species="Na">Na (589nm)</button>
+            <button class="seg-btn" data-species="H2O">H₂O Vapor</button>
+            <button class="seg-btn violet" data-species="CH4">CH₄ Haze</button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Time Warp &amp; Display</span></div>
+          <div class="seg-row" id="speed-seg">
+            <button class="seg-btn" data-speed="0.3">0.3×</button>
+            <button class="seg-btn active" data-speed="1">1×</button>
+            <button class="seg-btn" data-speed="2.5">2.5×</button>
+            <button class="seg-btn" data-speed="6">6×</button>
+          </div>
+          <label class="toggle-row">
+            <span>Transit Slow-Mo Assist</span>
+            <input id="chk-slowmo" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Top-Down Barycenter Inset</span>
+            <input id="chk-inset" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Orbital Geometry Guides</span>
+            <input id="chk-guides" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Bottom-Left Interaction Hints -->
+  <div class="panel hint-pill">
+    <strong>Observatory:</strong> Drag vertically to tilt inclination <i>i</i> · Scroll to zoom · <kbd>Space</kbd> Pause · <kbd>T</kbd> Transit · <kbd>H</kbd> Cinema
+  </div>
+
+  <!-- Bottom-Center Transport Bar -->
+  <div class="panel bottom-bar">
+    <button id="btn-play" class="bar-btn active">Pause</button>
+    <button id="btn-reset" class="bar-btn">Reset</button>
+    <button id="btn-transit-bar" class="bar-btn">Transit (T)</button>
+    <div class="bar-divider"></div>
+    <button id="btn-audio" class="bar-btn">Audio: Off</button>
+    <button id="btn-drawer" class="bar-btn active">Controls</button>
+    <button id="btn-cinema" class="bar-btn">Cinema (H)</button>
+  </div>
+
+  <!-- Cinema Mode Restore Button -->
+  <button id="btn-zen-restore" class="panel bar-btn zen-restore">Exit Cinema (H)</button>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // =========================================================================
+  // PHYSICAL CONSTANTS & HELPERS
+  // =========================================================================
+  const TWO_PI = Math.PI * 2;
+  const DEG2RAD = Math.PI / 180;
+  const RAD2DEG = 180 / Math.PI;
+  const AU_IN_RSUN = 215.032;
+  const RSUN_IN_REARTH = 109.076;
+  const RSUN_IN_RJUP = 9.731;
+  const MJUP_IN_MEARTH = 317.828;
+  const MSUN_IN_MJUP = 1047.56;
+  const C_LIGHT = 299792458; // m/s
+
+  // Precomputed 64-point Vogel disk quadrature for exact limb-darkened + spot overlap flux
+  const VOGEL_N = 64;
+  const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
+  const VOGEL_PTS = [];
+  for (let i = 0; i < VOGEL_N; i++) {
+    const r = Math.sqrt((i + 0.5) / VOGEL_N);
+    const th = i * GOLDEN_ANGLE;
+    VOGEL_PTS.push({ x: r * Math.cos(th), y: r * Math.sin(th) });
+  }
+
+  // Fraunhofer absorption lines (wavelength in nm, name, strength)
+  const FRAUNHOFER_LINES = [
+    { nm: 410.17, label: 'Hδ', w: 0.65 },
+    { nm: 430.79, label: 'G',  w: 0.55 },
+    { nm: 434.05, label: 'Hγ', w: 0.72 },
+    { nm: 486.13, label: 'Hβ', w: 0.85 },
+    { nm: 517.27, label: 'Mg b', w: 0.78 },
+    { nm: 527.04, label: 'Fe', w: 0.45 },
+    { nm: 588.99, label: 'Na D₂', w: 0.88 },
+    { nm: 589.59, label: 'Na D₁', w: 0.82 },
+    { nm: 656.28, label: 'Hα', w: 0.95 },
+    { nm: 686.72, label: 'Fe/Ca', w: 0.42 }
+  ];
+
+  const PLANET_PALETTES = [
+    { name: 'b', color: '#58dcff', limb: '#9eeaff', dark: '#0c162b' },
+    { name: 'c', color: '#4af2b2', limb: '#a4ffdc', dark: '#0b1e1c' },
+    { name: 'd', color: '#c084fc', limb: '#e3c7ff', dark: '#1a112a' }
+  ];
+
+  const ATMO_STYLES = {
+    Na:  { core: 'rgba(255, 198, 92, 0.85)', outer: 'rgba(255, 130, 48, 0)', tag: 'Na D 589 nm' },
+    H2O: { core: 'rgba(88, 220, 255, 0.85)', outer: 'rgba(42, 120, 255, 0)', tag: 'H₂O 1.4 μm' },
+    CH4: { core: 'rgba(176, 132, 255, 0.85)', outer: 'rgba(98, 60, 220, 0)', tag: 'CH₄ 2.3 μm' }
+  };
+
+  function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
+  function lerp(a, b, t) { return a + (b - a) * t; }
+  function gaussRand() {
+    let u = 0, v = 0;
+    while (u === 0) u = Math.random();
+    while (v === 0) v = Math.random();
+    return Math.sqrt(-2 * Math.log(u)) * Math.cos(TWO_PI * v);
+  }
+
+  // Solve Kepler's equation E - e sin(E) = M via Newton-Raphson
+  function solveKepler(M, e) {
+    M = ((M % TWO_PI) + TWO_PI) % TWO_PI;
+    if (e < 1e-6) return M;
+    let E = e < 0.8 ? M + e * Math.sin(M) : Math.PI;
+    for (let iter = 0; iter < 8; iter++) {
+      const f = E - e * Math.sin(E) - M;
+      const fp = 1 - e * Math.cos(E);
+      const dE = f / fp;
+      E -= dE;
+      if (Math.abs(dE) < 1e-9) break;
+    }
+    return E;
+  }
+
+  // Mean anomaly corresponding to a target true anomaly nu
+  function meanAnomalyFromTrue(nu, e) {
+    const half = Math.atan2(
+      Math.sqrt(Math.max(1e-9, 1 - e)) * Math.sin(nu * 0.5),
+      Math.sqrt(1 + e) * Math.cos(nu * 0.5)
+    );
+    const E = 2 * half;
+    return ((E - e * Math.sin(E)) % TWO_PI + TWO_PI) % TWO_PI;
+  }
+
+  // Wavelength (380..720 nm) -> RGB for Fraunhofer rainbow spectrum
+  function wavelengthToRGB(nm) {
+    let r = 0, g = 0, b = 0;
+    if (nm >= 380 && nm < 440) { r = -(nm - 440) / 60; g = 0; b = 1; }
+    else if (nm >= 440 && nm < 490) { r = 0; g = (nm - 440) / 50; b = 1; }
+    else if (nm >= 490 && nm < 510) { r = 0; g = 1; b = -(nm - 510) / 20; }
+    else if (nm >= 510 && nm < 580) { r = (nm - 510) / 70; g = 1; b = 0; }
+    else if (nm >= 580 && nm < 645) { r = 1; g = -(nm - 645) / 65; b = 0; }
+    else if (nm >= 645 && nm <= 720) { r = 1; g = 0; b = 0; }
+    let factor = 1;
+    if (nm < 420) factor = 0.25 + 0.75 * (nm - 380) / 40;
+    else if (nm > 660) factor = 0.25 + 0.75 * (720 - nm) / 60;
+    const gamma = 0.82;
+    return [
+      Math.round(255 * Math.pow(clamp(r * factor, 0, 1), gamma)),
+      Math.round(255 * Math.pow(clamp(g * factor, 0, 1), gamma)),
+      Math.round(255 * Math.pow(clamp(b * factor, 0, 1), gamma))
+    ];
+  }
+
+  // =========================================================================
+  // PRESET DEFINITIONS
+  // =========================================================================
+  const PRESETS = {
+    hotJupiter: {
+      id: 'hotJupiter',
+      badge: 'Hot Jupiter',
+      badgeClass: '',
+      summary: 'HD 209458 b orbits its G0V host every 3.52 d with a 1.46% U-shaped transit, glowing Na transmission halo, and 85 m/s Doppler wobble.',
+      star: {
+        name: 'G0V', teff: 6065, mass: 1.12, radius: 1.15,
+        u1: 0.40, u2: 0.25, rotPeriod: 11.4,
+        coreRGB: [255, 250, 232], midRGB: [255, 212, 130], limbRGB: [224, 128, 44], coronaRGB: [255, 184, 88]
+      },
+      isBinary: false,
+      spotsActivity: 45,
+      noisePpm: 420,
+      atmoEnabled: true,
+      atmoSpecies: 'Na',
+      planets: [
+        { k: 0.121, massJup: 0.69, period: 3.5247, incl: 86.7, ecc: 0.0, omega: 90, phaseOffset: 0.0, hasAtmo: true }
+      ]
+    },
+    earthTwin: {
+      id: 'earthTwin',
+      badge: 'Habitable Zone',
+      badgeClass: 'cyan',
+      summary: 'An Earth-size world at 1 AU around a G2V Sun produces a razor-thin 84 ppm (0.0084%) transit dip and a 9 cm/s RV signal — magnified automatically.',
+      star: {
+        name: 'G2V', teff: 5778, mass: 1.00, radius: 1.00,
+        u1: 0.44, u2: 0.24, rotPeriod: 25.4,
+        coreRGB: [255, 252, 236], midRGB: [255, 218, 126], limbRGB: [226, 132, 42], coronaRGB: [255, 194, 92]
+      },
+      isBinary: false,
+      spotsActivity: 15,
+      noisePpm: 14,
+      atmoEnabled: true,
+      atmoSpecies: 'H2O',
+      planets: [
+        { k: 0.00917, massJup: 1.0 / MJUP_IN_MEARTH, period: 365.25, incl: 89.90, ecc: 0.017, omega: 90, phaseOffset: 0.0, hasAtmo: true }
+      ]
+    },
+    eccentricGiant: {
+      id: 'eccentricGiant',
+      badge: 'Eccentric e=0.65',
+      badgeClass: 'violet',
+      summary: 'A massive 4.2 Mⱼ giant on a highly elliptical orbit (e = 0.65, ω = 28°): whips rapidly through periastron creating a dramatic sawtooth RV curve.',
+      star: {
+        name: 'G5V', teff: 5645, mass: 1.02, radius: 1.01,
+        u1: 0.46, u2: 0.23, rotPeriod: 16.0,
+        coreRGB: [255, 246, 224], midRGB: [255, 204, 114], limbRGB: [215, 116, 38], coronaRGB: [255, 174, 78]
+      },
+      isBinary: false,
+      spotsActivity: 30,
+      noisePpm: 320,
+      atmoEnabled: true,
+      atmoSpecies: 'CH4',
+      planets: [
+        { k: 0.104, massJup: 4.2, period: 18.5, incl: 88.6, ecc: 0.65, omega: 28, phaseOffset: 0.0, hasAtmo: true }
+      ]
+    },
+    trappist: {
+      id: 'trappist',
+      badge: '3-Planet Resonant',
+      badgeClass: 'violet',
+      summary: 'Three rocky worlds in near-resonant orbits around an active ultra-cool M8V red dwarf, generating overlapping double transits and complex multi-planet RV waves.',
+      star: {
+        name: 'M8V', teff: 2950, mass: 0.12, radius: 0.16,
+        u1: 0.28, u2: 0.42, rotPeriod: 3.3,
+        coreRGB: [255, 214, 184], midRGB: [255, 128, 72], limbRGB: [178, 44, 24], coronaRGB: [255, 96, 56]
+      },
+      isBinary: false,
+      spotsActivity: 65,
+      noisePpm: 280,
+      atmoEnabled: true,
+      atmoSpecies: 'H2O',
+      planets: [
+        { k: 0.072, massJup: 1.37 / MJUP_IN_MEARTH, period: 1.51, incl: 89.45, ecc: 0.0, omega: 90, phaseOffset: 0.0, hasAtmo: false },
+        { k: 0.068, massJup: 1.31 / MJUP_IN_MEARTH, period: 2.42, incl: 89.62, ecc: 0.0, omega: 90, phaseOffset: 0.04, hasAtmo: false },
+        { k: 0.082, massJup: 1.15 / MJUP_IN_MEARTH, period: 4.05, incl: 89.72, ecc: 0.0, omega: 90, phaseOffset: -0.02, hasAtmo: true }
+      ]
+    },
+    grazing: {
+      id: 'grazing',
+      badge: 'Grazing V-Shape',
+      badgeClass: '',
+      summary: 'At inclination i = 85.5°, impact parameter b ≈ 0.99 causes the giant planet to only skim the stellar limb, carving a sharp V-shaped dip instead of a flat U-bottom.',
+      star: {
+        name: 'G1V', teff: 5860, mass: 1.04, radius: 1.04,
+        u1: 0.43, u2: 0.24, rotPeriod: 14.0,
+        coreRGB: [255, 250, 232], midRGB: [255, 214, 128], limbRGB: [222, 128, 42], coronaRGB: [255, 186, 86]
+      },
+      isBinary: false,
+      spotsActivity: 25,
+      noisePpm: 300,
+      atmoEnabled: true,
+      atmoSpecies: 'Na',
+      planets: [
+        { k: 0.145, massJup: 1.25, period: 5.2, incl: 85.5, ecc: 0.0, omega: 90, phaseOffset: 0.0, hasAtmo: true }
+      ]
+    },
+    eclipsingBinary: {
+      id: 'eclipsingBinary',
+      badge: 'Eclipsing Binary',
+      badgeClass: 'cyan',
+      summary: 'A cooler K4V star eclipses its luminous F8V partner every 2.8 days: deep ~21% primary eclipses alternate with shallower ~8.5% secondary eclipses and a 72 km/s RV swing.',
+      star: {
+        name: 'F8V + K4V', teff: 6280, mass: 1.25, radius: 1.20,
+        u1: 0.36, u2: 0.26, rotPeriod: 2.8,
+        coreRGB: [242, 248, 255], midRGB: [204, 226, 255], limbRGB: [122, 162, 232], coronaRGB: [142, 198, 255]
+      },
+      isBinary: true,
+      companionFluxRatio: 0.46, // surface brightness ratio S2/S1
+      companionRGB: { core: [255, 232, 196], mid: [255, 158, 74], limb: [188, 72, 26], corona: [255, 144, 62] },
+      spotsActivity: 35,
+      noisePpm: 800,
+      atmoEnabled: false,
+      atmoSpecies: 'Na',
+      planets: [
+        { k: 0.50, massJup: 0.65 * MSUN_IN_MJUP, period: 2.8, incl: 87.8, ecc: 0.04, omega: 75, phaseOffset: 0.0, hasAtmo: false }
+      ]
+    }
+  };
+
+  // =========================================================================
+  // APPLICATION STATE
+  // =========================================================================
+  const state = {
+    presetId: 'hotJupiter',
+    star: { ...PRESETS.hotJupiter.star },
+    isBinary: false,
+    companionFluxRatio: 0.46,
+    companionRGB: null,
+    planets: [],
+    selectedPlanet: 0,
+    spotsActivity: 45,
+    spots: [],
+    limbDarkening: true,
+    noisePpm: 420,
+    showModel: true,
+    autoScaleFlux: true,
+    atmoEnabled: true,
+    atmoSpecies: 'Na',
+    showInset: true,
+    showGuides: true,
+    slowMoAssist: true,
+    speedMult: 1.0,
+    paused: false,
+    drawerOpen: true,
+    cinemaMode: false,
+    audioEnabled: false,
+
+    // Time & view
+    simTimeDays: 0,
+    zoom: 1.0,
+    isDraggingIncl: false,
+    dragStartY: 0,
+    dragStartIncl: 86.7,
+
+    // Live measurements
+    currentFluxClean: 1.0,
+    currentFluxNoisy: 1.0,
+    currentRvMs: 0.0,
+    inTransitCount: 0,
+    inSecondary: false,
+    spotCrossingActive: false,
+    spotCrossingDelta: 0,
+
+    // Rolling instrument history
+    history: [],
+    maxHistory: 520,
+    sampleAccum: 0
+  };
+
+  // Generate deterministic-looking starspots with varied latitudes/sizes
+  function generateStarspots() {
+    const specs = [
+      { lat: 0.14,  lon: 0.06,  rad: 0.115, contrast: 0.30 },
+      { lat: -0.22, lon: 1.35,  rad: 0.135, contrast: 0.28 },
+      { lat: 0.38,  lon: 2.55,  rad: 0.105, contrast: 0.34 },
+      { lat: -0.08, lon: 3.70,  rad: 0.125, contrast: 0.29 },
+      { lat: 0.24,  lon: 4.82,  rad: 0.095, contrast: 0.36 },
+      { lat: -0.44, lon: 5.55,  rad: 0.120, contrast: 0.32 }
+    ];
+    state.spots = specs.map(s => ({ ...s }));
+  }
+  generateStarspots();
+
+  // =========================================================================
+  // ASTROPHYSICS ENGINE
+  // =========================================================================
+  function getPlanetPhysical(p) {
+    const MtotSolar = state.star.mass + (p.massJup / MSUN_IN_MJUP);
+    const P_yr = p.period / 365.25;
+    const a_AU = Math.cbrt(P_yr * P_yr * MtotSolar);
+    const a_Rstar = (a_AU * AU_IN_RSUN) / state.star.radius;
+
+    const inclRad = p.incl * DEG2RAD;
+    const omegaRad = p.omega * DEG2RAD;
+    const e = p.ecc;
+
+    // Impact parameter at inferior conjunction (nu + omega = pi/2 => nu = pi/2 - omega)
+    const nuTrans = Math.PI * 0.5 - omegaRad;
+    const rTrans = a_Rstar * (1 - e * e) / (1 + e * Math.cos(nuTrans));
+    const b = Math.abs(rTrans * Math.cos(inclRad));
+
+    // RV semi-amplitude K (m/s)
+    const K = (28.4329 / Math.sqrt(Math.max(1e-6, 1 - e * e)))
+      * (p.massJup * Math.sin(inclRad))
+      * Math.pow(MtotSolar, -2 / 3)
+      * Math.pow(P_yr, -1 / 3);
+
+    // Transit duration T14 (hours)
+    let durHours = 0;
+    const onePlusK = 1 + p.k;
+    if (b < onePlusK && a_Rstar > 1) {
+      const chordSq = Math.max(0, onePlusK * onePlusK - b * b);
+      const arg = clamp(Math.sqrt(chordSq) / (a_Rstar * Math.max(1e-4, Math.sin(inclRad))), 0, 1);
+      const eccFactor = Math.sqrt(1 - e * e) / (1 + e * Math.sin(omegaRad));
+      durHours = (p.period * 24 / Math.PI) * Math.asin(arg) * eccFactor;
+    }
+
+    // Equilibrium temperature (albedo = 0.25)
+    const Teq = state.star.teff * Math.sqrt(0.5 / Math.max(1.05, a_Rstar)) * Math.pow(0.75, 0.25);
+
+    // Planet radius in Earth radii & Jupiter radii, and bulk density (g/cm^3)
+    const rEarth = p.k * state.star.radius * RSUN_IN_REARTH;
+    const rJup = p.k * state.star.radius * RSUN_IN_RJUP;
+    const mEarth = p.massJup * MJUP_IN_MEARTH;
+    const density = 5.514 * mEarth / Math.max(1e-6, rEarth * rEarth * rEarth);
+
+    let pClass = 'Rocky World';
+    if (state.isBinary) pClass = 'K-Dwarf Star';
+    else if (rEarth < 1.65) pClass = density > 3.5 ? 'Rocky Terrestrial' : 'Low-Density Rocky';
+    else if (rEarth < 3.8) pClass = 'Sub-Neptune';
+    else if (rEarth < 8.5) pClass = 'Ice / Gas Giant';
+    else pClass = Teq > 950 ? 'Hot Jupiter' : 'Cold Gas Giant';
+
+    // Theoretical central transit depth (with limb darkening center vs mean)
+    const u1 = state.limbDarkening ? state.star.u1 : 0;
+    const u2 = state.limbDarkening ? state.star.u2 : 0;
+    const meanI = 1 - u1 / 3 - u2 / 6;
+    let approxDepth = 0;
+    if (b < onePlusK) {
+      const muCenter = b < 1 ? Math.sqrt(1 - b * b) : 0.1;
+      const Iloc = 1 - u1 * (1 - muCenter) - u2 * (1 - muCenter) * (1 - muCenter);
+      let overlapFrac = 1.0;
+      if (b > 1 - p.k) {
+        overlapFrac = clamp((1 + p.k - b) / (2 * p.k), 0, 1);
+      }
+      approxDepth = Math.min(0.95, p.k * p.k * overlapFrac * (Iloc / meanI));
+      if (state.isBinary) {
+        const L2L1 = state.companionFluxRatio * p.k * p.k;
+        approxDepth = approxDepth / (1 + L2L1);
+      }
+    }
+
+    return {
+      a_AU, a_Rstar, b, K, durHours, Teq, rEarth, rJup, mEarth, density, pClass, approxDepth
+    };
+  }
+
+  // Evaluate exact 3D position & RV for planet p at time tDays
+  function evalPlanetState(p, tDays) {
+    const phys = getPlanetPhysical(p);
+    const e = p.ecc;
+    const omegaRad = p.omega * DEG2RAD;
+    const inclRad = p.incl * DEG2RAD;
+
+    // Anchor t=0 to transit center + phaseOffset so presets align cleanly
+    const nuTransit = Math.PI * 0.5 - omegaRad;
+    const M0 = meanAnomalyFromTrue(nuTransit, e);
+    const rawPhase = ((tDays / p.period + p.phaseOffset) % 1 + 1) % 1;
+    const M = (M0 + rawPhase * TWO_PI) % TWO_PI;
+
+    const E = solveKepler(M, e);
+    const cosE = Math.cos(E);
+    const sinE = Math.sin(E);
+    const nu = Math.atan2(Math.sqrt(1 - e * e) * sinE, cosE - e);
+    const r = phys.a_Rstar * (1 - e * cosE); // in R_star
+    const u = nu + omegaRad;
+
+    // Sky-plane coordinates (in R_star):
+    // X right, Y up, Z toward observer (+Z = in front of star)
+    // X = -r cos(u) so planet moves left -> right across stellar disk during transit (u ~ pi/2)
+    const xSky = -r * Math.cos(u);
+    const ySky = r * Math.sin(u) * Math.cos(inclRad);
+    const zSky = r * Math.sin(u) * Math.sin(inclRad);
+
+    // Top-down orbital plane coordinates (for inset): X right, Z down toward observer
+    const xTop = -r * Math.cos(u);
+    const zTop = r * Math.sin(u);
+
+    // Stellar receding radial velocity (m/s): positive = redshift (away), negative = blueshift (toward)
+    const vr = phys.K * (Math.cos(u) + e * Math.cos(omegaRad));
+
+    return {
+      xSky, ySky, zSky, xTop, zTop, r, nu, u, vr,
+      phase: rawPhase,
+      phys
+    };
+  }
+
+  // Evaluate active starspots in star-plane coordinates at tDays
+  function getVisibleSpots(tDays) {
+    const act = state.spotsActivity / 100;
+    if (act <= 0.005) return [];
+    const rotAngle = (tDays / state.star.rotPeriod) * TWO_PI;
+    const visible = [];
+    const sizeScale = 0.45 + 0.72 * act;
+    const count = Math.max(1, Math.round(state.spots.length * Math.min(1, act * 1.15)));
+    for (let i = 0; i < count; i++) {
+      const s = state.spots[i];
+      const lon = s.lon + rotAngle;
+      const cosLat = Math.cos(s.lat);
+      const sinLat = Math.sin(s.lat);
+      const x = cosLat * Math.sin(lon);
+      const y = -sinLat;
+      const z = cosLat * Math.cos(lon);
+      if (z > 0.05) {
+        visible.push({
+          x, y, z,
+          rad: s.rad * sizeScale,
+          contrast: lerp(0.55, s.contrast, act),
+          mu: z
+        });
+      }
+    }
+    return visible;
+  }
+
+  // Exact limb-darkened + starspot + multi-planet + binary flux calculation
+  function evaluateSystem(tDays) {
+    const u1 = state.limbDarkening ? state.star.u1 : 0;
+    const u2 = state.limbDarkening ? state.star.u2 : 0;
+    const F0 = Math.PI * (1 - u1 / 3 - u2 / 6);
+
+    const spots = getVisibleSpots(tDays);
+
+    // Baseline flux deficit from rotating starspots
+    let spotModDrop = 0;
+    for (let i = 0; i < spots.length; i++) {
+      const sp = spots[i];
+      const mu = sp.mu;
+      const Iloc = 1 - u1 * (1 - mu) - u2 * (1 - mu) * (1 - mu);
+      const area = Math.PI * sp.rad * sp.rad * mu;
+      spotModDrop += (1 - sp.contrast) * area * Iloc / F0;
+    }
+
+    const pStates = state.planets.map((p, idx) => ({
+      idx,
+      planet: p,
+      st: evalPlanetState(p, tDays)
+    }));
+
+    // Sort foreground transiting planets by Z descending (closest first to handle mutual overlap)
+    const sorted = [...pStates].sort((a, b) => b.st.zSky - a.st.zSky);
+
+    let totalRv = 0;
+    let occultedFlux = 0;
+    let spotBumpFlux = 0;
+    let inTransitCount = 0;
+    let inSecondary = false;
+    let secondaryDrop = 0;
+
+    // Companion luminosity relative to primary (for Eclipsing Binary)
+    let L2overL1 = 0;
+    if (state.isBinary && state.planets.length > 0) {
+      const kBin = state.planets[0].k;
+      L2overL1 = state.companionFluxRatio * kBin * kBin;
+    }
+
+    const coveredDisks = [];
+
+    for (let i = 0; i < sorted.length; i++) {
+      const item = sorted[i];
+      const p = item.planet;
+      const st = item.st;
+      totalRv += st.vr;
+
+      const d = Math.hypot(st.xSky, st.ySky);
+
+      if (st.zSky > 0 && d < 1 + p.k) {
+        // Primary Transit across host star!
+        inTransitCount++;
+        const k = p.k;
+        const sampleArea = (Math.PI * k * k) / VOGEL_N;
+
+        let blockedClean = 0;
+        let blockedWithSpots = 0;
+
+        for (let j = 0; j < VOGEL_N; j++) {
+          const sx = st.xSky + VOGEL_PTS[j].x * k;
+          const sy = st.ySky + VOGEL_PTS[j].y * k;
+          const rho2 = sx * sx + sy * sy;
+          if (rho2 >= 1) continue;
+
+          // Avoid double-counting overlapping planets
+          let alreadyCovered = false;
+          for (let c = 0; c < coveredDisks.length; c++) {
+            const cd = coveredDisks[c];
+            const ddx = sx - cd.x;
+            const ddy = sy - cd.y;
+            if (ddx * ddx + ddy * ddy < cd.k2) {
+              alreadyCovered = true;
+              break;
+            }
+          }
+          if (alreadyCovered) continue;
+
+          const mu = Math.sqrt(1 - rho2);
+          const Iloc = 1 - u1 * (1 - mu) - u2 * (1 - mu) * (1 - mu);
+          blockedClean += Iloc * sampleArea;
+
+          // Check if this point lies inside a visible starspot
+          let spotFactor = 1.0;
+          for (let sIdx = 0; sIdx < spots.length; sIdx++) {
+            const sp = spots[sIdx];
+            // Foreshortened elliptical hit test in projected star plane
+            const rx = sx - sp.x;
+            const ry = sy - sp.y;
+            const rLimb = Math.hypot(sp.x, sp.y);
+            let distNorm2;
+            if (rLimb > 1e-4) {
+              const nx = sp.x / rLimb;
+              const ny = sp.y / rLimb;
+              const projRad = rx * nx + ry * ny;
+              const projTan = -rx * ny + ry * nx;
+              const aRad = sp.rad * sp.mu;
+              const aTan = sp.rad;
+              distNorm2 = (projRad * projRad) / (aRad * aRad + 1e-6) + (projTan * projTan) / (aTan * aTan + 1e-6);
+            } else {
+              distNorm2 = (rx * rx + ry * ry) / (sp.rad * sp.rad + 1e-6);
+            }
+            if (distNorm2 < 1) {
+              spotFactor = Math.min(spotFactor, sp.contrast);
+            }
+          }
+          blockedWithSpots += Iloc * spotFactor * sampleArea;
+        }
+
+        occultedFlux += blockedWithSpots / F0;
+        spotBumpFlux += (blockedClean - blockedWithSpots) / F0;
+        coveredDisks.push({ x: st.xSky, y: st.ySky, k2: k * k });
+      } else if (st.zSky < 0 && d < 1 + p.k) {
+        // Secondary Eclipse (companion behind host star)
+        inSecondary = true;
+        if (state.isBinary && item.idx === 0) {
+          const k = p.k;
+          let hiddenFrac = 0;
+          for (let j = 0; j < VOGEL_N; j++) {
+            const sx = st.xSky + VOGEL_PTS[j].x * k;
+            const sy = st.ySky + VOGEL_PTS[j].y * k;
+            if (sx * sx + sy * sy < 1) hiddenFrac += 1;
+          }
+          hiddenFrac /= VOGEL_N;
+          secondaryDrop += L2overL1 * hiddenFrac;
+        } else if (st.phys.Teq > 1000 && p.k > 0.06) {
+          // Subtle Hot Jupiter thermal occultation (~180 ppm)
+          let hiddenFrac = 0;
+          for (let j = 0; j < VOGEL_N; j++) {
+            const sx = st.xSky + VOGEL_PTS[j].x * p.k;
+            const sy = st.ySky + VOGEL_PTS[j].y * p.k;
+            if (sx * sx + sy * sy < 1) hiddenFrac += 1;
+          }
+          secondaryDrop += 0.00018 * (hiddenFrac / VOGEL_N);
+        }
+      }
+    }
+
+    const normDenom = 1 + L2overL1;
+    const rawFlux = (1 - spotModDrop - occultedFlux + L2overL1 - secondaryDrop) / normDenom;
+
+    return {
+      fluxClean: rawFlux,
+      rvMs: totalRv,
+      pStates,
+      spots,
+      inTransitCount,
+      inSecondary,
+      spotBumpFlux: spotBumpFlux / normDenom
+    };
+  }
+
+  // =========================================================================
+  // WEB AUDIO SONIFICATION (MUTED BY DEFAULT)
+  // =========================================================================
+  let audioCtx = null;
+  let audioMaster = null;
+  let audioOsc1 = null;
+  let audioOsc2 = null;
+  let audioFilter = null;
+  let audioSpotOsc = null;
+  let audioSpotGain = null;
+
+  function initAudio() {
+    if (audioCtx) return;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    audioCtx = new AC();
+    audioMaster = audioCtx.createGain();
+    audioMaster.gain.value = 0.0;
+
+    audioFilter = audioCtx.createBiquadFilter();
+    audioFilter.type = 'lowpass';
+    audioFilter.frequency.value = 680;
+    audioFilter.Q.value = 1.2;
+
+    audioOsc1 = audioCtx.createOscillator();
+    audioOsc1.type = 'sine';
+    audioOsc1.frequency.value = 196; // G3
+
+    audioOsc2 = audioCtx.createOscillator();
+    audioOsc2.type = 'triangle';
+    audioOsc2.frequency.value = 293.66; // D4
+    const g2 = audioCtx.createGain();
+    g2.gain.value = 0.25;
+
+    audioSpotOsc = audioCtx.createOscillator();
+    audioSpotOsc.type = 'sine';
+    audioSpotOsc.frequency.value = 587.33;
+    audioSpotGain = audioCtx.createGain();
+    audioSpotGain.gain.value = 0.0;
+
+    audioOsc1.connect(audioFilter);
+    audioOsc2.connect(g2);
+    g2.connect(audioFilter);
+    audioFilter.connect(audioMaster);
+    audioSpotOsc.connect(audioSpotGain);
+    audioSpotGain.connect(audioMaster);
+    audioMaster.connect(audioCtx.destination);
+
+    audioOsc1.start();
+    audioOsc2.start();
+    audioSpotOsc.start();
+  }
+
+  function updateAudio(evalRes) {
+    if (!audioCtx || !audioMaster) return;
+    const now = audioCtx.currentTime;
+    if (!state.audioEnabled || state.paused) {
+      audioMaster.gain.setTargetAtTime(0.0, now, 0.08);
+      return;
+    }
+
+    // Scale flux dip gracefully for both Earth-Twin (84 ppm) and Hot Jupiter (1.5%)
+    const p0 = state.planets[0];
+    const refDepth = Math.max(0.00008, getPlanetPhysical(p0).approxDepth || 0.01);
+    const dipNorm = clamp((1.0 - evalRes.fluxClean) / refDepth, 0, 1.4);
+
+    // Subtle Doppler pitch glide from RV
+    const refK = Math.max(1, getPlanetPhysical(p0).K);
+    const rvNorm = clamp(-evalRes.rvMs / refK, -1.2, 1.2); // approaching = slightly brighter/higher
+
+    const baseFreq = 196 * (1 + rvNorm * 0.045) * (1 - dipNorm * 0.14);
+    const vol = 0.095 * (1 - dipNorm * 0.58);
+    const cutoff = 760 * (1 - dipNorm * 0.52);
+
+    audioMaster.gain.setTargetAtTime(clamp(vol, 0.015, 0.11), now, 0.07);
+    audioOsc1.frequency.setTargetAtTime(baseFreq, now, 0.07);
+    audioOsc2.frequency.setTargetAtTime(baseFreq * 1.498, now, 0.07);
+    audioFilter.frequency.setTargetAtTime(clamp(cutoff, 200, 1400), now, 0.07);
+
+    // Soft harmonic shimmer on spot-crossing anomaly
+    const spotTarget = evalRes.spotBumpFlux > 0.00008 ? 0.14 : 0.0;
+    audioSpotGain.gain.setTargetAtTime(spotTarget, now, 0.06);
+  }
+
+  // =========================================================================
+  // CANVAS SETUP & BACKGROUND STARFIELD
+  // =========================================================================
+  const canvas = document.getElementById('sim-canvas');
+  const ctx = canvas.getContext('2d');
+  let dpr = 1, vw = 1280, vh = 720;
+
+  let starfieldCanvas = null;
+  function buildStarfield(w, h) {
+    starfieldCanvas = document.createElement('canvas');
+    starfieldCanvas.width = w;
+    starfieldCanvas.height = h;
+    const sctx = starfieldCanvas.getContext('2d');
+
+    // Deep cosmic gradient
+    const bg = sctx.createRadialGradient(w * 0.45, h * 0.28, 20, w * 0.45, h * 0.35, Math.max(w, h) * 0.85);
+    bg.addColorStop(0, '#0a1226');
+    bg.addColorStop(0.45, '#050915');
+    bg.addColorStop(1, '#03050c');
+    sctx.fillStyle = bg;
+    sctx.fillRect(0, 0, w, h);
+
+    // Subtle galactic dust wisps
+    const neb1 = sctx.createRadialGradient(w * 0.22, h * 0.18, 10, w * 0.22, h * 0.18, w * 0.35);
+    neb1.addColorStop(0, 'rgba(56, 118, 220, 0.065)');
+    neb1.addColorStop(1, 'rgba(0,0,0,0)');
+    sctx.fillStyle = neb1;
+    sctx.fillRect(0, 0, w, h);
+
+    const neb2 = sctx.createRadialGradient(w * 0.72, h * 0.32, 10, w * 0.72, h * 0.32, w * 0.30);
+    neb2.addColorStop(0, 'rgba(167, 110, 255, 0.05)');
+    neb2.addColorStop(1, 'rgba(0,0,0,0)');
+    sctx.fillStyle = neb2;
+    sctx.fillRect(0, 0, w, h);
+
+    // Deterministic seeded stars
+    let seed = 42197;
+    const rand = () => {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      return seed / 4294967296;
+    };
+    const count = Math.min(420, Math.round((w * h) / 3600));
+    const tints = ['#ffffff', '#dbe9ff', '#ffefd6', '#bcd8ff', '#ffd9b3'];
+    for (let i = 0; i < count; i++) {
+      const x = rand() * w;
+      const y = rand() * h;
+      const r = rand() < 0.88 ? 0.55 + rand() * 0.8 : 1.3 + rand() * 0.9;
+      const alpha = 0.18 + rand() * 0.65;
+      sctx.globalAlpha = alpha;
+      sctx.fillStyle = tints[Math.floor(rand() * tints.length)];
+      sctx.beginPath();
+      sctx.arc(x, y, r, 0, TWO_PI);
+      sctx.fill();
+    }
+    sctx.globalAlpha = 1;
+  }
+
+  function resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    vw = window.innerWidth;
+    vh = window.innerHeight;
+    canvas.width = Math.round(vw * dpr);
+    canvas.height = Math.round(vh * dpr);
+    canvas.style.width = vw + 'px';
+    canvas.style.height = vh + 'px';
+    buildStarfield(vw, vh);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  // =========================================================================
+  // SMOOTH C¹ RADIAL PROJECTION FOR 3D ORBIT SCENE
+  // Exact 1:1 across the stellar disk (r <= 1.15 R_*), smoothly compressed outside
+  // so both Hot Jupiters (a/R_* = 8.8) and Earth-Twin (a/R_* = 215) fit beautifully!
+  // =========================================================================
+  function projectSkyToScreen(xSky, ySky, starCx, starCy, starRpx, maxA) {
+    const r = Math.hypot(xSky, ySky);
+    if (r < 1e-6) return { x: starCx, y: starCy };
+    const rBreak = 1.15;
+    let rVis;
+    if (r <= rBreak) {
+      rVis = r;
+    } else {
+      // Choose compression scale L so maxA maps near ~3.65 R_star
+      const targetMax = clamp(2.85 + 0.55 * Math.log10(Math.max(2, maxA)), 3.1, 4.35);
+      const excess = Math.max(1, maxA - rBreak);
+      // Solve rBreak + L * ln(1 + excess/L) ~= targetMax cleanly via fixed-point
+      let L = Math.max(0.35, (targetMax - rBreak) / Math.log(1 + excess / 0.8));
+      L = Math.max(0.28, (targetMax - rBreak) / Math.log(1 + excess / L));
+      rVis = rBreak + L * Math.log(1 + (r - rBreak) / L);
+    }
+    const scale = (rVis / r) * starRpx;
+    return {
+      x: starCx + xSky * scale,
+      y: starCy - ySky * scale
+    };
+  }
+
+  // =========================================================================
+  // RENDERING: HOST STAR, STARSPOTS, PLANETS, ATMOSPHERE HALO
+  // =========================================================================
+  function drawHostStar(cx, cy, Rpx, spots, timeSec) {
+    const s = state.star;
+    const [cr, cg, cb] = s.coreRGB;
+    const [mr, mg, mb] = s.midRGB;
+    const [lr, lg, lb] = s.limbRGB;
+    const [corR, corG, corB] = s.coronaRGB;
+
+    // 1. Volumetric outer corona glow
+    const corona = ctx.createRadialGradient(cx, cy, Rpx * 0.88, cx, cy, Rpx * 2.45);
+    corona.addColorStop(0, `rgba(${corR},${corG},${corB},0.34)`);
+    corona.addColorStop(0.28, `rgba(${corR},${corG},${corB},0.13)`);
+    corona.addColorStop(0.62, `rgba(${corR},${corG},${corB},0.035)`);
+    corona.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = corona;
+    ctx.beginPath();
+    ctx.arc(cx, cy, Rpx * 2.45, 0, TWO_PI);
+    ctx.fill();
+
+    // 2. Limb-darkened photosphere disk
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, Rpx, 0, TWO_PI);
+    ctx.clip();
+
+    const u1 = state.limbDarkening ? s.u1 : 0;
+    const u2 = state.limbDarkening ? s.u2 : 0;
+
+    const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, Rpx);
+    const stops = 12;
+    for (let i = 0; i <= stops; i++) {
+      const rho = i / stops;
+      const mu = Math.sqrt(Math.max(0, 1 - rho * rho));
+      const I = 1 - u1 * (1 - mu) - u2 * (1 - mu) * (1 - mu);
+      // Blend core -> mid -> limb color weighted by limb darkening intensity
+      const tColor = Math.pow(rho, 1.35);
+      let rC, gC, bC;
+      if (tColor < 0.55) {
+        const k = tColor / 0.55;
+        rC = lerp(cr, mr, k);
+        gC = lerp(cg, mg, k);
+        bC = lerp(cb, mb, k);
+      } else {
+        const k = (tColor - 0.55) / 0.45;
+        rC = lerp(mr, lr, k);
+        gC = lerp(mg, lg, k);
+        bC = lerp(mb, lb, k);
+      }
+      const bright = state.limbDarkening ? clamp(0.32 + 0.68 * I, 0.22, 1.0) : 1.0;
+      grad.addColorStop(rho, `rgb(${Math.round(rC * bright)},${Math.round(gC * bright)},${Math.round(bC * bright)})`);
+    }
+    ctx.fillStyle = grad;
+    ctx.fillRect(cx - Rpx, cy - Rpx, Rpx * 2, Rpx * 2);
+
+    // 3. Subtle animated photospheric convection shimmer
+    ctx.globalAlpha = 0.08;
+    for (let i = 0; i < 16; i++) {
+      const ang = i * 2.39996 + timeSec * 0.08;
+      const rad = Rpx * (0.12 + 0.76 * ((i * 0.37) % 1));
+      const gx = cx + Math.cos(ang) * rad;
+      const gy = cy + Math.sin(ang) * rad;
+      const gr = Rpx * (0.09 + 0.06 * Math.sin(timeSec * 0.9 + i));
+      const gCell = ctx.createRadialGradient(gx, gy, 0, gx, gy, gr);
+      gCell.addColorStop(0, '#ffffff');
+      gCell.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = gCell;
+      ctx.beginPath();
+      ctx.arc(gx, gy, gr, 0, TWO_PI);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    // 4. Rotating Starspots (foreshortened umbra + penumbra)
+    for (let i = 0; i < spots.length; i++) {
+      const sp = spots[i];
+      const sx = cx + sp.x * Rpx;
+      const sy = cy - sp.y * Rpx;
+      const rMajor = sp.rad * Rpx;
+      const rMinor = Math.max(1.2, rMajor * sp.mu);
+      const angle = Math.atan2(-sp.y, sp.x); // radial orientation toward limb
+
+      ctx.save();
+      ctx.translate(sx, sy);
+      ctx.rotate(angle);
+
+      // Penumbra
+      const pen = ctx.createRadialGradient(0, 0, rMajor * 0.15, 0, 0, rMajor * 1.15);
+      const alphaSpot = clamp((1 - sp.contrast) * (0.55 + 0.45 * sp.mu), 0.15, 0.85);
+      pen.addColorStop(0, `rgba(28, 12, 6, ${alphaSpot})`);
+      pen.addColorStop(0.55, `rgba(74, 28, 10, ${alphaSpot * 0.72})`);
+      pen.addColorStop(1, 'rgba(120, 46, 12, 0)');
+
+      ctx.scale(rMinor / rMajor, 1);
+      ctx.fillStyle = pen;
+      ctx.beginPath();
+      ctx.arc(0, 0, rMajor * 1.15, 0, TWO_PI);
+      ctx.fill();
+
+      // Dark umbra core
+      ctx.fillStyle = `rgba(18, 8, 5, ${alphaSpot * 0.88})`;
+      ctx.beginPath();
+      ctx.arc(0, 0, rMajor * 0.52, 0, TWO_PI);
+      ctx.fill();
+
+      ctx.restore();
+    }
+
+    // Subtle crisp chromospheric rim highlight
+    ctx.strokeStyle = `rgba(${corR},${corG},${corB},0.28)`;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(cx, cy, Rpx - 0.5, 0, TWO_PI);
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  function drawPlanetOrCompanion(item, starCx, starCy, starRpx, maxA, isForeground) {
+    const p = item.planet;
+    const st = item.st;
+    const pos = projectSkyToScreen(st.xSky, st.ySky, starCx, starCy, starRpx, maxA);
+    const pRpx = Math.max(1.7, p.k * starRpx);
+    const pal = PLANET_PALETTES[item.idx % PLANET_PALETTES.length];
+    const d = Math.hypot(st.xSky, st.ySky);
+    const inTransit = isForeground && d < 1 + p.k;
+
+    if (state.isBinary && item.idx === 0 && state.companionRGB) {
+      // Draw glowing companion K-dwarf star!
+      const c = state.companionRGB;
+      const cor = ctx.createRadialGradient(pos.x, pos.y, pRpx * 0.7, pos.x, pos.y, pRpx * 2.0);
+      cor.addColorStop(0, `rgba(${c.corona[0]},${c.corona[1]},${c.corona[2]},0.36)`);
+      cor.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = cor;
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, pRpx * 2.0, 0, TWO_PI);
+      ctx.fill();
+
+      const g = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, pRpx);
+      g.addColorStop(0, `rgb(${c.core.join(',')})`);
+      g.addColorStop(0.65, `rgb(${c.mid.join(',')})`);
+      g.addColorStop(1, `rgb(${c.limb.join(',')})`);
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, pRpx, 0, TWO_PI);
+      ctx.fill();
+      return pos;
+    }
+
+    // Atmosphere Transmission Ring Glow (lit brightly when transiting or Hot Jupiter)
+    if (state.atmoEnabled && (p.hasAtmo || p.k >= 0.06)) {
+      const atmo = ATMO_STYLES[state.atmoSpecies] || ATMO_STYLES.Na;
+      const boost = inTransit ? 1.0 : 0.35;
+      const ringR = pRpx * (inTransit ? 1.52 : 1.32);
+      ctx.save();
+      ctx.globalAlpha = boost;
+      const halo = ctx.createRadialGradient(pos.x, pos.y, pRpx * 0.86, pos.x, pos.y, ringR);
+      halo.addColorStop(0, atmo.core);
+      halo.addColorStop(0.42, atmo.core.replace('0.85', '0.45'));
+      halo.addColorStop(1, atmo.outer);
+      ctx.fillStyle = halo;
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, ringR, 0, TWO_PI);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // Planet disk: dark silhouette in front of star, illuminated gibbous/crescent off-disk
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, pRpx, 0, TWO_PI);
+    if (inTransit) {
+      ctx.fillStyle = '#04060d';
+      ctx.fill();
+      // Thin atmospheric rim scatter
+      if (state.atmoEnabled) {
+        const atmo = ATMO_STYLES[state.atmoSpecies] || ATMO_STYLES.Na;
+        ctx.strokeStyle = atmo.core;
+        ctx.lineWidth = Math.max(1.2, pRpx * 0.14);
+        ctx.stroke();
+      }
+    } else {
+      // Shaded sphere lit toward the host star
+      const dx = starCx - pos.x;
+      const dy = starCy - pos.y;
+      const dist = Math.hypot(dx, dy) || 1;
+      const lx = pos.x + (dx / dist) * pRpx * 0.45;
+      const ly = pos.y + (dy / dist) * pRpx * 0.45;
+      const pg = ctx.createRadialGradient(lx, ly, pRpx * 0.08, pos.x, pos.y, pRpx * 1.12);
+      pg.addColorStop(0, pal.limb);
+      pg.addColorStop(0.45, pal.color);
+      pg.addColorStop(1, pal.dark);
+      ctx.fillStyle = pg;
+      ctx.fill();
+    }
+    ctx.restore();
+
+    // Telescopic tracking reticle for tiny planets (e.g. Earth-Twin 0.009 R_*) or multi-planet labels
+    if (pRpx < 4.5 || state.planets.length > 1) {
+      const retR = Math.max(pRpx + 6, 11);
+      ctx.save();
+      ctx.strokeStyle = inTransit ? 'rgba(88, 220, 255, 0.85)' : 'rgba(148, 179, 255, 0.45)';
+      ctx.lineWidth = 1;
+      // Corner bracket reticle
+      const gap = 0.55;
+      for (let q = 0; q < 4; q++) {
+        const a0 = q * Math.PI * 0.5 + gap;
+        const a1 = (q + 1) * Math.PI * 0.5 - gap;
+        ctx.beginPath();
+        ctx.arc(pos.x, pos.y, retR, a0, a1);
+        ctx.stroke();
+      }
+      ctx.font = '600 10px ui-monospace, Menlo, Consolas, monospace';
+      ctx.fillStyle = inTransit ? '#e8fbff' : pal.color;
+      const tag = state.planets.length > 1 ? `Planet ${pal.name}` : `${st.phys.rEarth.toFixed(1)} R⊕`;
+      ctx.fillText(tag, pos.x + retR + 4, pos.y + 3);
+      ctx.restore();
+    }
+
+    return pos;
+  }
+
+  function drawOrbitPath(p, idx, starCx, starCy, starRpx, maxA, half) {
+    // half: 'back' (z <= 0) or 'front' (z > 0)
+    const phys = getPlanetPhysical(p);
+    const e = p.ecc;
+    const omegaRad = p.omega * DEG2RAD;
+    const inclRad = p.incl * DEG2RAD;
+    const pal = PLANET_PALETTES[idx % PLANET_PALETTES.length];
+    const N = 128;
+
+    ctx.save();
+    ctx.strokeStyle = half === 'front'
+      ? (idx === state.selectedPlanet ? 'rgba(88, 220, 255, 0.42)' : 'rgba(148, 179, 255, 0.26)')
+      : 'rgba(148, 179, 255, 0.14)';
+    ctx.lineWidth = idx === state.selectedPlanet ? 1.4 : 1.0;
+    if (half === 'back') ctx.setLineDash([4, 4]);
+
+    let drawing = false;
+    ctx.beginPath();
+    for (let i = 0; i <= N; i++) {
+      const nu = (i / N) * TWO_PI;
+      const r = phys.a_Rstar * (1 - e * e) / (1 + e * Math.cos(nu));
+      const u = nu + omegaRad;
+      const xSky = -r * Math.cos(u);
+      const ySky = r * Math.sin(u) * Math.cos(inclRad);
+      const zSky = r * Math.sin(u) * Math.sin(inclRad);
+      const match = half === 'front' ? zSky >= 0 : zSky < 0;
+      if (match) {
+        const pt = projectSkyToScreen(xSky, ySky, starCx, starCy, starRpx, maxA);
+        if (!drawing) { ctx.moveTo(pt.x, pt.y); drawing = true; }
+        else ctx.lineTo(pt.x, pt.y);
+      } else {
+        drawing = false;
+      }
+    }
+    ctx.stroke();
+
+    // Subtle planet color highlight near transit chord
+    if (half === 'front' && idx === state.selectedPlanet) {
+      ctx.strokeStyle = pal.color;
+      ctx.globalAlpha = 0.18;
+      ctx.lineWidth = 3;
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // =========================================================================
+  // RENDERING: TOP-DOWN ORBITAL INSET (BARYCENTRIC WOBBLE)
+  // =========================================================================
+  function drawTopDownInset(x, y, size, evalRes) {
+    ctx.save();
+    roundRect(x, y, size, size, 12);
+    ctx.fillStyle = 'rgba(8, 12, 23, 0.78)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.2)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    const cx = x + size * 0.5;
+    const cy = y + size * 0.54;
+    const maxR = size * 0.36;
+
+    // Header label
+    ctx.font = '700 9.5px system-ui, -apple-system, sans-serif';
+    ctx.fillStyle = '#9aa9cc';
+    ctx.fillText('TOP-DOWN · BARYCENTER', x + 10, y + 15);
+
+    // Find max apastron across all planets
+    let maxAp = 1;
+    for (let i = 0; i < evalRes.pStates.length; i++) {
+      const ps = evalRes.pStates[i];
+      maxAp = Math.max(maxAp, ps.st.phys.a_Rstar * (1 + ps.planet.ecc));
+    }
+
+    // Compute exact barycentric offset of host star (amplified visually when M_p << M_*)
+    let sumMassRatio = 0;
+    let rawStarX = 0, rawStarZ = 0;
+    for (let i = 0; i < evalRes.pStates.length; i++) {
+      const ps = evalRes.pStates[i];
+      const q = (ps.planet.massJup / MSUN_IN_MJUP) / (state.star.mass + ps.planet.massJup / MSUN_IN_MJUP);
+      sumMassRatio += q;
+      rawStarX -= q * ps.st.xTop;
+      rawStarZ -= q * ps.st.zTop;
+    }
+
+    // Visual wobble gain so even an Earth-mass wobble is cleanly legible
+    const targetWobblePx = state.isBinary ? maxR * 0.38 : maxR * 0.24;
+    const naturalWobblePx = (sumMassRatio * evalRes.pStates[0].st.phys.a_Rstar / maxAp) * maxR;
+    const wobbleGain = naturalWobblePx > 0.0001 ? clamp(targetWobblePx / naturalWobblePx, 1, 250000) : 1;
+
+    // Draw planet orbits
+    for (let i = 0; i < evalRes.pStates.length; i++) {
+      const p = evalRes.pStates[i].planet;
+      const phys = evalRes.pStates[i].st.phys;
+      const e = p.ecc;
+      const omegaRad = p.omega * DEG2RAD;
+      const pal = PLANET_PALETTES[i % PLANET_PALETTES.length];
+      ctx.strokeStyle = i === state.selectedPlanet ? 'rgba(88, 220, 255, 0.45)' : 'rgba(148, 179, 255, 0.24)';
+      ctx.lineWidth = 1.1;
+      ctx.beginPath();
+      for (let k = 0; k <= 80; k++) {
+        const nu = (k / 80) * TWO_PI;
+        const r = phys.a_Rstar * (1 - e * e) / (1 + e * Math.cos(nu));
+        const u = nu + omegaRad;
+        const px = cx + (-r * Math.cos(u) / maxAp) * maxR;
+        const pz = cy + (r * Math.sin(u) / maxAp) * maxR;
+        if (k === 0) ctx.moveTo(px, pz);
+        else ctx.lineTo(px, pz);
+      }
+      ctx.closePath();
+      ctx.stroke();
+
+      // Current planet dot
+      const st = evalRes.pStates[i].st;
+      const px = cx + (st.xTop / maxAp) * maxR;
+      const pz = cy + (st.zTop / maxAp) * maxR;
+      ctx.fillStyle = state.isBinary && i === 0 ? '#ff9d47' : pal.color;
+      ctx.beginPath();
+      ctx.arc(px, pz, state.isBinary && i === 0 ? 4.8 : 3.4, 0, TWO_PI);
+      ctx.fill();
+    }
+
+    // Draw star wobble track (dashed amber ring around barycenter)
+    if (evalRes.pStates.length === 1) {
+      const p0 = evalRes.pStates[0].planet;
+      const phys0 = evalRes.pStates[0].st.phys;
+      const q0 = (p0.massJup / MSUN_IN_MJUP) / (state.star.mass + p0.massJup / MSUN_IN_MJUP);
+      const omegaRad = p0.omega * DEG2RAD;
+      ctx.strokeStyle = 'rgba(255, 190, 92, 0.42)';
+      ctx.setLineDash([2.5, 2.5]);
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let k = 0; k <= 64; k++) {
+        const nu = (k / 64) * TWO_PI;
+        const r = phys0.a_Rstar * (1 - p0.ecc * p0.ecc) / (1 + p0.ecc * Math.cos(nu));
+        const u = nu + omegaRad;
+        const sx = cx - (q0 * (-r * Math.cos(u)) / maxAp) * maxR * wobbleGain;
+        const sz = cy - (q0 * (r * Math.sin(u)) / maxAp) * maxR * wobbleGain;
+        if (k === 0) ctx.moveTo(sx, sz);
+        else ctx.lineTo(sx, sz);
+      }
+      ctx.closePath();
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // Barycenter cross (+)
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.55)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(cx - 4, cy); ctx.lineTo(cx + 4, cy);
+    ctx.moveTo(cx, cy - 4); ctx.lineTo(cx, cy + 4);
+    ctx.stroke();
+
+    // Host Star position (wobbling around barycenter)
+    const starX = cx + (rawStarX / maxAp) * maxR * wobbleGain;
+    const starZ = cy + (rawStarZ / maxAp) * maxR * wobbleGain;
+
+    // Connecting tether line to primary planet
+    const p0st = evalRes.pStates[0].st;
+    const p0x = cx + (p0st.xTop / maxAp) * maxR;
+    const p0z = cy + (p0st.zTop / maxAp) * maxR;
+    ctx.strokeStyle = 'rgba(255, 190, 92, 0.22)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(starX, starZ);
+    ctx.lineTo(p0x, p0z);
+    ctx.stroke();
+
+    // Star glow & dot
+    const [cr, cg, cb] = state.star.midRGB;
+    const sg = ctx.createRadialGradient(starX, starZ, 1, starX, starZ, 12);
+    sg.addColorStop(0, '#fff');
+    sg.addColorStop(0.4, `rgb(${cr},${cg},${cb})`);
+    sg.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = sg;
+    ctx.beginPath();
+    ctx.arc(starX, starZ, 12, 0, TWO_PI);
+    ctx.fill();
+
+    // Radial velocity arrow on star (down = approaching/blue, up = receding/red)
+    const refK = Math.max(0.05, evalRes.pStates[0].st.phys.K);
+    const rvNorm = clamp(evalRes.rvMs / refK, -1.2, 1.2);
+    const arrowLen = rvNorm * 16;
+    if (Math.abs(arrowLen) > 2) {
+      const col = rvNorm > 0 ? '#ff6083' : '#58dcff'; // +vr recedes (up, away from Earth below)
+      ctx.strokeStyle = col;
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      ctx.moveTo(starX, starZ);
+      ctx.lineTo(starX, starZ - arrowLen);
+      ctx.stroke();
+    }
+
+    // Observer direction indicator at bottom
+    ctx.font = '600 9px ui-monospace, Menlo, Consolas, monospace';
+    ctx.fillStyle = '#68789c';
+    ctx.textAlign = 'center';
+    ctx.fillText('↓ OBSERVER (EARTH)', cx, y + size - 7);
+
+    // Wobble magnification badge
+    ctx.textAlign = 'right';
+    ctx.fillStyle = 'rgba(255, 190, 92, 0.8)';
+    const gainStr = wobbleGain > 1.5
+      ? (wobbleGain >= 1000 ? `×${(wobbleGain / 1000).toFixed(0)}k` : `×${wobbleGain.toFixed(0)}`)
+      : '1:1';
+    ctx.fillText(`Wobble ${gainStr}`, x + size - 8, y + 27);
+    ctx.textAlign = 'left';
+    ctx.restore();
+  }
+
+  // =========================================================================
+  // RENDERING: LOWER INSTRUMENT PANEL 1 — KEPLER TRANSIT LIGHT CURVE
+  // =========================================================================
+  function drawLightCurvePanel(x, y, w, h) {
+    ctx.save();
+    roundRect(x, y, w, h, 14);
+    ctx.fillStyle = 'rgba(9, 13, 24, 0.82)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.17)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    const padL = 62, padR = 16, padT = 32, padB = 26;
+    const gx = x + padL, gy = y + padT;
+    const gw = Math.max(60, w - padL - padR);
+    const gh = Math.max(40, h - padT - padB);
+
+    // Header
+    ctx.font = '700 11px system-ui, -apple-system, sans-serif';
+    ctx.fillStyle = '#eef3ff';
+    ctx.fillText('KEPLER PHOTOMETRY · RELATIVE FLUX', x + 14, y + 19);
+
+    // Determine Y-axis bounds
+    let minF = 1.0, maxF = 1.0;
+    const p0Phys = getPlanetPhysical(state.planets[0]);
+    const expectedDip = Math.max(0.00008, p0Phys.approxDepth || 0.002);
+    const noiseAmp = (state.noisePpm * 1e-6) * 2.6;
+
+    if (state.autoScaleFlux) {
+      minF = 1.0 - expectedDip * 1.28 - noiseAmp - (state.spotsActivity * 0.00008);
+      maxF = 1.0 + Math.max(expectedDip * 0.24, 0.000025) + noiseAmp;
+      for (let i = 0; i < state.history.length; i++) {
+        const pt = state.history[i];
+        minF = Math.min(minF, pt.fluxClean, pt.fluxNoisy);
+        maxF = Math.max(maxF, pt.fluxClean, pt.fluxNoisy);
+      }
+      const span = Math.max(0.00012, maxF - minF);
+      minF -= span * 0.08;
+      maxF += span * 0.08;
+    } else {
+      minF = state.isBinary ? 0.72 : 0.965;
+      maxF = 1.006;
+    }
+
+    const spanF = Math.max(1e-6, maxF - minF);
+    const fluxToY = f => gy + gh * (1 - (f - minF) / spanF);
+
+    // Magnified badge if tiny dip
+    ctx.textAlign = 'right';
+    ctx.font = '700 9.8px ui-monospace, Menlo, Consolas, monospace';
+    if (spanF < 0.0015) {
+      ctx.fillStyle = '#4af2b2';
+      const mag = Math.round(0.03 / spanF);
+      ctx.fillText(`MAGNIFIED ×${mag} · σ=${state.noisePpm}ppm`, x + w - 14, y + 19);
+    } else {
+      ctx.fillStyle = '#9aa9cc';
+      ctx.fillText(`σ = ${state.noisePpm} ppm`, x + w - 14, y + 19);
+    }
+    ctx.textAlign = 'left';
+
+    // Grid & Y labels
+    const ticks = 4;
+    ctx.font = '600 9.5px ui-monospace, Menlo, Consolas, monospace';
+    for (let i = 0; i <= ticks; i++) {
+      const fVal = minF + (spanF * i) / ticks;
+      const ty = fluxToY(fVal);
+      ctx.strokeStyle = 'rgba(148, 179, 255, 0.09)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(gx, ty);
+      ctx.lineTo(gx + gw, ty);
+      ctx.stroke();
+
+      ctx.fillStyle = '#7e90b8';
+      ctx.textAlign = 'right';
+      const decimals = spanF < 0.001 ? 5 : (spanF < 0.02 ? 4 : 3);
+      ctx.fillText(fVal.toFixed(decimals), gx - 7, ty + 3);
+    }
+    ctx.textAlign = 'left';
+
+    // Baseline F = 1.0 dashed line
+    const yOne = fluxToY(1.0);
+    if (yOne >= gy && yOne <= gy + gh) {
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.22)';
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(gx, yOne);
+      ctx.lineTo(gx + gw, yOne);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // Plot area clip
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(gx, gy, gw, gh);
+    ctx.clip();
+
+    const hist = state.history;
+    const n = hist.length;
+    if (n > 1) {
+      const xOf = idx => gx + (idx / (state.maxHistory - 1)) * gw;
+
+      // Subtle shaded area under F=1.0 for clean curve
+      if (state.showModel) {
+        ctx.beginPath();
+        ctx.moveTo(xOf(0), clamp(yOne, gy, gy + gh));
+        for (let i = 0; i < n; i++) {
+          ctx.lineTo(xOf(i), fluxToY(hist[i].fluxClean));
+        }
+        ctx.lineTo(xOf(n - 1), clamp(yOne, gy, gy + gh));
+        ctx.closePath();
+        const fillGrad = ctx.createLinearGradient(0, gy, 0, gy + gh);
+        fillGrad.addColorStop(0, 'rgba(255, 190, 92, 0.04)');
+        fillGrad.addColorStop(1, 'rgba(255, 190, 92, 0.22)');
+        ctx.fillStyle = fillGrad;
+        ctx.fill();
+      }
+
+      // Noisy photon-shot telescope scatter points
+      if (state.noisePpm > 0) {
+        ctx.fillStyle = 'rgba(130, 218, 255, 0.52)';
+        for (let i = 0; i < n; i++) {
+          const px = xOf(i);
+          const py = fluxToY(hist[i].fluxNoisy);
+          ctx.fillRect(px - 1.2, py - 1.2, 2.4, 2.4);
+        }
+      }
+
+      // Clean theoretical limb-darkened model line
+      if (state.showModel) {
+        ctx.strokeStyle = '#ffbe5c';
+        ctx.lineWidth = 2.0;
+        ctx.beginPath();
+        for (let i = 0; i < n; i++) {
+          const px = xOf(i);
+          const py = fluxToY(hist[i].fluxClean);
+          if (i === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.stroke();
+
+        // Highlight spot-crossing bumps in rose-gold!
+        ctx.strokeStyle = '#ff6083';
+        ctx.lineWidth = 2.4;
+        let inBump = false;
+        ctx.beginPath();
+        for (let i = 0; i < n; i++) {
+          if (hist[i].spotBump > 0.00008) {
+            const px = xOf(i);
+            const py = fluxToY(hist[i].fluxClean);
+            if (!inBump) { ctx.moveTo(px, py); inBump = true; }
+            else ctx.lineTo(px, py);
+          } else {
+            inBump = false;
+          }
+        }
+        ctx.stroke();
+      }
+
+      // Live "NOW" dot & vertical cursor
+      const lastX = xOf(n - 1);
+      const lastY = fluxToY(hist[n - 1].fluxClean);
+      ctx.strokeStyle = 'rgba(255, 190, 92, 0.35)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(lastX, gy);
+      ctx.lineTo(lastX, gy + gh);
+      ctx.stroke();
+
+      ctx.fillStyle = '#fff3d6';
+      ctx.beginPath();
+      ctx.arc(lastX, lastY, 4, 0, TWO_PI);
+      ctx.fill();
+      ctx.strokeStyle = '#ffbe5c';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // Axis border & bottom time label
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.2)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(gx, gy, gw, gh);
+
+    ctx.font = '600 9.5px ui-monospace, Menlo, Consolas, monospace';
+    ctx.fillStyle = '#68789c';
+    ctx.fillText('← PAST OBSERVATIONS', gx + 4, y + h - 8);
+    ctx.textAlign = 'right';
+    const legendTxt = state.spotCrossingActive ? '● SPOT-CROSSING BUMP DETECTED' : 'MODEL (GOLD) · PHOTON DATA (CYAN)';
+    ctx.fillStyle = state.spotCrossingActive ? '#ff6083' : '#7e90b8';
+    ctx.fillText(legendTxt, gx + gw - 2, y + h - 8);
+    ctx.textAlign = 'left';
+    ctx.restore();
+  }
+
+  // =========================================================================
+  // RENDERING: LOWER INSTRUMENT PANEL 2 — RADIAL VELOCITY + FRAUNHOFER SPECTRUM
+  // =========================================================================
+  function drawSpectroscopyPanel(x, y, w, h) {
+    ctx.save();
+    roundRect(x, y, w, h, 14);
+    ctx.fillStyle = 'rgba(9, 13, 24, 0.82)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.17)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    const padL = 58, padR = 16, padT = 32;
+    const specH = clamp(Math.round(h * 0.25), 34, 48);
+    const specGap = 24;
+    const rvH = Math.max(40, h - padT - specH - specGap - 14);
+    const gx = x + padL, gy = y + padT;
+    const gw = Math.max(60, w - padL - padR);
+
+    // Header
+    ctx.font = '700 11px system-ui, -apple-system, sans-serif';
+    ctx.fillStyle = '#eef3ff';
+    ctx.fillText('DOPPLER RADIAL VELOCITY & SPECTRUM', x + 14, y + 19);
+
+    // Determine RV scale
+    let maxK = 0;
+    for (let i = 0; i < state.planets.length; i++) {
+      maxK += getPlanetPhysical(state.planets[i]).K;
+    }
+    maxK = Math.max(0.08, maxK);
+    let maxAbs = maxK * 1.25;
+    for (let i = 0; i < state.history.length; i++) {
+      maxAbs = Math.max(maxAbs, Math.abs(state.history[i].rvMs) * 1.15);
+    }
+
+    // Format unit cleanly
+    let unit = 'm/s', div = 1, dec = 1;
+    if (maxAbs >= 2000) { unit = 'km/s'; div = 1000; dec = 1; }
+    else if (maxAbs < 1.0) { unit = 'cm/s'; div = 0.01; dec = 1; }
+    else if (maxAbs >= 50) { dec = 0; }
+
+    ctx.textAlign = 'right';
+    ctx.font = '700 10px ui-monospace, Menlo, Consolas, monospace';
+    const rvSign = state.currentRvMs >= 0 ? '+' : '';
+    ctx.fillStyle = state.currentRvMs >= 0 ? '#ff6083' : '#58dcff';
+    ctx.fillText(`vᵣ = ${rvSign}${(state.currentRvMs / div).toFixed(dec)} ${unit}`, x + w - 14, y + 19);
+    ctx.textAlign = 'left';
+
+    const rvToY = v => gy + rvH * 0.5 - (v / maxAbs) * (rvH * 0.45);
+    const yZero = gy + rvH * 0.5;
+
+    // Gridlines (+max, 0, -max)
+    const yLabels = [maxAbs * 0.85, 0, -maxAbs * 0.85];
+    ctx.font = '600 9.5px ui-monospace, Menlo, Consolas, monospace';
+    for (let i = 0; i < yLabels.length; i++) {
+      const v = yLabels[i];
+      const ty = rvToY(v);
+      ctx.strokeStyle = v === 0 ? 'rgba(255, 255, 255, 0.22)' : 'rgba(148, 179, 255, 0.09)';
+      ctx.lineWidth = 1;
+      if (v === 0) ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(gx, ty);
+      ctx.lineTo(gx + gw, ty);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.fillStyle = v > 0 ? '#ff8fa8' : (v < 0 ? '#7de5ff' : '#7e90b8');
+      ctx.textAlign = 'right';
+      const sgn = v > 0 ? '+' : '';
+      ctx.fillText(`${sgn}${(v / div).toFixed(dec)}`, gx - 6, ty + 3);
+    }
+    ctx.textAlign = 'left';
+
+    // RV plot clip
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(gx, gy, gw, rvH);
+    ctx.clip();
+
+    const hist = state.history;
+    const n = hist.length;
+    if (n > 1) {
+      const xOf = idx => gx + (idx / (state.maxHistory - 1)) * gw;
+
+      // Redshift (+v_r) & Blueshift (-v_r) gradient curve
+      const rvGrad = ctx.createLinearGradient(0, gy, 0, gy + rvH);
+      rvGrad.addColorStop(0, '#ff5c82');
+      rvGrad.addColorStop(0.49, '#ff9aa8');
+      rvGrad.addColorStop(0.51, '#7de6ff');
+      rvGrad.addColorStop(1, '#40c4ff');
+
+      // Subtle shaded fill toward zero line
+      ctx.beginPath();
+      ctx.moveTo(xOf(0), yZero);
+      for (let i = 0; i < n; i++) ctx.lineTo(xOf(i), rvToY(hist[i].rvMs));
+      ctx.lineTo(xOf(n - 1), yZero);
+      ctx.closePath();
+      const fillG = ctx.createLinearGradient(0, gy, 0, gy + rvH);
+      fillG.addColorStop(0, 'rgba(255, 96, 131, 0.22)');
+      fillG.addColorStop(0.5, 'rgba(255, 255, 255, 0.01)');
+      fillG.addColorStop(1, 'rgba(88, 220, 255, 0.22)');
+      ctx.fillStyle = fillG;
+      ctx.fill();
+
+      // RV line
+      ctx.strokeStyle = rvGrad;
+      ctx.lineWidth = 2.0;
+      ctx.beginPath();
+      for (let i = 0; i < n; i++) {
+        const px = xOf(i);
+        const py = rvToY(hist[i].rvMs);
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+
+      // Current marker
+      const lastX = xOf(n - 1);
+      const lastY = rvToY(hist[n - 1].rvMs);
+      ctx.fillStyle = hist[n - 1].rvMs >= 0 ? '#ff6083' : '#58dcff';
+      ctx.beginPath();
+      ctx.arc(lastX, lastY, 4, 0, TWO_PI);
+      ctx.fill();
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.2)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(gx, gy, gw, rvH);
+
+    // -----------------------------------------------------------------------
+    // FRAUNHOFER ABSORPTION SPECTRUM STRIP (400–700 nm)
+    // -----------------------------------------------------------------------
+    const sx = x + 14;
+    const sw = w - 28;
+    const sy = gy + rvH + specGap;
+
+    // Strip label + exact physical Δλ
+    const deltaLambdaPm = (state.currentRvMs / C_LIGHT) * 589.0 * 1e3; // picometers at Na D (589 nm)
+    ctx.font = '700 9.5px ui-monospace, Menlo, Consolas, monospace';
+    ctx.fillStyle = '#9aa9cc';
+    ctx.fillText('FRAUNHOFER SPECTRUM (400–700 nm)', sx, sy - 6);
+    ctx.textAlign = 'right';
+    const shiftDir = state.currentRvMs > 0.001 ? 'REDSHIFT' : (state.currentRvMs < -0.001 ? 'BLUESHIFT' : 'REST');
+    ctx.fillStyle = state.currentRvMs > 0.001 ? '#ff6083' : (state.currentRvMs < -0.001 ? '#58dcff' : '#9aa9cc');
+    const dlStr = Math.abs(deltaLambdaPm) >= 1
+      ? `${deltaLambdaPm >= 0 ? '+' : ''}${deltaLambdaPm.toFixed(1)} pm`
+      : `${deltaLambdaPm >= 0 ? '+' : ''}${(deltaLambdaPm * 1000).toFixed(1)} fm`;
+    ctx.fillText(`${shiftDir} · Δλ(Na) = ${dlStr}`, sx + sw, sy - 6);
+    ctx.textAlign = 'left';
+
+    // Rainbow continuum
+    ctx.save();
+    roundRect(sx, sy, sw, specH, 6);
+    ctx.clip();
+
+    const specGrad = ctx.createLinearGradient(sx, 0, sx + sw, 0);
+    for (let i = 0; i <= 24; i++) {
+      const t = i / 24;
+      const nm = 395 + t * 310;
+      const [r, g, b] = wavelengthToRGB(nm);
+      specGrad.addColorStop(t, `rgb(${r},${g},${b})`);
+    }
+    ctx.fillStyle = specGrad;
+    ctx.fillRect(sx, sy, sw, specH);
+
+    // Subtle glossy vertical shading across spectral strip
+    const gloss = ctx.createLinearGradient(0, sy, 0, sy + specH);
+    gloss.addColorStop(0, 'rgba(0,0,0,0.34)');
+    gloss.addColorStop(0.25, 'rgba(255,255,255,0.08)');
+    gloss.addColorStop(0.75, 'rgba(0,0,0,0.05)');
+    gloss.addColorStop(1, 'rgba(0,0,0,0.42)');
+    ctx.fillStyle = gloss;
+    ctx.fillRect(sx, sy, sw, specH);
+
+    // Visually amplified Doppler shift so lines clearly glide left (blue) & right (red)
+    const visualShiftPx = clamp(state.currentRvMs / maxK, -1.3, 1.3) * Math.min(18, sw * 0.045);
+
+    for (let i = 0; i < FRAUNHOFER_LINES.length; i++) {
+      const ln = FRAUNHOFER_LINES[i];
+      const t0 = (ln.nm - 395) / 310;
+      const xRef = sx + t0 * sw;
+      const xShift = xRef + visualShiftPx;
+
+      // Rest-frame dashed tick at top edge
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.52)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(xRef, sy);
+      ctx.lineTo(xRef, sy + 6);
+      ctx.stroke();
+
+      // Shifted dark Fraunhofer absorption line
+      const lw = 1.6 + ln.w * 2.1;
+      ctx.fillStyle = `rgba(4, 6, 14, ${0.72 + ln.w * 0.24})`;
+      ctx.fillRect(xShift - lw * 0.5, sy, lw, specH);
+
+      // Subtle atmospheric Na D enhancement during Hot Jupiter transit
+      if (state.atmoEnabled && state.atmoSpecies === 'Na' && state.inTransitCount > 0 && ln.label.startsWith('Na')) {
+        ctx.fillStyle = 'rgba(255, 200, 88, 0.55)';
+        ctx.fillRect(xShift - lw * 0.85, sy + specH - 5, lw * 1.7, 5);
+      }
+    }
+    ctx.restore();
+
+    roundRect(sx, sy, sw, specH, 6);
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.3)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  function roundRect(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  // =========================================================================
+  // MAIN RENDER LOOP
+  // =========================================================================
+  let lastFrameMs = performance.now();
+
+  function renderFrame(nowMs) {
+    requestAnimationFrame(renderFrame);
+    const dtReal = clamp((nowMs - lastFrameMs) / 1000, 0.001, 0.05);
+    lastFrameMs = nowMs;
+
+    // Advance simulation time
+    if (!state.paused) {
+      const primaryP = state.planets[0].period;
+      // Base speed: ~14 seconds per primary orbit at 1x speed
+      let orbitsPerSec = (1 / 14.0) * state.speedMult;
+
+      // Smart Transit Slow-Mo Assist: smoothly slows near transit for long-period worlds
+      // (like Earth-Twin 365 d or Eccentric Giant) so users savor the transit crossing!
+      if (state.slowMoAssist) {
+        const p0 = state.planets[0];
+        const ph = ((state.simTimeDays / p0.period + p0.phaseOffset) % 1 + 1) % 1;
+        const distFromTransit = Math.min(ph, 1 - ph);
+        const phys0 = getPlanetPhysical(p0);
+        const halfDurPhase = Math.max(0.012, (phys0.durHours / 24) / p0.period * 1.6);
+        if (distFromTransit < halfDurPhase) {
+          const factor = clamp(0.18 + 0.82 * (distFromTransit / halfDurPhase), 0.16, 1.0);
+          // Only slow down meaningfully if transit fraction is small
+          if (halfDurPhase < 0.09) {
+            orbitsPerSec *= factor * (halfDurPhase < 0.025 ? 0.35 : 0.7);
+          }
+        }
+      }
+
+      const dtDays = primaryP * orbitsPerSec * dtReal;
+      state.simTimeDays += dtDays;
+
+      // Record rolling history samples
+      state.sampleAccum += dtReal * (state.speedMult >= 2.5 ? 48 : 34);
+      const evalStep = evaluateSystem(state.simTimeDays);
+      if (state.sampleAccum >= 1) {
+        state.sampleAccum = 0;
+        const noise = (state.noisePpm * 1e-6) * gaussRand();
+        state.history.push({
+          t: state.simTimeDays,
+          fluxClean: evalStep.fluxClean,
+          fluxNoisy: evalStep.fluxClean + noise,
+          rvMs: evalStep.rvMs,
+          spotBump: evalStep.spotBumpFlux
+        });
+        if (state.history.length > state.maxHistory) {
+          state.history.shift();
+        }
+        state.currentFluxNoisy = evalStep.fluxClean + noise;
+      }
+    }
+
+    const evalRes = evaluateSystem(state.simTimeDays);
+    state.currentFluxClean = evalRes.fluxClean;
+    state.currentRvMs = evalRes.rvMs;
+    state.inTransitCount = evalRes.inTransitCount;
+    state.inSecondary = evalRes.inSecondary;
+    state.spotCrossingActive = evalRes.spotBumpFlux > 0.00008;
+    state.spotCrossingDelta = evalRes.spotBumpFlux;
+
+    updateAudio(evalRes);
+
+    // Draw background
+    ctx.save();
+    ctx.scale(dpr, dpr);
+    if (starfieldCanvas) ctx.drawImage(starfieldCanvas, 0, 0);
+    else {
+      ctx.fillStyle = '#040711';
+      ctx.fillRect(0, 0, vw, vh);
+    }
+
+    // Compute responsive viewport geometry
+    const rightBound = (!state.cinemaMode && state.drawerOpen && vw > 960) ? (vw - 356) : (vw - 14);
+    const leftBound = 14;
+    const availW = Math.max(320, rightBound - leftBound);
+
+    const bottomDeckMargin = state.cinemaMode ? 18 : 66;
+    const splitY = Math.round(vh * 0.565);
+
+    // Star center & radius
+    const starCx = leftBound + availW * 0.50;
+    const starCy = splitY * 0.525;
+    const baseStarR = clamp(Math.min(splitY * 0.255, availW * 0.125), 48, 108);
+    const starRpx = baseStarR * state.zoom;
+
+    let maxA = 4;
+    for (let i = 0; i < evalRes.pStates.length; i++) {
+      maxA = Math.max(maxA, evalRes.pStates[i].st.phys.a_Rstar * (1 + evalRes.pStates[i].planet.ecc));
+    }
+
+    // 1. Back halves of orbits
+    if (state.showGuides) {
+      for (let i = 0; i < state.planets.length; i++) {
+        drawOrbitPath(state.planets[i], i, starCx, starCy, starRpx, maxA, 'back');
+      }
+    }
+
+    // 2. Planets behind the host star (Z < 0)
+    const backBodies = evalRes.pStates.filter(it => it.st.zSky < 0).sort((a, b) => a.st.zSky - b.st.zSky);
+    for (let i = 0; i < backBodies.length; i++) {
+      drawPlanetOrCompanion(backBodies[i], starCx, starCy, starRpx, maxA, false);
+    }
+
+    // 3. Limb-darkened Host Star + rotating starspots
+    drawHostStar(starCx, starCy, starRpx, evalRes.spots, nowMs * 0.001);
+
+    // 4. Front halves of orbits
+    if (state.showGuides) {
+      for (let i = 0; i < state.planets.length; i++) {
+        drawOrbitPath(state.planets[i], i, starCx, starCy, starRpx, maxA, 'front');
+      }
+    }
+
+    // 5. Planets in front of the host star (Z >= 0)
+    const frontBodies = evalRes.pStates.filter(it => it.st.zSky >= 0).sort((a, b) => a.st.zSky - b.st.zSky);
+    for (let i = 0; i < frontBodies.length; i++) {
+      drawPlanetOrCompanion(frontBodies[i], starCx, starCy, starRpx, maxA, true);
+    }
+
+    // 6. Subtle Transit / Atmosphere / Inclination Overlay Annotations in Observatory View
+    if (state.showGuides) {
+      ctx.font = '600 10px ui-monospace, Menlo, Consolas, monospace';
+      ctx.fillStyle = 'rgba(154, 169, 204, 0.72)';
+      ctx.textAlign = 'center';
+      const p0 = state.planets[0];
+      const atmoNote = (state.atmoEnabled && (p0.hasAtmo || p0.k >= 0.06))
+        ? ` · Atmo: ${ATMO_STYLES[state.atmoSpecies].tag}`
+        : '';
+      ctx.fillText(
+        `Observer Inclination i = ${p0.incl.toFixed(2)}°${p0.incl < 20 ? ' (Face-On)' : (p0.incl > 87 ? ' (Edge-On)' : '')}${atmoNote}`,
+        starCx,
+        splitY - 10
+      );
+      ctx.textAlign = 'left';
+    }
+
+    // 7. Top-Down Orbital Barycenter Inset (upper-right of observatory scene)
+    if (state.showInset && availW > 540) {
+      const insetSize = clamp(Math.round(Math.min(availW * 0.20, splitY * 0.44)), 142, 184);
+      const insetX = rightBound - insetSize;
+      const insetY = 14;
+      drawTopDownInset(insetX, insetY, insetSize, evalRes);
+    }
+
+    // 8. Lower Dual Science Instrument Panels (Photometry + Spectroscopy)
+    const deckY = splitY + 4;
+    const deckH = Math.max(130, vh - deckY - bottomDeckMargin);
+    const gap = 12;
+
+    if (availW >= 640) {
+      const lcW = Math.round((availW - gap) * 0.53);
+      const rvW = availW - gap - lcW;
+      drawLightCurvePanel(leftBound, deckY, lcW, deckH);
+      drawSpectroscopyPanel(leftBound + lcW + gap, deckY, rvW, deckH);
+    } else {
+      const halfH = Math.max(90, Math.floor((deckH - 8) / 2));
+      drawLightCurvePanel(leftBound, deckY, availW, halfH);
+      drawSpectroscopyPanel(leftBound, deckY + halfH + 8, availW, halfH);
+    }
+
+    ctx.restore();
+
+    // Update DOM Telemetry HUD
+    updateTelemetryDOM(evalRes);
+  }
+
+  // =========================================================================
+  // TELEMETRY HUD UPDATES
+  // =========================================================================
+  const elSystemBadge = document.getElementById('system-badge');
+  const elTransitStatus = document.getElementById('transit-status');
+  const elTelDepthPct = document.getElementById('tel-depth-pct');
+  const elTelDepthPpm = document.getElementById('tel-depth-ppm');
+  const elTelDuration = document.getElementById('tel-duration');
+  const elTelImpact = document.getElementById('tel-impact');
+  const elTelRvK = document.getElementById('tel-rv-k');
+  const elTelRvNow = document.getElementById('tel-rv-now');
+  const elTelDensity = document.getElementById('tel-density');
+  const elTelClass = document.getElementById('tel-class');
+  const elTelTeq = document.getElementById('tel-teq');
+  const elTelAAu = document.getElementById('tel-a-au');
+  const elTelFlux = document.getElementById('tel-flux');
+  const elTelStar = document.getElementById('tel-star');
+  const elTelPhase = document.getElementById('tel-phase');
+  const elTelTime = document.getElementById('tel-time');
+  const elTelIncl = document.getElementById('tel-incl');
+
+  let lastHudMs = 0;
+  function updateTelemetryDOM(evalRes) {
+    const now = performance.now();
+    if (now - lastHudMs < 75) return;
+    lastHudMs = now;
+
+    const pIdx = Math.min(state.selectedPlanet, state.planets.length - 1);
+    const p = state.planets[pIdx];
+    const st = evalRes.pStates[pIdx].st;
+    const phys = st.phys;
+
+    // Depth
+    const depthPct = phys.approxDepth * 100;
+    const depthPpm = Math.round(phys.approxDepth * 1e6);
+    if (phys.b >= 1 + p.k) {
+      elTelDepthPct.textContent = '0.00%';
+      elTelDepthPpm.textContent = 'No Transit';
+    } else {
+      elTelDepthPct.textContent = depthPct < 0.05 ? depthPct.toFixed(4) + '%' : depthPct.toFixed(2) + '%';
+      elTelDepthPpm.textContent = depthPpm.toLocaleString() + ' ppm';
+    }
+
+    // Duration & Impact Parameter
+    elTelDuration.textContent = phys.durHours > 0 ? phys.durHours.toFixed(2) + ' hr' : '—';
+    elTelImpact.textContent = `b = ${phys.b.toFixed(2)}`;
+
+    // RV Semi-Amplitude K & Live v_r
+    const fmtVel = v => {
+      const av = Math.abs(v);
+      if (av >= 2000) return (v / 1000).toFixed(1) + ' km/s';
+      if (av < 1.0) return (v * 100).toFixed(1) + ' cm/s';
+      return v.toFixed(av >= 100 ? 0 : 1) + ' m/s';
+    };
+    elTelRvK.textContent = fmtVel(phys.K);
+    const sgn = evalRes.rvMs >= 0 ? '+' : '';
+    elTelRvNow.textContent = `vᵣ = ${sgn}${fmtVel(evalRes.rvMs)}`;
+
+    // Density & Planet Class
+    elTelDensity.textContent = state.isBinary ? '1.85 g/cm³' : `${phys.density < 10 ? phys.density.toFixed(2) : phys.density.toFixed(1)} g/cm³`;
+    elTelClass.textContent = phys.pClass;
+
+    // Equilibrium Temp & Semi-major axis
+    elTelTeq.textContent = `${Math.round(phys.Teq).toLocaleString()} K`;
+    elTelTeq.className = 'tele-val ' + (phys.Teq >= 245 && phys.Teq <= 315 ? 'mint' : (phys.Teq > 1000 ? 'amber' : 'cyan'));
+    elTelAAu.textContent = `a = ${phys.a_AU < 0.1 ? phys.a_AU.toFixed(3) : phys.a_AU.toFixed(2)} AU`;
+
+    // Live Relative Flux
+    const fDec = phys.approxDepth < 0.001 ? 6 : 5;
+    elTelFlux.textContent = evalRes.fluxClean.toFixed(fDec);
+    elTelStar.textContent = `${state.star.name} · ${state.star.teff} K`;
+
+    // Clock row
+    elTelPhase.textContent = st.phase.toFixed(3);
+    elTelTime.textContent = state.simTimeDays < 100
+      ? state.simTimeDays.toFixed(2) + ' d'
+      : state.simTimeDays.toFixed(1) + ' d';
+    elTelIncl.textContent = p.incl.toFixed(2) + '°';
+
+    // Status Pill
+    if (evalRes.inTransitCount >= 2) {
+      elTransitStatus.textContent = 'Double Transit!';
+      elTransitStatus.className = 'status-pill multi';
+    } else if (state.spotCrossingActive) {
+      elTransitStatus.textContent = 'Spot Crossing!';
+      elTransitStatus.className = 'status-pill spot';
+    } else if (evalRes.inTransitCount === 1) {
+      const grazing = phys.b > 1 - p.k && phys.b < 1 + p.k;
+      elTransitStatus.textContent = state.isBinary ? 'Primary Eclipse' : (grazing ? 'Grazing Transit' : 'In Transit');
+      elTransitStatus.className = 'status-pill transit';
+    } else if (evalRes.inSecondary) {
+      elTransitStatus.textContent = state.isBinary ? 'Secondary Eclipse' : 'Occultation';
+      elTransitStatus.className = 'status-pill secondary';
+    } else if (phys.b >= 1 + p.k && state.planets.length === 1) {
+      elTransitStatus.textContent = 'No Transit (b>1)';
+      elTransitStatus.className = 'status-pill muted';
+    } else {
+      elTransitStatus.textContent = 'Out of Transit';
+      elTransitStatus.className = 'status-pill';
+    }
+  }
+
+  // =========================================================================
+  // SLIDER MAPPINGS (NON-LINEAR PRECISION FOR ASTRONOMICAL DYNAMIC RANGE)
+  // =========================================================================
+  // Radius ratio k: [0.006 .. 0.55] log-scaled
+  function sliderToK(v) { return 0.006 * Math.pow(0.55 / 0.006, v / 1000); }
+  function kToSlider(k) { return Math.round(1000 * Math.log(clamp(k, 0.006, 0.55) / 0.006) / Math.log(0.55 / 0.006)); }
+
+  // Mass (M_Jup): [0.0008 (~0.25 M_Earth) .. 15 M_Jup] (or up to 1000 M_Jup in binary mode)
+  function sliderToMass(v) {
+    const lo = state.isBinary ? 10 : 0.0008;
+    const hi = state.isBinary ? 1000 : 15;
+    return lo * Math.pow(hi / lo, v / 1000);
+  }
+  function massToSlider(m) {
+    const lo = state.isBinary ? 10 : 0.0008;
+    const hi = state.isBinary ? 1000 : 15;
+    return Math.round(1000 * Math.log(clamp(m, lo, hi) / lo) / Math.log(hi / lo));
+  }
+
+  // Period (days): [0.8 .. 400] log-scaled
+  function sliderToPeriod(v) { return 0.8 * Math.pow(400 / 0.8, v / 1000); }
+  function periodToSlider(P) { return Math.round(1000 * Math.log(clamp(P, 0.8, 400) / 0.8) / Math.log(400 / 0.8)); }
+
+  // Inclination (deg): 0..500 -> 0°..80°, 500..1000 -> 80°..90° (0.02° precision near edge-on!)
+  function sliderToIncl(v) {
+    if (v <= 500) return (v / 500) * 80;
+    return 80 + ((v - 500) / 500) * 10;
+  }
+  function inclToSlider(deg) {
+    deg = clamp(deg, 0, 90);
+    if (deg <= 80) return Math.round((deg / 80) * 500);
+    return Math.round(500 + ((deg - 80) / 10) * 500);
+  }
+
+  // Noise (ppm): 0 -> 0, 1..1000 -> 5..2500 ppm log-scaled
+  function sliderToNoise(v) {
+    if (v <= 0) return 0;
+    return Math.round(5 * Math.pow(2500 / 5, v / 1000));
+  }
+  function noiseToSlider(ppm) {
+    if (ppm <= 0) return 0;
+    return Math.round(1000 * Math.log(clamp(ppm, 5, 2500) / 5) / Math.log(2500 / 5));
+  }
+
+  // =========================================================================
+  // PRESET LOADING, PRE-POPULATING CURVES & UI SYNC
+  // =========================================================================
+  const elSlRadius = document.getElementById('sl-radius');
+  const elSlMass = document.getElementById('sl-mass');
+  const elSlPeriod = document.getElementById('sl-period');
+  const elSlIncl = document.getElementById('sl-incl');
+  const elSlEcc = document.getElementById('sl-ecc');
+  const elSlOmega = document.getElementById('sl-omega');
+  const elSlSpots = document.getElementById('sl-spots');
+  const elSlNoise = document.getElementById('sl-noise');
+
+  const elValRadius = document.getElementById('val-radius');
+  const elValMass = document.getElementById('val-mass');
+  const elValPeriod = document.getElementById('val-period');
+  const elValIncl = document.getElementById('val-incl');
+  const elValEcc = document.getElementById('val-ecc');
+  const elValOmega = document.getElementById('val-omega');
+  const elValSpots = document.getElementById('val-spots');
+  const elValNoise = document.getElementById('val-noise');
+  const elValLdCoeff = document.getElementById('val-ld-coeff');
+  const elLblMass = document.getElementById('lbl-mass');
+  const elEditingTitle = document.getElementById('editing-body-title');
+  const elEditingType = document.getElementById('editing-body-type');
+  const elSystemSummary = document.getElementById('system-summary');
+  const elPlanetCountLabel = document.getElementById('planet-count-label');
+  const elPlanetSelector = document.getElementById('planet-selector');
+
+  const elChkLimb = document.getElementById('chk-limb');
+  const elChkModel = document.getElementById('chk-model');
+  const elChkAutoScale = document.getElementById('chk-autoscale');
+  const elChkAtmo = document.getElementById('chk-atmo');
+  const elChkSlowMo = document.getElementById('chk-slowmo');
+  const elChkInset = document.getElementById('chk-inset');
+  const elChkGuides = document.getElementById('chk-guides');
+
+  function seedHistoryBuffer() {
+    state.history = [];
+    const primaryP = state.planets[0].period;
+    const spanDays = primaryP * 1.15;
+    const startT = state.simTimeDays - spanDays;
+    const steps = 260;
+    for (let i = 0; i <= steps; i++) {
+      const t = startT + (spanDays * i) / steps;
+      const ev = evaluateSystem(t);
+      const noise = (state.noisePpm * 1e-6) * gaussRand();
+      state.history.push({
+        t,
+        fluxClean: ev.fluxClean,
+        fluxNoisy: ev.fluxClean + noise,
+        rvMs: ev.rvMs,
+        spotBump: ev.spotBumpFlux
+      });
+    }
+  }
+
+  function rebuildPlanetSelector() {
+    elPlanetSelector.innerHTML = '';
+    for (let i = 0; i < state.planets.length; i++) {
+      const pal = PLANET_PALETTES[i % PLANET_PALETTES.length];
+      const btn = document.createElement('button');
+      btn.className = 'planet-chip' + (i === state.selectedPlanet ? ' active' : '');
+      const label = state.isBinary && i === 0 ? 'Star B' : `Planet ${pal.name}`;
+      const dotColor = state.isBinary && i === 0 ? '#ff9d47' : pal.color;
+      btn.innerHTML = `<span class="chip-dot" style="background:${dotColor}"></span><span>${label}</span>`;
+      btn.addEventListener('click', () => {
+        state.selectedPlanet = i;
+        rebuildPlanetSelector();
+        syncSlidersFromState();
+      });
+      elPlanetSelector.appendChild(btn);
+    }
+
+    const n = state.planets.length;
+    elPlanetCountLabel.textContent = state.isBinary ? 'Binary Pair' : (n === 1 ? '1 Planet' : `${n} Planets`);
+    document.querySelectorAll('#planet-count-seg .seg-btn').forEach(b => {
+      b.classList.toggle('active', Number(b.dataset.count) === n);
+    });
+  }
+
+  function syncSlidersFromState() {
+    const p = state.planets[Math.min(state.selectedPlanet, state.planets.length - 1)];
+    const phys = getPlanetPhysical(p);
+    const pal = PLANET_PALETTES[state.selectedPlanet % PLANET_PALETTES.length];
+
+    elEditingTitle.textContent = state.isBinary && state.selectedPlanet === 0
+      ? 'Companion Star B'
+      : `Planet ${pal.name} Parameters`;
+    elEditingType.textContent = phys.pClass;
+    elLblMass.textContent = state.isBinary && state.selectedPlanet === 0 ? 'Companion Mass' : 'Planet Mass';
+
+    elSlRadius.value = kToSlider(p.k);
+    elSlMass.value = massToSlider(p.massJup);
+    elSlPeriod.value = periodToSlider(p.period);
+    elSlIncl.value = inclToSlider(p.incl);
+    elSlEcc.value = Math.round(p.ecc * 100);
+    elSlOmega.value = Math.round(p.omega);
+    elSlSpots.value = state.spotsActivity;
+    elSlNoise.value = noiseToSlider(state.noisePpm);
+
+    const rDisp = phys.rEarth < 5.5 ? `${phys.rEarth.toFixed(2)} R⊕` : `${phys.rJup.toFixed(2)} Rⱼ`;
+    elValRadius.textContent = `${p.k.toFixed(p.k < 0.02 ? 4 : 3)} (${rDisp})`;
+
+    if (state.isBinary && state.selectedPlanet === 0) {
+      elValMass.textContent = `${(p.massJup / MSUN_IN_MJUP).toFixed(2)} M☉`;
+    } else if (p.massJup < 0.08) {
+      elValMass.textContent = `${phys.mEarth.toFixed(phys.mEarth < 10 ? 2 : 1)} M⊕`;
+    } else {
+      elValMass.textContent = `${p.massJup.toFixed(2)} Mⱼ`;
+    }
+
+    elValPeriod.textContent = p.period < 10 ? `${p.period.toFixed(2)} d` : `${p.period.toFixed(1)} d`;
+    elValIncl.textContent = `${p.incl.toFixed(2)}°`;
+    elValEcc.textContent = p.ecc.toFixed(2);
+    elValOmega.textContent = `${Math.round(p.omega)}°`;
+    elValSpots.textContent = `${state.spotsActivity}%`;
+    elValNoise.textContent = state.noisePpm === 0 ? '0 ppm (Ideal)' : `${state.noisePpm} ppm`;
+    elValLdCoeff.textContent = state.limbDarkening
+      ? `u₁=${state.star.u1.toFixed(2)} u₂=${state.star.u2.toFixed(2)}`
+      : 'Uniform Disk';
+
+    elChkLimb.checked = state.limbDarkening;
+    elChkModel.checked = state.showModel;
+    elChkAutoScale.checked = state.autoScaleFlux;
+    elChkAtmo.checked = state.atmoEnabled;
+    elChkSlowMo.checked = state.slowMoAssist;
+    elChkInset.checked = state.showInset;
+    elChkGuides.checked = state.showGuides;
+
+    document.querySelectorAll('#atmo-species-seg .seg-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.species === state.atmoSpecies);
+    });
+  }
+
+  function loadPreset(id) {
+    const pr = PRESETS[id];
+    if (!pr) return;
+    state.presetId = id;
+    state.star = { ...pr.star };
+    state.isBinary = !!pr.isBinary;
+    state.companionFluxRatio = pr.companionFluxRatio || 0.46;
+    state.companionRGB = pr.companionRGB || null;
+    state.planets = pr.planets.map(p => ({ ...p }));
+    state.selectedPlanet = 0;
+    state.spotsActivity = pr.spotsActivity;
+    state.noisePpm = pr.noisePpm;
+    state.atmoEnabled = pr.atmoEnabled;
+    state.atmoSpecies = pr.atmoSpecies;
+    state.zoom = 1.0;
+
+    // Start just before transit ingress so user immediately witnesses a transit!
+    const p0 = state.planets[0];
+    const phys0 = getPlanetPhysical(p0);
+    const leadDays = Math.max(p0.period * 0.055, (phys0.durHours / 24) * 0.85);
+    state.simTimeDays = p0.period - leadDays;
+
+    elSystemBadge.textContent = pr.badge;
+    elSystemBadge.className = 'mode-badge' + (pr.badgeClass ? ' ' + pr.badgeClass : '');
+    elSystemSummary.textContent = pr.summary;
+
+    document.querySelectorAll('.preset-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.preset === id);
+    });
+
+    rebuildPlanetSelector();
+    syncSlidersFromState();
+    seedHistoryBuffer();
+  }
+
+  function setPlanetCount(count) {
+    if (state.isBinary) {
+      // Switch out of binary mode into a standard G-star planetary system if adding planets
+      state.isBinary = false;
+      state.planets[0].k = 0.105;
+      state.planets[0].massJup = 0.8;
+      elSystemBadge.textContent = `${count}-Planet System`;
+      elSystemBadge.className = 'mode-badge violet';
+    }
+    const baseP = state.planets[0].period;
+    while (state.planets.length < count) {
+      const idx = state.planets.length;
+      const mult = idx === 1 ? 1.618 : 2.52;
+      state.planets.push({
+        k: idx === 1 ? 0.075 : 0.092,
+        massJup: idx === 1 ? 0.12 : 0.45,
+        period: clamp(baseP * mult, 1.2, 350),
+        incl: clamp(state.planets[0].incl + 0.35 * idx, 85, 89.8),
+        ecc: 0.02,
+        omega: 90,
+        phaseOffset: idx === 1 ? 0.03 : -0.04,
+        hasAtmo: idx === 2
+      });
+    }
+    if (state.planets.length > count) {
+      state.planets.length = count;
+    }
+    state.selectedPlanet = Math.min(state.selectedPlanet, state.planets.length - 1);
+    rebuildPlanetSelector();
+    syncSlidersFromState();
+    seedHistoryBuffer();
+  }
+
+  function jumpToTransit() {
+    const p = state.planets[Math.min(state.selectedPlanet, state.planets.length - 1)];
+    const phys = getPlanetPhysical(p);
+    const leadDays = Math.max(p.period * 0.035, (phys.durHours / 24) * 0.72);
+    const curOrbit = Math.floor(state.simTimeDays / p.period + p.phaseOffset) + 1;
+    state.simTimeDays = (curOrbit - p.phaseOffset) * p.period - leadDays;
+    seedHistoryBuffer();
+  }
+
+  // =========================================================================
+  // EVENT LISTENERS
+  // =========================================================================
+  // Drawer tabs
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+    });
+  });
+
+  // Preset buttons
+  document.querySelectorAll('.preset-btn').forEach(btn => {
+    btn.addEventListener('click', () => loadPreset(btn.dataset.preset));
+  });
+
+  // Multi-planet count
+  document.querySelectorAll('#planet-count-seg .seg-btn').forEach(btn => {
+    btn.addEventListener('click', () => setPlanetCount(Number(btn.dataset.count)));
+  });
+
+  // Speed selector
+  document.querySelectorAll('#speed-seg .seg-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.speedMult = Number(btn.dataset.speed);
+      document.querySelectorAll('#speed-seg .seg-btn').forEach(b => b.classList.toggle('active', b === btn));
+    });
+  });
+
+  // Atmosphere species
+  document.querySelectorAll('#atmo-species-seg .seg-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.atmoSpecies = btn.dataset.species;
+      document.querySelectorAll('#atmo-species-seg .seg-btn').forEach(b => b.classList.toggle('active', b === btn));
+    });
+  });
+
+  // Parameter sliders
+  elSlRadius.addEventListener('input', () => {
+    state.planets[state.selectedPlanet].k = sliderToK(Number(elSlRadius.value));
+    syncSlidersFromState();
+  });
+  elSlMass.addEventListener('input', () => {
+    state.planets[state.selectedPlanet].massJup = sliderToMass(Number(elSlMass.value));
+    syncSlidersFromState();
+  });
+  elSlPeriod.addEventListener('input', () => {
+    state.planets[state.selectedPlanet].period = sliderToPeriod(Number(elSlPeriod.value));
+    syncSlidersFromState();
+  });
+  elSlIncl.addEventListener('input', () => {
+    state.planets[state.selectedPlanet].incl = sliderToIncl(Number(elSlIncl.value));
+    syncSlidersFromState();
+  });
+  elSlEcc.addEventListener('input', () => {
+    state.planets[state.selectedPlanet].ecc = Number(elSlEcc.value) / 100;
+    syncSlidersFromState();
+  });
+  elSlOmega.addEventListener('input', () => {
+    state.planets[state.selectedPlanet].omega = Number(elSlOmega.value);
+    syncSlidersFromState();
+  });
+  elSlSpots.addEventListener('input', () => {
+    state.spotsActivity = Number(elSlSpots.value);
+    syncSlidersFromState();
+  });
+  elSlNoise.addEventListener('input', () => {
+    state.noisePpm = sliderToNoise(Number(elSlNoise.value));
+    syncSlidersFromState();
+  });
+
+  // Checkboxes
+  elChkLimb.addEventListener('change', () => { state.limbDarkening = elChkLimb.checked; syncSlidersFromState(); });
+  elChkModel.addEventListener('change', () => { state.showModel = elChkModel.checked; });
+  elChkAutoScale.addEventListener('change', () => { state.autoScaleFlux = elChkAutoScale.checked; });
+  elChkAtmo.addEventListener('change', () => { state.atmoEnabled = elChkAtmo.checked; });
+  elChkSlowMo.addEventListener('change', () => { state.slowMoAssist = elChkSlowMo.checked; });
+  elChkInset.addEventListener('change', () => { state.showInset = elChkInset.checked; });
+  elChkGuides.addEventListener('change', () => { state.showGuides = elChkGuides.checked; });
+
+  // Quick actions
+  document.getElementById('btn-jump-transit').addEventListener('click', jumpToTransit);
+  document.getElementById('btn-clear-data').addEventListener('click', () => { state.history = []; });
+
+  // Bottom Transport Bar
+  const btnPlay = document.getElementById('btn-play');
+  const btnReset = document.getElementById('btn-reset');
+  const btnTransitBar = document.getElementById('btn-transit-bar');
+  const btnAudio = document.getElementById('btn-audio');
+  const btnDrawer = document.getElementById('btn-drawer');
+  const btnCinema = document.getElementById('btn-cinema');
+  const btnZenRestore = document.getElementById('btn-zen-restore');
+  const elDrawer = document.getElementById('control-drawer');
+
+  function togglePlay() {
+    state.paused = !state.paused;
+    btnPlay.textContent = state.paused ? 'Play' : 'Pause';
+    btnPlay.classList.toggle('active', !state.paused);
+  }
+  function toggleAudio() {
+    initAudio();
+    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+    state.audioEnabled = !state.audioEnabled;
+    btnAudio.textContent = state.audioEnabled ? 'Audio: On' : 'Audio: Off';
+    btnAudio.classList.toggle('amber-active', state.audioEnabled);
+  }
+  function toggleDrawer() {
+    state.drawerOpen = !state.drawerOpen;
+    elDrawer.classList.toggle('collapsed', !state.drawerOpen);
+    btnDrawer.classList.toggle('active', state.drawerOpen);
+  }
+  function toggleCinema() {
+    state.cinemaMode = !state.cinemaMode;
+    document.body.classList.toggle('zen-mode', state.cinemaMode);
+    btnCinema.classList.toggle('active', state.cinemaMode);
+  }
+
+  btnPlay.addEventListener('click', togglePlay);
+  btnReset.addEventListener('click', () => loadPreset(state.presetId));
+  btnTransitBar.addEventListener('click', jumpToTransit);
+  btnAudio.addEventListener('click', toggleAudio);
+  btnDrawer.addEventListener('click', toggleDrawer);
+  btnCinema.addEventListener('click', toggleCinema);
+  btnZenRestore.addEventListener('click', toggleCinema);
+
+  // Canvas Direct Manipulation: Drag vertically to tilt inclination i, Wheel to zoom
+  canvas.addEventListener('pointerdown', e => {
+    if (e.clientY > vh * 0.58) return;
+    state.isDraggingIncl = true;
+    state.dragStartY = e.clientY;
+    state.dragStartIncl = state.planets[state.selectedPlanet].incl;
+    canvas.classList.add('dragging');
+    canvas.setPointerCapture(e.pointerId);
+  });
+  canvas.addEventListener('pointermove', e => {
+    if (!state.isDraggingIncl) return;
+    const dy = e.clientY - state.dragStartY;
+    // Fine control near 85..90°, wider swing when dragging further
+    const sensitivity = state.dragStartIncl > 82 && Math.abs(dy) < 90 ? 0.08 : 0.28;
+    const nextIncl = clamp(state.dragStartIncl - dy * sensitivity, 0, 90);
+    state.planets[state.selectedPlanet].incl = nextIncl;
+    syncSlidersFromState();
+  });
+  canvas.addEventListener('pointerup', e => {
+    if (!state.isDraggingIncl) return;
+    state.isDraggingIncl = false;
+    canvas.classList.remove('dragging');
+    try { canvas.releasePointerCapture(e.pointerId); } catch (_) {}
+  });
+  canvas.addEventListener('wheel', e => {
+    e.preventDefault();
+    const factor = e.deltaY > 0 ? 0.92 : 1.08;
+    state.zoom = clamp(state.zoom * factor, 0.6, 2.2);
+  }, { passive: false });
+  canvas.addEventListener('dblclick', () => { state.zoom = 1.0; });
+
+  // Keyboard shortcuts
+  window.addEventListener('keydown', e => {
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+    const key = e.key.toLowerCase();
+    if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
+    else if (key === 'r') loadPreset(state.presetId);
+    else if (key === 't') jumpToTransit();
+    else if (key === 'm') toggleAudio();
+    else if (key === 'c') toggleDrawer();
+    else if (key === 'h') toggleCinema();
+  });
+
+  // Boot Observatory
+  loadPreset('hotJupiter');
+  requestAnimationFrame(renderFrame);
+})();
+</script>
+</body>
+</html>

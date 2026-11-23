@@ -102,6 +102,10 @@ Built by Muse at Steven Powell's direction, to the Electronics Wave standard —
 
 Both benches are bannered on the workshop home above the Back Doors shelf, their lessons are shelved there (the shelf now holds seventy-five), and The Radio Room's Antenna Bench lesson joins them on the same shelf. The service worker cache advances to `nerd-heaven-v19`.
 
+## The Astronomy Wave joins the shelf (23 November 2026)
+
+Eight more back-door lessons are shelved on the workshop home — the audits of the Antigravity astronomy wave in Tonight's Sky: Solar Orrery, Stellar Evolution, Exoplanet Transit, Cosmology Expansion, Eclipse & Tides, Gravitational Lensing, Pulsar Lighthouse, and Protoplanetary Disk. The shelf now holds eighty-three. The service worker cache advances to `nerd-heaven-v20`.
+
 ## Reuse and credit
 
 Use it, teach from it and improve it. Original educational material is **CC BY 4.0**; application code is **MIT**. Please credit **Steven Powell**, retain the applicable notices, and identify changes to the educational material. See [LICENSE-CONTENT.md](LICENSE-CONTENT.md) and [LICENSE](LICENSE). Third-party material keeps its publisher's terms.

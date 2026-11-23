@@ -1,0 +1,3835 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Orrery — 3D Solar System, Retrograde Loops &amp; Ephemeris Lab</title>
+<style>
+  :root {
+    --bg-deep: #040711;
+    --panel-bg: rgba(9, 13, 24, 0.78);
+    --panel-bg-strong: rgba(8, 12, 22, 0.92);
+    --panel-border: rgba(148, 179, 255, 0.16);
+    --panel-border-hi: rgba(148, 179, 255, 0.36);
+    --text-main: #eef3ff;
+    --text-dim: #9aa9cc;
+    --text-muted: #68789c;
+    --accent-amber: #ffbe5c;
+    --accent-cyan: #58dcff;
+    --accent-mint: #4af2b2;
+    --accent-rose: #ff6083;
+    --accent-violet: #a78bfa;
+    --radius-lg: 14px;
+    --radius-md: 10px;
+    --radius-sm: 7px;
+    --mono: ui-monospace, "Cascadia Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Inter, Helvetica, Arial, sans-serif;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg-deep);
+    color: var(--text-main);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    touch-action: none;
+  }
+
+  #sim-canvas {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    cursor: grab;
+  }
+  #sim-canvas.dragging {
+    cursor: grabbing;
+  }
+  #sim-canvas.hovering {
+    cursor: pointer;
+  }
+
+  /* HUD Layer */
+  .hud {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 10;
+  }
+  body.zen-mode .hud > :not(.zen-restore) {
+    opacity: 0;
+    pointer-events: none !important;
+  }
+
+  .panel {
+    pointer-events: auto;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-lg);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    transition: opacity 0.25s ease, transform 0.25s ease;
+  }
+
+  /* Top-Left Brand + Telemetry */
+  .top-left {
+    position: fixed;
+    top: 14px;
+    left: 14px;
+    width: min(418px, calc(100vw - 360px));
+    min-width: 290px;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .brand-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .brand-title-wrap {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .brand-title {
+    font-size: 16px;
+    font-weight: 800;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    background: linear-gradient(120deg, #fff5dc 0%, #ffbe5c 45%, #6ee7ff 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .mode-badge {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 190, 92, 0.4);
+    background: rgba(255, 190, 92, 0.12);
+    color: var(--accent-amber);
+  }
+  .mode-badge.cyan {
+    border-color: rgba(88, 220, 255, 0.4);
+    background: rgba(88, 220, 255, 0.12);
+    color: var(--accent-cyan);
+  }
+  .mode-badge.violet {
+    border-color: rgba(167, 139, 250, 0.45);
+    background: rgba(167, 139, 250, 0.14);
+    color: var(--accent-violet);
+  }
+
+  .status-pill {
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: rgba(74, 242, 178, 0.14);
+    color: var(--accent-mint);
+    border: 1px solid rgba(74, 242, 178, 0.35);
+    white-space: nowrap;
+  }
+  .status-pill.amber {
+    background: rgba(255, 190, 92, 0.16);
+    color: var(--accent-amber);
+    border-color: rgba(255, 190, 92, 0.4);
+  }
+  .status-pill.rose {
+    background: rgba(255, 96, 131, 0.18);
+    color: var(--accent-rose);
+    border-color: rgba(255, 96, 131, 0.45);
+  }
+  .status-pill.cyan {
+    background: rgba(88, 220, 255, 0.16);
+    color: var(--accent-cyan);
+    border-color: rgba(88, 220, 255, 0.42);
+  }
+
+  .telemetry-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+  }
+
+  .tele-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(148, 179, 255, 0.1);
+    border-radius: var(--radius-sm);
+    padding: 6px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .tele-label {
+    font-size: 9.5px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .tele-val {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--text-main);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .tele-val.amber { color: var(--accent-amber); }
+  .tele-val.cyan { color: var(--accent-cyan); }
+  .tele-val.mint { color: var(--accent-mint); }
+  .tele-val.rose { color: var(--accent-rose); }
+  .tele-val.violet { color: var(--accent-violet); }
+
+  .clock-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding-top: 6px;
+    border-top: 1px solid rgba(148, 179, 255, 0.11);
+    font-size: 11px;
+    color: var(--text-dim);
+    font-family: var(--mono);
+  }
+  .clock-row strong {
+    color: var(--text-main);
+    font-weight: 700;
+  }
+  .clock-date {
+    font-size: 12px;
+    color: #fff;
+    letter-spacing: 0.04em;
+  }
+
+  /* Retrograde Sky-Loop Inset Card */
+  .sky-inset {
+    position: fixed;
+    left: 14px;
+    top: 222px;
+    width: 248px;
+    padding: 9px 10px 10px;
+    display: none;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .sky-inset.visible {
+    display: flex;
+  }
+  .sky-inset-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-dim);
+  }
+  #sky-loop-canvas {
+    width: 100%;
+    height: 112px;
+    border-radius: var(--radius-sm);
+    background: rgba(3, 6, 15, 0.85);
+    border: 1px solid rgba(148, 179, 255, 0.14);
+    display: block;
+  }
+  .sky-inset-meta {
+    display: flex;
+    justify-content: space-between;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+
+  /* Right Control Drawer */
+  .drawer {
+    position: fixed;
+    top: 14px;
+    right: 14px;
+    bottom: 14px;
+    width: 330px;
+    max-width: calc(100vw - 28px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: transform 0.25s ease, opacity 0.25s ease;
+  }
+  .drawer.collapsed {
+    transform: translateX(calc(100% + 24px));
+    pointer-events: none;
+  }
+
+  .drawer-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+    padding: 8px 8px 6px;
+    border-bottom: 1px solid var(--panel-border);
+    background: rgba(4, 7, 15, 0.4);
+  }
+
+  .tab-btn {
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 11.5px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    padding: 7px 5px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .tab-btn:hover {
+    color: var(--text-main);
+    background: rgba(255, 255, 255, 0.04);
+  }
+  .tab-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.16);
+    border-color: rgba(88, 220, 255, 0.4);
+  }
+
+  .drawer-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 11px 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .drawer-body::-webkit-scrollbar {
+    width: 5px;
+  }
+  .drawer-body::-webkit-scrollbar-thumb {
+    background: rgba(148, 179, 255, 0.22);
+    border-radius: 999px;
+  }
+
+  .tab-pane {
+    display: none;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .tab-pane.active {
+    display: flex;
+  }
+
+  .section {
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(148, 179, 255, 0.11);
+    border-radius: var(--radius-md);
+    padding: 10px 11px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .section-title {
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  /* Presets grid */
+  .preset-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .preset-btn {
+    text-align: left;
+    padding: 7px 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(148, 179, 255, 0.14);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-main);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .preset-btn:hover {
+    border-color: rgba(255, 190, 92, 0.45);
+    background: rgba(255, 190, 92, 0.08);
+  }
+  .preset-btn.active {
+    border-color: var(--accent-amber);
+    background: rgba(255, 190, 92, 0.14);
+  }
+  .preset-name {
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.25;
+  }
+  .preset-sub {
+    font-size: 9.5px;
+    color: var(--text-muted);
+    line-height: 1.25;
+  }
+
+  /* Sliders */
+  .control-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .control-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11.5px;
+    color: var(--text-dim);
+  }
+  .control-head .val {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--text-main);
+    font-weight: 600;
+  }
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 5px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.18);
+    outline: none;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent-cyan);
+    border: 2px solid #08101f;
+    box-shadow: 0 0 10px rgba(88, 220, 255, 0.65);
+    cursor: pointer;
+  }
+  input[type="range"].amber::-webkit-slider-thumb {
+    background: var(--accent-amber);
+    box-shadow: 0 0 10px rgba(255, 190, 92, 0.65);
+  }
+
+  /* Segmented pills */
+  .seg-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(58px, 1fr));
+    gap: 4px;
+  }
+  .seg-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-dim);
+    font-size: 10.5px;
+    font-weight: 650;
+    padding: 6px 5px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-align: center;
+  }
+  .seg-btn:hover {
+    color: #fff;
+    border-color: rgba(148, 179, 255, 0.35);
+  }
+  .seg-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.18);
+    border-color: var(--accent-cyan);
+  }
+  .seg-btn.active.amber {
+    background: rgba(255, 190, 92, 0.18);
+    border-color: var(--accent-amber);
+    color: #ffdfaa;
+  }
+
+  /* Action Buttons */
+  .btn-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .btn {
+    border: 1px solid rgba(148, 179, 255, 0.22);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-main);
+    font-size: 11.5px;
+    font-weight: 700;
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+  .btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 179, 255, 0.45);
+  }
+  .btn:active {
+    transform: scale(0.98);
+  }
+  .btn.primary {
+    background: linear-gradient(135deg, rgba(88, 220, 255, 0.28), rgba(56, 140, 255, 0.24));
+    border-color: rgba(88, 220, 255, 0.55);
+    color: #e6f9ff;
+  }
+  .btn.primary:hover {
+    background: linear-gradient(135deg, rgba(88, 220, 255, 0.4), rgba(56, 140, 255, 0.35));
+  }
+  .btn.launch {
+    width: 100%;
+    padding: 10px 12px;
+    font-size: 12px;
+    background: linear-gradient(135deg, rgba(255, 174, 66, 0.32), rgba(255, 92, 128, 0.26));
+    border-color: rgba(255, 190, 92, 0.65);
+    color: #fff6e5;
+    box-shadow: 0 0 18px rgba(255, 168, 76, 0.18);
+  }
+  .btn.launch:hover {
+    background: linear-gradient(135deg, rgba(255, 174, 66, 0.48), rgba(255, 92, 128, 0.38));
+    box-shadow: 0 0 22px rgba(255, 168, 76, 0.32);
+  }
+  .btn.launch.window-ready {
+    background: linear-gradient(135deg, rgba(74, 242, 178, 0.34), rgba(88, 220, 255, 0.3));
+    border-color: var(--accent-mint);
+    color: #eafff6;
+    box-shadow: 0 0 20px rgba(74, 242, 178, 0.35);
+  }
+  .btn.danger {
+    background: rgba(255, 96, 131, 0.14);
+    border-color: rgba(255, 96, 131, 0.4);
+    color: #ffc2d0;
+  }
+
+  /* Toggle switches */
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11.5px;
+    color: var(--text-dim);
+    cursor: pointer;
+  }
+  .toggle-row input {
+    display: none;
+  }
+  .switch {
+    width: 34px;
+    height: 18px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.2);
+    border: 1px solid rgba(148, 179, 255, 0.25);
+    position: relative;
+    transition: all 0.18s ease;
+    flex-shrink: 0;
+  }
+  .switch::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #c8d7f5;
+    transition: transform 0.18s ease, background 0.18s ease;
+  }
+  .toggle-row input:checked + .switch {
+    background: rgba(88, 220, 255, 0.32);
+    border-color: var(--accent-cyan);
+  }
+  .toggle-row input:checked + .switch::after {
+    transform: translateX(16px);
+    background: #fff;
+  }
+
+  /* Worlds List */
+  .world-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .world-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: var(--radius-sm);
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(148, 179, 255, 0.1);
+    cursor: pointer;
+    transition: all 0.14s ease;
+  }
+  .world-item:hover {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(148, 179, 255, 0.32);
+  }
+  .world-item.active {
+    background: rgba(88, 220, 255, 0.14);
+    border-color: var(--accent-cyan);
+  }
+  .world-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+  .world-dot {
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    box-shadow: 0 0 8px rgba(255, 255, 255, 0.2);
+  }
+  .world-name {
+    font-size: 11.5px;
+    font-weight: 700;
+    color: var(--text-main);
+  }
+  .world-tag {
+    font-size: 9.5px;
+    color: var(--text-muted);
+    margin-left: 4px;
+  }
+  .world-right {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text-dim);
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  .inspector-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 5px;
+  }
+  .insp-cell {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(148, 179, 255, 0.09);
+    border-radius: 6px;
+    padding: 5px 7px;
+  }
+  .insp-k {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+  }
+  .insp-v {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-main);
+    margin-top: 1px;
+  }
+
+  /* Phase Gauge */
+  .gauge-wrap {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  #phase-gauge {
+    width: 108px;
+    height: 108px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(16, 26, 48, 0.9), rgba(5, 8, 18, 0.95));
+    border: 1px solid rgba(148, 179, 255, 0.16);
+  }
+  .gauge-stats {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    font-size: 11px;
+  }
+  .gauge-row {
+    display: flex;
+    justify-content: space-between;
+    color: var(--text-dim);
+  }
+  .gauge-row strong {
+    font-family: var(--mono);
+    color: var(--text-main);
+  }
+
+  .probe-list {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    max-height: 132px;
+    overflow-y: auto;
+  }
+  .probe-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    padding: 6px 8px;
+    border-radius: var(--radius-sm);
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(148, 179, 255, 0.12);
+    font-size: 10.5px;
+  }
+  .probe-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+  .probe-title {
+    font-weight: 700;
+    color: var(--text-main);
+  }
+  .probe-sub {
+    font-family: var(--mono);
+    font-size: 9.5px;
+    color: var(--text-dim);
+  }
+  .probe-badge {
+    font-size: 9.5px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 999px;
+    border: 1px solid rgba(88, 220, 255, 0.4);
+    color: var(--accent-cyan);
+    background: rgba(88, 220, 255, 0.12);
+    white-space: nowrap;
+  }
+  .probe-badge.intercept {
+    border-color: rgba(74, 242, 178, 0.55);
+    color: var(--accent-mint);
+    background: rgba(74, 242, 178, 0.16);
+  }
+  .probe-badge.missed {
+    border-color: rgba(255, 190, 92, 0.45);
+    color: var(--accent-amber);
+    background: rgba(255, 190, 92, 0.14);
+  }
+
+  /* Bottom Transport Bar */
+  .bottom-bar {
+    position: fixed;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 7px 10px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    flex-wrap: nowrap;
+  }
+
+  .bar-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-main);
+    font-size: 11px;
+    font-weight: 650;
+    padding: 6px 9px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    white-space: nowrap;
+  }
+  .bar-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 179, 255, 0.4);
+  }
+  .bar-btn.active {
+    background: rgba(88, 220, 255, 0.2);
+    border-color: var(--accent-cyan);
+    color: #fff;
+  }
+  .bar-btn.rev-active {
+    background: rgba(255, 190, 92, 0.22);
+    border-color: var(--accent-amber);
+    color: #ffe3b0;
+  }
+
+  .bar-divider {
+    width: 1px;
+    height: 20px;
+    background: rgba(148, 179, 255, 0.16);
+    margin: 0 2px;
+  }
+
+  /* Bottom-left interaction hint */
+  .hint-pill {
+    position: fixed;
+    bottom: 14px;
+    left: 14px;
+    padding: 7px 11px;
+    font-size: 10.5px;
+    color: var(--text-dim);
+    max-width: 300px;
+    line-height: 1.45;
+  }
+  .hint-pill kbd {
+    font-family: var(--mono);
+    font-size: 9.5px;
+    padding: 1px 4px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #fff;
+  }
+
+  /* Event Banner */
+  .event-banner {
+    position: fixed;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%) translateY(-10px);
+    padding: 9px 16px;
+    border-radius: var(--radius-md);
+    background: rgba(8, 16, 28, 0.9);
+    border: 1px solid rgba(88, 220, 255, 0.5);
+    color: #dcf6ff;
+    font-size: 12px;
+    font-weight: 650;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease, transform 0.25s ease;
+    z-index: 25;
+    backdrop-filter: blur(12px);
+    white-space: nowrap;
+  }
+  .event-banner.visible {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+  .event-banner.mint {
+    background: rgba(7, 24, 20, 0.92);
+    border-color: rgba(74, 242, 178, 0.6);
+    color: #d7ffef;
+  }
+  .event-banner.amber {
+    background: rgba(28, 19, 8, 0.92);
+    border-color: rgba(255, 190, 92, 0.6);
+    color: #ffefd4;
+  }
+  .event-banner.rose {
+    background: rgba(28, 10, 18, 0.92);
+    border-color: rgba(255, 96, 131, 0.6);
+    color: #ffdce5;
+  }
+
+  .zen-restore {
+    position: fixed;
+    bottom: 14px;
+    right: 14px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+  }
+  body.zen-mode .zen-restore {
+    opacity: 0.9;
+    pointer-events: auto;
+  }
+
+  .note-small {
+    font-size: 10.5px;
+    color: var(--text-muted);
+    line-height: 1.38;
+  }
+
+  @media (max-width: 980px) {
+    .top-left {
+      width: calc(100vw - 28px);
+      max-width: none;
+    }
+    .drawer {
+      top: auto;
+      bottom: 62px;
+      height: 50vh;
+      width: calc(100vw - 28px);
+    }
+    .hint-pill, .sky-inset {
+      display: none !important;
+    }
+    .bottom-bar {
+      max-width: calc(100vw - 20px);
+      overflow-x: auto;
+    }
+  }
+</style>
+</head>
+<body>
+<canvas id="sim-canvas"></canvas>
+
+<div class="hud">
+  <!-- Top-Left Brand & Telemetry -->
+  <div class="panel top-left">
+    <div class="brand-row">
+      <div class="brand-title-wrap">
+        <div class="brand-title">Orrery</div>
+        <span id="scale-badge" class="mode-badge">Compressed</span>
+      </div>
+      <span id="focus-pill" class="status-pill cyan">Focus: Sun</span>
+    </div>
+
+    <div class="telemetry-grid">
+      <div class="tele-card">
+        <span id="tel-lbl-1" class="tele-label">Helio Dist</span>
+        <span id="tel-helio" class="tele-val amber">0.000 AU</span>
+      </div>
+      <div class="tele-card">
+        <span id="tel-lbl-2" class="tele-label">Orbital Speed</span>
+        <span id="tel-speed" class="tele-val cyan">230 km/s</span>
+      </div>
+      <div class="tele-card">
+        <span id="tel-lbl-3" class="tele-label">Earth Dist</span>
+        <span id="tel-earth" class="tele-val">1.000 AU</span>
+      </div>
+      <div class="tele-card">
+        <span id="tel-lbl-4" class="tele-label">Light-Time</span>
+        <span id="tel-light" class="tele-val mint">8.32 min</span>
+      </div>
+      <div class="tele-card">
+        <span id="tel-lbl-5" class="tele-label">Phase / Tilt</span>
+        <span id="tel-phase" class="tele-val violet">7.25° tilt</span>
+      </div>
+      <div class="tele-card">
+        <span id="tel-lbl-6" class="tele-label">Earth–Mars Δθ</span>
+        <span id="tel-emphase" class="tele-val amber">+44.3°</span>
+      </div>
+    </div>
+
+    <div class="clock-row">
+      <span>Date: <strong id="tel-date" class="clock-date">2026-07-15</strong></span>
+      <span>Rate: <strong id="tel-rate" style="color:var(--accent-cyan)">+30 d/s</strong></span>
+      <span>JD: <strong id="tel-jd">2461237</strong></span>
+    </div>
+  </div>
+
+  <!-- Retrograde Sky-Loop Picture-in-Picture Inset -->
+  <div id="sky-inset" class="panel sky-inset">
+    <div class="sky-inset-head">
+      <span>Mars Apparent Sky Loop</span>
+      <span id="sky-motion-tag" style="color:var(--accent-cyan)">Prograde</span>
+    </div>
+    <canvas id="sky-loop-canvas" width="460" height="224"></canvas>
+    <div class="sky-inset-meta">
+      <span id="sky-lon">λ 0.0°</span>
+      <span id="sky-lat">β +0.00°</span>
+      <span id="sky-dist">1.52 AU</span>
+    </div>
+  </div>
+
+  <!-- Event Banner -->
+  <div id="event-banner" class="event-banner">
+    <span id="event-text">Hohmann Launch Window Open — Earth–Mars Phase 44.3°</span>
+  </div>
+
+  <!-- Right Control Drawer -->
+  <aside id="drawer" class="panel drawer">
+    <div class="drawer-tabs">
+      <button class="tab-btn active" data-tab="orrery">Orrery</button>
+      <button class="tab-btn" data-tab="worlds">Worlds</button>
+      <button class="tab-btn" data-tab="lab">Transfer Lab</button>
+    </div>
+
+    <div class="drawer-body">
+      <!-- TAB 1: ORRERY & PRESETS -->
+      <div id="tab-orrery" class="tab-pane active">
+        <div class="section">
+          <div class="section-title"><span>Astronomy Presets</span></div>
+          <div class="preset-grid">
+            <button class="preset-btn active" data-preset="full">
+              <span class="preset-name">Full Solar System</span>
+              <span class="preset-sub">8 planets, Pluto, Halley &amp; belts</span>
+            </button>
+            <button class="preset-btn" data-preset="inner">
+              <span class="preset-name">Inner Rocky &amp; Mars</span>
+              <span class="preset-sub">44.3° Hohmann launch window</span>
+            </button>
+            <button class="preset-btn" data-preset="retrograde">
+              <span class="preset-name">Mars Retrograde Loop</span>
+              <span class="preset-sub">Opposition sightline &amp; S-loop</span>
+            </button>
+            <button class="preset-btn" data-preset="halley">
+              <span class="preset-name">Halley Perihelion Dive</span>
+              <span class="preset-sub">2061 ion &amp; dust tail blaze</span>
+            </button>
+            <button class="preset-btn" data-preset="moons">
+              <span class="preset-name">Jovian &amp; Saturn Moons</span>
+              <span class="preset-sub">Tilted rings, Titan &amp; Galileans</span>
+            </button>
+            <button class="preset-btn" data-preset="truedist">
+              <span class="preset-name">True-Distance Scale</span>
+              <span class="preset-sub">Linear AU outer-system gulf</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Distance Scale Mode</span></div>
+          <div class="seg-row">
+            <button class="seg-btn active" data-scale="compressed">Compressed</button>
+            <button class="seg-btn" data-scale="inner">Inner Rocky</button>
+            <button class="seg-btn amber" data-scale="true">True Dist</button>
+          </div>
+          <p class="note-small" id="scale-note">Log-compressed radii keep Mercury through Kuiper Belt clearly readable while preserving true 3D angles.</p>
+        </div>
+
+        <div class="section">
+          <div class="section-title">
+            <span>Time Ephemeris</span>
+            <span id="time-dir-tag" style="color:var(--accent-cyan); font-family:var(--mono); font-size:10px;">FORWARD</span>
+          </div>
+          <div class="control-row">
+            <div class="control-head">
+              <span>Time Rate</span>
+              <span id="lbl-rate" class="val">30.0 d/s</span>
+            </div>
+            <input id="slider-rate" type="range" min="0" max="100" step="0.5" value="46" />
+          </div>
+          <div class="btn-row">
+            <button id="btn-today" class="btn">Today (2026)</button>
+            <button id="btn-j2000" class="btn">Epoch J2000</button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Display Layers</span></div>
+          <label class="toggle-row">
+            <span>Orbital Ellipses</span>
+            <input id="tog-orbits" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>World Labels &amp; AU</span>
+            <input id="tog-labels" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Asteroid &amp; Kuiper Belts</span>
+            <input id="tog-belts" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Ecliptic Grid &amp; Zodiac</span>
+            <input id="tog-grid" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Moons &amp; Axial Tilt Poles</span>
+            <input id="tog-moons" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+        </div>
+      </div>
+
+      <!-- TAB 2: WORLDS & INSPECTOR -->
+      <div id="tab-worlds" class="tab-pane">
+        <div class="section">
+          <div class="section-title">
+            <span>Focus Camera Target</span>
+            <button id="btn-focus-sun" class="btn" style="padding:3px 7px; font-size:10px;">Reset Sun</button>
+          </div>
+          <div id="world-list" class="world-list"></div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">
+            <span id="insp-title">Sun — G2V Star</span>
+            <span id="insp-type" style="color:var(--accent-amber); font-size:9.5px;">STAR</span>
+          </div>
+          <p id="insp-desc" class="note-small">Contains 99.86% of the Solar System's mass, anchoring all Keplerian orbits.</p>
+          <div class="inspector-grid">
+            <div class="insp-cell">
+              <div class="insp-k">Semi-Major a</div>
+              <div id="insp-a" class="insp-v">—</div>
+            </div>
+            <div class="insp-cell">
+              <div class="insp-k">Eccentricity e</div>
+              <div id="insp-e" class="insp-v">—</div>
+            </div>
+            <div class="insp-cell">
+              <div class="insp-k">Inclination i</div>
+              <div id="insp-i" class="insp-v">—</div>
+            </div>
+            <div class="insp-cell">
+              <div class="insp-k">Axial Tilt</div>
+              <div id="insp-tilt" class="insp-v">7.25°</div>
+            </div>
+            <div class="insp-cell">
+              <div class="insp-k">Sidereal Period</div>
+              <div id="insp-period" class="insp-v">—</div>
+            </div>
+            <div class="insp-cell">
+              <div class="insp-k">Major Moons</div>
+              <div id="insp-moons" class="insp-v">8 Planets</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 3: RETROGRADE & HOHMANN TRANSFER LAB -->
+      <div id="tab-lab" class="tab-pane">
+        <div class="section">
+          <div class="section-title">
+            <span>Mars Retrograde Visualizer</span>
+            <span id="retro-status-badge" style="color:var(--accent-cyan); font-family:var(--mono); font-size:10px;">PROGRADE</span>
+          </div>
+          <label class="toggle-row">
+            <span>Mars Retrograde Sightline</span>
+            <input id="tog-retro" type="checkbox" />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Sky S-Loop Inset Chart</span>
+            <input id="tog-skyinset" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <div class="btn-row">
+            <button id="btn-jump-opp" class="btn primary">Jump Opposition</button>
+            <button id="btn-clear-loop" class="btn">Clear Loop</button>
+          </div>
+          <p class="note-small">When faster inner Earth overtakes Mars at opposition, the Earth→Mars line-of-sight sweeps backwards across the zodiac, tracing Mars's famous S-loop.</p>
+        </div>
+
+        <div class="section">
+          <div class="section-title">
+            <span>Earth–Mars Hohmann Window</span>
+            <span id="window-badge" style="color:var(--accent-amber); font-family:var(--mono); font-size:10px;">TARGET 44.3°</span>
+          </div>
+
+          <div class="gauge-wrap">
+            <canvas id="phase-gauge" width="216" height="216"></canvas>
+            <div class="gauge-stats">
+              <div class="gauge-row"><span>Current Δθ</span><strong id="g-phase" style="color:var(--accent-cyan)">+44.3°</strong></div>
+              <div class="gauge-row"><span>Hohmann Ideal</span><strong style="color:var(--accent-mint)">+44.3°</strong></div>
+              <div class="gauge-row"><span>Next Window</span><strong id="g-next">0 d</strong></div>
+              <div class="gauge-row"><span>Flight Time</span><strong>258.9 d</strong></div>
+              <div class="gauge-row"><span>Transfer Δv</span><strong>5.59 km/s</strong></div>
+            </div>
+          </div>
+
+          <button id="btn-launch-probe" class="btn launch">🚀 Launch Mars Transfer Probe</button>
+
+          <div class="btn-row">
+            <button id="btn-jump-window" class="btn primary">⏭ Jump to 44.3°</button>
+            <button id="btn-clear-probes" class="btn danger">Clear Probes</button>
+          </div>
+
+          <div class="section-title" style="margin-top:2px;">
+            <span>Active Transfer Probes</span>
+            <span id="probe-count" style="font-family:var(--mono); color:var(--text-main);">0</span>
+          </div>
+          <div id="probe-list" class="probe-list">
+            <div class="note-small" style="text-align:center; padding:8px 0;">No probes in flight. Jump to the 44.3° window and launch!</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Bottom-Left Hint -->
+  <div class="panel hint-pill">
+    <div><strong>Drag</strong> tilt/orbit 3D · <strong>Scroll</strong> zoom · <strong>Click</strong> focus world</div>
+    <div><kbd>Space</kbd> Pause · <kbd>R</kbd> Reverse · <kbd>L</kbd> Launch Probe · <kbd>G</kbd> Retrograde · <kbd>H</kbd> Cinema</div>
+  </div>
+
+  <!-- Bottom Transport Bar -->
+  <div class="panel bottom-bar">
+    <button id="btn-play" class="bar-btn active">⏸ Pause</button>
+    <button id="btn-reset" class="bar-btn">↺ Reset</button>
+    <button id="btn-rev" class="bar-btn" title="Reverse Time (R)">⏪ Rev</button>
+    <div class="bar-divider"></div>
+    <button class="bar-btn speed-btn" data-rate="1">1 d/s</button>
+    <button class="bar-btn speed-btn active" data-rate="30">30 d/s</button>
+    <button class="bar-btn speed-btn" data-rate="180">180 d/s</button>
+    <button class="bar-btn speed-btn" data-rate="365.25">1 yr/s</button>
+    <button class="bar-btn speed-btn" data-rate="1826.25">5 yr/s</button>
+    <div class="bar-divider"></div>
+    <button id="btn-sound" class="bar-btn">🔇 Audio</button>
+    <button id="btn-toggle-drawer" class="bar-btn active">Controls</button>
+    <button id="btn-zen" class="bar-btn" title="Hide HUD (H)">Cinema</button>
+  </div>
+
+  <button id="btn-zen-restore" class="panel bar-btn zen-restore">Show HUD (H)</button>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // =========================================================================
+  // ASTRONOMICAL CONSTANTS & J2000 KEPLERIAN ELEMENTS
+  // Epoch: J2000.0 = 2000-01-01T12:00:00Z (JD 2451545.0)
+  // =========================================================================
+  const DEG = Math.PI / 180;
+  const RAD = 180 / Math.PI;
+  const TWO_PI = Math.PI * 2;
+  const J2000_MS = Date.UTC(2000, 0, 1, 12, 0, 0);
+  const J2000_JD = 2451545.0;
+  const MS_PER_DAY = 86400000;
+  const V_EARTH_KMS = 29.7847; // sqrt(GM_sun / 1 AU) in km/s
+  const AU_LIGHT_MIN = 8.316746; // 1 AU in light-minutes
+  const HOHMANN_IDEAL_DEG = 44.34;
+  const HOHMANN_A = (1.0 + 1.523679) / 2;
+  const HOHMANN_E = (1.523679 - 1.0) / (1.523679 + 1.0);
+  const HOHMANN_TOF_DAYS = 0.5 * 365.25636 * Math.pow(HOHMANN_A, 1.5); // ~258.87 d
+
+  const ZODIAC = [
+    { sym: '♈', name: 'Aries', lon: 0 },
+    { sym: '♉', name: 'Taurus', lon: 30 },
+    { sym: '♊', name: 'Gemini', lon: 60 },
+    { sym: '♋', name: 'Cancer', lon: 90 },
+    { sym: '♌', name: 'Leo', lon: 120 },
+    { sym: '♍', name: 'Virgo', lon: 150 },
+    { sym: '♎', name: 'Libra', lon: 180 },
+    { sym: '♏', name: 'Scorpio', lon: 210 },
+    { sym: '♐', name: 'Sagittarius', lon: 240 },
+    { sym: '♑', name: 'Capricorn', lon: 270 },
+    { sym: '♒', name: 'Aquarius', lon: 300 },
+    { sym: '♓', name: 'Pisces', lon: 330 }
+  ];
+
+  // Accurate J2000 orbital elements
+  const BODIES = [
+    {
+      id: 'sun', name: 'Sun', type: 'G2V Star', kind: 'star',
+      a: 0, e: 0, i: 0, Omega: 0, omega: 0, M0: 0, period: 0,
+      tilt: 7.25, radiusVis: 16.5, color: '#ffcf66', accent: '#ff9636',
+      desc: 'Contains 99.86% of the Solar System mass. Radiates 3.828×10²⁶ W and anchors every planetary & cometary Keplerian orbit.',
+      moons: []
+    },
+    {
+      id: 'mercury', name: 'Mercury', type: 'Terrestrial', kind: 'planet',
+      a: 0.387098, e: 0.205630, i: 7.0049, Omega: 48.331, omega: 29.124, M0: 174.796,
+      period: 87.9691, tilt: 0.03, radiusVis: 3.8, color: '#b5ada3', accent: '#8b8378',
+      desc: 'Innermost rocky planet with the highest orbital eccentricity (0.206) and 7° inclination among the major planets.',
+      moons: []
+    },
+    {
+      id: 'venus', name: 'Venus', type: 'Terrestrial', kind: 'planet',
+      a: 0.723332, e: 0.006772, i: 3.3946, Omega: 76.680, omega: 54.884, M0: 50.115,
+      period: 224.701, tilt: 177.36, radiusVis: 5.8, color: '#e8c987', accent: '#c9974f',
+      desc: 'Shrouded in dense sulfuric acid clouds with a nearly circular orbit and retrograde axial spin (177.4° obliquity).',
+      moons: []
+    },
+    {
+      id: 'earth', name: 'Earth', type: 'Terrestrial', kind: 'planet',
+      a: 1.000001, e: 0.016709, i: 0.0001, Omega: -11.261, omega: 114.208, M0: 357.517,
+      period: 365.25636, tilt: 23.44, radiusVis: 6.4, color: '#4da6ff', accent: '#36c794',
+      desc: 'Reference plane of the ecliptic (1.000 AU). Its 23.44° axial tilt drives the seasons; serves as launchpad for Hohmann transfers.',
+      moons: [
+        { name: 'Moon', distVis: 14.5, period: 27.32166, i: 5.14, r: 2.0, color: '#cfd6e2', phase0: 1.2 }
+      ]
+    },
+    {
+      id: 'mars', name: 'Mars', type: 'Terrestrial', kind: 'planet',
+      a: 1.523679, e: 0.093405, i: 1.8497, Omega: 49.558, omega: 286.502, M0: 19.373,
+      period: 686.9796, tilt: 25.19, radiusVis: 5.0, color: '#e2744a', accent: '#b84b2c',
+      desc: 'The Red Planet. Earth overtakes Mars every 780 days, creating dramatic apparent retrograde S-loops across the zodiac.',
+      moons: []
+    },
+    {
+      id: 'jupiter', name: 'Jupiter', type: 'Gas Giant', kind: 'planet',
+      a: 5.2044, e: 0.0489, i: 1.303, Omega: 100.464, omega: 273.867, M0: 20.020,
+      period: 4332.589, tilt: 3.13, radiusVis: 12.2, color: '#d8b48a', accent: '#b86b43',
+      desc: 'King of the planets with banded ammonia clouds, the Great Red Spot, and the 4 historic Galilean moons in Laplace resonance.',
+      moons: [
+        { name: 'Io', distVis: 17.5, period: 1.7691, i: 0.05, r: 1.8, color: '#f2d06b', phase0: 0.3 },
+        { name: 'Europa', distVis: 21.8, period: 3.5512, i: 0.47, r: 1.65, color: '#d5e5f2', phase0: 2.1 },
+        { name: 'Ganymede', distVis: 27.0, period: 7.1546, i: 0.20, r: 2.3, color: '#c4b8a6', phase0: 4.0 },
+        { name: 'Callisto', distVis: 33.2, period: 16.689, i: 0.19, r: 2.0, color: '#8f8b88', phase0: 5.2 }
+      ]
+    },
+    {
+      id: 'saturn', name: 'Saturn', type: 'Gas Giant', kind: 'planet',
+      a: 9.5826, e: 0.0565, i: 2.485, Omega: 113.665, omega: 339.392, M0: 317.020,
+      period: 10759.22, tilt: 26.73, radiusVis: 10.4, color: '#e6cf99', accent: '#c5a667',
+      hasRings: true, ringInner: 1.32, ringOuter: 2.42,
+      desc: 'Adorned by luminous ice rings tilted 26.73° to its orbit, split by the Cassini Division, and orbited by hazy Titan.',
+      moons: [
+        { name: 'Enceladus', distVis: 25.0, period: 1.3702, i: 0.02, r: 1.4, color: '#eef7ff', phase0: 1.4 },
+        { name: 'Rhea', distVis: 30.2, period: 4.5182, i: 0.35, r: 1.6, color: '#c9ced6', phase0: 3.8 },
+        { name: 'Titan', distVis: 38.0, period: 15.945, i: 0.35, r: 2.45, color: '#e6a953', phase0: 0.7 }
+      ]
+    },
+    {
+      id: 'uranus', name: 'Uranus', type: 'Ice Giant', kind: 'planet',
+      a: 19.2184, e: 0.04638, i: 0.773, Omega: 74.006, omega: 96.998, M0: 142.238,
+      period: 30688.5, tilt: 97.77, radiusVis: 7.8, color: '#8ce0e8', accent: '#5db7c9',
+      hasRings: true, ringInner: 1.48, ringOuter: 1.88, ringAlpha: 0.28,
+      desc: 'Ice giant rolling sideways along its orbit with an extreme 97.77° axial tilt and faint vertical dark rings.',
+      moons: [
+        { name: 'Titania', distVis: 16.5, period: 8.706, i: 0.34, r: 1.45, color: '#c6d6df', phase0: 2.2 }
+      ]
+    },
+    {
+      id: 'neptune', name: 'Neptune', type: 'Ice Giant', kind: 'planet',
+      a: 30.1104, e: 0.00946, i: 1.770, Omega: 131.784, omega: 273.187, M0: 256.228,
+      period: 60195.0, tilt: 28.32, radiusVis: 7.5, color: '#4d7eff', accent: '#284fc2',
+      desc: 'Outermost major planet at 30.1 AU, sculpted by supersonic methane winds and anchored near the inner edge of the Kuiper Belt.',
+      moons: [
+        { name: 'Triton', distVis: 16.0, period: -5.8769, i: 156.8, r: 1.7, color: '#d7c8cf', phase0: 4.5 }
+      ]
+    },
+    {
+      id: 'pluto', name: 'Pluto', type: 'Dwarf Planet', kind: 'dwarf',
+      a: 39.482, e: 0.2488, i: 17.16, Omega: 110.299, omega: 113.834, M0: 14.53,
+      period: 90560.0, tilt: 122.53, radiusVis: 3.4, color: '#d6bea9', accent: '#9e826d',
+      desc: 'Kuiper Belt dwarf planet locked in 2:3 resonance with Neptune on a strongly inclined (17.2°) and eccentric (0.249) orbit.',
+      moons: [
+        { name: 'Charon', distVis: 8.5, period: 6.3872, i: 0.08, r: 1.35, color: '#a8a29e', phase0: 0.9 }
+      ]
+    },
+    {
+      id: 'halley', name: "Halley's Comet", type: 'Periodic Comet', kind: 'comet',
+      a: 17.834144, e: 0.967143, i: 162.2627, Omega: 58.42, omega: 111.33, M0: 66.405,
+      period: 27510.0, tilt: 0, radiusVis: 3.6, color: '#9df5ff', accent: '#64d8ff',
+      desc: 'Iconic retrograde periodic comet (e = 0.967) diving from beyond Neptune to 0.586 AU, igniting luminous anti-solar ion & dust tails.',
+      moons: []
+    }
+  ];
+
+  const BODY_MAP = {};
+  BODIES.forEach(b => {
+    BODY_MAP[b.id] = b;
+    // Precompute trig for 3D orbital orientation
+    const O = b.Omega * DEG;
+    const w = b.omega * DEG;
+    const inc = b.i * DEG;
+    b._cosO = Math.cos(O); b._sinO = Math.sin(O);
+    b._cosI = Math.cos(inc); b._sinI = Math.sin(inc);
+    b._w = w;
+    // Live state
+    b.posAU = { x: 0, y: 0, z: 0 };
+    b.velAU = { x: 0, y: 0, z: 0 };
+    b.world = { x: 0, y: 0, z: 0 };
+    b.rAU = 0;
+    b.speedKms = 0;
+    b.screen = { x: 0, y: 0, scale: 1, depth: 0, visible: false, hitR: 12 };
+    b._orbitPts = [];
+  });
+
+  // =========================================================================
+  // PROCEDURAL BELTS & DEEP STARFIELD
+  // =========================================================================
+  function mulberry32(seed) {
+    let a = seed >>> 0;
+    return function() {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  const rng = mulberry32(20260715);
+
+  // 3D Celestial Sphere Starfield
+  const STARS = [];
+  const STAR_COLORS = ['#cad8ff', '#e8efff', '#fff6e4', '#ffd8a8', '#a8ccff', '#ffcab0'];
+  for (let i = 0; i < 1100; i++) {
+    const u = rng() * 2 - 1;
+    const theta = rng() * TWO_PI;
+    const s = Math.sqrt(1 - u * u);
+    const mag = Math.pow(rng(), 2.8);
+    STARS.push({
+      x: s * Math.cos(theta),
+      y: s * Math.sin(theta),
+      z: u,
+      size: 0.55 + mag * 1.9,
+      alpha: 0.25 + mag * 0.72,
+      color: STAR_COLORS[Math.floor(rng() * STAR_COLORS.length)],
+      twinklePhase: rng() * TWO_PI,
+      twinkleSpeed: 0.8 + rng() * 2.2
+    });
+  }
+
+  // Subtle Milky Way galactic band particles
+  const GALAXY_BAND = [];
+  for (let i = 0; i < 240; i++) {
+    const lon = rng() * TWO_PI;
+    const lat = (rng() - 0.5) * 0.34 + (rng() - 0.5) * 0.18;
+    // Tilt galactic plane ~60° to ecliptic
+    const gx = Math.cos(lat) * Math.cos(lon);
+    const gy = Math.cos(lat) * Math.sin(lon);
+    const gz = Math.sin(lat);
+    const tilt = 60.2 * DEG;
+    const x = gx;
+    const y = gy * Math.cos(tilt) - gz * Math.sin(tilt);
+    const z = gy * Math.sin(tilt) + gz * Math.cos(tilt);
+    GALAXY_BAND.push({
+      x, y, z,
+      rad: 26 + rng() * 54,
+      alpha: 0.012 + rng() * 0.022,
+      hue: rng() < 0.65 ? '115, 155, 255' : '195, 165, 255'
+    });
+  }
+
+  // Main Asteroid Belt (~520 drifting asteroids between 2.15 and 3.35 AU)
+  const ASTEROIDS = [];
+  for (let i = 0; i < 520; i++) {
+    const a = 2.15 + rng() * 1.18 + (rng() - 0.5) * 0.14;
+    const e = 0.02 + rng() * 0.14;
+    const inc = (rng() - 0.5) * 14 * DEG;
+    const Omega = rng() * TWO_PI;
+    const M0 = rng() * TWO_PI;
+    const period = 365.25636 * Math.pow(a, 1.5);
+    ASTEROIDS.push({
+      a, e, inc, Omega, M0, period,
+      size: 0.7 + rng() * 1.25,
+      alpha: 0.25 + rng() * 0.42,
+      tint: rng() < 0.5 ? '#9aa3b5' : '#b7aa99'
+    });
+  }
+
+  // Kuiper Belt (~420 icy bodies between 30.8 and 48.0 AU)
+  const KUIPER = [];
+  for (let i = 0; i < 420; i++) {
+    const a = 30.8 + rng() * 17.2;
+    const e = 0.03 + rng() * 0.18;
+    const inc = (rng() - 0.5) * 24 * DEG;
+    const Omega = rng() * TWO_PI;
+    const M0 = rng() * TWO_PI;
+    const period = 365.25636 * Math.pow(a, 1.5);
+    KUIPER.push({
+      a, e, inc, Omega, M0, period,
+      size: 0.8 + rng() * 1.4,
+      alpha: 0.18 + rng() * 0.34,
+      tint: rng() < 0.6 ? '#7ea6d9' : '#9cc8e8'
+    });
+  }
+
+  // =========================================================================
+  // SIMULATION STATE
+  // =========================================================================
+  const TODAY_DAYS = (Date.UTC(2026, 6, 15, 0, 0, 0) - J2000_MS) / MS_PER_DAY;
+
+  const state = {
+    tDays: TODAY_DAYS,
+    playing: true,
+    reverse: false,
+    rateDaysPerSec: 30, // 1 to 1826.25 (5 yr/s)
+    scaleMode: 'compressed', // 'compressed' | 'inner' | 'true'
+    focusId: 'sun',
+    activePreset: 'full',
+
+    // Display toggles
+    showOrbits: true,
+    showLabels: true,
+    showBelts: true,
+    showGrid: true,
+    showMoons: true,
+    showRetrograde: false,
+    showSkyInset: true,
+
+    // Camera (spherical orbit around smooth target)
+    yaw: -0.68,
+    pitch: 0.56, // radians above ecliptic (0.06 to 1.55)
+    targetYaw: -0.68,
+    targetPitch: 0.56,
+    camDist: 560,
+    targetCamDist: 560,
+    camTarget: { x: 0, y: 0, z: 0 },
+
+    // Retrograde sky loop trail
+    retroTrail: [], // { lon, lat, retro, tDays }
+    lastRetroSampleT: -1e9,
+    lastMarsGeoLon: null,
+    isMarsRetrograde: false,
+    marsGeoLonDeg: 0,
+    marsGeoLatDeg: 0,
+
+    // Earth-Mars Phase & Hohmann Probes
+    emPhaseDeg: 0,
+    inHohmannWindow: false,
+    probes: [],
+    probeCounter: 0,
+
+    // Audio & UI
+    audioEnabled: false,
+    drawerOpen: true,
+    zenMode: false,
+    hoveredId: null,
+    lastEventTime: 0,
+    lastOppositionEventT: -1e9,
+    lastWindowEventT: -1e9,
+    lastHalleyEventT: -1e9,
+    simWallTime: 0
+  };
+
+  // =========================================================================
+  // CANVAS SETUP
+  // =========================================================================
+  const canvas = document.getElementById('sim-canvas');
+  const ctx = canvas.getContext('2d', { alpha: false });
+  const skyCanvas = document.getElementById('sky-loop-canvas');
+  const skyCtx = skyCanvas.getContext('2d');
+  const gaugeCanvas = document.getElementById('phase-gauge');
+  const gaugeCtx = gaugeCanvas.getContext('2d');
+
+  let W = window.innerWidth;
+  let H = window.innerHeight;
+  let DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+  function resize() {
+    W = window.innerWidth;
+    H = window.innerHeight;
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.floor(W * DPR);
+    canvas.height = Math.floor(H * DPR);
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  // =========================================================================
+  // WEB AUDIO ENGINE (MUTED BY DEFAULT)
+  // =========================================================================
+  let audioCtx = null;
+  function ensureAudio() {
+    if (!audioCtx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) audioCtx = new AC();
+    }
+    if (audioCtx && audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+  }
+
+  function playChime(freqs, duration = 1.1, vol = 0.055, type = 'sine') {
+    if (!state.audioEnabled) return;
+    ensureAudio();
+    if (!audioCtx) return;
+    const now = audioCtx.currentTime;
+    freqs.forEach((f, idx) => {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(f, now + idx * 0.055);
+      gain.gain.setValueAtTime(0.0001, now + idx * 0.055);
+      gain.gain.exponentialRampToValueAtTime(vol / (1 + idx * 0.35), now + idx * 0.055 + 0.04);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + idx * 0.055 + duration);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(now + idx * 0.055);
+      osc.stop(now + idx * 0.055 + duration + 0.05);
+    });
+  }
+
+  function playLaunchSound() {
+    if (!state.audioEnabled) return;
+    ensureAudio();
+    if (!audioCtx) return;
+    const now = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(220, now);
+    osc.frequency.exponentialRampToValueAtTime(660, now + 0.42);
+    gain.gain.setValueAtTime(0.001, now);
+    gain.gain.exponentialRampToValueAtTime(0.06, now + 0.06);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.65);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(now);
+    osc.stop(now + 0.7);
+    playChime([523.25, 659.25, 783.99], 0.9, 0.045, 'sine');
+  }
+
+  // =========================================================================
+  // EVENT BANNER
+  // =========================================================================
+  let bannerTimer = null;
+  function showBanner(msg, tone = 'info', durationMs = 3600) {
+    const el = document.getElementById('event-banner');
+    const txt = document.getElementById('event-text');
+    txt.textContent = msg;
+    el.className = 'event-banner visible' + (tone && tone !== 'info' ? ' ' + tone : '');
+    if (bannerTimer) clearTimeout(bannerTimer);
+    bannerTimer = setTimeout(() => {
+      el.classList.remove('visible');
+    }, durationMs);
+  }
+
+  // =========================================================================
+  // KEPLERIAN MECHANICS & SCALE MAPPING
+  // =========================================================================
+  function wrapPi(rad) {
+    let a = (rad + Math.PI) % TWO_PI;
+    if (a < 0) a += TWO_PI;
+    return a - Math.PI;
+  }
+
+  function wrapDeg180(deg) {
+    let d = (deg + 180) % 360;
+    if (d < 0) d += 360;
+    return d - 180;
+  }
+
+  function wrapDeg360(deg) {
+    let d = deg % 360;
+    if (d < 0) d += 360;
+    return d;
+  }
+
+  function solveKepler(M, e) {
+    const m = wrapPi(M);
+    let E = e < 0.8 ? m + e * Math.sin(m) : Math.sign(m || 1) * (Math.abs(m) + 0.85 * e);
+    for (let iter = 0; iter < 10; iter++) {
+      const s = Math.sin(E);
+      const c = Math.cos(E);
+      const f = E - e * s - m;
+      const fp = 1 - e * c;
+      const fpp = e * s;
+      // Halley's method for ultra-fast convergence even at e = 0.967
+      const dE = f / (fp - 0.5 * f * fpp / fp);
+      E -= dE;
+      if (Math.abs(dE) < 1e-9) break;
+    }
+    return E;
+  }
+
+  function keplerToAU(a, e, cosO, sinO, cosI, sinI, w, M) {
+    const E = solveKepler(M, e);
+    const cosE = Math.cos(E);
+    const sinE = Math.sin(E);
+    const sqrt1e = Math.sqrt(1 - e * e);
+    const r = a * (1 - e * cosE);
+    const nu = Math.atan2(sqrt1e * sinE, cosE - e);
+    const u = w + nu;
+    const cosU = Math.cos(u);
+    const sinU = Math.sin(u);
+
+    const x = r * (cosO * cosU - sinO * sinU * cosI);
+    const y = r * (sinO * cosU + cosO * sinU * cosI);
+    const z = r * (sinU * sinI);
+
+    // Direction of orbital velocity (unit tangent approx via d/dE)
+    const dxdE = -a * sinE;
+    const dydE = a * sqrt1e * cosE;
+    const cw = Math.cos(w), sw = Math.sin(w);
+    const px = cosO * cw - sinO * sw * cosI;
+    const py = sinO * cw + cosO * sw * cosI;
+    const pz = sw * sinI;
+    const qx = -cosO * sw - sinO * cw * cosI;
+    const qy = -sinO * sw + cosO * cw * cosI;
+    const qz = cw * sinI;
+    const vx = px * dxdE + qx * dydE;
+    const vy = py * dxdE + qy * dydE;
+    const vz = pz * dxdE + qz * dydE;
+    const vLen = Math.hypot(vx, vy, vz) || 1;
+    const speedKms = V_EARTH_KMS * Math.sqrt(Math.max(0, 2 / r - 1 / a));
+
+    return {
+      x, y, z, r, nu, speedKms,
+      vx: vx / vLen, vy: vy / vLen, vz: vz / vLen
+    };
+  }
+
+  function mapRadiusAU(rAU) {
+    if (rAU <= 0) return 0;
+    if (state.scaleMode === 'compressed') {
+      return 22 + 56 * Math.pow(rAU, 0.56);
+    } else if (state.scaleMode === 'inner') {
+      return 135 * rAU;
+    } else {
+      // True relative linear distance
+      return 30 * rAU;
+    }
+  }
+
+  function mapAUtoWorld(x, y, z) {
+    const r = Math.hypot(x, y, z);
+    if (r < 1e-9) return { x: 0, y: 0, z: 0 };
+    const rw = mapRadiusAU(r);
+    const k = rw / r;
+    return { x: x * k, y: y * k, z: z * k };
+  }
+
+  function rebuildOrbitCaches() {
+    BODIES.forEach(b => {
+      if (b.kind === 'star') {
+        b._orbitPts = [];
+        return;
+      }
+      const steps = b.id === 'halley' ? 240 : 140;
+      const pts = [];
+      for (let k = 0; k < steps; k++) {
+        // Sample in eccentric anomaly for smooth point spacing on high-e orbits like Halley
+        const E = (k / steps) * TWO_PI;
+        const cosE = Math.cos(E);
+        const sinE = Math.sin(E);
+        const sqrt1e = Math.sqrt(1 - b.e * b.e);
+        const r = b.a * (1 - b.e * cosE);
+        const nu = Math.atan2(sqrt1e * sinE, cosE - b.e);
+        const u = b._w + nu;
+        const cosU = Math.cos(u);
+        const sinU = Math.sin(u);
+        const x = r * (b._cosO * cosU - b._sinO * sinU * b._cosI);
+        const y = r * (b._sinO * cosU + b._cosO * sinU * b._cosI);
+        const z = r * (sinU * b._sinI);
+        pts.push(mapAUtoWorld(x, y, z));
+      }
+      b._orbitPts = pts;
+    });
+  }
+  rebuildOrbitCaches();
+
+  // =========================================================================
+  // 3D CAMERA & PERSPECTIVE PROJECTION
+  // =========================================================================
+  const FOV = 760;
+
+  function getCamBasis() {
+    const cy = Math.cos(state.yaw);
+    const sy = Math.sin(state.yaw);
+    const cp = Math.cos(state.pitch);
+    const sp = Math.sin(state.pitch);
+
+    // Camera position relative to target
+    const camX = state.camTarget.x + state.camDist * cp * cy;
+    const camY = state.camTarget.y + state.camDist * cp * sy;
+    const camZ = state.camTarget.z + state.camDist * sp;
+
+    // Forward vector (from camera to target)
+    const fx = -cp * cy;
+    const fy = -cp * sy;
+    const fz = -sp;
+
+    // Right vector = normalize(forward x worldUp(0,0,1))
+    const rx = -sy;
+    const ry = cy;
+    const rz = 0;
+
+    // Up vector = right x forward
+    const ux = -sp * cy;
+    const uy = -sp * sy;
+    const uz = cp;
+
+    return { camX, camY, camZ, fx, fy, fz, rx, ry, rz, ux, uy, uz };
+  }
+
+  function project3D(wx, wy, wz, basis) {
+    const dx = wx - basis.camX;
+    const dy = wy - basis.camY;
+    const dz = wz - basis.camZ;
+    const depth = dx * basis.fx + dy * basis.fy + dz * basis.fz;
+    if (depth <= 8) return { visible: false, depth, x: 0, y: 0, scale: 0 };
+    const px = dx * basis.rx + dy * basis.ry + dz * basis.rz;
+    const py = dx * basis.ux + dy * basis.uy + dz * basis.uz;
+    const scale = FOV / depth;
+    return {
+      visible: true,
+      depth,
+      scale,
+      x: W * 0.5 + px * scale,
+      y: H * 0.5 - py * scale
+    };
+  }
+
+  // =========================================================================
+  // HOHMANN TRANSFER PROBES
+  // =========================================================================
+  function launchMarsProbe() {
+    const earth = BODY_MAP.earth;
+    const mars = BODY_MAP.mars;
+    const lonE = Math.atan2(earth.posAU.y, earth.posAU.x);
+    const r1 = earth.rAU;
+    // Target Mars aphelion radius at opposite longitude
+    const r2 = mars.a;
+    const aT = 0.5 * (r1 + r2);
+    const eT = Math.abs(r2 - r1) / (r2 + r1);
+    const periodT = 365.25636 * Math.pow(aT, 1.5);
+    const tof = periodT * 0.5;
+
+    // Slight inclination matching Mars's z at intercept
+    const marsFutureM = mars.M0 * DEG + TWO_PI * ((state.tDays + tof) / mars.period);
+    const marsAtArr = keplerToAU(mars.a, mars.e, mars._cosO, mars._sinO, mars._cosI, mars._sinI, mars._w, marsFutureM);
+    const incT = Math.atan2(marsAtArr.z, Math.hypot(marsAtArr.x, marsAtArr.y));
+
+    state.probeCounter++;
+    const launchPhase = state.emPhaseDeg;
+    const inWin = Math.abs(launchPhase - HOHMANN_IDEAL_DEG) <= 7.5;
+
+    const probe = {
+      id: state.probeCounter,
+      name: `Ares-${state.probeCounter}`,
+      tLaunch: state.tDays,
+      a: aT,
+      e: eT,
+      period: periodT,
+      tof,
+      Omega: lonE,
+      omega: 0,
+      inc: incT,
+      cosO: Math.cos(lonE),
+      sinO: Math.sin(lonE),
+      cosI: Math.cos(incT),
+      sinI: Math.sin(incT),
+      launchPhase,
+      status: 'coasting', // 'coasting' | 'intercept' | 'orbiting'
+      minMarsDist: 99,
+      posAU: { ...earth.posAU },
+      world: { ...earth.world },
+      trail: [],
+      arcPts: []
+    };
+
+    // Precompute full Hohmann transfer half-ellipse arc
+    for (let k = 0; k <= 64; k++) {
+      const E = (k / 64) * Math.PI;
+      const cosE = Math.cos(E), sinE = Math.sin(E);
+      const r = aT * (1 - eT * cosE);
+      const nu = Math.atan2(Math.sqrt(1 - eT * eT) * sinE, cosE - eT);
+      const x = r * (probe.cosO * Math.cos(nu) - probe.sinO * Math.sin(nu) * probe.cosI);
+      const y = r * (probe.sinO * Math.cos(nu) + probe.cosO * Math.sin(nu) * probe.cosI);
+      const z = r * (Math.sin(nu) * probe.sinI);
+      probe.arcPts.push({ x, y, z });
+    }
+
+    state.probes.unshift(probe);
+    if (state.probes.length > 6) state.probes.pop();
+
+    playLaunchSound();
+    if (inWin) {
+      showBanner(`🚀 ${probe.name} launched in Hohmann Window (Δθ = ${launchPhase.toFixed(1)}°) — Mars intercept in ~259 d!`, 'mint', 4200);
+    } else {
+      showBanner(`🚀 ${probe.name} launched off-window (Δθ = ${launchPhase.toFixed(1)}° vs 44.3° ideal) — watch the flyby miss!`, 'amber', 4200);
+    }
+    renderProbeList();
+  }
+
+  function updateProbes() {
+    const mars = BODY_MAP.mars;
+    for (let i = state.probes.length - 1; i >= 0; i--) {
+      const p = state.probes[i];
+      const elapsed = state.tDays - p.tLaunch;
+      if (elapsed < 0) {
+        // Rewound before launch
+        p.posAU = { ...BODY_MAP.earth.posAU };
+        p.world = { ...BODY_MAP.earth.world };
+        p.trail = [];
+        continue;
+      }
+
+      const M = TWO_PI * (elapsed / p.period);
+      const st = keplerToAU(p.a, p.e, p.cosO, p.sinO, p.cosI, p.sinI, 0, M);
+      p.posAU = { x: st.x, y: st.y, z: st.z };
+      p.world = mapAUtoWorld(st.x, st.y, st.z);
+
+      const dMars = Math.hypot(st.x - mars.posAU.x, st.y - mars.posAU.y, st.z - mars.posAU.z);
+      if (dMars < p.minMarsDist) p.minMarsDist = dMars;
+
+      if (p.status === 'coasting') {
+        if (elapsed > p.tof * 0.72 && dMars < 0.12) {
+          p.status = 'intercept';
+          playChime([523.25, 659.25, 783.99, 1046.5], 1.5, 0.06, 'sine');
+          showBanner(`🎯 ${p.name} intercepted Mars! Closest approach ${(dMars * 149.6).toFixed(1)}M km`, 'mint', 4500);
+          renderProbeList();
+        } else if (elapsed > p.tof * 1.18) {
+          p.status = 'missed';
+          renderProbeList();
+        }
+      }
+
+      // If intercepted, gently station-keep near Mars
+      if (p.status === 'intercept') {
+        const ang = (elapsed - p.tof) * 0.18;
+        p.posAU = {
+          x: mars.posAU.x + 0.03 * Math.cos(ang),
+          y: mars.posAU.y + 0.03 * Math.sin(ang),
+          z: mars.posAU.z + 0.01 * Math.sin(ang * 1.3)
+        };
+        p.world = mapAUtoWorld(p.posAU.x, p.posAU.y, p.posAU.z);
+      }
+
+      // Record trail
+      if (p.trail.length === 0 || Math.hypot(p.posAU.x - p.trail[p.trail.length - 1].x, p.posAU.y - p.trail[p.trail.length - 1].y) > 0.025) {
+        p.trail.push({ x: p.posAU.x, y: p.posAU.y, z: p.posAU.z });
+        if (p.trail.length > 90) p.trail.shift();
+      }
+    }
+  }
+
+  // =========================================================================
+  // EPHEMERIS STEP & ASTRONOMICAL EVENTS
+  // =========================================================================
+  function evaluateEphemeris(tDays) {
+    for (let idx = 0; idx < BODIES.length; idx++) {
+      const b = BODIES[idx];
+      if (b.kind === 'star') {
+        b.posAU.x = 0; b.posAU.y = 0; b.posAU.z = 0;
+        b.world.x = 0; b.world.y = 0; b.world.z = 0;
+        b.rAU = 0;
+        b.speedKms = 230.0; // Galactic orbital velocity
+        continue;
+      }
+      const M = b.M0 * DEG + TWO_PI * (tDays / b.period);
+      const st = keplerToAU(b.a, b.e, b._cosO, b._sinO, b._cosI, b._sinI, b._w, M);
+      b.posAU.x = st.x; b.posAU.y = st.y; b.posAU.z = st.z;
+      b.velAU.x = st.vx; b.velAU.y = st.vy; b.velAU.z = st.vz;
+      b.rAU = st.r;
+      b.speedKms = st.speedKms;
+      const w = mapAUtoWorld(st.x, st.y, st.z);
+      b.world.x = w.x; b.world.y = w.y; b.world.z = w.z;
+    }
+
+    // Compute Earth-Mars phase angle (Mars lon - Earth lon)
+    const earth = BODY_MAP.earth;
+    const mars = BODY_MAP.mars;
+    const lonE = Math.atan2(earth.posAU.y, earth.posAU.x) * RAD;
+    const lonM = Math.atan2(mars.posAU.y, mars.posAU.x) * RAD;
+    const prevPhase = state.emPhaseDeg;
+    state.emPhaseDeg = wrapDeg180(lonM - lonE);
+    const wasInWindow = state.inHohmannWindow;
+    state.inHohmannWindow = Math.abs(state.emPhaseDeg - HOHMANN_IDEAL_DEG) <= 5.5;
+
+    if (state.inHohmannWindow && !wasInWindow && Math.abs(tDays - state.lastWindowEventT) > 400) {
+      state.lastWindowEventT = tDays;
+      playChime([440, 554.37, 659.25], 1.1, 0.045, 'sine');
+      if (state.playing && state.rateDaysPerSec <= 180) {
+        showBanner('✨ Earth–Mars 44.3° Hohmann Launch Window Open!', 'mint', 3400);
+      }
+    }
+
+    // Detect Mars Opposition (phase crosses 0°)
+    if (Math.abs(prevPhase) < 25 && Math.abs(state.emPhaseDeg) < 25 && prevPhase * state.emPhaseDeg <= 0 && Math.abs(tDays - state.lastOppositionEventT) > 400) {
+      state.lastOppositionEventT = tDays;
+      playChime([392.0, 587.33], 1.2, 0.045, 'sine');
+      if (state.playing && (state.showRetrograde || state.rateDaysPerSec <= 90)) {
+        showBanner('🔴 Mars Opposition — Earth overtakes Mars (Retrograde Peak)', 'rose', 3400);
+      }
+    }
+
+    // Detect Halley's Comet Perihelion
+    const halley = BODY_MAP.halley;
+    if (halley.rAU < 0.62 && Math.abs(tDays - state.lastHalleyEventT) > 5000) {
+      state.lastHalleyEventT = tDays;
+      playChime([587.33, 880, 1174.66], 1.5, 0.05, 'sine');
+      showBanner("☄️ Halley's Comet Perihelion Passage (0.586 AU)!", 'amber', 4200);
+    }
+
+    // Compute Mars Geocentric Ecliptic Coordinates (for Retrograde S-Loop)
+    const dx = mars.posAU.x - earth.posAU.x;
+    const dy = mars.posAU.y - earth.posAU.y;
+    const dz = mars.posAU.z - earth.posAU.z;
+    const geoLon = Math.atan2(dy, dx);
+    const geoLat = Math.atan2(dz, Math.hypot(dx, dy));
+    state.marsGeoLonDeg = wrapDeg360(geoLon * RAD);
+    state.marsGeoLatDeg = geoLat * RAD;
+
+    // Instantaneous angular derivative d(geoLon)/dt via small finite step
+    const dtProbe = 0.5;
+    const mE2 = earth.M0 * DEG + TWO_PI * ((tDays + dtProbe) / earth.period);
+    const mM2 = mars.M0 * DEG + TWO_PI * ((tDays + dtProbe) / mars.period);
+    const e2 = keplerToAU(earth.a, earth.e, earth._cosO, earth._sinO, earth._cosI, earth._sinI, earth._w, mE2);
+    const ma2 = keplerToAU(mars.a, mars.e, mars._cosO, mars._sinO, mars._cosI, mars._sinI, mars._w, mM2);
+    const geoLon2 = Math.atan2(ma2.y - e2.y, ma2.x - e2.x);
+    const dLon = wrapPi(geoLon2 - geoLon);
+    state.isMarsRetrograde = dLon < 0;
+
+    if (state.showRetrograde && Math.abs(tDays - state.lastRetroSampleT) >= 2.2) {
+      state.lastRetroSampleT = tDays;
+      state.retroTrail.push({
+        lon: geoLon,
+        lat: geoLat,
+        retro: state.isMarsRetrograde,
+        tDays
+      });
+      if (state.retroTrail.length > 260) state.retroTrail.shift();
+    }
+
+    updateProbes();
+  }
+
+  // Helper to jump forward to a specific Earth-Mars phase angle (e.g., 44.34° or 0° opposition)
+  function findNextPhaseDays(startDays, targetDeg) {
+    let bestT = startDays;
+    let bestErr = 999;
+    // Coarse scan 820 days (synodic period ~780 d)
+    for (let d = 2; d <= 820; d += 2) {
+      const t = startDays + d;
+      const e = BODY_MAP.earth, m = BODY_MAP.mars;
+      const pe = keplerToAU(e.a, e.e, e._cosO, e._sinO, e._cosI, e._sinI, e._w, e.M0 * DEG + TWO_PI * (t / e.period));
+      const pm = keplerToAU(m.a, m.e, m._cosO, m._sinO, m._cosI, m._sinI, m._w, m.M0 * DEG + TWO_PI * (t / m.period));
+      const ph = wrapDeg180((Math.atan2(pm.y, pm.x) - Math.atan2(pe.y, pe.x)) * RAD);
+      const err = Math.abs(wrapDeg180(ph - targetDeg));
+      if (err < bestErr) {
+        bestErr = err;
+        bestT = t;
+      }
+      if (bestErr < 1.2) break;
+    }
+    // Fine refine ±3 days
+    let fineT = bestT;
+    for (let d = -3; d <= 3; d += 0.1) {
+      const t = bestT + d;
+      const e = BODY_MAP.earth, m = BODY_MAP.mars;
+      const pe = keplerToAU(e.a, e.e, e._cosO, e._sinO, e._cosI, e._sinI, e._w, e.M0 * DEG + TWO_PI * (t / e.period));
+      const pm = keplerToAU(m.a, m.e, m._cosO, m._sinO, m._cosI, m._sinI, m._w, m.M0 * DEG + TWO_PI * (t / m.period));
+      const ph = wrapDeg180((Math.atan2(pm.y, pm.x) - Math.atan2(pe.y, pe.x)) * RAD);
+      const err = Math.abs(wrapDeg180(ph - targetDeg));
+      if (err < bestErr) {
+        bestErr = err;
+        fineT = t;
+      }
+    }
+    return fineT;
+  }
+
+  function daysUntilNextWindow() {
+    const diff = wrapDeg360(state.emPhaseDeg - HOHMANN_IDEAL_DEG);
+    // Earth overtakes Mars at ~0.4615 deg/day, so (lonM - lonE) decreases by 0.4615 deg/day
+    if (Math.abs(wrapDeg180(state.emPhaseDeg - HOHMANN_IDEAL_DEG)) <= 5.5) return 0;
+    return Math.round(diff / 0.46156);
+  }
+
+  // =========================================================================
+  // RENDERING HELPERS
+  // =========================================================================
+  function renderStarfield(basis) {
+    // Deep space background
+    const bgGrad = ctx.createRadialGradient(W * 0.5, H * 0.5, 40, W * 0.5, H * 0.5, Math.max(W, H) * 0.78);
+    bgGrad.addColorStop(0, '#070d1f');
+    bgGrad.addColorStop(0.55, '#040711');
+    bgGrad.addColorStop(1, '#02040a');
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, W, H);
+
+    // Subtle Milky Way band
+    for (let i = 0; i < GALAXY_BAND.length; i++) {
+      const g = GALAXY_BAND[i];
+      const depth = g.x * basis.fx + g.y * basis.fy + g.z * basis.fz;
+      if (depth <= 0.12) continue;
+      const px = g.x * basis.rx + g.y * basis.ry + g.z * basis.rz;
+      const py = g.x * basis.ux + g.y * basis.uy + g.z * basis.uz;
+      const sx = W * 0.5 + (px / depth) * FOV;
+      const sy = H * 0.5 - (py / depth) * FOV;
+      if (sx < -100 || sx > W + 100 || sy < -100 || sy > H + 100) continue;
+      const gr = ctx.createRadialGradient(sx, sy, 0, sx, sy, g.rad);
+      gr.addColorStop(0, `rgba(${g.hue}, ${g.alpha})`);
+      gr.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = gr;
+      ctx.beginPath();
+      ctx.arc(sx, sy, g.rad, 0, TWO_PI);
+      ctx.fill();
+    }
+
+    // Distant celestial sphere stars
+    const t = state.simWallTime;
+    for (let i = 0; i < STARS.length; i++) {
+      const s = STARS[i];
+      const depth = s.x * basis.fx + s.y * basis.fy + s.z * basis.fz;
+      if (depth <= 0.15) continue;
+      const px = s.x * basis.rx + s.y * basis.ry + s.z * basis.rz;
+      const py = s.x * basis.ux + s.y * basis.uy + s.z * basis.uz;
+      const sx = W * 0.5 + (px / depth) * FOV;
+      const sy = H * 0.5 - (py / depth) * FOV;
+      if (sx < -4 || sx > W + 4 || sy < -4 || sy > H + 4) continue;
+      const tw = 0.78 + 0.22 * Math.sin(t * s.twinkleSpeed + s.twinklePhase);
+      ctx.globalAlpha = s.alpha * tw;
+      ctx.fillStyle = s.color;
+      ctx.beginPath();
+      ctx.arc(sx, sy, s.size, 0, TWO_PI);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function getSkyDomeRadius() {
+    if (state.scaleMode === 'inner') return 360;
+    if (state.scaleMode === 'true') return 980;
+    return 545;
+  }
+
+  function renderEclipticGridAndZodiac(basis) {
+    if (!state.showGrid && !state.showRetrograde) return;
+    const skyR = getSkyDomeRadius();
+
+    // Ecliptic radial spokes & concentric rings
+    if (state.showGrid) {
+      ctx.save();
+      const ringAUs = state.scaleMode === 'inner'
+        ? [0.5, 1.0, 1.5, 2.0, 2.5]
+        : state.scaleMode === 'true'
+          ? [1, 5, 10, 20, 30]
+          : [1, 5, 10, 30];
+
+      ctx.lineWidth = 1;
+      ringAUs.forEach(au => {
+        const r = mapRadiusAU(au);
+        ctx.strokeStyle = 'rgba(110, 145, 225, 0.08)';
+        ctx.beginPath();
+        let started = false;
+        for (let k = 0; k <= 96; k++) {
+          const ang = (k / 96) * TWO_PI;
+          const p = project3D(r * Math.cos(ang), r * Math.sin(ang), 0, basis);
+          if (!p.visible) { started = false; continue; }
+          if (!started) { ctx.moveTo(p.x, p.y); started = true; }
+          else ctx.lineTo(p.x, p.y);
+        }
+        ctx.stroke();
+      });
+
+      // 12 ecliptic longitude rays (every 30°)
+      for (let m = 0; m < 12; m++) {
+        const ang = m * 30 * DEG;
+        const p0 = project3D(0, 0, 0, basis);
+        const p1 = project3D(skyR * Math.cos(ang), skyR * Math.sin(ang), 0, basis);
+        if (p0.visible && p1.visible) {
+          ctx.strokeStyle = m === 0 ? 'rgba(255, 190, 92, 0.16)' : 'rgba(110, 145, 225, 0.07)';
+          ctx.beginPath();
+          ctx.moveTo(p0.x, p0.y);
+          ctx.lineTo(p1.x, p1.y);
+          ctx.stroke();
+        }
+      }
+      ctx.restore();
+    }
+
+    // Outer Celestial Zodiac Ring
+    ctx.save();
+    ctx.strokeStyle = state.showRetrograde ? 'rgba(120, 185, 255, 0.28)' : 'rgba(120, 160, 235, 0.14)';
+    ctx.lineWidth = state.showRetrograde ? 1.4 : 1;
+    ctx.beginPath();
+    let started = false;
+    for (let k = 0; k <= 120; k++) {
+      const ang = (k / 120) * TWO_PI;
+      const p = project3D(skyR * Math.cos(ang), skyR * Math.sin(ang), 0, basis);
+      if (!p.visible) { started = false; continue; }
+      if (!started) { ctx.moveTo(p.x, p.y); started = true; }
+      else ctx.lineTo(p.x, p.y);
+    }
+    ctx.stroke();
+
+    // Zodiac constellation signs around outer ring
+    ctx.font = '600 10.5px ' + getComputedStyle(document.body).getPropertyValue('--sans');
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ZODIAC.forEach(z => {
+      const ang = (z.lon + 15) * DEG;
+      const p = project3D((skyR + 18) * Math.cos(ang), (skyR + 18) * Math.sin(ang), 0, basis);
+      if (p.visible && p.x > -40 && p.x < W + 40 && p.y > -20 && p.y < H + 20) {
+        ctx.fillStyle = state.showRetrograde ? 'rgba(182, 212, 255, 0.72)' : 'rgba(130, 158, 215, 0.38)';
+        ctx.fillText(`${z.sym} ${z.name}`, p.x, p.y);
+      }
+    });
+    ctx.restore();
+  }
+
+  function renderBelts(basis) {
+    if (!state.showBelts) return;
+    const t = state.tDays;
+
+    // Main Asteroid Belt
+    for (let i = 0; i < ASTEROIDS.length; i++) {
+      const a = ASTEROIDS[i];
+      const M = a.M0 + TWO_PI * (t / a.period);
+      const r = a.a * (1 - a.e * Math.cos(M));
+      const ang = a.Omega + M;
+      const x = r * Math.cos(ang);
+      const y = r * Math.sin(ang);
+      const z = r * Math.sin(M) * Math.sin(a.inc);
+      const w = mapAUtoWorld(x, y, z);
+      const p = project3D(w.x, w.y, w.z, basis);
+      if (!p.visible || p.x < -5 || p.x > W + 5 || p.y < -5 || p.y > H + 5) continue;
+      ctx.globalAlpha = a.alpha * Math.min(1, p.scale * 1.1);
+      ctx.fillStyle = a.tint;
+      ctx.fillRect(p.x, p.y, a.size, a.size);
+    }
+
+    // Kuiper Belt
+    for (let i = 0; i < KUIPER.length; i++) {
+      const k = KUIPER[i];
+      const M = k.M0 + TWO_PI * (t / k.period);
+      const r = k.a * (1 - k.e * Math.cos(M));
+      const ang = k.Omega + M;
+      const x = r * Math.cos(ang);
+      const y = r * Math.sin(ang);
+      const z = r * Math.sin(M) * Math.sin(k.inc);
+      const w = mapAUtoWorld(x, y, z);
+      const p = project3D(w.x, w.y, w.z, basis);
+      if (!p.visible || p.x < -5 || p.x > W + 5 || p.y < -5 || p.y > H + 5) continue;
+      ctx.globalAlpha = k.alpha * Math.min(1, p.scale * 1.4);
+      ctx.fillStyle = k.tint;
+      ctx.fillRect(p.x, p.y, k.size, k.size);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function renderOrbits(basis) {
+    if (!state.showOrbits) return;
+    ctx.save();
+    for (let i = 0; i < BODIES.length; i++) {
+      const b = BODIES[i];
+      if (!b._orbitPts.length) continue;
+      const isFocused = b.id === state.focusId;
+      const isHovered = b.id === state.hoveredId;
+      const isHighlight = isFocused || isHovered || (state.showRetrograde && (b.id === 'earth' || b.id === 'mars'));
+
+      ctx.beginPath();
+      let started = false;
+      const pts = b._orbitPts;
+      for (let k = 0; k <= pts.length; k++) {
+        const pt = pts[k % pts.length];
+        const p = project3D(pt.x, pt.y, pt.z, basis);
+        if (!p.visible) { started = false; continue; }
+        if (!started) { ctx.moveTo(p.x, p.y); started = true; }
+        else ctx.lineTo(p.x, p.y);
+      }
+
+      if (b.id === 'halley') {
+        ctx.setLineDash([5, 5]);
+        ctx.strokeStyle = isHighlight ? 'rgba(130, 240, 255, 0.72)' : 'rgba(130, 240, 255, 0.28)';
+        ctx.lineWidth = isHighlight ? 1.8 : 1.1;
+      } else if (b.id === 'pluto') {
+        ctx.setLineDash([3, 4]);
+        ctx.strokeStyle = isHighlight ? 'rgba(220, 195, 175, 0.65)' : 'rgba(195, 175, 160, 0.24)';
+        ctx.lineWidth = isHighlight ? 1.6 : 1.0;
+      } else {
+        ctx.setLineDash([]);
+        ctx.strokeStyle = isHighlight ? b.color : 'rgba(148, 179, 255, 0.22)';
+        ctx.globalAlpha = isHighlight ? 0.78 : 1.0;
+        ctx.lineWidth = isHighlight ? 1.7 : 1.0;
+      }
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
+
+  function renderRetrogradeVisualizer(basis) {
+    if (!state.showRetrograde) return;
+    const earth = BODY_MAP.earth;
+    const mars = BODY_MAP.mars;
+    const skyR = getSkyDomeRadius();
+
+    // Direction from Earth to Mars in true AU space
+    const dx = mars.posAU.x - earth.posAU.x;
+    const dy = mars.posAU.y - earth.posAU.y;
+    const dz = mars.posAU.z - earth.posAU.z;
+    const lon = Math.atan2(dy, dx);
+    const lat = Math.atan2(dz, Math.hypot(dx, dy));
+    // Exaggerate vertical ecliptic latitude on the sky dome so the S-loop is unmistakably clear in 3D
+    const latVis = lat * 5.2;
+
+    const skyX = skyR * Math.cos(latVis) * Math.cos(lon);
+    const skyY = skyR * Math.cos(latVis) * Math.sin(lon);
+    const skyZ = skyR * Math.sin(latVis);
+
+    const pE = project3D(earth.world.x, earth.world.y, earth.world.z, basis);
+    const pM = project3D(mars.world.x, mars.world.y, mars.world.z, basis);
+    const pS = project3D(skyX, skyY, skyZ, basis);
+
+    ctx.save();
+
+    // 1. Traced sky-loop ribbon on the celestial zodiac sphere
+    if (state.retroTrail.length > 1) {
+      for (let i = 1; i < state.retroTrail.length; i++) {
+        const a = state.retroTrail[i - 1];
+        const b = state.retroTrail[i];
+        // Skip big discontinuities
+        if (Math.abs(wrapPi(b.lon - a.lon)) > 0.45) continue;
+        const pA = project3D(
+          skyR * Math.cos(a.lat * 5.2) * Math.cos(a.lon),
+          skyR * Math.cos(a.lat * 5.2) * Math.sin(a.lon),
+          skyR * Math.sin(a.lat * 5.2),
+          basis
+        );
+        const pB = project3D(
+          skyR * Math.cos(b.lat * 5.2) * Math.cos(b.lon),
+          skyR * Math.cos(b.lat * 5.2) * Math.sin(b.lon),
+          skyR * Math.sin(b.lat * 5.2),
+          basis
+        );
+        if (!pA.visible || !pB.visible) continue;
+        const fade = 0.25 + 0.75 * (i / state.retroTrail.length);
+        ctx.strokeStyle = b.retro
+          ? `rgba(255, 96, 131, ${fade})`
+          : `rgba(88, 220, 255, ${fade * 0.85})`;
+        ctx.lineWidth = b.retro ? 3.2 : 1.9;
+        ctx.beginPath();
+        ctx.moveTo(pA.x, pA.y);
+        ctx.lineTo(pB.x, pB.y);
+        ctx.stroke();
+      }
+    }
+
+    // 2. Glowing Earth -> Mars -> Zodiac Sky Sightline Beam
+    if (pE.visible && pM.visible && pS.visible) {
+      const beamColor = state.isMarsRetrograde ? '255, 96, 131' : '88, 220, 255';
+      const grad = ctx.createLinearGradient(pE.x, pE.y, pS.x, pS.y);
+      grad.addColorStop(0, `rgba(${beamColor}, 0.88)`);
+      grad.addColorStop(0.35, `rgba(255, 190, 92, 0.72)`);
+      grad.addColorStop(1, `rgba(${beamColor}, 0.92)`);
+
+      ctx.strokeStyle = grad;
+      ctx.lineWidth = state.isMarsRetrograde ? 2.4 : 1.7;
+      ctx.setLineDash([7, 5]);
+      ctx.beginPath();
+      ctx.moveTo(pE.x, pE.y);
+      ctx.lineTo(pM.x, pM.y);
+      ctx.lineTo(pS.x, pS.y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Projected Mars Sky Marker on Celestial Arc
+      const glow = ctx.createRadialGradient(pS.x, pS.y, 1, pS.x, pS.y, 15);
+      glow.addColorStop(0, `rgba(${beamColor}, 0.95)`);
+      glow.addColorStop(0.5, `rgba(${beamColor}, 0.35)`);
+      glow.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(pS.x, pS.y, 15, 0, TWO_PI);
+      ctx.fill();
+
+      ctx.fillStyle = '#fff';
+      ctx.beginPath();
+      ctx.arc(pS.x, pS.y, 3.2, 0, TWO_PI);
+      ctx.fill();
+
+      ctx.font = '700 10.5px ' + getComputedStyle(document.body).getPropertyValue('--mono');
+      ctx.fillStyle = state.isMarsRetrograde ? '#ff7c9b' : '#80e6ff';
+      ctx.textAlign = 'left';
+      ctx.fillText(
+        state.isMarsRetrograde ? '◀ MARS RETROGRADE' : '▶ Mars Apparent Sky',
+        pS.x + 9,
+        pS.y + 3
+      );
+    }
+
+    ctx.restore();
+  }
+
+  function renderHohmannAndProbes(basis) {
+    const earth = BODY_MAP.earth;
+    const mars = BODY_MAP.mars;
+
+    // Show subtle ideal 44.3° phase wedge between Earth & Mars when in Inner Rocky mode or Transfer Lab tab or near window
+    const labActive = document.getElementById('tab-lab').classList.contains('active');
+    if (labActive || state.scaleMode === 'inner' || state.inHohmannWindow) {
+      const pSun = project3D(0, 0, 0, basis);
+      const pE = project3D(earth.world.x, earth.world.y, earth.world.z, basis);
+      const pM = project3D(mars.world.x, mars.world.y, mars.world.z, basis);
+      if (pSun.visible && pE.visible && pM.visible) {
+        ctx.save();
+        const col = state.inHohmannWindow ? '74, 242, 178' : '255, 190, 92';
+        ctx.strokeStyle = `rgba(${col}, ${state.inHohmannWindow ? 0.52 : 0.22})`;
+        ctx.lineWidth = state.inHohmannWindow ? 1.5 : 1;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(pSun.x, pSun.y);
+        ctx.lineTo(pE.x, pE.y);
+        ctx.moveTo(pSun.x, pSun.y);
+        ctx.lineTo(pM.x, pM.y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Draw arc along Earth's radius showing current phase angle
+        const lonE = Math.atan2(earth.posAU.y, earth.posAU.x);
+        const lonM = Math.atan2(mars.posAU.y, mars.posAU.x);
+        const diff = wrapPi(lonM - lonE);
+        const rArc = mapRadiusAU(0.55);
+        ctx.beginPath();
+        const steps = 24;
+        for (let k = 0; k <= steps; k++) {
+          const ang = lonE + (k / steps) * diff;
+          const p = project3D(rArc * Math.cos(ang), rArc * Math.sin(ang), 0, basis);
+          if (!p.visible) continue;
+          if (k === 0) ctx.moveTo(p.x, p.y);
+          else ctx.lineTo(p.x, p.y);
+        }
+        ctx.strokeStyle = `rgba(${col}, ${state.inHohmannWindow ? 0.85 : 0.45})`;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // Mid-angle label
+        const midAng = lonE + diff * 0.5;
+        const pLbl = project3D((rArc + 14) * Math.cos(midAng), (rArc + 14) * Math.sin(midAng), 0, basis);
+        if (pLbl.visible) {
+          ctx.font = '700 10.5px ' + getComputedStyle(document.body).getPropertyValue('--mono');
+          ctx.fillStyle = state.inHohmannWindow ? '#4af2b2' : '#ffbe5c';
+          ctx.textAlign = 'center';
+          ctx.fillText(`Δθ ${state.emPhaseDeg >= 0 ? '+' : ''}${state.emPhaseDeg.toFixed(1)}°`, pLbl.x, pLbl.y);
+        }
+        ctx.restore();
+      }
+    }
+
+    // Render active transfer probes & their Keplerian transfer arcs
+    state.probes.forEach(pr => {
+      if (state.tDays < pr.tLaunch) return;
+
+      // Planned transfer half-ellipse dashed curve
+      ctx.save();
+      ctx.beginPath();
+      let started = false;
+      for (let k = 0; k < pr.arcPts.length; k++) {
+        const w = mapAUtoWorld(pr.arcPts[k].x, pr.arcPts[k].y, pr.arcPts[k].z);
+        const p = project3D(w.x, w.y, w.z, basis);
+        if (!p.visible) { started = false; continue; }
+        if (!started) { ctx.moveTo(p.x, p.y); started = true; }
+        else ctx.lineTo(p.x, p.y);
+      }
+      ctx.strokeStyle = pr.status === 'intercept'
+        ? 'rgba(74, 242, 178, 0.48)'
+        : 'rgba(255, 190, 92, 0.36)';
+      ctx.lineWidth = 1.4;
+      ctx.setLineDash([5, 5]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Glowing flown trail
+      if (pr.trail.length > 1) {
+        for (let k = 1; k < pr.trail.length; k++) {
+          const w0 = mapAUtoWorld(pr.trail[k - 1].x, pr.trail[k - 1].y, pr.trail[k - 1].z);
+          const w1 = mapAUtoWorld(pr.trail[k].x, pr.trail[k].y, pr.trail[k].z);
+          const p0 = project3D(w0.x, w0.y, w0.z, basis);
+          const p1 = project3D(w1.x, w1.y, w1.z, basis);
+          if (!p0.visible || !p1.visible) continue;
+          const fade = k / pr.trail.length;
+          ctx.strokeStyle = pr.status === 'intercept'
+            ? `rgba(74, 242, 178, ${fade * 0.9})`
+            : `rgba(88, 220, 255, ${fade * 0.9})`;
+          ctx.lineWidth = 2.2;
+          ctx.beginPath();
+          ctx.moveTo(p0.x, p0.y);
+          ctx.lineTo(p1.x, p1.y);
+          ctx.stroke();
+        }
+      }
+
+      // Spacecraft marker
+      const pp = project3D(pr.world.x, pr.world.y, pr.world.z, basis);
+      if (pp.visible) {
+        const g = ctx.createRadialGradient(pp.x, pp.y, 1, pp.x, pp.y, 12);
+        const glowCol = pr.status === 'intercept' ? '74, 242, 178' : '88, 220, 255';
+        g.addColorStop(0, `rgba(${glowCol}, 0.95)`);
+        g.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(pp.x, pp.y, 12, 0, TWO_PI);
+        ctx.fill();
+
+        // Crisp spacecraft diamond + solar wings
+        ctx.strokeStyle = '#9ceeff';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(pp.x - 6, pp.y);
+        ctx.lineTo(pp.x + 6, pp.y);
+        ctx.stroke();
+
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.moveTo(pp.x, pp.y - 4);
+        ctx.lineTo(pp.x + 3.2, pp.y);
+        ctx.lineTo(pp.x, pp.y + 4);
+        ctx.lineTo(pp.x - 3.2, pp.y);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.font = '700 9.5px ' + getComputedStyle(document.body).getPropertyValue('--mono');
+        ctx.fillStyle = pr.status === 'intercept' ? '#4af2b2' : '#9eeeff';
+        ctx.textAlign = 'left';
+        ctx.fillText(pr.name, pp.x + 8, pp.y - 5);
+      }
+      ctx.restore();
+    });
+  }
+
+  // Draw planetary rings (backHalf=true draws behind planet, false draws in front)
+  function drawPlanetRings(b, p, radPx, basis, backHalf) {
+    if (!b.hasRings || radPx < 2.2) return;
+    const tiltRad = b.tilt * DEG;
+    // Ring normal vector tilted by axial obliquity (aligned with planet's spin pole)
+    const nx = Math.sin(tiltRad) * 0.62;
+    const ny = Math.sin(tiltRad) * 0.78;
+    const nz = Math.cos(tiltRad);
+
+    // Build orthonormal basis (u, v) in ring plane
+    let ax = 0, ay = 0, az = 1;
+    if (Math.abs(nz) > 0.9) { ax = 1; az = 0; }
+    // u = normalize(a x n)
+    let ux = ay * nz - az * ny;
+    let uy = az * nx - ax * nz;
+    let uz = ax * ny - ay * nx;
+    const uLen = Math.hypot(ux, uy, uz) || 1;
+    ux /= uLen; uy /= uLen; uz /= uLen;
+    // v = n x u
+    const vx = ny * uz - nz * uy;
+    const vy = nz * ux - nx * uz;
+    const vz = nx * uy - ny * ux;
+
+    const rWorld = radPx / p.scale;
+    const bands = b.id === 'saturn'
+      ? [
+          { rIn: 1.24, rOut: 1.48, col: 'rgba(198, 175, 134, 0.34)' }, // C ring
+          { rIn: 1.49, rOut: 1.94, col: 'rgba(238, 218, 176, 0.78)' }, // B ring (brightest)
+          // Cassini division gap 1.94..2.03
+          { rIn: 2.04, rOut: 2.38, col: 'rgba(218, 198, 160, 0.58)' }  // A ring
+        ]
+      : [
+          { rIn: 1.50, rOut: 1.84, col: 'rgba(165, 224, 236, 0.25)' }  // Uranus faint rings
+        ];
+
+    const segs = 48;
+    ctx.save();
+    for (let bi = 0; bi < bands.length; bi++) {
+      const band = bands[bi];
+      const rMid = 0.5 * (band.rIn + band.rOut) * rWorld;
+      const strokeW = Math.max(1.2, (band.rOut - band.rIn) * radPx);
+      ctx.strokeStyle = band.col;
+      ctx.lineWidth = strokeW;
+      ctx.lineCap = 'butt';
+
+      let drawing = false;
+      ctx.beginPath();
+      for (let k = 0; k <= segs; k++) {
+        const ang = (k / segs) * TWO_PI;
+        const ca = Math.cos(ang), sa = Math.sin(ang);
+        const wx = b.world.x + rMid * (ca * ux + sa * vx);
+        const wy = b.world.y + rMid * (ca * uy + sa * vy);
+        const wz = b.world.z + rMid * (ca * uz + sa * vz);
+        const pt = project3D(wx, wy, wz, basis);
+        const isBehind = pt.depth > p.depth;
+        if (pt.visible && isBehind === backHalf) {
+          if (!drawing) { ctx.moveTo(pt.x, pt.y); drawing = true; }
+          else ctx.lineTo(pt.x, pt.y);
+        } else {
+          drawing = false;
+        }
+      }
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawSun(p, radPx) {
+    const t = state.simWallTime;
+    ctx.save();
+
+    // Outer volumetric corona
+    const coronaR = Math.max(radPx * 4.6, 36);
+    const cGrad = ctx.createRadialGradient(p.x, p.y, radPx * 0.4, p.x, p.y, coronaR);
+    cGrad.addColorStop(0, 'rgba(255, 245, 200, 0.85)');
+    cGrad.addColorStop(0.22, 'rgba(255, 192, 78, 0.46)');
+    cGrad.addColorStop(0.55, 'rgba(255, 118, 36, 0.14)');
+    cGrad.addColorStop(1, 'rgba(255, 90, 20, 0)');
+    ctx.fillStyle = cGrad;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, coronaR, 0, TWO_PI);
+    ctx.fill();
+
+    // Subtle animated solar flare streaks
+    ctx.globalAlpha = 0.22;
+    for (let k = 0; k < 4; k++) {
+      const ang = t * 0.12 + k * (Math.PI * 0.5);
+      const len = coronaR * (0.78 + 0.12 * Math.sin(t * 1.4 + k));
+      const lg = ctx.createLinearGradient(
+        p.x - Math.cos(ang) * len, p.y - Math.sin(ang) * len,
+        p.x + Math.cos(ang) * len, p.y + Math.sin(ang) * len
+      );
+      lg.addColorStop(0, 'rgba(255, 190, 92, 0)');
+      lg.addColorStop(0.5, 'rgba(255, 232, 165, 0.7)');
+      lg.addColorStop(1, 'rgba(255, 190, 92, 0)');
+      ctx.strokeStyle = lg;
+      ctx.lineWidth = Math.max(1.2, radPx * 0.18);
+      ctx.beginPath();
+      ctx.moveTo(p.x - Math.cos(ang) * len, p.y - Math.sin(ang) * len);
+      ctx.lineTo(p.x + Math.cos(ang) * len, p.y + Math.sin(ang) * len);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+
+    // Photosphere disk
+    const sGrad = ctx.createRadialGradient(p.x - radPx * 0.22, p.y - radPx * 0.22, radPx * 0.1, p.x, p.y, radPx);
+    sGrad.addColorStop(0, '#fffef5');
+    sGrad.addColorStop(0.45, '#ffdf85');
+    sGrad.addColorStop(0.82, '#ff9f33');
+    sGrad.addColorStop(1, '#e65c17');
+    ctx.fillStyle = sGrad;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, radPx, 0, TWO_PI);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawHalleyComet(b, p, radPx, basis) {
+    ctx.save();
+    // Dynamic tail intensity peaks strongly near perihelion (0.586 AU)
+    const rAU = Math.max(0.55, b.rAU);
+    const activity = Math.max(0, Math.min(1.35, Math.pow(3.6 / rAU, 1.85) - 0.12));
+
+    if (activity > 0.04) {
+      // Anti-solar radial unit vector in 3D
+      const rLen = Math.hypot(b.posAU.x, b.posAU.y, b.posAU.z) || 1;
+      const rx = b.posAU.x / rLen;
+      const ry = b.posAU.y / rLen;
+      const rz = b.posAU.z / rLen;
+
+      // Tail length in world units scales with activity
+      const tailLenWorld = (22 + activity * 95) * (state.scaleMode === 'inner' ? 1.5 : 1.0);
+
+      // 1. Straight Cyan Ion (Plasma) Tail pointing directly anti-solar
+      const ionTip = project3D(
+        b.world.x + rx * tailLenWorld,
+        b.world.y + ry * tailLenWorld,
+        b.world.z + rz * tailLenWorld,
+        basis
+      );
+      if (ionTip.visible) {
+        const dx = ionTip.x - p.x;
+        const dy = ionTip.y - p.y;
+        const lenPx = Math.hypot(dx, dy) || 1;
+        const nx = -dy / lenPx;
+        const ny = dx / lenPx;
+        const wTip = Math.min(26, 4 + lenPx * 0.075);
+
+        const ig = ctx.createLinearGradient(p.x, p.y, ionTip.x, ionTip.y);
+        ig.addColorStop(0, `rgba(115, 236, 255, ${Math.min(0.85, 0.35 + activity * 0.45)})`);
+        ig.addColorStop(0.5, `rgba(72, 185, 255, ${Math.min(0.45, activity * 0.32)})`);
+        ig.addColorStop(1, 'rgba(60, 140, 255, 0)');
+
+        ctx.fillStyle = ig;
+        ctx.beginPath();
+        ctx.moveTo(p.x + nx * 1.5, p.y + ny * 1.5);
+        ctx.lineTo(ionTip.x + nx * wTip, ionTip.y + ny * wTip);
+        ctx.lineTo(ionTip.x - nx * wTip, ionTip.y - ny * wTip);
+        ctx.lineTo(p.x - nx * 1.5, p.y - ny * 1.5);
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      // 2. Curved Golden-Cream Dust Tail swept between anti-solar and -velocity
+      const dustDirX = rx * 0.72 - b.velAU.x * 0.52;
+      const dustDirY = ry * 0.72 - b.velAU.y * 0.52;
+      const dustDirZ = rz * 0.72 - b.velAU.z * 0.52;
+      const dLen = Math.hypot(dustDirX, dustDirY, dustDirZ) || 1;
+      const dustLenW = tailLenWorld * 0.78;
+      const dustMid = project3D(
+        b.world.x + (rx * 0.85 - b.velAU.x * 0.25) * dustLenW * 0.5,
+        b.world.y + (ry * 0.85 - b.velAU.y * 0.25) * dustLenW * 0.5,
+        b.world.z + (rz * 0.85 - b.velAU.z * 0.25) * dustLenW * 0.5,
+        basis
+      );
+      const dustTip = project3D(
+        b.world.x + (dustDirX / dLen) * dustLenW,
+        b.world.y + (dustDirY / dLen) * dustLenW,
+        b.world.z + (dustDirZ / dLen) * dustLenW,
+        basis
+      );
+      if (dustTip.visible && dustMid.visible) {
+        const dx = dustTip.x - p.x;
+        const dy = dustTip.y - p.y;
+        const lenPx = Math.hypot(dx, dy) || 1;
+        const nx = -dy / lenPx;
+        const ny = dx / lenPx;
+        const wTip = Math.min(38, 7 + lenPx * 0.16);
+
+        const dg = ctx.createLinearGradient(p.x, p.y, dustTip.x, dustTip.y);
+        dg.addColorStop(0, `rgba(255, 232, 185, ${Math.min(0.75, 0.25 + activity * 0.4)})`);
+        dg.addColorStop(0.55, `rgba(255, 198, 128, ${Math.min(0.32, activity * 0.24)})`);
+        dg.addColorStop(1, 'rgba(255, 180, 110, 0)');
+
+        ctx.fillStyle = dg;
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y);
+        ctx.quadraticCurveTo(dustMid.x + nx * (wTip * 0.45), dustMid.y + ny * (wTip * 0.45), dustTip.x + nx * wTip, dustTip.y + ny * wTip);
+        ctx.lineTo(dustTip.x - nx * wTip * 0.55, dustTip.y - ny * wTip * 0.55);
+        ctx.quadraticCurveTo(dustMid.x - nx * (wTip * 0.2), dustMid.y - ny * (wTip * 0.2), p.x, p.y);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+
+    // Glowing Coma Halo
+    const comaR = Math.max(radPx * (2.6 + activity * 2.2), 7);
+    const cg = ctx.createRadialGradient(p.x, p.y, 0.5, p.x, p.y, comaR);
+    cg.addColorStop(0, '#ffffff');
+    cg.addColorStop(0.35, 'rgba(155, 245, 255, 0.78)');
+    cg.addColorStop(1, 'rgba(90, 210, 255, 0)');
+    ctx.fillStyle = cg;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, comaR, 0, TWO_PI);
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  function drawPlanetSphere(b, p, radPx, basis) {
+    // 1. Back half of rings (Saturn / Uranus)
+    if (b.hasRings) drawPlanetRings(b, p, radPx, basis, true);
+
+    // 2. Axial Tilt Pole Axis (when Moons & Tilt enabled and planet is large enough or focused)
+    if (state.showMoons && (radPx > 5.5 || b.id === state.focusId) && b.kind !== 'comet') {
+      const tiltRad = b.tilt * DEG;
+      const axisLen = (radPx / p.scale) * 1.95;
+      const nx = Math.sin(tiltRad) * 0.62;
+      const ny = Math.sin(tiltRad) * 0.78;
+      const nz = Math.cos(tiltRad);
+      const pN = project3D(b.world.x + nx * axisLen, b.world.y + ny * axisLen, b.world.z + nz * axisLen, basis);
+      const pS = project3D(b.world.x - nx * axisLen, b.world.y - ny * axisLen, b.world.z - nz * axisLen, basis);
+      if (pN.visible && pS.visible) {
+        ctx.save();
+        ctx.strokeStyle = 'rgba(170, 215, 255, 0.45)';
+        ctx.lineWidth = 1.1;
+        ctx.setLineDash([3, 3]);
+        ctx.beginPath();
+        ctx.moveTo(pS.x, pS.y);
+        ctx.lineTo(pN.x, pN.y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.restore();
+      }
+    }
+
+    // 3. Planet Sphere with true 3D Sun-lit terminator direction
+    ctx.save();
+    // Vector from planet to Sun in world space: (-wx, -wy, -wz)
+    const lx = -b.world.x, ly = -b.world.y, lz = -b.world.z;
+    const lLen = Math.hypot(lx, ly, lz) || 1;
+    const lnx = lx / lLen, lny = ly / lLen, lnz = lz / lLen;
+    // Project light direction into camera screen right/up
+    const lightScreenX = lnx * basis.rx + lny * basis.ry + lnz * basis.rz;
+    const lightScreenY = -(lnx * basis.ux + lny * basis.uy + lnz * basis.uz);
+    const lightFront = -(lnx * basis.fx + lny * basis.fy + lnz * basis.fz); // +1 when Sun behind camera
+
+    const hiX = p.x + lightScreenX * radPx * 0.42;
+    const hiY = p.y + lightScreenY * radPx * 0.42;
+
+    // Subtle atmosphere / planetary halo
+    if (b.id === 'earth' || b.id === 'jupiter' || b.id === 'saturn' || b.id === 'neptune' || b.id === 'venus') {
+      const halo = ctx.createRadialGradient(p.x, p.y, radPx * 0.75, p.x, p.y, radPx * 1.65);
+      halo.addColorStop(0, b.id === 'earth' ? 'rgba(90, 190, 255, 0.35)' : 'rgba(255, 225, 175, 0.16)');
+      halo.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = halo;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, radPx * 1.65, 0, TWO_PI);
+      ctx.fill();
+    }
+
+    // Clip to planet sphere for surface detail + lighting
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, radPx, 0, TWO_PI);
+    ctx.save();
+    ctx.clip();
+
+    // Base fill
+    ctx.fillStyle = b.color;
+    ctx.fillRect(p.x - radPx, p.y - radPx, radPx * 2, radPx * 2);
+
+    // Distinct planet surface textures when visible
+    if (radPx > 4.2) {
+      if (b.id === 'jupiter') {
+        const bands = ['#c89b6e', '#e7d5bc', '#b66942', '#e4cca8', '#a97a58', '#d9c09d'];
+        for (let k = 0; k < bands.length; k++) {
+          ctx.fillStyle = bands[k];
+          const y0 = p.y - radPx + (k / bands.length) * radPx * 2;
+          ctx.fillRect(p.x - radPx, y0, radPx * 2, (radPx * 2) / bands.length + 0.5);
+        }
+        // Great Red Spot
+        ctx.fillStyle = 'rgba(196, 76, 48, 0.85)';
+        ctx.beginPath();
+        ctx.ellipse(p.x + radPx * 0.22, p.y + radPx * 0.26, radPx * 0.26, radPx * 0.14, 0, 0, TWO_PI);
+        ctx.fill();
+      } else if (b.id === 'saturn') {
+        const bands = ['#d8c088', '#efe0b7', '#cfb073', '#e8d4a2', '#c5a566'];
+        for (let k = 0; k < bands.length; k++) {
+          ctx.fillStyle = bands[k];
+          const y0 = p.y - radPx + (k / bands.length) * radPx * 2;
+          ctx.fillRect(p.x - radPx, y0, radPx * 2, (radPx * 2) / bands.length + 0.5);
+        }
+      } else if (b.id === 'earth') {
+        // Continents & polar ice cap
+        ctx.fillStyle = '#36b57c';
+        ctx.beginPath();
+        ctx.ellipse(p.x - radPx * 0.2, p.y - radPx * 0.12, radPx * 0.42, radPx * 0.28, 0.4, 0, TWO_PI);
+        ctx.ellipse(p.x + radPx * 0.34, p.y + radPx * 0.18, radPx * 0.28, radPx * 0.34, -0.3, 0, TWO_PI);
+        ctx.fill();
+        // Polar ice + cloud swirl
+        ctx.fillStyle = 'rgba(240, 248, 255, 0.55)';
+        ctx.beginPath();
+        ctx.ellipse(p.x, p.y - radPx * 0.88, radPx * 0.55, radPx * 0.22, 0, 0, TWO_PI);
+        ctx.fill();
+      } else if (b.id === 'mars') {
+        ctx.fillStyle = 'rgba(130, 48, 28, 0.55)';
+        ctx.beginPath();
+        ctx.ellipse(p.x + radPx * 0.18, p.y + radPx * 0.08, radPx * 0.48, radPx * 0.28, -0.2, 0, TWO_PI);
+        ctx.fill();
+        ctx.fillStyle = 'rgba(255, 245, 238, 0.72)';
+        ctx.beginPath();
+        ctx.ellipse(p.x, p.y - radPx * 0.88, radPx * 0.36, radPx * 0.15, 0, 0, TWO_PI);
+        ctx.fill();
+      } else if (b.id === 'neptune') {
+        ctx.fillStyle = 'rgba(26, 56, 165, 0.55)';
+        ctx.fillRect(p.x - radPx, p.y - radPx * 0.2, radPx * 2, radPx * 0.35);
+        ctx.fillStyle = 'rgba(145, 195, 255, 0.45)';
+        ctx.beginPath();
+        ctx.ellipse(p.x - radPx * 0.22, p.y + radPx * 0.22, radPx * 0.35, radPx * 0.1, 0, 0, TWO_PI);
+        ctx.fill();
+      }
+    }
+
+    // Spherical Day/Night Terminator Shading
+    const litGrad = ctx.createRadialGradient(hiX, hiY, radPx * 0.08, p.x - lightScreenX * radPx * 0.28, p.y - lightScreenY * radPx * 0.28, radPx * 1.48);
+    litGrad.addColorStop(0, 'rgba(255, 255, 255, 0.28)');
+    litGrad.addColorStop(0.45, 'rgba(0, 0, 0, 0)');
+    litGrad.addColorStop(0.82, `rgba(2, 5, 14, ${lightFront > 0.3 ? 0.58 : 0.78})`);
+    litGrad.addColorStop(1, 'rgba(1, 3, 10, 0.92)');
+    ctx.fillStyle = litGrad;
+    ctx.fillRect(p.x - radPx, p.y - radPx, radPx * 2, radPx * 2);
+
+    ctx.restore(); // end sphere clip
+
+    // 4. Front half of rings
+    if (b.hasRings) drawPlanetRings(b, p, radPx, basis, false);
+
+    // 5. Focus / Hover Reticle
+    if (b.id === state.focusId || b.id === state.hoveredId) {
+      const retR = Math.max(radPx + 7, 13);
+      ctx.strokeStyle = b.id === state.focusId ? 'rgba(88, 220, 255, 0.85)' : 'rgba(255, 190, 92, 0.7)';
+      ctx.lineWidth = b.id === state.focusId ? 1.5 : 1.1;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, retR, 0, TWO_PI);
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
+  function renderBodiesAndMoons(basis) {
+    const drawList = [];
+
+    for (let i = 0; i < BODIES.length; i++) {
+      const b = BODIES[i];
+      const p = project3D(b.world.x, b.world.y, b.world.z, basis);
+      b.screen.visible = p.visible;
+      b.screen.x = p.x;
+      b.screen.y = p.y;
+      b.screen.depth = p.depth;
+      b.screen.scale = p.scale;
+
+      if (!p.visible) continue;
+
+      // Keep planets visible even when zoomed far out, while scaling smoothly when zoomed in
+      const baseR = b.radiusVis * (state.scaleMode === 'true' && b.kind === 'planet' ? 0.85 : 1.0);
+      const radPx = Math.max(b.kind === 'star' ? 6.5 : 2.8, Math.min(b.kind === 'star' ? 58 : 48, baseR * Math.pow(p.scale, 0.82)));
+      b.screen.hitR = Math.max(13, radPx + 6);
+
+      drawList.push({ type: 'body', body: b, p, radPx, depth: p.depth });
+
+      // Add moons if enabled and reasonably close or planet is focused
+      if (state.showMoons && b.moons.length > 0 && (p.scale > 0.72 || b.id === state.focusId)) {
+        const tiltRad = b.tilt * DEG;
+        const mScale = Math.max(0.85, radPx / Math.max(3, b.radiusVis));
+        for (let mi = 0; mi < b.moons.length; mi++) {
+          const m = b.moons[mi];
+          const ang = m.phase0 + TWO_PI * (state.tDays / m.period);
+          const distW = (m.distVis * mScale) / p.scale;
+          // Local orbital coordinates tilted by planet obliquity
+          const lx = distW * Math.cos(ang);
+          const ly = distW * Math.sin(ang);
+          const lz = distW * Math.sin(ang) * Math.sin(m.i * DEG);
+          // Tilt around X/Y slightly by planet's axial tilt
+          const mx = b.world.x + lx;
+          const my = b.world.y + ly * Math.cos(tiltRad) - lz * Math.sin(tiltRad);
+          const mz = b.world.z + ly * Math.sin(tiltRad) + lz * Math.cos(tiltRad);
+          const mp = project3D(mx, my, mz, basis);
+          if (!mp.visible) continue;
+          const mRad = Math.max(1.5, Math.min(9, m.r * Math.pow(mp.scale, 0.72)));
+          drawList.push({
+            type: 'moon',
+            moon: m,
+            parent: b,
+            p: mp,
+            radPx: mRad,
+            depth: mp.depth,
+            distW,
+            tiltRad
+          });
+        }
+      }
+    }
+
+    // Painter's algorithm: farthest first
+    drawList.sort((a, b) => b.depth - a.depth);
+
+    // Draw subtle moon orbit rings for focused planet first
+    if (state.showMoons && state.focusId !== 'sun') {
+      const fb = BODY_MAP[state.focusId];
+      if (fb && fb.moons.length > 0 && fb.screen.visible) {
+        const tiltRad = fb.tilt * DEG;
+        const baseR = fb.radiusVis * (state.scaleMode === 'true' ? 0.85 : 1.0);
+        const radPx = Math.max(2.8, Math.min(48, baseR * Math.pow(fb.screen.scale, 0.82)));
+        const mScale = Math.max(0.85, radPx / Math.max(3, fb.radiusVis));
+        ctx.save();
+        ctx.strokeStyle = 'rgba(148, 185, 255, 0.24)';
+        ctx.lineWidth = 1;
+        fb.moons.forEach(m => {
+          const distW = (m.distVis * mScale) / fb.screen.scale;
+          ctx.beginPath();
+          for (let k = 0; k <= 48; k++) {
+            const ang = (k / 48) * TWO_PI;
+            const lx = distW * Math.cos(ang);
+            const ly = distW * Math.sin(ang);
+            const lz = distW * Math.sin(ang) * Math.sin(m.i * DEG);
+            const mx = fb.world.x + lx;
+            const my = fb.world.y + ly * Math.cos(tiltRad) - lz * Math.sin(tiltRad);
+            const mz = fb.world.z + ly * Math.sin(tiltRad) + lz * Math.cos(tiltRad);
+            const mp = project3D(mx, my, mz, basis);
+            if (!mp.visible) continue;
+            if (k === 0) ctx.moveTo(mp.x, mp.y);
+            else ctx.lineTo(mp.x, mp.y);
+          }
+          ctx.stroke();
+        });
+        ctx.restore();
+      }
+    }
+
+    // Render sorted spheres
+    for (let i = 0; i < drawList.length; i++) {
+      const item = drawList[i];
+      if (item.type === 'body') {
+        const b = item.body;
+        if (b.kind === 'star') drawSun(item.p, item.radPx);
+        else if (b.kind === 'comet') drawHalleyComet(b, item.p, item.radPx, basis);
+        else drawPlanetSphere(b, item.p, item.radPx, basis);
+      } else {
+        // Moon sphere
+        ctx.save();
+        ctx.fillStyle = item.moon.color;
+        ctx.beginPath();
+        ctx.arc(item.p.x, item.p.y, item.radPx, 0, TWO_PI);
+        ctx.fill();
+        if (item.parent.id === state.focusId && state.showLabels) {
+          ctx.font = '600 9.5px ' + getComputedStyle(document.body).getPropertyValue('--sans');
+          ctx.fillStyle = 'rgba(205, 224, 255, 0.85)';
+          ctx.textAlign = 'left';
+          ctx.fillText(item.moon.name, item.p.x + item.radPx + 4, item.p.y + 3);
+        }
+        ctx.restore();
+      }
+    }
+
+    // Crisp World Labels (rendered cleanly on top)
+    if (state.showLabels) {
+      ctx.save();
+      const sans = getComputedStyle(document.body).getPropertyValue('--sans');
+      const mono = getComputedStyle(document.body).getPropertyValue('--mono');
+      for (let i = 0; i < BODIES.length; i++) {
+        const b = BODIES[i];
+        if (!b.screen.visible) continue;
+        if (b.screen.x < -30 || b.screen.x > W + 30 || b.screen.y < -20 || b.screen.y > H + 20) continue;
+        // Skip crowded inner labels in true distance when zoomed way out unless focused/hovered
+        if (state.scaleMode === 'true' && state.camDist > 700 && (b.id === 'mercury' || b.id === 'venus') && b.id !== state.focusId && b.id !== state.hoveredId) {
+          continue;
+        }
+        const isHi = b.id === state.focusId || b.id === state.hoveredId;
+        const offset = Math.max(9, b.screen.hitR * 0.72);
+        ctx.font = (isHi ? '700 11.5px ' : '600 10.5px ') + sans;
+        ctx.fillStyle = isHi ? '#ffffff' : 'rgba(218, 230, 255, 0.82)';
+        ctx.textAlign = 'left';
+        ctx.fillText(b.name, b.screen.x + offset, b.screen.y - 2);
+        if (b.kind !== 'star' && (isHi || b.screen.scale > 0.75)) {
+          ctx.font = '500 9.5px ' + mono;
+          ctx.fillStyle = isHi ? '#7be3ff' : 'rgba(140, 165, 212, 0.72)';
+          ctx.fillText(`${b.rAU.toFixed(2)} AU`, b.screen.x + offset, b.screen.y + 9);
+        }
+      }
+      ctx.restore();
+    }
+  }
+
+  // =========================================================================
+  // INSET SKY-LOOP CHART & HOHMANN PHASE GAUGE
+  // =========================================================================
+  function renderSkyLoopInset() {
+    const insetEl = document.getElementById('sky-inset');
+    const visible = state.showRetrograde && state.showSkyInset;
+    insetEl.classList.toggle('visible', visible);
+    if (!visible) return;
+
+    const w = skyCanvas.width;
+    const h = skyCanvas.height;
+    skyCtx.clearRect(0, 0, w, h);
+
+    // Subtle ecliptic grid
+    skyCtx.strokeStyle = 'rgba(148, 179, 255, 0.14)';
+    skyCtx.lineWidth = 1;
+    skyCtx.beginPath();
+    skyCtx.moveTo(0, h * 0.5);
+    skyCtx.lineTo(w, h * 0.5);
+    skyCtx.stroke();
+
+    for (let gx = 46; gx < w; gx += 46) {
+      skyCtx.strokeStyle = 'rgba(148, 179, 255, 0.07)';
+      skyCtx.beginPath();
+      skyCtx.moveTo(gx, 0);
+      skyCtx.lineTo(gx, h);
+      skyCtx.stroke();
+    }
+
+    const trail = state.retroTrail;
+    if (trail.length > 1) {
+      // Unwrap longitude relative to latest point so the loop stays smoothly centered
+      const refLon = trail[trail.length - 1].lon;
+      const pts = [];
+      let accum = 0;
+      for (let i = trail.length - 1; i >= 0; i--) {
+        if (i < trail.length - 1) {
+          accum += wrapPi(trail[i].lon - trail[i + 1].lon);
+        }
+        pts[i] = {
+          dLonDeg: accum * RAD,
+          latDeg: trail[i].lat * RAD,
+          retro: trail[i].retro
+        };
+      }
+
+      // Compute dynamic span around recent points
+      const spanLon = 65; // degrees across canvas
+      const spanLat = 7.0; // degrees top-to-bottom
+      const cx = w * 0.62;
+      const cy = h * 0.5;
+
+      for (let i = 1; i < pts.length; i++) {
+        const a = pts[i - 1];
+        const b = pts[i];
+        const x0 = cx + (a.dLonDeg / spanLon) * (w * 0.85);
+        const y0 = cy - (a.latDeg / spanLat) * (h * 0.82);
+        const x1 = cx + (b.dLonDeg / spanLon) * (w * 0.85);
+        const y1 = cy - (b.latDeg / spanLat) * (h * 0.82);
+        const alpha = 0.25 + 0.75 * (i / pts.length);
+        skyCtx.strokeStyle = b.retro
+          ? `rgba(255, 96, 131, ${alpha})`
+          : `rgba(88, 220, 255, ${alpha})`;
+        skyCtx.lineWidth = b.retro ? 4.2 : 2.4;
+        skyCtx.beginPath();
+        skyCtx.moveTo(x0, y0);
+        skyCtx.lineTo(x1, y1);
+        skyCtx.stroke();
+      }
+
+      // Current Mars dot
+      const last = pts[pts.length - 1];
+      const lx = cx;
+      const ly = cy - (last.latDeg / spanLat) * (h * 0.82);
+      skyCtx.fillStyle = state.isMarsRetrograde ? '#ff6083' : '#58dcff';
+      skyCtx.beginPath();
+      skyCtx.arc(lx, ly, 5.5, 0, TWO_PI);
+      skyCtx.fill();
+      skyCtx.fillStyle = '#fff';
+      skyCtx.beginPath();
+      skyCtx.arc(lx, ly, 2.5, 0, TWO_PI);
+      skyCtx.fill();
+    }
+
+    // Legend
+    skyCtx.font = '600 18px ' + getComputedStyle(document.body).getPropertyValue('--mono');
+    skyCtx.fillStyle = 'rgba(88, 220, 255, 0.8)';
+    skyCtx.fillText('— Prograde', 12, 24);
+    skyCtx.fillStyle = 'rgba(255, 96, 131, 0.95)';
+    skyCtx.fillText('— Retrograde', 142, 24);
+
+    // Update sky inset readouts
+    const tag = document.getElementById('sky-motion-tag');
+    tag.textContent = state.isMarsRetrograde ? '◀ RETROGRADE' : '▶ PROGRADE';
+    tag.style.color = state.isMarsRetrograde ? 'var(--accent-rose)' : 'var(--accent-cyan)';
+    document.getElementById('sky-lon').textContent = `λ ${state.marsGeoLonDeg.toFixed(1)}°`;
+    document.getElementById('sky-lat').textContent = `β ${state.marsGeoLatDeg >= 0 ? '+' : ''}${state.marsGeoLatDeg.toFixed(2)}°`;
+    const earth = BODY_MAP.earth, mars = BODY_MAP.mars;
+    const emDist = Math.hypot(mars.posAU.x - earth.posAU.x, mars.posAU.y - earth.posAU.y, mars.posAU.z - earth.posAU.z);
+    document.getElementById('sky-dist').textContent = `${emDist.toFixed(2)} AU`;
+  }
+
+  function renderPhaseGauge() {
+    const w = gaugeCanvas.width;
+    const h = gaugeCanvas.height;
+    const cx = w * 0.5;
+    const cy = h * 0.5;
+    gaugeCtx.clearRect(0, 0, w, h);
+
+    const rE = 48;
+    const rM = 78;
+
+    // Orbits
+    gaugeCtx.strokeStyle = 'rgba(88, 220, 255, 0.25)';
+    gaugeCtx.lineWidth = 2;
+    gaugeCtx.beginPath();
+    gaugeCtx.arc(cx, cy, rE, 0, TWO_PI);
+    gaugeCtx.stroke();
+
+    gaugeCtx.strokeStyle = 'rgba(226, 116, 74, 0.28)';
+    gaugeCtx.beginPath();
+    gaugeCtx.arc(cx, cy, rM, 0, TWO_PI);
+    gaugeCtx.stroke();
+
+    // Ideal 44.3° launch window wedge relative to Earth at 0 rad (right)
+    const idealRad = -HOHMANN_IDEAL_DEG * DEG; // canvas Y is down, so CCW is negative
+    const tolRad = 5.5 * DEG;
+    gaugeCtx.fillStyle = state.inHohmannWindow ? 'rgba(74, 242, 178, 0.28)' : 'rgba(74, 242, 178, 0.14)';
+    gaugeCtx.beginPath();
+    gaugeCtx.moveTo(cx, cy);
+    gaugeCtx.arc(cx, cy, rM + 8, idealRad - tolRad, idealRad + tolRad);
+    gaugeCtx.closePath();
+    gaugeCtx.fill();
+
+    // Target 44.3° line
+    gaugeCtx.strokeStyle = 'rgba(74, 242, 178, 0.78)';
+    gaugeCtx.lineWidth = 2;
+    gaugeCtx.setLineDash([4, 4]);
+    gaugeCtx.beginPath();
+    gaugeCtx.moveTo(cx, cy);
+    gaugeCtx.lineTo(cx + Math.cos(idealRad) * (rM + 10), cy + Math.sin(idealRad) * (rM + 10));
+    gaugeCtx.stroke();
+    gaugeCtx.setLineDash([]);
+
+    // Current Mars relative angle
+    const curRad = -state.emPhaseDeg * DEG;
+    gaugeCtx.strokeStyle = state.inHohmannWindow ? '#4af2b2' : '#ffbe5c';
+    gaugeCtx.lineWidth = 2.4;
+    gaugeCtx.beginPath();
+    gaugeCtx.moveTo(cx, cy);
+    gaugeCtx.lineTo(cx + Math.cos(curRad) * rM, cy + Math.sin(curRad) * rM);
+    gaugeCtx.stroke();
+
+    // Earth line (reference 0°)
+    gaugeCtx.strokeStyle = 'rgba(88, 220, 255, 0.7)';
+    gaugeCtx.lineWidth = 2;
+    gaugeCtx.beginPath();
+    gaugeCtx.moveTo(cx, cy);
+    gaugeCtx.lineTo(cx + rE, cy);
+    gaugeCtx.stroke();
+
+    // Sun center
+    gaugeCtx.fillStyle = '#ffcf66';
+    gaugeCtx.beginPath();
+    gaugeCtx.arc(cx, cy, 10, 0, TWO_PI);
+    gaugeCtx.fill();
+
+    // Earth dot
+    gaugeCtx.fillStyle = '#4da6ff';
+    gaugeCtx.beginPath();
+    gaugeCtx.arc(cx + rE, cy, 7, 0, TWO_PI);
+    gaugeCtx.fill();
+
+    // Mars dot
+    gaugeCtx.fillStyle = '#e2744a';
+    gaugeCtx.beginPath();
+    gaugeCtx.arc(cx + Math.cos(curRad) * rM, cy + Math.sin(curRad) * rM, 7.5, 0, TWO_PI);
+    gaugeCtx.fill();
+
+    // Update lab stats
+    const phaseStr = `${state.emPhaseDeg >= 0 ? '+' : ''}${state.emPhaseDeg.toFixed(1)}°`;
+    document.getElementById('g-phase').textContent = phaseStr;
+    document.getElementById('g-phase').style.color = state.inHohmannWindow ? 'var(--accent-mint)' : 'var(--accent-cyan)';
+    const nextD = daysUntilNextWindow();
+    document.getElementById('g-next').textContent = nextD === 0 ? 'NOW!' : `${nextD} d`;
+    document.getElementById('g-next').style.color = nextD === 0 ? 'var(--accent-mint)' : 'var(--text-main)';
+
+    const winBadge = document.getElementById('window-badge');
+    winBadge.textContent = state.inHohmannWindow ? 'WINDOW OPEN!' : 'TARGET 44.3°';
+    winBadge.style.color = state.inHohmannWindow ? 'var(--accent-mint)' : 'var(--accent-amber)';
+
+    document.getElementById('btn-launch-probe').classList.toggle('window-ready', state.inHohmannWindow);
+
+    const rb = document.getElementById('retro-status-badge');
+    rb.textContent = state.isMarsRetrograde ? '◀ RETROGRADE' : '▶ PROGRADE';
+    rb.style.color = state.isMarsRetrograde ? 'var(--accent-rose)' : 'var(--accent-cyan)';
+  }
+
+  // =========================================================================
+  // HUD TELEMETRY & WORLD LIST SYNC
+  // =========================================================================
+  function formatSimDate(tDays) {
+    const d = new Date(J2000_MS + tDays * MS_PER_DAY);
+    const y = d.getUTCFullYear();
+    const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(d.getUTCDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+
+  function formatRate(rate, rev) {
+    const sign = rev ? '−' : '+';
+    if (rate >= 365) return `${sign}${(rate / 365.25).toFixed(1)} yr/s`;
+    if (rate >= 10) return `${sign}${rate.toFixed(0)} d/s`;
+    return `${sign}${rate.toFixed(1)} d/s`;
+  }
+
+  function buildWorldList() {
+    const list = document.getElementById('world-list');
+    list.innerHTML = '';
+    BODIES.forEach(b => {
+      const item = document.createElement('div');
+      item.className = 'world-item' + (b.id === state.focusId ? ' active' : '');
+      item.dataset.id = b.id;
+      const moonBadge = b.moons.length ? `· ${b.moons.length}M` : '';
+      item.innerHTML = `
+        <div class="world-left">
+          <span class="world-dot" style="background:${b.color};"></span>
+          <span class="world-name">${b.name}</span>
+          <span class="world-tag">${b.type}${moonBadge}</span>
+        </div>
+        <div class="world-right" id="wstat-${b.id}">—</div>
+      `;
+      item.addEventListener('click', () => focusWorld(b.id, true));
+      list.appendChild(item);
+    });
+  }
+
+  function updateInspector() {
+    const b = BODY_MAP[state.focusId];
+    document.getElementById('insp-title').textContent = `${b.name} — ${b.type}`;
+    document.getElementById('insp-type').textContent = b.kind.toUpperCase();
+    document.getElementById('insp-desc').textContent = b.desc;
+    document.getElementById('insp-a').textContent = b.kind === 'star' ? '0.000 AU' : `${b.a.toFixed(3)} AU`;
+    document.getElementById('insp-e').textContent = b.kind === 'star' ? '—' : b.e.toFixed(4);
+    document.getElementById('insp-i').textContent = b.kind === 'star' ? '—' : `${b.i.toFixed(2)}°`;
+    document.getElementById('insp-tilt').textContent = `${b.tilt.toFixed(2)}°`;
+    if (b.kind === 'star') {
+      document.getElementById('insp-period').textContent = '230 Myr (Gal)';
+      document.getElementById('insp-moons').textContent = '8 Planets';
+    } else {
+      document.getElementById('insp-period').textContent = b.period > 700
+        ? `${(b.period / 365.256).toFixed(2)} yr`
+        : `${b.period.toFixed(1)} d`;
+      document.getElementById('insp-moons').textContent = b.moons.length
+        ? b.moons.map(m => m.name).join(', ')
+        : 'None';
+    }
+
+    document.querySelectorAll('.world-item').forEach(el => {
+      el.classList.toggle('active', el.dataset.id === state.focusId);
+    });
+  }
+
+  function renderProbeList() {
+    const el = document.getElementById('probe-list');
+    document.getElementById('probe-count').textContent = String(state.probes.length);
+    if (state.probes.length === 0) {
+      el.innerHTML = '<div class="note-small" style="text-align:center; padding:8px 0;">No probes in flight. Jump to the 44.3° window and launch!</div>';
+      return;
+    }
+    const mars = BODY_MAP.mars;
+    el.innerHTML = '';
+    state.probes.forEach(p => {
+      const elapsed = Math.max(0, state.tDays - p.tLaunch);
+      const dMars = Math.hypot(p.posAU.x - mars.posAU.x, p.posAU.y - mars.posAU.y, p.posAU.z - mars.posAU.z);
+      const div = document.createElement('div');
+      div.className = 'probe-item';
+      const badgeCls = p.status === 'intercept' ? 'intercept' : p.status === 'missed' ? 'missed' : '';
+      const badgeTxt = p.status === 'intercept' ? 'MARS CAPTURE' : p.status === 'missed' ? 'HELIOCENTRIC' : `T+${elapsed.toFixed(0)}d`;
+      div.innerHTML = `
+        <div class="probe-meta">
+          <span class="probe-title">${p.name} (Δθ₀ ${p.launchPhase.toFixed(1)}°)</span>
+          <span class="probe-sub">Mars dist: ${dMars.toFixed(2)} AU · TOF ~259d</span>
+        </div>
+        <span class="probe-badge ${badgeCls}">${badgeTxt}</span>
+      `;
+      el.appendChild(div);
+    });
+  }
+
+  let hudThrottle = 0;
+  function updateTelemetryHUD(dt) {
+    hudThrottle += dt;
+    if (hudThrottle < 0.08) return;
+    hudThrottle = 0;
+
+    const b = BODY_MAP[state.focusId];
+    const earth = BODY_MAP.earth;
+
+    // Distance from Earth & Light-Time
+    const dEarth = Math.hypot(
+      b.posAU.x - earth.posAU.x,
+      b.posAU.y - earth.posAU.y,
+      b.posAU.z - earth.posAU.z
+    );
+    const lightMin = dEarth * AU_LIGHT_MIN;
+
+    // Phase angle (Sun - Body - Earth) in degrees
+    let phaseStr = `${b.tilt.toFixed(1)}° tilt`;
+    if (b.kind !== 'star' && b.id !== 'earth') {
+      const toSunX = -b.posAU.x, toSunY = -b.posAU.y, toSunZ = -b.posAU.z;
+      const toEX = earth.posAU.x - b.posAU.x, toEY = earth.posAU.y - b.posAU.y, toEZ = earth.posAU.z - b.posAU.z;
+      const dot = toSunX * toEX + toSunY * toEY + toSunZ * toEZ;
+      const cosP = Math.max(-1, Math.min(1, dot / ((b.rAU * dEarth) || 1)));
+      const phDeg = Math.acos(cosP) * RAD;
+      phaseStr = `${phDeg.toFixed(1)}° / ${b.tilt.toFixed(0)}°`;
+    }
+
+    document.getElementById('tel-helio').textContent = b.kind === 'star' ? '0.000 AU' : `${b.rAU.toFixed(3)} AU`;
+    document.getElementById('tel-speed').textContent = `${b.speedKms.toFixed(2)} km/s`;
+    document.getElementById('tel-earth').textContent = b.id === 'earth' ? '0.000 AU' : `${dEarth.toFixed(3)} AU`;
+    document.getElementById('tel-light').textContent = b.id === 'earth'
+      ? '0.00 s'
+      : lightMin < 1
+        ? `${(lightMin * 60).toFixed(1)} s`
+        : `${lightMin.toFixed(2)} min`;
+    document.getElementById('tel-phase').textContent = phaseStr;
+
+    const emEl = document.getElementById('tel-emphase');
+    emEl.textContent = `${state.emPhaseDeg >= 0 ? '+' : ''}${state.emPhaseDeg.toFixed(1)}°`;
+    emEl.className = 'tele-val ' + (state.inHohmannWindow ? 'mint' : 'amber');
+
+    // Focus pill
+    const pill = document.getElementById('focus-pill');
+    if (state.showRetrograde && state.isMarsRetrograde) {
+      pill.textContent = '◀ Mars Retrograde';
+      pill.className = 'status-pill rose';
+    } else if (state.inHohmannWindow) {
+      pill.textContent = '★ 44.3° Window';
+      pill.className = 'status-pill';
+    } else {
+      pill.textContent = `Focus: ${b.name}`;
+      pill.className = 'status-pill cyan';
+    }
+
+    // Date & Rate
+    document.getElementById('tel-date').textContent = formatSimDate(state.tDays);
+    document.getElementById('tel-rate').textContent = state.playing ? formatRate(state.rateDaysPerSec, state.reverse) : 'PAUSED';
+    document.getElementById('tel-jd').textContent = Math.floor(J2000_JD + state.tDays);
+
+    // Update world list live AU/speed if worlds tab visible
+    if (document.getElementById('tab-worlds').classList.contains('active')) {
+      BODIES.forEach(wb => {
+        const el = document.getElementById('wstat-' + wb.id);
+        if (el) el.textContent = wb.kind === 'star' ? 'Center' : `${wb.rAU.toFixed(2)} AU · ${wb.speedKms.toFixed(1)}`;
+      });
+    }
+
+    // Update probe list live distances
+    if (state.probes.length > 0 && document.getElementById('tab-lab').classList.contains('active')) {
+      renderProbeList();
+    }
+
+    renderPhaseGauge();
+    renderSkyLoopInset();
+  }
+
+  // =========================================================================
+  // FOCUS CAMERA & PRESETS
+  // =========================================================================
+  function focusWorld(id, adjustZoom = false) {
+    if (!BODY_MAP[id]) return;
+    state.focusId = id;
+    updateInspector();
+
+    const b = BODY_MAP[id];
+    if (adjustZoom) {
+      if (id === 'sun') {
+        state.targetCamDist = state.scaleMode === 'true' ? 920 : state.scaleMode === 'inner' ? 420 : 560;
+      } else if (id === 'jupiter' || id === 'saturn') {
+        state.targetCamDist = 115;
+      } else if (id === 'earth' || id === 'mars' || id === 'uranus' || id === 'neptune') {
+        state.targetCamDist = 85;
+      } else {
+        state.targetCamDist = 72;
+      }
+    }
+    const idx = BODIES.findIndex(x => x.id === id);
+    playChime([280 + idx * 45], 0.45, 0.035, 'sine');
+  }
+
+  function setScaleMode(mode) {
+    state.scaleMode = mode;
+    rebuildOrbitCaches();
+    evaluateEphemeris(state.tDays);
+
+    const badge = document.getElementById('scale-badge');
+    const note = document.getElementById('scale-note');
+    if (mode === 'compressed') {
+      badge.textContent = 'Compressed';
+      badge.className = 'mode-badge';
+      note.textContent = 'Log-compressed radii keep Mercury through Kuiper Belt clearly readable while preserving true 3D angles.';
+    } else if (mode === 'inner') {
+      badge.textContent = 'Inner Rocky';
+      badge.className = 'mode-badge cyan';
+      note.textContent = 'Linear 1:1 AU scale tailored for Mercury, Venus, Earth, Mars, Hohmann transfers & retrograde sightlines.';
+    } else {
+      badge.textContent = 'True Distance';
+      badge.className = 'mode-badge violet';
+      note.textContent = 'Strict linear AU proportions across the entire Solar System — revealing the vast outer planetary gulfs.';
+    }
+
+    document.querySelectorAll('[data-scale]').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.scale === mode);
+    });
+  }
+
+  function setRate(daysPerSec) {
+    state.rateDaysPerSec = Math.max(1, Math.min(1826.25, daysPerSec));
+    // Map log(1..1826.25) -> slider 0..100
+    const t = Math.log(state.rateDaysPerSec) / Math.log(1826.25);
+    document.getElementById('slider-rate').value = (t * 100).toFixed(1);
+    document.getElementById('lbl-rate').textContent = state.rateDaysPerSec >= 365
+      ? `${(state.rateDaysPerSec / 365.25).toFixed(2)} yr/s`
+      : `${state.rateDaysPerSec.toFixed(1)} d/s`;
+
+    document.querySelectorAll('.speed-btn').forEach(btn => {
+      const r = parseFloat(btn.dataset.rate);
+      btn.classList.toggle('active', Math.abs(r - state.rateDaysPerSec) / r < 0.08);
+    });
+  }
+
+  function applyPreset(name) {
+    state.activePreset = name;
+    document.querySelectorAll('.preset-btn').forEach(b => b.classList.toggle('active', b.dataset.preset === name));
+    state.reverse = false;
+    document.getElementById('btn-rev').classList.remove('rev-active');
+    document.getElementById('time-dir-tag').textContent = 'FORWARD';
+    document.getElementById('time-dir-tag').style.color = 'var(--accent-cyan)';
+    state.playing = true;
+    syncPlayButton();
+
+    if (name === 'full') {
+      setScaleMode('compressed');
+      state.tDays = TODAY_DAYS;
+      state.showRetrograde = false;
+      state.showBelts = true;
+      state.showMoons = true;
+      state.showOrbits = true;
+      setRate(30);
+      focusWorld('sun', false);
+      state.targetYaw = -0.68;
+      state.targetPitch = 0.56;
+      state.targetCamDist = 560;
+      showBanner('☀️ Full Solar System Orrery — Drag to tilt 3D plane, click any world!', 'info', 3000);
+    } else if (name === 'inner') {
+      setScaleMode('inner');
+      state.showRetrograde = false;
+      state.showBelts = true;
+      // Jump 8 days before exact 44.34° Hohmann window
+      const winT = findNextPhaseDays(TODAY_DAYS, HOHMANN_IDEAL_DEG);
+      state.tDays = winT - 5;
+      setRate(18);
+      focusWorld('sun', false);
+      state.targetYaw = -0.5;
+      state.targetPitch = 1.05;
+      state.targetCamDist = 470;
+      // Switch drawer to Transfer Lab tab
+      switchTab('lab');
+      showBanner('🚀 Approaching 44.3° Earth–Mars Hohmann Window — Ready to Launch!', 'mint', 3800);
+    } else if (name === 'retrograde') {
+      setScaleMode('inner');
+      state.showRetrograde = true;
+      state.showSkyInset = true;
+      state.retroTrail = [];
+      state.lastRetroSampleT = -1e9;
+      // Jump 75 days before exact Mars opposition (phase = 0°) so full prograde -> S-loop -> prograde plays!
+      const oppT = findNextPhaseDays(TODAY_DAYS, 0);
+      state.tDays = oppT - 72;
+      setRate(24);
+      focusWorld('sun', false);
+      state.targetYaw = -0.8;
+      state.targetPitch = 1.15;
+      state.targetCamDist = 590;
+      switchTab('lab');
+      showBanner('🔴 Mars Retrograde Loop Demo — Watch Earth overtake Mars & trace the S-loop!', 'rose', 4000);
+    } else if (name === 'halley') {
+      setScaleMode('compressed');
+      state.showRetrograde = false;
+      // Jump to May 2061 approaching Halley's July 28, 2061 perihelion!
+      state.tDays = (Date.UTC(2061, 4, 25, 0, 0, 0) - J2000_MS) / MS_PER_DAY;
+      setRate(15);
+      focusWorld('halley', false);
+      state.targetYaw = 0.65;
+      state.targetPitch = 0.42;
+      state.targetCamDist = 235;
+      showBanner("☄️ Halley's Comet 2061 Perihelion Dive — Ion & Dust Tails Igniting!", 'amber', 4000);
+    } else if (name === 'moons') {
+      setScaleMode('compressed');
+      state.showRetrograde = false;
+      state.showMoons = true;
+      setRate(3);
+      focusWorld('saturn', false);
+      state.targetYaw = -0.55;
+      state.targetPitch = 0.36;
+      state.targetCamDist = 92;
+      switchTab('worlds');
+      showBanner('🪐 Saturnian System — Click Jupiter in Worlds tab for the 4 Galilean Moons!', 'info', 3800);
+    } else if (name === 'truedist') {
+      setScaleMode('true');
+      state.showRetrograde = false;
+      state.showBelts = true;
+      setRate(180);
+      focusWorld('sun', false);
+      state.targetYaw = -0.75;
+      state.targetPitch = 0.68;
+      state.targetCamDist = 1120;
+      showBanner('🌌 True Relative Distance Scale — Scroll in to inspect the tiny inner rocky planets!', 'info', 3800);
+    }
+
+    syncTogglesUI();
+    evaluateEphemeris(state.tDays);
+    // Snap camera target cleanly on preset change
+    const fb = BODY_MAP[state.focusId];
+    state.camTarget.x = fb.world.x;
+    state.camTarget.y = fb.world.y;
+    state.camTarget.z = fb.world.z;
+  }
+
+  function syncTogglesUI() {
+    document.getElementById('tog-orbits').checked = state.showOrbits;
+    document.getElementById('tog-labels').checked = state.showLabels;
+    document.getElementById('tog-belts').checked = state.showBelts;
+    document.getElementById('tog-grid').checked = state.showGrid;
+    document.getElementById('tog-moons').checked = state.showMoons;
+    document.getElementById('tog-retro').checked = state.showRetrograde;
+    document.getElementById('tog-skyinset').checked = state.showSkyInset;
+  }
+
+  function syncPlayButton() {
+    const btn = document.getElementById('btn-play');
+    btn.textContent = state.playing ? '⏸ Pause' : '▶ Play';
+    btn.classList.toggle('active', state.playing);
+  }
+
+  function switchTab(tabName) {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tabName));
+    document.querySelectorAll('.tab-pane').forEach(p => p.classList.toggle('active', p.id === 'tab-' + tabName));
+  }
+
+  // =========================================================================
+  // POINTER, WHEEL & KEYBOARD INTERACTION
+  // =========================================================================
+  let isDragging = false;
+  let dragMoved = false;
+  let lastPX = 0, lastPY = 0;
+
+  function findWorldAt(cx, cy) {
+    let best = null;
+    let bestD = Infinity;
+    for (let i = 0; i < BODIES.length; i++) {
+      const b = BODIES[i];
+      if (!b.screen.visible) continue;
+      const d = Math.hypot(cx - b.screen.x, cy - b.screen.y);
+      if (d <= b.screen.hitR && d < bestD) {
+        bestD = d;
+        best = b.id;
+      }
+    }
+    return best;
+  }
+
+  canvas.addEventListener('pointerdown', e => {
+    if (e.button !== 0 && e.button !== 2) return;
+    isDragging = true;
+    dragMoved = false;
+    lastPX = e.clientX;
+    lastPY = e.clientY;
+    canvas.setPointerCapture(e.pointerId);
+    canvas.classList.add('dragging');
+  });
+
+  canvas.addEventListener('pointermove', e => {
+    if (isDragging) {
+      const dx = e.clientX - lastPX;
+      const dy = e.clientY - lastPY;
+      if (Math.hypot(dx, dy) > 2.5) dragMoved = true;
+      lastPX = e.clientX;
+      lastPY = e.clientY;
+      state.targetYaw -= dx * 0.0062;
+      state.targetPitch = Math.max(0.05, Math.min(1.55, state.targetPitch + dy * 0.0062));
+    } else {
+      const hit = findWorldAt(e.clientX, e.clientY);
+      state.hoveredId = hit;
+      canvas.classList.toggle('hovering', !!hit);
+    }
+  });
+
+  canvas.addEventListener('pointerup', e => {
+    if (!isDragging) return;
+    isDragging = false;
+    canvas.classList.remove('dragging');
+    if (!dragMoved) {
+      const hit = findWorldAt(e.clientX, e.clientY);
+      if (hit) {
+        focusWorld(hit, true);
+      }
+    }
+  });
+
+  canvas.addEventListener('dblclick', e => {
+    const hit = findWorldAt(e.clientX, e.clientY);
+    if (!hit) focusWorld('sun', true);
+  });
+
+  canvas.addEventListener('wheel', e => {
+    e.preventDefault();
+    const factor = Math.exp(e.deltaY * 0.0011);
+    state.targetCamDist = Math.max(36, Math.min(2800, state.targetCamDist * factor));
+  }, { passive: false });
+
+  canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+  window.addEventListener('keydown', e => {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+    const k = e.key.toLowerCase();
+    if (k === ' ') {
+      e.preventDefault();
+      state.playing = !state.playing;
+      syncPlayButton();
+    } else if (k === 'r') {
+      toggleReverse();
+    } else if (k === 'h') {
+      toggleZen();
+    } else if (k === 'l') {
+      launchMarsProbe();
+    } else if (k === 'g') {
+      state.showRetrograde = !state.showRetrograde;
+      if (state.showRetrograde) {
+        state.retroTrail = [];
+        state.lastRetroSampleT = -1e9;
+      }
+      syncTogglesUI();
+    } else if (k === 'escape' || k === '0') {
+      focusWorld('sun', true);
+    } else if (k >= '1' && k <= '9') {
+      const idx = parseInt(k, 10);
+      if (BODIES[idx]) focusWorld(BODIES[idx].id, true);
+    }
+  });
+
+  // =========================================================================
+  // UI EVENT BINDINGS
+  // =========================================================================
+  function toggleReverse() {
+    state.reverse = !state.reverse;
+    document.getElementById('btn-rev').classList.toggle('rev-active', state.reverse);
+    const tag = document.getElementById('time-dir-tag');
+    tag.textContent = state.reverse ? 'REVERSE ⏪' : 'FORWARD';
+    tag.style.color = state.reverse ? 'var(--accent-amber)' : 'var(--accent-cyan)';
+  }
+
+  function toggleZen() {
+    state.zenMode = !state.zenMode;
+    document.body.classList.toggle('zen-mode', state.zenMode);
+  }
+
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+  });
+
+  document.querySelectorAll('.preset-btn').forEach(btn => {
+    btn.addEventListener('click', () => applyPreset(btn.dataset.preset));
+  });
+
+  document.querySelectorAll('[data-scale]').forEach(btn => {
+    btn.addEventListener('click', () => setScaleMode(btn.dataset.scale));
+  });
+
+  document.getElementById('slider-rate').addEventListener('input', e => {
+    const t = parseFloat(e.target.value) / 100;
+    const rate = Math.exp(t * Math.log(1826.25));
+    setRate(rate);
+  });
+
+  document.querySelectorAll('.speed-btn').forEach(btn => {
+    btn.addEventListener('click', () => setRate(parseFloat(btn.dataset.rate)));
+  });
+
+  document.getElementById('btn-play').addEventListener('click', () => {
+    state.playing = !state.playing;
+    syncPlayButton();
+  });
+
+  document.getElementById('btn-reset').addEventListener('click', () => {
+    state.probes = [];
+    state.retroTrail = [];
+    renderProbeList();
+    applyPreset(state.activePreset);
+  });
+
+  document.getElementById('btn-rev').addEventListener('click', toggleReverse);
+
+  document.getElementById('btn-today').addEventListener('click', () => {
+    state.tDays = TODAY_DAYS;
+    state.retroTrail = [];
+    evaluateEphemeris(state.tDays);
+    showBanner('📅 Ephemeris jumped to 2026-07-15', 'info', 2200);
+  });
+
+  document.getElementById('btn-j2000').addEventListener('click', () => {
+    state.tDays = 0;
+    state.retroTrail = [];
+    evaluateEphemeris(state.tDays);
+    showBanner('📅 Ephemeris jumped to Epoch J2000.0 (2000-01-01)', 'info', 2200);
+  });
+
+  document.getElementById('btn-focus-sun').addEventListener('click', () => focusWorld('sun', true));
+
+  document.getElementById('tog-orbits').addEventListener('change', e => { state.showOrbits = e.target.checked; });
+  document.getElementById('tog-labels').addEventListener('change', e => { state.showLabels = e.target.checked; });
+  document.getElementById('tog-belts').addEventListener('change', e => { state.showBelts = e.target.checked; });
+  document.getElementById('tog-grid').addEventListener('change', e => { state.showGrid = e.target.checked; });
+  document.getElementById('tog-moons').addEventListener('change', e => { state.showMoons = e.target.checked; });
+  document.getElementById('tog-retro').addEventListener('change', e => {
+    state.showRetrograde = e.target.checked;
+    if (state.showRetrograde) {
+      state.retroTrail = [];
+      state.lastRetroSampleT = -1e9;
+    }
+  });
+  document.getElementById('tog-skyinset').addEventListener('change', e => { state.showSkyInset = e.target.checked; });
+
+  document.getElementById('btn-jump-opp').addEventListener('click', () => {
+    state.showRetrograde = true;
+    state.retroTrail = [];
+    state.lastRetroSampleT = -1e9;
+    const oppT = findNextPhaseDays(state.tDays, 0);
+    state.tDays = oppT - 65;
+    setRate(24);
+    if (state.scaleMode === 'true') setScaleMode('inner');
+    syncTogglesUI();
+    evaluateEphemeris(state.tDays);
+    showBanner('🔴 Approaching Mars Opposition — Watch the Retrograde S-Loop form!', 'rose', 3500);
+  });
+
+  document.getElementById('btn-clear-loop').addEventListener('click', () => {
+    state.retroTrail = [];
+    state.lastRetroSampleT = -1e9;
+  });
+
+  document.getElementById('btn-launch-probe').addEventListener('click', launchMarsProbe);
+
+  document.getElementById('btn-jump-window').addEventListener('click', () => {
+    const winT = findNextPhaseDays(state.tDays, HOHMANN_IDEAL_DEG);
+    state.tDays = winT;
+    evaluateEphemeris(state.tDays);
+    renderPhaseGauge();
+    playChime([440, 554.37, 659.25], 0.9, 0.05, 'sine');
+    showBanner(`✨ Aligned at Exact 44.3° Hohmann Window (${formatSimDate(state.tDays)}) — Click Launch!`, 'mint', 3800);
+  });
+
+  document.getElementById('btn-clear-probes').addEventListener('click', () => {
+    state.probes = [];
+    renderProbeList();
+  });
+
+  document.getElementById('btn-sound').addEventListener('click', () => {
+    state.audioEnabled = !state.audioEnabled;
+    const btn = document.getElementById('btn-sound');
+    btn.textContent = state.audioEnabled ? '🔊 Audio' : '🔇 Audio';
+    btn.classList.toggle('active', state.audioEnabled);
+    if (state.audioEnabled) {
+      ensureAudio();
+      playChime([440, 659.25], 0.65, 0.04, 'sine');
+    }
+  });
+
+  document.getElementById('btn-toggle-drawer').addEventListener('click', () => {
+    state.drawerOpen = !state.drawerOpen;
+    document.getElementById('drawer').classList.toggle('collapsed', !state.drawerOpen);
+    document.getElementById('btn-toggle-drawer').classList.toggle('active', state.drawerOpen);
+  });
+
+  document.getElementById('btn-zen').addEventListener('click', toggleZen);
+  document.getElementById('btn-zen-restore').addEventListener('click', toggleZen);
+
+  // =========================================================================
+  // MAIN ANIMATION LOOP
+  // =========================================================================
+  buildWorldList();
+  updateInspector();
+  setRate(30);
+  evaluateEphemeris(state.tDays);
+
+  let lastFrame = performance.now();
+
+  function frame(now) {
+    const dt = Math.min(0.05, (now - lastFrame) / 1000);
+    lastFrame = now;
+    state.simWallTime += dt;
+
+    // Advance simulated ephemeris date
+    if (state.playing) {
+      const dir = state.reverse ? -1 : 1;
+      state.tDays += dir * state.rateDaysPerSec * dt;
+    }
+
+    evaluateEphemeris(state.tDays);
+
+    // Smooth camera damping toward focused body and orbit angles
+    const fb = BODY_MAP[state.focusId];
+    const smooth = 1 - Math.exp(-8.5 * dt);
+    state.camTarget.x += (fb.world.x - state.camTarget.x) * smooth;
+    state.camTarget.y += (fb.world.y - state.camTarget.y) * smooth;
+    state.camTarget.z += (fb.world.z - state.camTarget.z) * smooth;
+    state.yaw += (state.targetYaw - state.yaw) * smooth;
+    state.pitch += (state.targetPitch - state.pitch) * smooth;
+    state.camDist += (state.targetCamDist - state.camDist) * smooth;
+
+    const basis = getCamBasis();
+
+    // Render 3D scene
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    renderStarfield(basis);
+    renderEclipticGridAndZodiac(basis);
+    renderBelts(basis);
+    renderOrbits(basis);
+    renderRetrogradeVisualizer(basis);
+    renderHohmannAndProbes(basis);
+    renderBodiesAndMoons(basis);
+
+    updateTelemetryHUD(dt);
+
+    requestAnimationFrame(frame);
+  }
+
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

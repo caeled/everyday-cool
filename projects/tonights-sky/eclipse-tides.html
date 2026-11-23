@@ -1,0 +1,3621 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Syzygy — Solar/Lunar Eclipses, Moon Phases &amp; Tidal Bulges</title>
+<style>
+  :root {
+    --bg-deep: #040711;
+    --panel-bg: rgba(9, 13, 25, 0.78);
+    --panel-bg-strong: rgba(8, 12, 23, 0.92);
+    --panel-border: rgba(148, 179, 255, 0.16);
+    --panel-border-hi: rgba(148, 179, 255, 0.36);
+    --text-main: #eef3ff;
+    --text-dim: #9aa9cc;
+    --text-muted: #68789c;
+    --accent-amber: #ffbe5c;
+    --accent-cyan: #58dcff;
+    --accent-mint: #4af2b2;
+    --accent-rose: #ff6083;
+    --accent-crimson: #ff4d4d;
+    --accent-violet: #a78bfa;
+    --radius-lg: 14px;
+    --radius-md: 10px;
+    --radius-sm: 7px;
+    --mono: ui-monospace, "Cascadia Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Inter, Helvetica, Arial, sans-serif;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg-deep);
+    color: var(--text-main);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    touch-action: none;
+  }
+
+  #sim-canvas {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    display: block;
+    cursor: default;
+  }
+  #sim-canvas.hover-drag {
+    cursor: grab;
+  }
+  #sim-canvas.dragging {
+    cursor: grabbing;
+  }
+
+  /* HUD Layer */
+  .hud {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 10;
+  }
+  body.zen-mode .hud > :not(.zen-restore) {
+    opacity: 0;
+    pointer-events: none !important;
+  }
+
+  .panel {
+    pointer-events: auto;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-lg);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.52), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    transition: opacity 0.25s ease, transform 0.25s ease;
+  }
+
+  /* Top-Left Telemetry Card */
+  .top-left {
+    position: fixed;
+    top: 14px;
+    left: 14px;
+    width: min(414px, calc(100vw - 360px));
+    min-width: 295px;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .brand-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .brand-title-wrap {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .brand-title {
+    font-size: 16px;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    background: linear-gradient(120deg, #fff5dc 0%, #ffbe5c 42%, #58dcff 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .mode-badge {
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 999px;
+    border: 1px solid rgba(167, 139, 250, 0.4);
+    background: rgba(167, 139, 250, 0.13);
+    color: var(--accent-violet);
+  }
+  .mode-badge.coplanar {
+    border-color: rgba(88, 220, 255, 0.38);
+    background: rgba(88, 220, 255, 0.12);
+    color: var(--accent-cyan);
+  }
+
+  .status-pill {
+    font-size: 10.5px;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 3px 9px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.12);
+    color: var(--text-dim);
+    border: 1px solid rgba(148, 179, 255, 0.25);
+    white-space: nowrap;
+    transition: all 0.2s ease;
+  }
+  .status-pill.totality {
+    background: rgba(255, 190, 92, 0.22);
+    color: #ffe3a8;
+    border-color: rgba(255, 190, 92, 0.7);
+    box-shadow: 0 0 16px rgba(255, 190, 92, 0.35);
+  }
+  .status-pill.annular {
+    background: rgba(255, 138, 61, 0.22);
+    color: #ffd0a6;
+    border-color: rgba(255, 138, 61, 0.65);
+    box-shadow: 0 0 14px rgba(255, 120, 48, 0.32);
+  }
+  .status-pill.blood {
+    background: rgba(255, 72, 72, 0.22);
+    color: #ffb8b8;
+    border-color: rgba(255, 86, 86, 0.68);
+    box-shadow: 0 0 16px rgba(220, 48, 48, 0.38);
+  }
+  .status-pill.partial {
+    background: rgba(88, 220, 255, 0.16);
+    color: var(--accent-cyan);
+    border-color: rgba(88, 220, 255, 0.45);
+  }
+
+  .telemetry-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+  }
+
+  .tele-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(148, 179, 255, 0.1);
+    border-radius: var(--radius-sm);
+    padding: 5px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .tele-label {
+    font-size: 9px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .tele-val {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-main);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .tele-sub {
+    font-family: var(--mono);
+    font-size: 9.5px;
+    color: var(--text-dim);
+  }
+  .tele-val.amber { color: var(--accent-amber); }
+  .tele-val.cyan { color: var(--accent-cyan); }
+  .tele-val.mint { color: var(--accent-mint); }
+  .tele-val.rose { color: var(--accent-rose); }
+  .tele-val.violet { color: var(--accent-violet); }
+
+  .syzygy-bar-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+  .syzygy-track {
+    flex: 1;
+    height: 6px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+    overflow: hidden;
+    position: relative;
+  }
+  .syzygy-fill {
+    height: 100%;
+    width: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #6382b8 0%, #58dcff 50%, #ffbe5c 100%);
+    transition: width 0.08s linear;
+  }
+
+  .clock-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding-top: 4px;
+    border-top: 1px solid rgba(148, 179, 255, 0.1);
+    font-size: 10.5px;
+    color: var(--text-dim);
+    font-family: var(--mono);
+  }
+  .clock-row span strong {
+    color: var(--text-main);
+    font-weight: 600;
+  }
+
+  /* Left PiP Stack: Live Sky View + 24h Coastal Tide + Edge-On Nodal Plane */
+  .pip-dock {
+    position: fixed;
+    top: 232px;
+    left: 14px;
+    width: min(414px, calc(100vw - 360px));
+    min-width: 295px;
+    padding: 10px 11px;
+    display: grid;
+    grid-template-columns: 158px 1fr;
+    gap: 10px;
+    align-items: stretch;
+  }
+  .pip-dock.hidden {
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(-6px);
+  }
+
+  .pip-box {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    min-width: 0;
+  }
+
+  .pip-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 9.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--text-dim);
+  }
+  .pip-tag {
+    font-family: var(--mono);
+    font-size: 9.5px;
+    color: var(--accent-cyan);
+    font-weight: 600;
+  }
+
+  .pip-canvas-frame {
+    position: relative;
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    border: 1px solid rgba(148, 179, 255, 0.18);
+    background: #02040a;
+    box-shadow: inset 0 0 18px rgba(0, 0, 0, 0.65);
+  }
+
+  #pip-sky-canvas {
+    width: 158px;
+    height: 158px;
+    display: block;
+  }
+
+  .pip-right-col {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    min-width: 0;
+  }
+
+  #pip-tide-canvas {
+    width: 100%;
+    height: 92px;
+    display: block;
+  }
+
+  #pip-node-canvas {
+    width: 100%;
+    height: 46px;
+    display: block;
+  }
+
+  /* Right Control Drawer (330px) */
+  .drawer {
+    position: fixed;
+    top: 14px;
+    right: 14px;
+    bottom: 14px;
+    width: 330px;
+    max-width: calc(100vw - 28px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: transform 0.25s ease, opacity 0.25s ease;
+  }
+  .drawer.collapsed {
+    transform: translateX(calc(100% + 24px));
+    pointer-events: none;
+  }
+
+  .drawer-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+    padding: 8px 8px 6px;
+    border-bottom: 1px solid var(--panel-border);
+    background: rgba(4, 7, 15, 0.42);
+  }
+
+  .tab-btn {
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    padding: 7px 5px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .tab-btn:hover {
+    color: var(--text-main);
+    background: rgba(255, 255, 255, 0.04);
+  }
+  .tab-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.16);
+    border-color: rgba(88, 220, 255, 0.4);
+  }
+
+  .drawer-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 11px 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .drawer-body::-webkit-scrollbar {
+    width: 5px;
+  }
+  .drawer-body::-webkit-scrollbar-thumb {
+    background: rgba(148, 179, 255, 0.22);
+    border-radius: 999px;
+  }
+
+  .tab-pane {
+    display: none;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .tab-pane.active {
+    display: flex;
+  }
+
+  .section {
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(148, 179, 255, 0.11);
+    border-radius: var(--radius-md);
+    padding: 10px 11px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .section-title {
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  /* Presets grid */
+  .preset-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .preset-btn {
+    text-align: left;
+    padding: 7px 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(148, 179, 255, 0.14);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-main);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .preset-btn:hover {
+    border-color: rgba(255, 190, 92, 0.45);
+    background: rgba(255, 190, 92, 0.08);
+  }
+  .preset-btn.active {
+    border-color: var(--accent-amber);
+    background: rgba(255, 190, 92, 0.14);
+  }
+  .preset-name {
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+  .preset-sub {
+    font-size: 9.5px;
+    color: var(--text-muted);
+    line-height: 1.25;
+  }
+
+  /* Sliders */
+  .control-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .control-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+  .control-head .val {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-main);
+    font-weight: 600;
+  }
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 5px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.18);
+    outline: none;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent-cyan);
+    border: 2px solid #08101f;
+    box-shadow: 0 0 10px rgba(88, 220, 255, 0.65);
+    cursor: pointer;
+  }
+  input[type="range"].amber::-webkit-slider-thumb {
+    background: var(--accent-amber);
+    box-shadow: 0 0 10px rgba(255, 190, 92, 0.65);
+  }
+  input[type="range"].violet::-webkit-slider-thumb {
+    background: var(--accent-violet);
+    box-shadow: 0 0 10px rgba(167, 139, 250, 0.65);
+  }
+
+  /* Segmented pills */
+  .seg-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 4px;
+  }
+  .seg-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-dim);
+    font-size: 10.5px;
+    font-weight: 650;
+    padding: 6px 4px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-align: center;
+  }
+  .seg-btn:hover {
+    color: #fff;
+    border-color: rgba(148, 179, 255, 0.35);
+  }
+  .seg-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.18);
+    border-color: var(--accent-cyan);
+  }
+
+  /* Buttons */
+  .btn-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .btn {
+    border: 1px solid rgba(148, 179, 255, 0.22);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-main);
+    font-size: 11px;
+    font-weight: 700;
+    padding: 7px 9px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+  }
+  .btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 179, 255, 0.45);
+  }
+  .btn.amber {
+    background: linear-gradient(135deg, rgba(255, 190, 92, 0.22), rgba(255, 120, 60, 0.18));
+    border-color: rgba(255, 190, 92, 0.5);
+    color: #fff3db;
+  }
+  .btn.primary {
+    background: linear-gradient(135deg, rgba(88, 220, 255, 0.24), rgba(56, 140, 255, 0.2));
+    border-color: rgba(88, 220, 255, 0.5);
+    color: #e6f9ff;
+  }
+
+  /* Toggle switches */
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11px;
+    color: var(--text-dim);
+    cursor: pointer;
+    gap: 8px;
+  }
+  .toggle-row input {
+    display: none;
+  }
+  .switch {
+    width: 34px;
+    height: 18px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.2);
+    border: 1px solid rgba(148, 179, 255, 0.25);
+    position: relative;
+    transition: all 0.18s ease;
+    flex-shrink: 0;
+  }
+  .switch::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #c8d7f5;
+    transition: transform 0.18s ease, background 0.18s ease;
+  }
+  .toggle-row input:checked + .switch {
+    background: rgba(88, 220, 255, 0.32);
+    border-color: var(--accent-cyan);
+  }
+  .toggle-row input:checked + .switch::after {
+    transform: translateX(16px);
+    background: #fff;
+  }
+
+  .stat-list {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    font-size: 11px;
+  }
+  .stat-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: var(--text-dim);
+  }
+  .stat-row strong {
+    font-family: var(--mono);
+    color: var(--text-main);
+    font-weight: 600;
+  }
+
+  .note-small {
+    font-size: 10.5px;
+    color: var(--text-muted);
+    line-height: 1.4;
+  }
+  .note-small strong {
+    color: var(--text-dim);
+  }
+
+  /* Bottom Transport Bar */
+  .bottom-bar {
+    position: fixed;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 7px 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: nowrap;
+  }
+
+  .bar-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-main);
+    font-size: 11.5px;
+    font-weight: 650;
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    white-space: nowrap;
+  }
+  .bar-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 179, 255, 0.4);
+  }
+  .bar-btn.active {
+    background: rgba(88, 220, 255, 0.2);
+    border-color: var(--accent-cyan);
+    color: #fff;
+  }
+
+  .bar-divider {
+    width: 1px;
+    height: 20px;
+    background: rgba(148, 179, 255, 0.16);
+    margin: 0 2px;
+  }
+
+  /* Bottom-Left Interaction Hints */
+  .hint-pill {
+    position: fixed;
+    bottom: 14px;
+    left: 14px;
+    padding: 7px 11px;
+    font-size: 10.5px;
+    color: var(--text-dim);
+    max-width: 318px;
+    line-height: 1.45;
+  }
+  .hint-pill kbd {
+    font-family: var(--mono);
+    font-size: 9.5px;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #fff;
+  }
+
+  /* Zen / Cinema Restore Button */
+  .zen-restore {
+    position: fixed;
+    bottom: 14px;
+    right: 14px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+  }
+  body.zen-mode .zen-restore {
+    opacity: 0.9;
+    pointer-events: auto;
+  }
+
+  @media (max-width: 960px) {
+    .top-left, .pip-dock {
+      width: calc(100vw - 28px);
+      max-width: none;
+    }
+    .pip-dock {
+      top: auto;
+      bottom: 62px;
+      left: 14px;
+      width: min(370px, calc(100vw - 28px));
+    }
+    .drawer {
+      top: auto;
+      bottom: 62px;
+      height: 52vh;
+      width: calc(100vw - 28px);
+    }
+    .hint-pill {
+      display: none;
+    }
+  }
+</style>
+</head>
+<body>
+<canvas id="sim-canvas"></canvas>
+
+<div class="hud">
+  <!-- Top-Left Brand + Live Telemetry -->
+  <div class="panel top-left">
+    <div class="brand-row">
+      <div class="brand-title-wrap">
+        <div class="brand-title">Syzygy</div>
+        <span id="orbit-mode-badge" class="mode-badge coplanar">Coplanar 0.0°</span>
+      </div>
+      <span id="eclipse-badge" class="status-pill totality">Totality!</span>
+    </div>
+
+    <div class="telemetry-grid">
+      <div class="tele-card">
+        <span class="tele-label">Lunar Phase</span>
+        <span id="tel-phase" class="tele-val amber">New Moon</span>
+        <span id="tel-illum" class="tele-sub">0.0% lit</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Moon Distance</span>
+        <span id="tel-dist" class="tele-val cyan">356,500 km</span>
+        <span id="tel-apsis" class="tele-sub">Perigee (Near)</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Tide State</span>
+        <span id="tel-tide-state" class="tele-val mint">Spring Tide</span>
+        <span id="tel-tide-h" class="tele-sub">+2.18 m</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Nodal Offset</span>
+        <span id="tel-node" class="tele-val violet">0.00°</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Apparent Disc</span>
+        <span id="tel-ang" class="tele-val">33.5′ / 32.0′</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Synodic Cycle</span>
+        <span id="tel-day" class="tele-val">Day 0.0</span>
+      </div>
+    </div>
+
+    <div class="syzygy-bar-wrap">
+      <span>Tidal Range</span>
+      <div class="syzygy-track"><div id="syzygy-fill" class="syzygy-fill"></div></div>
+      <span id="tel-syzygy-pct" style="font-family: var(--mono); color: var(--text-main);">100%</span>
+    </div>
+
+    <div class="clock-row">
+      <span>Observer: <strong id="tel-local-time">12:00 Noon</strong></span>
+      <span>Tidal Force: <strong id="tel-tide-force" style="color:var(--accent-cyan);">1.71×</strong></span>
+      <span>Moon/Sun: <strong id="tel-ratio" style="color:var(--accent-amber);">1.048×</strong></span>
+    </div>
+  </div>
+
+  <!-- Live Earth-Sky PiP + 24h Coastal Tide Graph + Edge-On Nodal Plane -->
+  <div id="pip-dock" class="panel pip-dock">
+    <div class="pip-box">
+      <div class="pip-header">
+        <span>Sky View from Earth</span>
+        <span id="pip-sky-mode" class="pip-tag">SOLAR</span>
+      </div>
+      <div class="pip-canvas-frame">
+        <canvas id="pip-sky-canvas"></canvas>
+      </div>
+    </div>
+
+    <div class="pip-right-col">
+      <div class="pip-box">
+        <div class="pip-header">
+          <span>24h Coastal Tide</span>
+          <span id="pip-tide-readout" class="pip-tag">+2.18 m</span>
+        </div>
+        <div class="pip-canvas-frame">
+          <canvas id="pip-tide-canvas"></canvas>
+        </div>
+      </div>
+
+      <div class="pip-box">
+        <div class="pip-header">
+          <span>Edge-On Ecliptic Plane</span>
+          <span id="pip-node-readout" class="pip-tag">β = 0.00°</span>
+        </div>
+        <div class="pip-canvas-frame">
+          <canvas id="pip-node-canvas"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right Collapsible Drawer (330px) -->
+  <aside id="drawer" class="panel drawer">
+    <div class="drawer-tabs">
+      <button class="tab-btn active" data-tab="orbit">Eclipses</button>
+      <button class="tab-btn" data-tab="tides">Tides</button>
+      <button class="tab-btn" data-tab="layers">Optics</button>
+    </div>
+
+    <div class="drawer-body">
+      <!-- TAB 1: ECLIPSES & ORBIT -->
+      <div id="tab-orbit" class="tab-pane active">
+        <div class="section">
+          <div class="section-title"><span>Curated Phenomena</span></div>
+          <div class="preset-grid">
+            <button class="preset-btn active" data-preset="total-solar">
+              <span class="preset-name">Total Solar Eclipse</span>
+              <span class="preset-sub">Perigee · Corona &amp; Diamond Ring</span>
+            </button>
+            <button class="preset-btn" data-preset="annular-solar">
+              <span class="preset-name">Annular "Ring of Fire"</span>
+              <span class="preset-sub">Apogee · Umbra falls short</span>
+            </button>
+            <button class="preset-btn" data-preset="blood-moon">
+              <span class="preset-name">Blood Moon Lunar</span>
+              <span class="preset-sub">Full Moon in crimson umbra</span>
+            </button>
+            <button class="preset-btn" data-preset="spring-tide">
+              <span class="preset-name">Spring Tide Peak</span>
+              <span class="preset-sub">Constructive Lunar + Solar</span>
+            </button>
+            <button class="preset-btn" data-preset="neap-tide">
+              <span class="preset-name">Neap Tide Minimum</span>
+              <span class="preset-sub">90° Quadrature cancellation</span>
+            </button>
+            <button class="preset-btn" data-preset="tilted-orbit">
+              <span class="preset-name">Real 5.14° Tilt</span>
+              <span class="preset-sub">Why eclipses are rare</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Orbital Geometry</span></div>
+
+          <div class="seg-row" id="phase-jump-row">
+            <button class="seg-btn" data-phase="180">New</button>
+            <button class="seg-btn" data-phase="90">1st Q</button>
+            <button class="seg-btn" data-phase="0">Full</button>
+            <button class="seg-btn" data-phase="270">3rd Q</button>
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Moon Orbital Angle</span>
+              <span id="val-moon-angle" class="val">180.0°</span>
+            </div>
+            <input id="sl-moon-angle" class="amber" type="range" min="0" max="360" step="0.1" value="180" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Orbital Eccentricity (e)</span>
+              <span id="val-ecc" class="val">0.065</span>
+            </div>
+            <input id="sl-ecc" type="range" min="0" max="0.065" step="0.001" value="0.065" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Perigee Axis (Perigee ↔ Apogee)</span>
+              <span id="val-perigee" class="val">180° (New=Perigee)</span>
+            </div>
+            <input id="sl-perigee" class="amber" type="range" min="0" max="360" step="1" value="180" />
+          </div>
+
+          <div class="btn-row">
+            <button id="btn-set-perigee" class="btn amber">Near (Perigee)</button>
+            <button id="btn-set-apogee" class="btn primary">Far (Apogee)</button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>3D Orbital Tilt &amp; Nodes</span></div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Nodal Inclination (Tilt)</span>
+              <span id="val-incl" class="val">0.00°</span>
+            </div>
+            <input id="sl-incl" class="violet" type="range" min="0" max="8" step="0.05" value="0" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Line of Nodes (☊ / ☋)</span>
+              <span id="val-node-axis" class="val">0°</span>
+            </div>
+            <input id="sl-node-axis" class="violet" type="range" min="0" max="360" step="1" value="0" />
+          </div>
+
+          <div class="btn-row">
+            <button id="btn-real-tilt" class="btn">Set 5.14° Real Tilt</button>
+            <button id="btn-align-nodes" class="btn">Align Nodes</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 2: TIDES & EARTH -->
+      <div id="tab-tides" class="tab-pane">
+        <div class="section">
+          <div class="section-title"><span>Live Tidal Interference</span></div>
+          <div class="stat-list">
+            <div class="stat-row"><span>Lunar Tide Amplitude (∝ 1/d³)</span><strong id="st-lunar-amp">1.50 m</strong></div>
+            <div class="stat-row"><span>Solar Tide Amplitude (46% mean)</span><strong id="st-solar-amp">0.55 m</strong></div>
+            <div class="stat-row"><span>Peak-to-Trough Range</span><strong id="st-tide-range" style="color:var(--accent-cyan);">4.10 m</strong></div>
+            <div class="stat-row"><span>Observer Coastal Level</span><strong id="st-obs-level" style="color:var(--accent-mint);">+2.05 m</strong></div>
+            <div class="stat-row"><span>Friction Bulge Lead</span><strong id="st-lead-deg">+10.0°</strong></div>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Ocean &amp; Spin Controls</span></div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Tidal Bulge Visual Scale</span>
+              <span id="val-tide-scale" class="val">1.25×</span>
+            </div>
+            <input id="sl-tide-scale" type="range" min="0.4" max="2.2" step="0.05" value="1.25" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Tidal Friction Lead Angle</span>
+              <span id="val-friction" class="val">10°</span>
+            </div>
+            <input id="sl-friction" type="range" min="0" max="22" step="1" value="10" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Earth Spin Speed</span>
+              <span id="val-spin" class="val">1.0×</span>
+            </div>
+            <input id="sl-spin" type="range" min="0" max="2.5" step="0.1" value="1.0" />
+          </div>
+
+          <label class="toggle-row">
+            <span>Combined Ocean Bulge Envelope</span>
+            <input id="chk-bulge-total" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Lunar &amp; Solar Component Rings</span>
+            <input id="chk-bulge-parts" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Equatorial Coastal Observer Pin</span>
+            <input id="chk-observer" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Tidal Pull Arrows</span>
+            <input id="chk-tidal-arrows" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Spring vs. Neap Physics</span></div>
+          <p class="note-small">
+            Gravity pulls harder on Earth's near ocean and weaker on the far ocean, stretching water into <strong>two opposite bulges</strong>. At <strong>New &amp; Full Moon</strong>, Solar and Lunar bulges add constructively (<strong>Spring Tides</strong>). At <strong>Quarter Moons</strong>, they oppose at 90° (<strong>Neap Tides</strong>).
+          </p>
+        </div>
+      </div>
+
+      <!-- TAB 3: OPTICS & LAYERS -->
+      <div id="tab-layers" class="tab-pane">
+        <div class="section">
+          <div class="section-title"><span>Visual Overlays</span></div>
+          <label class="toggle-row">
+            <span>Umbra &amp; Penumbra Shadow Cones</span>
+            <input id="chk-shadows" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Solar Light Rays &amp; Antumbra</span>
+            <input id="chk-rays" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Earth-Sky PiP &amp; Tide Graph</span>
+            <input id="chk-pip" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Line of Nodes &amp; Perigee/Apogee</span>
+            <input id="chk-orbit-guides" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Orbital Phase Callouts</span>
+            <input id="chk-labels" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Deep Space Starfield</span>
+            <input id="chk-stars" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Eclipse Optics Notes</span></div>
+          <p class="note-small">
+            <strong>Total vs. Annular:</strong> The Sun is ~400× wider than the Moon and ~400× farther away. At <strong>Perigee</strong> (356,500 km), the Moon's umbra reaches Earth (33.5′ &gt; 32.0′ → <em>Totality</em>). At <strong>Apogee</strong> (406,700 km), the umbra apex stops short (29.4′ &lt; 32.0′ → <em>Ring of Fire</em>).
+          </p>
+          <p class="note-small">
+            <strong>Blood Moon:</strong> During a Total Lunar Eclipse, Earth's atmosphere bends red wavelengths into the umbra via Rayleigh scattering while filtering out blue light.
+          </p>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Bottom-Left Hints -->
+  <div class="panel hint-pill">
+    <div><strong>Drag Moon</strong> to sweep phases &amp; eclipses · <strong>Drag space</strong> pan · <strong>Scroll</strong> zoom</div>
+    <div><kbd>Space</kbd> Pause · <kbd>←</kbd>/<kbd>→</kbd> Nudge Moon · <kbd>1</kbd>–<kbd>6</kbd> Presets · <kbd>H</kbd> Cinema</div>
+  </div>
+
+  <!-- Bottom-Center Transport Bar -->
+  <div class="panel bottom-bar">
+    <button id="btn-play" class="bar-btn active">⏸ Pause</button>
+    <button id="btn-reset" class="bar-btn">↺ Reset</button>
+    <div class="bar-divider"></div>
+    <button class="bar-btn speed-btn active" data-speed="0.15">0.15×</button>
+    <button class="bar-btn speed-btn" data-speed="0.5">0.5×</button>
+    <button class="bar-btn speed-btn" data-speed="1">1×</button>
+    <button class="bar-btn speed-btn" data-speed="3">3×</button>
+    <div class="bar-divider"></div>
+    <button id="btn-sound" class="bar-btn">🔇 Audio</button>
+    <button id="btn-toggle-drawer" class="bar-btn active">Controls</button>
+    <button id="btn-zen" class="bar-btn" title="Hide HUD (H)">Cinema</button>
+  </div>
+
+  <button id="btn-zen-restore" class="panel bar-btn zen-restore">Show HUD (H)</button>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // =========================================================================
+  // CONSTANTS & ASTRONOMICAL CALIBRATION
+  // =========================================================================
+  const TWO_PI = Math.PI * 2;
+  const DEG = Math.PI / 180;
+  const RAD = 180 / Math.PI;
+
+  const MEAN_DIST_KM = 384400;
+  const MOON_RADIUS_KM = 1737.4;
+  const SUN_ANG_DIAM_ARCMIN = 31.99; // mean apparent diameter of Sun (arcminutes)
+  const SYNODIC_MONTH_DAYS = 29.530588;
+
+  // Unified Schematic Optical Geometry (guarantees 1:1 match between 2D shadow cones, Sky PiP, and km telemetry!)
+  const R_EARTH = 46;
+  const R_MOON = 13.5;
+  const R_ORBIT_MEAN = 218;
+  const D_OPT_SUN = 2200;       // optical distance from Sun to Earth
+  const R_OPT_SUN = 186.05;     // calibrated so Moon umbra apex hits Earth surface exactly at d_km = 373,500 km!
+
+  // =========================================================================
+  // SIMULATION STATE
+  // =========================================================================
+  const state = {
+    playing: true,
+    speed: 0.15,
+    preset: 'total-solar',
+
+    // Orbital elements (radians)
+    // Convention: Sun is to the LEFT (-x, angle = PI).
+    // Moon angle = PI (180 deg) => New Moon (between Sun & Earth).
+    // Moon angle = 0 (0 deg)    => Full Moon (opposite Sun, behind Earth).
+    // Moon angle = PI/2 (90 deg)=> 1st Quarter (Wait: CCW orbit from top view: New=PI -> 1stQ=PI/2 -> Full=0 -> 3rdQ=3PI/2)
+    // Let's verify CCW orbit (viewed from North Ecliptic Pole, screen y-down means CCW is decreasing angle!):
+    // In screen coordinates (x right, y down):
+    //   angle = PI      -> (-r, 0)  = New Moon (between Sun at left & Earth)
+    //   angle = PI/2    -> (0, +r)  = Wait: +y is DOWN. Counter-clockwise from (-r,0) goes to (0,+r) [bottom]!
+    //   Let's check lighting from left (-x): at (0, +r), the left half is lit -> looking from Earth (0,0) toward (0,+r), the RIGHT side of the Moon is lit = Waxing / 1st Quarter!
+    //   Continuing CCW: (0, +r) -> (+r, 0) [Full Moon] -> (0, -r) [top, left side lit from Earth = 3rd Quarter] -> (-r, 0) [New Moon]!
+    //   Wait: in standard screen coords (x right, y down), increasing angle goes CLOCKWISE: PI -> 3PI/2 (top) -> 2PI (right) -> PI/2 (bottom).
+    //   Decreasing angle goes COUNTER-CLOCKWISE: PI (left, New) -> PI/2 (bottom, 1st Q) -> 0 (right, Full) -> 3PI/2 (top, 3rd Q).
+    //   Let's define a clean orbital phase angle `moonAngleDeg` in [0, 360) where:
+    //     180° = New Moon (-x, left)
+    //      90° = 1st Quarter (+y, bottom — wait: let's map `phaseDeg` explicitly so:
+    //            synodicAngle = 0° at New Moon, 90° at 1st Quarter, 180° at Full Moon, 270° at 3rd Quarter!)
+    //   Let's check! Using `moonAngle` where:
+    //     screenX = earthX + r * cos(theta), screenY = earthY - r * sin(theta)  (standard mathematical Y-up!)
+    //     Then INCREASING `theta` goes COUNTER-CLOCKWISE!
+    //     Sun is at `theta = PI` (-x, left).
+    //     - `theta = PI` (180°): New Moon (-r, 0)
+    //     - `theta = 3PI/2` (270°): bottom (0, +r screen) -> illuminated on left (-x); viewed from Earth looking down, right half is lit = 1st Quarter!
+    //     - `theta = 0` (0°): Full Moon (+r, 0)
+    //     - `theta = PI/2` (90°): top (0, -r screen) -> illuminated on left (-x); viewed from Earth looking up, left half is lit = 3rd Quarter!
+    //   Awesome! Standard math Y-up (`y = earthY - r * sin(theta)`) with increasing `theta` = true astronomical counter-clockwise orbit!
+    //   And let's map the phase jump buttons cleanly:
+    //     New Moon = 180°, 1st Quarter = 270°, Full Moon = 0°, 3rd Quarter = 90°!
+    //     Wait: let's update the data-phase attributes in JS or map `synodicDeg` so 0=New, 90=1stQ, 180=Full, 270=3rdQ?
+    //     Even cleaner: let's store `theta` (true math orbital angle, CCW from +x Full Moon, so New=PI, 1stQ=3PI/2, Full=0, 3rdQ=PI/2).
+    //     Let's double check! From Earth looking at bottom (270°, y_screen = +r):
+    //       Your forward vector is (0, +1). Your RIGHT vector is (-1, 0) [toward the Sun!].
+    //       So the RIGHT side of the Moon is illuminated = WAXING (1st Quarter)!
+    //     From Earth looking at top (90°, y_screen = -r):
+    //       Your forward vector is (0, -1). Your LEFT vector is (-1, 0) [toward the Sun!].
+    //       So the LEFT side of the Moon is illuminated = WANING (3rd Quarter)!
+    //   100% astronomically exact!
+
+    theta: Math.PI,            // radians, CCW (PI = New Moon, 3PI/2 = 1st Q, 0 = Full Moon, PI/2 = 3rd Q)
+    eccentricity: 0.065,       // 0..0.065 (0.0549 real mean, 0.065 reaches extreme supermoon perigee 356,500 km!)
+    perigeeAngle: Math.PI,     // radians (PI => Perigee at New Moon, 0 => Apogee at New Moon)
+    inclinationDeg: 0.0,       // degrees (0..8, real = 5.14)
+    nodeAngle: 0.0,            // radians (Line of Nodes)
+
+    // Earth & Tidal state
+    earthSpin: Math.PI,        // radians (observer angle on equator; PI = sub-solar Noon!)
+    spinSpeed: 1.0,
+    tideScale: 1.25,
+    frictionDeg: 10,           // tidal friction lead angle (degrees ahead of Moon)
+
+    // Visual toggles
+    showShadows: true,
+    showRays: true,
+    showPip: true,
+    showOrbitGuides: true,
+    showLabels: true,
+    showStars: true,
+    showBulgeTotal: true,
+    showBulgeParts: true,
+    showObserver: true,
+    showTidalArrows: true,
+
+    // Camera
+    camX: 0,
+    camY: 0,
+    zoom: 1.0,
+
+    // Interaction
+    dragMode: null, // 'moon' | 'pan' | 'observer'
+    hoverTarget: null,
+    dragStartX: 0,
+    dragStartY: 0,
+    camStartX: 0,
+    camStartY: 0,
+
+    // Audio
+    audioEnabled: false,
+    lastChimeKind: 'none',
+    lastChimeTime: 0,
+
+    // Animation time
+    time: 0
+  };
+
+  // =========================================================================
+  // DOM REFERENCES
+  // =========================================================================
+  const $ = (id) => document.getElementById(id);
+
+  const canvas = $('sim-canvas');
+  const ctx = canvas.getContext('2d');
+  const pipSkyCanvas = $('pip-sky-canvas');
+  const pipSkyCtx = pipSkyCanvas.getContext('2d');
+  const pipTideCanvas = $('pip-tide-canvas');
+  const pipTideCtx = pipTideCanvas.getContext('2d');
+  const pipNodeCanvas = $('pip-node-canvas');
+  const pipNodeCtx = pipNodeCanvas.getContext('2d');
+
+  // =========================================================================
+  // PROCEDURAL STARFIELD & LUNAR CRATERS (DETERMINISTIC)
+  // =========================================================================
+  function mulberry32(seed) {
+    let a = seed >>> 0;
+    return function () {
+      a |= 0;
+      a = (a + 0x6d2b79f5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  const rng = mulberry32(20260408);
+  const bgStars = [];
+  for (let i = 0; i < 290; i++) {
+    const huePick = rng();
+    let color = '#e4ecff';
+    if (huePick < 0.18) color = '#ffd9a8';
+    else if (huePick < 0.35) color = '#b8d8ff';
+    else if (huePick > 0.92) color = '#ffc8d6';
+    bgStars.push({
+      x: rng(),
+      y: rng(),
+      r: 0.45 + Math.pow(rng(), 2.4) * 1.65,
+      alpha: 0.25 + rng() * 0.72,
+      twinkle: 0.7 + rng() * 2.6,
+      phase: rng() * TWO_PI,
+      color
+    });
+  }
+
+  const pipStars = [];
+  for (let i = 0; i < 56; i++) {
+    pipStars.push({
+      x: rng(),
+      y: rng(),
+      r: 0.45 + rng() * 1.05,
+      alpha: 0.35 + rng() * 0.65,
+      phase: rng() * TWO_PI
+    });
+  }
+
+  // Stylized Lunar Maria & Craters in unit disc coordinates [-1, 1]
+  const lunarMaria = [
+    { x: -0.28, y: -0.18, rx: 0.34, ry: 0.28, rot: -0.3, a: 0.27 }, // Oceanus Procellarum
+    { x: -0.14, y: -0.34, rx: 0.24, ry: 0.20, rot: 0.2, a: 0.25 },  // Mare Imbrium
+    { x: 0.24, y: -0.22, rx: 0.21, ry: 0.18, rot: 0.4, a: 0.26 },   // Mare Serenitatis
+    { x: 0.36, y: 0.04, rx: 0.22, ry: 0.19, rot: -0.2, a: 0.28 },   // Mare Tranquillitatis
+    { x: 0.52, y: -0.08, rx: 0.13, ry: 0.14, rot: 0.1, a: 0.26 },   // Mare Crisium
+    { x: 0.22, y: 0.25, rx: 0.18, ry: 0.14, rot: 0.5, a: 0.20 },    // Mare Fecunditatis
+    { x: -0.26, y: 0.22, rx: 0.20, ry: 0.15, rot: -0.4, a: 0.18 }   // Mare Nubium
+  ];
+
+  const lunarCraters = [
+    { x: -0.12, y: 0.56, r: 0.09, bright: true },  // Tycho
+    { x: -0.24, y: -0.02, r: 0.08, bright: true }, // Copernicus
+    { x: -0.46, y: -0.08, r: 0.06, bright: true }, // Kepler
+    { x: 0.14, y: 0.42, r: 0.06, bright: false },
+    { x: 0.42, y: 0.34, r: 0.07, bright: false },
+    { x: -0.05, y: -0.58, r: 0.06, bright: false },
+    { x: 0.08, y: 0.08, r: 0.05, bright: false },
+    { x: -0.42, y: 0.36, r: 0.05, bright: false }
+  ];
+
+  // Stylized Earth continent blobs in polar coordinates (angle offset, radius fraction, rx, ry, rot)
+  const earthContinents = [
+    { lon: 0.2, lat: 0.22, rx: 0.38, ry: 0.22, rot: 0.3 },
+    { lon: 1.5, lat: -0.15, rx: 0.32, ry: 0.26, rot: -0.4 },
+    { lon: 2.7, lat: 0.30, rx: 0.42, ry: 0.20, rot: 0.2 },
+    { lon: 4.1, lat: -0.25, rx: 0.28, ry: 0.24, rot: 0.5 },
+    { lon: 5.2, lat: 0.12, rx: 0.34, ry: 0.19, rot: -0.2 },
+    { lon: 0.9, lat: -0.52, rx: 0.25, ry: 0.15, rot: 0.1 }
+  ];
+
+  // =========================================================================
+  // AUDIO ENGINE (WEB AUDIO API, MUTED BY DEFAULT)
+  // =========================================================================
+  const audio = {
+    ctx: null,
+    masterGain: null,
+    oceanGain: null,
+    oceanFilter: null,
+    initialized: false
+  };
+
+  function initAudio() {
+    if (audio.initialized) return;
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+    const ac = new AudioCtx();
+    audio.ctx = ac;
+
+    const master = ac.createGain();
+    master.gain.value = 0.0;
+    master.connect(ac.destination);
+    audio.masterGain = master;
+
+    // Gentle filtered brown/pink ocean tide swell
+    const bufferLen = ac.sampleRate * 3;
+    const noiseBuf = ac.createBuffer(1, bufferLen, ac.sampleRate);
+    const data = noiseBuf.getChannelData(0);
+    let lastOut = 0;
+    for (let i = 0; i < bufferLen; i++) {
+      const white = Math.random() * 2 - 1;
+      lastOut = (lastOut + 0.025 * white) / 1.025;
+      data[i] = lastOut * 2.8;
+    }
+    const noiseSrc = ac.createBufferSource();
+    noiseSrc.buffer = noiseBuf;
+    noiseSrc.loop = true;
+
+    const filter = ac.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 260;
+    filter.Q.value = 0.9;
+
+    const oceanGain = ac.createGain();
+    oceanGain.gain.value = 0.12;
+
+    noiseSrc.connect(filter);
+    filter.connect(oceanGain);
+    oceanGain.connect(master);
+    noiseSrc.start();
+
+    audio.oceanFilter = filter;
+    audio.oceanGain = oceanGain;
+    audio.initialized = true;
+  }
+
+  function setAudioEnabled(enabled) {
+    state.audioEnabled = enabled;
+    const btn = $('btn-sound');
+    if (enabled) {
+      initAudio();
+      if (audio.ctx && audio.ctx.state === 'suspended') {
+        audio.ctx.resume();
+      }
+      if (audio.masterGain && audio.ctx) {
+        audio.masterGain.gain.setTargetAtTime(0.42, audio.ctx.currentTime, 0.2);
+      }
+      btn.textContent = '🔊 Audio';
+      btn.classList.add('active');
+    } else {
+      if (audio.masterGain && audio.ctx) {
+        audio.masterGain.gain.setTargetAtTime(0.0, audio.ctx.currentTime, 0.18);
+      }
+      btn.textContent = '🔇 Audio';
+      btn.classList.remove('active');
+    }
+  }
+
+  function playSyzygyChime(kind) {
+    if (!state.audioEnabled || !audio.initialized || !audio.ctx) return;
+    const now = performance.now();
+    if (now - state.lastChimeTime < 3500) return;
+    state.lastChimeTime = now;
+
+    const ac = audio.ctx;
+    const t0 = ac.currentTime;
+    // Ethereal chord depending on event
+    const freqs =
+      kind === 'totality' ? [261.63, 392.0, 523.25, 659.25, 783.99] :
+      kind === 'annular'  ? [293.66, 440.0, 587.33, 880.0] :
+      kind === 'blood'    ? [220.0, 261.63, 329.63, 440.0] :
+                            [329.63, 493.88, 659.25];
+
+    freqs.forEach((f, idx) => {
+      const osc = ac.createOscillator();
+      const gain = ac.createGain();
+      osc.type = idx % 2 === 0 ? 'sine' : 'triangle';
+      osc.frequency.setValueAtTime(f, t0 + idx * 0.06);
+
+      gain.gain.setValueAtTime(0.0001, t0 + idx * 0.06);
+      gain.gain.exponentialRampToValueAtTime(0.085 / (1 + idx * 0.25), t0 + idx * 0.06 + 0.14);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + idx * 0.06 + 3.2);
+
+      osc.connect(gain);
+      gain.connect(audio.masterGain);
+      osc.start(t0 + idx * 0.06);
+      osc.stop(t0 + idx * 0.06 + 3.4);
+    });
+  }
+
+  function updateOceanAudio(tideHeightNorm) {
+    if (!state.audioEnabled || !audio.initialized || !audio.ctx) return;
+    const t = audio.ctx.currentTime;
+    // tideHeightNorm in [-1, 1] -> gentle swell of ocean filter & level
+    const swell = 0.5 + 0.5 * tideHeightNorm;
+    audio.oceanFilter.frequency.setTargetAtTime(160 + swell * 310, t, 0.15);
+    audio.oceanGain.gain.setTargetAtTime(0.07 + swell * 0.14, t, 0.15);
+  }
+
+  // =========================================================================
+  // ASTRONOMICAL & TIDAL PHYSICS ENGINE
+  // =========================================================================
+  function normAngle(a) {
+    let r = a % TWO_PI;
+    if (r < 0) r += TWO_PI;
+    return r;
+  }
+
+  function signedAngleDiff(a, b) {
+    let d = (a - b + Math.PI) % TWO_PI;
+    if (d < 0) d += TWO_PI;
+    return d - Math.PI;
+  }
+
+  function computeSystemMetrics() {
+    const theta = normAngle(state.theta);
+    const e = state.eccentricity;
+    const omega = normAngle(state.perigeeAngle);
+
+    // True anomaly from perigee
+    const nu = theta - omega;
+    // Real Earth-Moon distance (km) via Kepler ellipse
+    // Real mean semi-major axis = 384400 km. At e=0.065, perigee = 359414 -> rescale slightly so e=0.065 spans exact 356,500..406,700 km
+    const eReal = e * (0.0652 / 0.065);
+    const dKm = (MEAN_DIST_KM * (1 - eReal * eReal)) / (1 + eReal * Math.cos(nu));
+
+    // Screen orbital radius calibrated so:
+    // dKm = 356,500 -> rScreen = 178 px
+    // dKm = 373,500 (Total/Annular crossover) -> rScreen = 202.3 px
+    // dKm = 384,400 (mean) -> rScreen = 218 px
+    // dKm = 406,700 -> rScreen = 250 px
+    const rScreen = R_ORBIT_MEAN + ((dKm - MEAN_DIST_KM) / 22300) * 32;
+
+    // 3D Nodal Inclination: ecliptic latitude beta
+    const inclRad = state.inclinationDeg * DEG;
+    const argLat = theta - state.nodeAngle;
+    const sinBeta = Math.sin(inclRad) * Math.sin(argLat);
+    const betaRad = Math.asin(Math.max(-1, Math.min(1, sinBeta)));
+    const betaDeg = betaRad * RAD;
+    const zScreen = rScreen * Math.sin(betaRad) * 2.4; // visual edge-on vertical offset
+
+    // Synodic phase angle: 0 = New Moon (theta = PI), PI/2 = 1st Quarter (theta = 3PI/2), PI = Full Moon (theta = 0), 3PI/2 = 3rd Quarter (theta = PI/2)
+    const synodicRad = normAngle(theta - Math.PI);
+    const synodicDeg = synodicRad * RAD;
+    const synodicDay = (synodicRad / TWO_PI) * SYNODIC_MONTH_DAYS;
+    const illumination = 0.5 * (1 - Math.cos(synodicRad)); // 0 at New, 1 at Full
+
+    // Phase name
+    let phaseName = 'New Moon';
+    if (synodicDeg < 8 || synodicDeg > 352) phaseName = 'New Moon';
+    else if (synodicDeg < 82) phaseName = 'Waxing Crescent';
+    else if (synodicDeg <= 98) phaseName = 'First Quarter';
+    else if (synodicDeg < 172) phaseName = 'Waxing Gibbous';
+    else if (synodicDeg <= 188) phaseName = 'Full Moon';
+    else if (synodicDeg < 262) phaseName = 'Waning Gibbous';
+    else if (synodicDeg <= 278) phaseName = 'Third Quarter';
+    else phaseName = 'Waning Crescent';
+
+    // Apparent angular diameters (arcminutes)
+    const moonAngDiamArcmin = 2 * Math.atan(MOON_RADIUS_KM / dKm) * RAD * 60;
+    const sizeRatio = moonAngDiamArcmin / SUN_ANG_DIAM_ARCMIN;
+
+    // Exact shadow cone lengths on canvas (unified optical geometry)
+    const dMoonFromSun = D_OPT_SUN - rScreen * Math.cos(theta - Math.PI); // smaller when Moon is toward Sun? Wait:
+    // Sun is at (-D_OPT_SUN, 0), Earth at (0, 0). Moon x = rScreen * cos(theta).
+    // At New Moon (theta = PI), x = -rScreen, so distance to Sun = D_OPT_SUN - rScreen!
+    // Wait: let's verify our calibration!
+    // At crossover rScreen = 202.3, D_M = 2200 - 202.3 = 1997.7.
+    // L_u(Moon) = 1997.7 * 13.5 / (186.05 - 13.5) = 156.3 px. And rScreen - R_EARTH = 202.3 - 46 = 156.3 px!
+    const moonX = rScreen * Math.cos(theta);
+    const moonY = -rScreen * Math.sin(theta); // screen Y-down (CCW)
+    const distMoonSun = D_OPT_SUN + moonX; // since Sun is at -D_OPT_SUN
+    const moonUmbraLen = (distMoonSun * R_MOON) / (R_OPT_SUN - R_MOON);
+    const moonUmbraHalfAng = Math.asin((R_OPT_SUN - R_MOON) / distMoonSun);
+    const moonPenHalfAng = Math.asin((R_OPT_SUN + R_MOON) / distMoonSun);
+
+    const earthUmbraLen = (D_OPT_SUN * R_EARTH) / (R_OPT_SUN - R_EARTH);
+    const earthUmbraHalfAng = Math.asin((R_OPT_SUN - R_EARTH) / D_OPT_SUN);
+    const earthPenHalfAng = Math.asin((R_OPT_SUN + R_EARTH) / D_OPT_SUN);
+
+    // =========================================================================
+    // ECLIPSE DETECTION & EXACT SKY SEPARATION (3D: Horizontal Syzygy + Vertical Nodal Beta)
+    // =========================================================================
+    // Angular radii in degrees for Sky View PiP
+    const rSunDeg = (SUN_ANG_DIAM_ARCMIN / 60) * 0.5;   // ~0.2666 deg
+    const rMoonDeg = (moonAngDiamArcmin / 60) * 0.5;    // ~0.244..0.279 deg
+
+    // Solar Eclipse: Moon near New Moon (theta ≈ PI)
+    const dSolarHorizRad = signedAngleDiff(theta, Math.PI);
+    const dSolarHorizDeg = dSolarHorizRad * RAD;
+    // Scale horizontal angle so traversing near New Moon spans smoothly over ~12 degrees of orbital sweep for satisfying interaction
+    // Wait: real Sun+Moon angular radius sum is 0.54 deg (which is ~1 hour of orbit, very narrow to drag!).
+    // Let's keep real physics faithful while making dragging feel tactile:
+    // Use real `betaDeg` for vertical offset (so 5.14° misses completely, and < 0.5° hits!),
+    // and compress horizontal syzygy sweep slightly by 0.28× so the user has a ~4° comfortable interactive eclipse window to glide smoothly through Diamond Ring & Baily's Beads!
+    const solarDxDeg = dSolarHorizDeg * 0.28;
+    const solarDyDeg = betaDeg * 0.85;
+    const solarSepDeg = Math.hypot(solarDxDeg, solarDyDeg);
+
+    // Lunar Eclipse: Moon near Full Moon (theta ≈ 0)
+    const dLunarHorizRad = signedAngleDiff(theta, 0);
+    const dLunarHorizDeg = dLunarHorizRad * RAD;
+    const rEarthUmbraDeg = 0.68 * (MEAN_DIST_KM / dKm);   // ~0.68 deg angular radius of Earth's umbra at Moon
+    const rEarthPenDeg = 1.24 * (MEAN_DIST_KM / dKm);     // ~1.24 deg angular radius of Earth's penumbra
+    const lunarDxDeg = dLunarHorizDeg * 0.28;
+    const lunarDyDeg = betaDeg * 0.85;
+    const lunarSepDeg = Math.hypot(lunarDxDeg, lunarDyDeg);
+
+    let eclipseKind = 'none'; // 'totality' | 'annular' | 'partial-solar' | 'blood' | 'partial-lunar' | 'penumbral' | 'none'
+    let eclipseLabel = 'No Eclipse';
+    let eclipseClass = '';
+    let solarCoverage = 0; // 0..1 fraction of Sun covered
+    let lunarUmbraFrac = 0; // 0..1 immersion in Earth's umbra
+    let lunarPenFrac = 0;   // 0..1 immersion in Earth's penumbra
+
+    if (Math.abs(dSolarHorizDeg) < 28) {
+      if (solarSepDeg < rSunDeg + rMoonDeg) {
+        // Compute overlap fraction
+        if (solarSepDeg <= Math.abs(rMoonDeg - rSunDeg)) {
+          if (rMoonDeg >= rSunDeg) {
+            eclipseKind = 'totality';
+            eclipseLabel = 'Totality!';
+            eclipseClass = 'totality';
+            solarCoverage = 1.0;
+          } else {
+            eclipseKind = 'annular';
+            eclipseLabel = 'Annular Ring!';
+            eclipseClass = 'annular';
+            solarCoverage = (rMoonDeg * rMoonDeg) / (rSunDeg * rSunDeg);
+          }
+        } else {
+          eclipseKind = 'partial-solar';
+          eclipseLabel = 'Partial Solar';
+          eclipseClass = 'partial';
+          // Circle-circle overlap approximation
+          const d = solarSepDeg;
+          const r1 = rSunDeg;
+          const r2 = rMoonDeg;
+          const part1 = r1 * r1 * Math.acos(Math.max(-1, Math.min(1, (d * d + r1 * r1 - r2 * r2) / (2 * d * r1))));
+          const part2 = r2 * r2 * Math.acos(Math.max(-1, Math.min(1, (d * d + r2 * r2 - r1 * r1) / (2 * d * r2))));
+          const part3 = 0.5 * Math.sqrt(Math.max(0, (-d + r1 + r2) * (d + r1 - r2) * (d - r1 + r2) * (d + r1 + r2)));
+          solarCoverage = Math.min(1, (part1 + part2 - part3) / (Math.PI * r1 * r1));
+        }
+      }
+    }
+
+    if (eclipseKind === 'none' && Math.abs(dLunarHorizDeg) < 28) {
+      if (lunarSepDeg < rEarthUmbraDeg - rMoonDeg) {
+        eclipseKind = 'blood';
+        eclipseLabel = 'Blood Moon';
+        eclipseClass = 'blood';
+        lunarUmbraFrac = 1.0;
+        lunarPenFrac = 1.0;
+      } else if (lunarSepDeg < rEarthUmbraDeg + rMoonDeg) {
+        eclipseKind = 'partial-lunar';
+        eclipseLabel = 'Partial Lunar';
+        eclipseClass = 'partial';
+        lunarUmbraFrac = Math.max(0, Math.min(1, (rEarthUmbraDeg + rMoonDeg - lunarSepDeg) / (2 * rMoonDeg)));
+        lunarPenFrac = 1.0;
+      } else if (lunarSepDeg < rEarthPenDeg + rMoonDeg) {
+        eclipseKind = 'penumbral';
+        eclipseLabel = 'Penumbral';
+        eclipseClass = '';
+        lunarPenFrac = Math.max(0, Math.min(1, (rEarthPenDeg + rMoonDeg - lunarSepDeg) / (2 * rMoonDeg)));
+      }
+    }
+
+    // =========================================================================
+    // OCEAN TIDAL PHYSICS (LUNAR + SOLAR INTERFERENCE)
+    // =========================================================================
+    const lunarDistFactor = Math.pow(MEAN_DIST_KM / dKm, 3); // inverse-cube tidal law!
+    const lunarAmpM = 1.20 * lunarDistFactor; // meters (mean 1.20 m)
+    const solarAmpM = 0.55;                   // meters (~46% of mean lunar)
+    const frictionRad = state.frictionDeg * DEG;
+    const lunarBulgeAngle = theta + frictionRad; // dragged slightly ahead by Earth's spin
+    const solarBulgeAngle = Math.PI;             // Sun at PI (left)
+
+    // Combined harmonic amplitude for cos(2*(phi - alpha))
+    // A_L cos(2(phi - aL)) + A_S cos(2(phi - aS)) = A_tot cos(2(phi - aTot))
+    const cx = lunarAmpM * Math.cos(2 * lunarBulgeAngle) + solarAmpM * Math.cos(2 * solarBulgeAngle);
+    const sy = lunarAmpM * Math.sin(2 * lunarBulgeAngle) + solarAmpM * Math.sin(2 * solarBulgeAngle);
+    const combinedAmpM = Math.hypot(cx, sy);
+    const maxPossibleAmp = 1.20 * Math.pow(MEAN_DIST_KM / 356500, 3) + solarAmpM; // Perigean Spring max
+    const minPossibleAmp = 1.20 * Math.pow(MEAN_DIST_KM / 406700, 3) - solarAmpM; // Apogean Neap min
+
+    // Spring vs Neap index based on alignment of lunar & solar bulges
+    const alignCos = Math.cos(2 * (theta - solarBulgeAngle)); // +1 at New/Full, -1 at Quarters
+    const springNeapPct = Math.round(((combinedAmpM - minPossibleAmp) / Math.max(0.1, maxPossibleAmp - minPossibleAmp)) * 100);
+    const clampedPct = Math.max(0, Math.min(100, springNeapPct));
+
+    let tideState = 'Moderate Tide';
+    if (alignCos > 0.65) {
+      tideState = dKm < 366000 ? 'King Spring Tide' : 'Spring Tide';
+    } else if (alignCos < -0.65) {
+      tideState = 'Neap Tide';
+    }
+
+    // Observer coastal height at current earthSpin angle
+    const phiObs = normAngle(state.earthSpin);
+    const obsLunarH = lunarAmpM * Math.cos(2 * (phiObs - lunarBulgeAngle));
+    const obsSolarH = solarAmpM * Math.cos(2 * (phiObs - solarBulgeAngle));
+    const obsHeightM = obsLunarH + obsSolarH;
+    const tideHeightNorm = obsHeightM / maxPossibleAmp;
+
+    // Local solar time for observer: phiObs = PI (facing left/Sun) is 12:00 Noon!
+    const solarHourFloat = normAngle(phiObs - Math.PI) / TWO_PI * 24;
+    // Wait: Earth spins CCW (increasing phiObs). Noon is PI, Sunset (6 PM) is 3PI/2, Midnight is 0, Sunrise (6 AM) is PI/2.
+    const localHours = (12 + (normAngle(phiObs - Math.PI) / TWO_PI) * 24) % 24;
+    const hh = Math.floor(localHours);
+    const mm = Math.floor((localHours - hh) * 60);
+    const localTimeStr = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+
+    const apsisLabel =
+      dKm < 365000 ? 'Perigee (Near)' :
+      dKm > 398000 ? 'Apogee (Far)' : 'Mid-Orbit';
+
+    return {
+      theta,
+      e,
+      omega,
+      dKm,
+      rScreen,
+      moonX,
+      moonY,
+      betaRad,
+      betaDeg,
+      zScreen,
+      synodicRad,
+      synodicDeg,
+      synodicDay,
+      illumination,
+      phaseName,
+      moonAngDiamArcmin,
+      sizeRatio,
+      moonUmbraLen,
+      moonUmbraHalfAng,
+      moonPenHalfAng,
+      earthUmbraLen,
+      earthUmbraHalfAng,
+      earthPenHalfAng,
+      rSunDeg,
+      rMoonDeg,
+      solarDxDeg,
+      solarDyDeg,
+      solarSepDeg,
+      dSolarHorizDeg,
+      dLunarHorizDeg,
+      lunarDxDeg,
+      lunarDyDeg,
+      lunarSepDeg,
+      rEarthUmbraDeg,
+      rEarthPenDeg,
+      eclipseKind,
+      eclipseLabel,
+      eclipseClass,
+      solarCoverage,
+      lunarUmbraFrac,
+      lunarPenFrac,
+      lunarAmpM,
+      solarAmpM,
+      combinedAmpM,
+      lunarBulgeAngle,
+      solarBulgeAngle,
+      alignCos,
+      springNeapPct: clampedPct,
+      tideState,
+      phiObs,
+      obsHeightM,
+      tideHeightNorm,
+      localTimeStr,
+      localHours,
+      apsisLabel,
+      relativeTideForce: (combinedAmpM / 1.20)
+    };
+  }
+
+  // =========================================================================
+  // MAIN CANVAS RENDERING
+  // =========================================================================
+  let viewW = window.innerWidth;
+  let viewH = window.innerHeight;
+  let dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+  function resizeCanvases() {
+    viewW = window.innerWidth;
+    viewH = window.innerHeight;
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+    canvas.width = Math.round(viewW * dpr);
+    canvas.height = Math.round(viewH * dpr);
+    canvas.style.width = `${viewW}px`;
+    canvas.style.height = `${viewH}px`;
+
+    // PiP Canvases
+    const sizePip = (c, w, h) => {
+      c.width = Math.round(w * dpr);
+      c.height = Math.round(h * dpr);
+    };
+    sizePip(pipSkyCanvas, 158, 158);
+    const tideRect = pipTideCanvas.getBoundingClientRect();
+    sizePip(pipTideCanvas, Math.max(120, tideRect.width || 220), 92);
+    const nodeRect = pipNodeCanvas.getBoundingClientRect();
+    sizePip(pipNodeCanvas, Math.max(120, nodeRect.width || 220), 46);
+  }
+
+  function getEarthScreenCenter() {
+    // Frame Earth beautifully between the left PiP panels and the right 330px drawer
+    const drawerOpen = !$('drawer').classList.contains('collapsed') && !document.body.classList.contains('zen-mode');
+    const pipVisible = state.showPip && !document.body.classList.contains('zen-mode') && viewW > 960;
+    let cx = viewW * 0.5;
+    if (drawerOpen && pipVisible) {
+      cx = viewW * 0.54;
+    } else if (drawerOpen) {
+      cx = viewW * 0.43;
+    } else if (pipVisible) {
+      cx = viewW * 0.60;
+    }
+    const cy = viewH * 0.50;
+    return {
+      x: cx + state.camX,
+      y: cy + state.camY
+    };
+  }
+
+  function worldToScreen(wx, wy) {
+    const c = getEarthScreenCenter();
+    return {
+      x: c.x + wx * state.zoom,
+      y: c.y + wy * state.zoom
+    };
+  }
+
+  function screenToWorld(sx, sy) {
+    const c = getEarthScreenCenter();
+    return {
+      x: (sx - c.x) / state.zoom,
+      y: (sy - c.y) / state.zoom
+    };
+  }
+
+  function drawBackground(m) {
+    ctx.save();
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = '#040711';
+    ctx.fillRect(0, 0, viewW, viewH);
+
+    // Subtle deep-space nebula gradient
+    const neb = ctx.createRadialGradient(viewW * 0.58, viewH * 0.42, 30, viewW * 0.55, viewH * 0.5, Math.max(viewW, viewH) * 0.72);
+    neb.addColorStop(0, 'rgba(26, 46, 94, 0.22)');
+    neb.addColorStop(0.55, 'rgba(12, 20, 44, 0.12)');
+    neb.addColorStop(1, 'rgba(4, 7, 17, 0)');
+    ctx.fillStyle = neb;
+    ctx.fillRect(0, 0, viewW, viewH);
+
+    // Left Solar warm atmospheric wash
+    const sunWash = ctx.createRadialGradient(-90, viewH * 0.5, 20, 0, viewH * 0.5, viewW * 0.55);
+    sunWash.addColorStop(0, 'rgba(255, 186, 86, 0.22)');
+    sunWash.addColorStop(0.32, 'rgba(255, 138, 56, 0.075)');
+    sunWash.addColorStop(1, 'rgba(255, 138, 56, 0)');
+    ctx.fillStyle = sunWash;
+    ctx.fillRect(0, 0, viewW, viewH);
+
+    // Starfield
+    if (state.showStars) {
+      for (let i = 0; i < bgStars.length; i++) {
+        const s = bgStars[i];
+        const tw = 0.65 + 0.35 * Math.sin(state.time * s.twinkle + s.phase);
+        ctx.globalAlpha = s.alpha * tw;
+        ctx.fillStyle = s.color;
+        ctx.beginPath();
+        ctx.arc(s.x * viewW, s.y * viewH, s.r, 0, TWO_PI);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    }
+    ctx.restore();
+  }
+
+  function drawSunLimbAndRays(center, m) {
+    ctx.save();
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    // Draw directional solar light rays streaming from left
+    if (state.showRays) {
+      const rayGrad = ctx.createLinearGradient(0, 0, center.x + 360 * state.zoom, 0);
+      rayGrad.addColorStop(0, 'rgba(255, 214, 128, 0.14)');
+      rayGrad.addColorStop(0.45, 'rgba(255, 198, 102, 0.04)');
+      rayGrad.addColorStop(1, 'rgba(255, 198, 102, 0)');
+      ctx.strokeStyle = rayGrad;
+      ctx.lineWidth = 1;
+      for (let i = -7; i <= 7; i++) {
+        const yOff = center.y + i * 44 * state.zoom;
+        ctx.beginPath();
+        ctx.moveTo(0, yOff);
+        ctx.lineTo(center.x + 340 * state.zoom, yOff + i * 6 * state.zoom);
+        ctx.stroke();
+      }
+    }
+
+    // Majestic Sun limb glowing on the far left edge
+    const sunR = Math.max(240, viewH * 0.44);
+    const sunX = -sunR + 34;
+    const sunY = center.y;
+
+    // Outer Corona glow
+    const corona = ctx.createRadialGradient(sunX, sunY, sunR * 0.92, sunX, sunY, sunR * 1.45);
+    corona.addColorStop(0, 'rgba(255, 224, 146, 0.55)');
+    corona.addColorStop(0.25, 'rgba(255, 162, 62, 0.22)');
+    corona.addColorStop(0.65, 'rgba(255, 112, 42, 0.05)');
+    corona.addColorStop(1, 'rgba(255, 100, 30, 0)');
+    ctx.fillStyle = corona;
+    ctx.beginPath();
+    ctx.arc(sunX, sunY, sunR * 1.45, 0, TWO_PI);
+    ctx.fill();
+
+    // Solar Photosphere disc
+    const bodyGrad = ctx.createRadialGradient(sunX + sunR * 0.45, sunY, sunR * 0.1, sunX, sunY, sunR);
+    bodyGrad.addColorStop(0, '#fffce8');
+    bodyGrad.addColorStop(0.65, '#ffe082');
+    bodyGrad.addColorStop(0.92, '#ff9d3b');
+    bodyGrad.addColorStop(1, '#ff6820');
+    ctx.fillStyle = bodyGrad;
+    ctx.beginPath();
+    ctx.arc(sunX, sunY, sunR, 0, TWO_PI);
+    ctx.fill();
+
+    // Subtle label
+    if (state.showLabels) {
+      ctx.save();
+      ctx.font = '700 10px ' + getComputedStyle(document.documentElement).getPropertyValue('--mono');
+      ctx.fillStyle = 'rgba(255, 220, 145, 0.8)';
+      ctx.letterSpacing = '0.12em';
+      ctx.fillText('SUNLIGHT →', 16, center.y - 6);
+      ctx.restore();
+    }
+
+    ctx.restore();
+  }
+
+  function drawOrbitAndGuides(center, m) {
+    ctx.save();
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.translate(center.x, center.y);
+    ctx.scale(state.zoom, state.zoom);
+
+    const e = state.eccentricity;
+    const eReal = e * (0.0652 / 0.065);
+    const omega = state.perigeeAngle;
+    const inclActive = state.inclinationDeg > 0.08;
+
+    // Draw full elliptical orbit path, split by above/below ecliptic if inclined
+    const steps = 180;
+    for (let i = 0; i < steps; i++) {
+      const a0 = (i / steps) * TWO_PI;
+      const a1 = ((i + 1) / steps) * TWO_PI;
+      const aMid = 0.5 * (a0 + a1);
+
+      const getR = (ang) => {
+        const d = (MEAN_DIST_KM * (1 - eReal * eReal)) / (1 + eReal * Math.cos(ang - omega));
+        return R_ORBIT_MEAN + ((d - MEAN_DIST_KM) / 22300) * 32;
+      };
+      const r0 = getR(a0);
+      const r1 = getR(a1);
+
+      const above = Math.sin(aMid - state.nodeAngle) >= 0;
+      ctx.beginPath();
+      ctx.moveTo(r0 * Math.cos(a0), -r0 * Math.sin(a0));
+      ctx.lineTo(r1 * Math.cos(a1), -r1 * Math.sin(a1));
+
+      if (inclActive) {
+        ctx.strokeStyle = above ? 'rgba(88, 220, 255, 0.34)' : 'rgba(138, 120, 235, 0.22)';
+        ctx.lineWidth = above ? 1.6 : 1.15;
+        ctx.setLineDash(above ? [] : [4, 4]);
+      } else {
+        ctx.strokeStyle = 'rgba(148, 179, 255, 0.24)';
+        ctx.lineWidth = 1.3;
+        ctx.setLineDash([]);
+      }
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+
+    // Sun-Earth Syzygy axis (subtle dashed guide)
+    ctx.strokeStyle = 'rgba(255, 198, 102, 0.16)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([5, 6]);
+    ctx.beginPath();
+    ctx.moveTo(-320, 0);
+    ctx.lineTo(320, 0);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    if (state.showOrbitGuides) {
+      // Perigee (P) & Apogee (A) markers when e > 0.005
+      if (e > 0.005) {
+        const dPer = MEAN_DIST_KM * (1 - eReal);
+        const dApo = MEAN_DIST_KM * (1 + eReal);
+        const rPer = R_ORBIT_MEAN + ((dPer - MEAN_DIST_KM) / 22300) * 32;
+        const rApo = R_ORBIT_MEAN + ((dApo - MEAN_DIST_KM) / 22300) * 32;
+
+        const px = rPer * Math.cos(omega), py = -rPer * Math.sin(omega);
+        const ax = -rApo * Math.cos(omega), ay = rApo * Math.sin(omega);
+
+        ctx.strokeStyle = 'rgba(255, 190, 92, 0.16)';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([2, 4]);
+        ctx.beginPath();
+        ctx.moveTo(px, py);
+        ctx.lineTo(ax, ay);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Perigee dot & tag
+        ctx.fillStyle = '#ffbe5c';
+        ctx.beginPath();
+        ctx.arc(px, py, 3.2, 0, TWO_PI);
+        ctx.fill();
+        if (state.showLabels) {
+          ctx.font = '600 9.5px ui-monospace, monospace';
+          ctx.fillStyle = 'rgba(255, 206, 128, 0.85)';
+          ctx.textAlign = 'center';
+          ctx.fillText('PERIGEE', px + Math.cos(omega) * 26, py - Math.sin(omega) * 18 + 3);
+        }
+
+        // Apogee dot & tag
+        ctx.fillStyle = '#58dcff';
+        ctx.beginPath();
+        ctx.arc(ax, ay, 3.2, 0, TWO_PI);
+        ctx.fill();
+        if (state.showLabels) {
+          ctx.fillStyle = 'rgba(130, 224, 255, 0.82)';
+          ctx.fillText('APOGEE', ax - Math.cos(omega) * 26, ay + Math.sin(omega) * 18 + 3);
+        }
+      }
+
+      // Line of Nodes when tilted
+      if (inclActive) {
+        const nAng = state.nodeAngle;
+        const nLen = 258;
+        const nx = nLen * Math.cos(nAng), ny = -nLen * Math.sin(nAng);
+        ctx.strokeStyle = 'rgba(167, 139, 250, 0.42)';
+        ctx.lineWidth = 1.2;
+        ctx.setLineDash([6, 4]);
+        ctx.beginPath();
+        ctx.moveTo(-nx, -ny);
+        ctx.lineTo(nx, ny);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Ascending & Descending Node glyphs
+        ctx.fillStyle = '#c4b5fd';
+        ctx.font = '700 10px ui-monospace, monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('☊ Node', nx * 1.07, ny * 1.07 + 3);
+        ctx.fillText('☋ Node', -nx * 1.07, -ny * 1.07 + 3);
+      }
+    }
+
+    // Cardinal Phase Labels
+    if (state.showLabels) {
+      ctx.font = '600 10px system-ui, sans-serif';
+      ctx.fillStyle = 'rgba(154, 169, 204, 0.56)';
+      ctx.textAlign = 'center';
+      ctx.fillText('NEW MOON (Syzygy)', -R_ORBIT_MEAN - 14, -22);
+      ctx.fillText('FULL MOON (Syzygy)', R_ORBIT_MEAN + 16, -22);
+      ctx.fillText('1ST QUARTER', 0, R_ORBIT_MEAN + 24);
+      ctx.fillText('3RD QUARTER', 0, -R_ORBIT_MEAN - 16);
+    }
+
+    ctx.restore();
+  }
+
+  function drawShadowCones(center, m) {
+    if (!state.showShadows) return;
+
+    ctx.save();
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.translate(center.x, center.y);
+    ctx.scale(state.zoom, state.zoom);
+
+    const drawBodyShadow = (bx, by, radius, umbraLen, penHalfAng, isEarth, isTiltedMiss) => {
+      const sunX = -D_OPT_SUN;
+      const sunY = 0;
+      const dx = bx - sunX;
+      const dy = by - sunY;
+      const dist = Math.hypot(dx, dy);
+      const axisAng = Math.atan2(dy, dx); // near 0 (pointing right)
+
+      ctx.save();
+      ctx.translate(bx, by);
+      ctx.rotate(axisAng);
+
+      // Penumbra cone (soft outer shadow)
+      const penLen = isEarth ? 460 : 340;
+      const penEndR = radius + penLen * Math.tan(penHalfAng);
+      const penGrad = ctx.createLinearGradient(0, 0, penLen, 0);
+      const missAlpha = isTiltedMiss ? 0.45 : 1.0;
+      penGrad.addColorStop(0, `rgba(4, 8, 22, ${0.42 * missAlpha})`);
+      penGrad.addColorStop(0.65, `rgba(4, 8, 22, ${0.22 * missAlpha})`);
+      penGrad.addColorStop(1, 'rgba(4, 8, 22, 0)');
+
+      ctx.fillStyle = penGrad;
+      ctx.beginPath();
+      ctx.moveTo(0, -radius);
+      ctx.lineTo(penLen, -penEndR);
+      ctx.lineTo(penLen, penEndR);
+      ctx.lineTo(0, radius);
+      ctx.closePath();
+      ctx.fill();
+
+      // Subtle penumbra boundary lines
+      ctx.strokeStyle = `rgba(148, 179, 255, ${0.14 * missAlpha})`;
+      ctx.lineWidth = 0.9;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(0, -radius);
+      ctx.lineTo(penLen * 0.9, -(radius + penLen * 0.9 * Math.tan(penHalfAng)));
+      ctx.moveTo(0, radius);
+      ctx.lineTo(penLen * 0.9, radius + penLen * 0.9 * Math.tan(penHalfAng));
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Umbra cone (crisp dark inner shadow!)
+      const uLen = Math.min(umbraLen, isEarth ? 480 : umbraLen);
+      const uEndR = isEarth ? Math.max(0, radius * (1 - uLen / umbraLen)) : 0;
+
+      const uGrad = ctx.createLinearGradient(0, 0, uLen, 0);
+      if (isEarth) {
+        // Earth's umbra has a deep dark core + subtle crimson Rayleigh-refracted inner glow!
+        uGrad.addColorStop(0, 'rgba(2, 4, 12, 0.88)');
+        uGrad.addColorStop(0.35, 'rgba(34, 8, 12, 0.78)');
+        uGrad.addColorStop(0.75, 'rgba(110, 22, 18, 0.46)');
+        uGrad.addColorStop(1, 'rgba(130, 28, 18, 0.14)');
+      } else {
+        uGrad.addColorStop(0, `rgba(2, 4, 10, ${0.92 * missAlpha})`);
+        uGrad.addColorStop(0.82, `rgba(4, 7, 16, ${0.78 * missAlpha})`);
+        uGrad.addColorStop(1, `rgba(10, 14, 28, ${0.55 * missAlpha})`);
+      }
+
+      ctx.fillStyle = uGrad;
+      ctx.beginPath();
+      ctx.moveTo(0, -radius);
+      ctx.lineTo(uLen, -uEndR);
+      ctx.lineTo(uLen, uEndR);
+      ctx.lineTo(0, radius);
+      ctx.closePath();
+      ctx.fill();
+
+      // Crisp umbra outline
+      ctx.strokeStyle = isEarth
+        ? 'rgba(255, 106, 92, 0.28)'
+        : `rgba(255, 206, 128, ${0.34 * missAlpha})`;
+      ctx.lineWidth = 1.1;
+      ctx.beginPath();
+      ctx.moveTo(0, -radius);
+      ctx.lineTo(uLen, -uEndR);
+      ctx.moveTo(0, radius);
+      ctx.lineTo(uLen, uEndR);
+      ctx.stroke();
+
+      // For Moon: if umbra apex falls BEFORE Earth (Annular geometry), draw diverging ANTUMBRA cone!
+      if (!isEarth && state.showRays) {
+        const apexDist = umbraLen;
+        const antLen = 110;
+        const antEndR = radius * (antLen / apexDist);
+        const antGrad = ctx.createLinearGradient(apexDist, 0, apexDist + antLen, 0);
+        antGrad.addColorStop(0, `rgba(255, 165, 82, ${0.26 * missAlpha})`);
+        antGrad.addColorStop(1, 'rgba(255, 165, 82, 0)');
+        ctx.fillStyle = antGrad;
+        ctx.beginPath();
+        ctx.moveTo(apexDist, 0);
+        ctx.lineTo(apexDist + antLen, -antEndR);
+        ctx.lineTo(apexDist + antLen, antEndR);
+        ctx.closePath();
+        ctx.fill();
+
+        // Apex pinpoint marker
+        ctx.fillStyle = m.eclipseKind === 'annular' ? '#ff9d47' : 'rgba(255, 206, 128, 0.72)';
+        ctx.beginPath();
+        ctx.arc(apexDist, 0, 2.4, 0, TWO_PI);
+        ctx.fill();
+
+        if (state.showLabels && Math.abs(m.dSolarHorizDeg) < 25) {
+          ctx.save();
+          ctx.rotate(-axisAng);
+          ctx.font = '600 9px ui-monospace, monospace';
+          ctx.textAlign = 'center';
+          const apexPtX = apexDist * Math.cos(axisAng);
+          const apexPtY = apexDist * Math.sin(axisAng);
+          if (m.sizeRatio < 1.0) {
+            ctx.fillStyle = '#ffb36b';
+            ctx.fillText('UMBRA APEX (SHORT → ANNULAR)', apexPtX, apexPtY - 14);
+          } else {
+            ctx.fillStyle = '#ffe099';
+            ctx.fillText('UMBRA REACHES EARTH', apexPtX - 30, apexPtY - 18);
+          }
+          ctx.restore();
+        }
+      }
+
+      // Label Earth's crimson umbra when near Full Moon
+      if (isEarth && state.showLabels && Math.abs(m.dLunarHorizDeg) < 35) {
+        ctx.font = '600 9px ui-monospace, monospace';
+        ctx.fillStyle = 'rgba(255, 134, 122, 0.78)';
+        ctx.textAlign = 'center';
+        ctx.fillText('EARTH UMBRA (RAYLEIGH RED)', 155, -36);
+      }
+
+      ctx.restore();
+    };
+
+    // 1. Always draw Earth's shadow cone behind Earth
+    drawBodyShadow(0, 0, R_EARTH, m.earthUmbraLen, m.earthPenHalfAng, true, false);
+
+    // 2. Draw Moon's shadow cone (most dramatic near New Moon, always physically cast away from Sun!)
+    const moonMiss = Math.abs(m.betaDeg) > 1.3;
+    drawBodyShadow(m.moonX, m.moonY, R_MOON, m.moonUmbraLen, m.moonPenHalfAng, false, moonMiss);
+
+    ctx.restore();
+  }
+
+  function drawEarthAndTides(center, m) {
+    ctx.save();
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.translate(center.x, center.y);
+    ctx.scale(state.zoom, state.zoom);
+
+    const visualScale = state.tideScale;
+    const baseOcean = 8.5; // baseline ocean layer thickness (px)
+    const lunarVis = m.lunarAmpM * 11.5 * visualScale;
+    const solarVis = m.solarAmpM * 11.5 * visualScale;
+
+    // 1. Combined Ocean Tidal Bulge Envelope
+    if (state.showBulgeTotal) {
+      ctx.save();
+      const samples = 128;
+      ctx.beginPath();
+      for (let i = 0; i <= samples; i++) {
+        const a = (i / samples) * TWO_PI;
+        // Standard math angle `a` mapped to screen (x = r cos a, y = -r sin a)
+        const h =
+          lunarVis * Math.cos(2 * (a - m.lunarBulgeAngle)) +
+          solarVis * Math.cos(2 * (a - m.solarBulgeAngle));
+        const r = R_EARTH + baseOcean + h;
+        const px = r * Math.cos(a);
+        const py = -r * Math.sin(a);
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+
+      const maxR = R_EARTH + baseOcean + m.combinedAmpM * 12 * visualScale + 8;
+      const tideGrad = ctx.createRadialGradient(0, 0, R_EARTH * 0.92, 0, 0, maxR);
+      tideGrad.addColorStop(0, 'rgba(34, 168, 255, 0.50)');
+      tideGrad.addColorStop(0.55, 'rgba(88, 220, 255, 0.28)');
+      tideGrad.addColorStop(1, 'rgba(88, 220, 255, 0.08)');
+      ctx.fillStyle = tideGrad;
+      ctx.fill();
+
+      ctx.strokeStyle = 'rgba(108, 232, 255, 0.78)';
+      ctx.lineWidth = 1.6;
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // 2. Lunar & Solar Component Bulge Outlines (shows constructive vs orthogonal interference!)
+    if (state.showBulgeParts) {
+      const drawCompRing = (amp, angle, color, dash) => {
+        ctx.save();
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.15;
+        ctx.setLineDash(dash);
+        ctx.beginPath();
+        const samples = 96;
+        for (let i = 0; i <= samples; i++) {
+          const a = (i / samples) * TWO_PI;
+          const r = R_EARTH + baseOcean + amp * Math.cos(2 * (a - angle));
+          const px = r * Math.cos(a);
+          const py = -r * Math.sin(a);
+          if (i === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.stroke();
+        ctx.restore();
+      };
+
+      // Solar tidal bulge (amber)
+      drawCompRing(solarVis, m.solarBulgeAngle, 'rgba(255, 190, 92, 0.45)', [4, 4]);
+      // Lunar tidal bulge (cyan)
+      drawCompRing(lunarVis, m.lunarBulgeAngle, 'rgba(88, 220, 255, 0.55)', [2, 3]);
+    }
+
+    // 3. Tidal Pull Arrows (Sub-lunar & Antipodal stretch)
+    if (state.showTidalArrows) {
+      const drawArrow = (ang, len, color) => {
+        const r0 = R_EARTH + baseOcean + m.combinedAmpM * 8 * visualScale + 6;
+        const r1 = r0 + len;
+        const x0 = r0 * Math.cos(ang), y0 = -r0 * Math.sin(ang);
+        const x1 = r1 * Math.cos(ang), y1 = -r1 * Math.sin(ang);
+        ctx.save();
+        ctx.strokeStyle = color;
+        ctx.fillStyle = color;
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.moveTo(x0, y0);
+        ctx.lineTo(x1, y1);
+        ctx.stroke();
+
+        const headAng = Math.atan2(y1 - y0, x1 - x0);
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x1 - 6 * Math.cos(headAng - 0.45), y1 - 6 * Math.sin(headAng - 0.45));
+        ctx.lineTo(x1 - 6 * Math.cos(headAng + 0.45), y1 - 6 * Math.sin(headAng + 0.45));
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      };
+
+      drawArrow(m.lunarBulgeAngle, 14, 'rgba(88, 220, 255, 0.72)');
+      drawArrow(m.lunarBulgeAngle + Math.PI, 14, 'rgba(88, 220, 255, 0.72)');
+    }
+
+    // 4. Earth Globe (Ocean, Rotating Continents, Atmospheric Glow, Day/Night Terminator, Eclipse Shadow Footprint)
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(0, 0, R_EARTH, 0, TWO_PI);
+    ctx.clip();
+
+    // Base Ocean sphere
+    const earthGrad = ctx.createRadialGradient(-R_EARTH * 0.42, -R_EARTH * 0.15, R_EARTH * 0.1, 0, 0, R_EARTH * 1.1);
+    earthGrad.addColorStop(0, '#3ca4ff');
+    earthGrad.addColorStop(0.55, '#12539e');
+    earthGrad.addColorStop(1, '#081b3b');
+    ctx.fillStyle = earthGrad;
+    ctx.fillRect(-R_EARTH, -R_EARTH, R_EARTH * 2, R_EARTH * 2);
+
+    // Stylized rotating continents (top-down polar view rotating with earthSpin)
+    ctx.save();
+    ctx.rotate(-state.earthSpin);
+    for (let i = 0; i < earthContinents.length; i++) {
+      const c = earthContinents[i];
+      const cr = R_EARTH * (0.42 + 0.34 * Math.abs(c.lat));
+      const cx = cr * Math.cos(c.lon);
+      const cy = cr * Math.sin(c.lon);
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(c.rot);
+      ctx.fillStyle = 'rgba(66, 186, 134, 0.56)';
+      ctx.beginPath();
+      ctx.ellipse(0, 0, R_EARTH * c.rx * 0.72, R_EARTH * c.ry * 0.72, 0, 0, TWO_PI);
+      ctx.fill();
+      ctx.restore();
+    }
+    // North polar ice cap hint
+    const iceGrad = ctx.createRadialGradient(0, 0, 1, 0, 0, R_EARTH * 0.24);
+    iceGrad.addColorStop(0, 'rgba(235, 248, 255, 0.85)');
+    iceGrad.addColorStop(1, 'rgba(200, 232, 255, 0)');
+    ctx.fillStyle = iceGrad;
+    ctx.beginPath();
+    ctx.arc(0, 0, R_EARTH * 0.24, 0, TWO_PI);
+    ctx.fill();
+    ctx.restore();
+
+    // Night hemisphere shadow (right half, +x is away from Sun)
+    const termGrad = ctx.createLinearGradient(-10, 0, 14, 0);
+    termGrad.addColorStop(0, 'rgba(2, 6, 18, 0)');
+    termGrad.addColorStop(0.45, 'rgba(2, 6, 18, 0.42)');
+    termGrad.addColorStop(1, 'rgba(2, 6, 18, 0.86)');
+    ctx.fillStyle = termGrad;
+    ctx.fillRect(-10, -R_EARTH, R_EARTH + 14, R_EARTH * 2);
+
+    // Subtle warm city lights on night side
+    ctx.save();
+    ctx.rotate(-state.earthSpin);
+    ctx.fillStyle = 'rgba(255, 206, 118, 0.65)';
+    for (let i = 0; i < 14; i++) {
+      const a = i * 0.91 + 0.4;
+      const rr = R_EARTH * (0.38 + (i % 4) * 0.13);
+      const lx = rr * Math.cos(a);
+      const ly = rr * Math.sin(a);
+      // Transform back to check if on night side (x > 3)
+      const cosS = Math.cos(-state.earthSpin);
+      const sinS = Math.sin(-state.earthSpin);
+      const wx = lx * cosS - ly * sinS;
+      if (wx > 4) {
+        ctx.beginPath();
+        ctx.arc(lx, ly, 1.05, 0, TWO_PI);
+        ctx.fill();
+      }
+    }
+    ctx.restore();
+
+    // Solar Eclipse shadow spot directly on Earth's illuminated hemisphere!
+    if (m.eclipseKind === 'totality' || m.eclipseKind === 'annular' || m.eclipseKind === 'partial-solar') {
+      const spotY = m.moonY * (1 + R_EARTH / Math.max(80, m.rScreen));
+      const spotX = -Math.sqrt(Math.max(0, R_EARTH * R_EARTH - spotY * spotY * 0.35)) + 6;
+      const penR = 22;
+      const pGrad = ctx.createRadialGradient(spotX, spotY * 0.55, 2, spotX, spotY * 0.55, penR);
+      pGrad.addColorStop(0, m.eclipseKind === 'totality' ? 'rgba(0, 0, 0, 0.96)' : 'rgba(20, 12, 8, 0.68)');
+      pGrad.addColorStop(0.32, m.eclipseKind === 'totality' ? 'rgba(0, 0, 0, 0.72)' : 'rgba(30, 16, 10, 0.40)');
+      pGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = pGrad;
+      ctx.beginPath();
+      ctx.arc(spotX, spotY * 0.55, penR, 0, TWO_PI);
+      ctx.fill();
+
+      if (m.eclipseKind === 'totality') {
+        ctx.strokeStyle = 'rgba(255, 206, 120, 0.85)';
+        ctx.lineWidth = 1.1;
+        ctx.beginPath();
+        ctx.arc(spotX, spotY * 0.55, 5.2, 0, TWO_PI);
+        ctx.stroke();
+      }
+    }
+
+    ctx.restore(); // end Earth clip
+
+    // Atmospheric Rayleigh blue rim glow on Sunward side
+    const rimGrad = ctx.createRadialGradient(-R_EARTH * 0.15, 0, R_EARTH * 0.86, 0, 0, R_EARTH * 1.08);
+    rimGrad.addColorStop(0, 'rgba(98, 204, 255, 0)');
+    rimGrad.addColorStop(0.75, 'rgba(98, 204, 255, 0.32)');
+    rimGrad.addColorStop(1, 'rgba(98, 204, 255, 0)');
+    ctx.fillStyle = rimGrad;
+    ctx.beginPath();
+    ctx.arc(0, 0, R_EARTH * 1.08, 0, TWO_PI);
+    ctx.fill();
+
+    // 5. Animated Equatorial Coastal Observer Pin
+    if (state.showObserver) {
+      const a = m.phiObs;
+      const ox = R_EARTH * Math.cos(a);
+      const oy = -R_EARTH * Math.sin(a);
+      const tideH =
+        lunarVis * Math.cos(2 * (a - m.lunarBulgeAngle)) +
+        solarVis * Math.cos(2 * (a - m.solarBulgeAngle));
+      const rWater = R_EARTH + baseOcean + tideH;
+      const wx = rWater * Math.cos(a);
+      const wy = -rWater * Math.sin(a);
+
+      // Vertical tide gauge line from coast to ocean surface
+      ctx.strokeStyle = '#4af2b2';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(ox, oy);
+      ctx.lineTo(wx, wy);
+      ctx.stroke();
+
+      // Glowing observer beacon
+      ctx.fillStyle = '#4af2b2';
+      ctx.shadowColor = '#4af2b2';
+      ctx.shadowBlur = 10;
+      ctx.beginPath();
+      ctx.arc(ox, oy, 4, 0, TWO_PI);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      ctx.strokeStyle = '#041218';
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+
+      // Buoy tip at water surface
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(wx, wy, 2.3, 0, TWO_PI);
+      ctx.fill();
+    }
+
+    ctx.restore();
+  }
+
+  function drawMoonBody(center, m) {
+    ctx.save();
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.translate(center.x, center.y);
+    ctx.scale(state.zoom, state.zoom);
+
+    const mx = m.moonX;
+    const my = m.moonY;
+
+    // Interactive hover/drag halo
+    if (state.hoverTarget === 'moon' || state.dragMode === 'moon') {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255, 206, 128, 0.72)';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 3]);
+      ctx.beginPath();
+      ctx.arc(mx, my, R_MOON + 10, 0, TWO_PI);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Subtle soft moonlight glow (shifts crimson during Blood Moon!)
+    const glowR = R_MOON * 2.5;
+    const glow = ctx.createRadialGradient(mx, my, R_MOON * 0.7, mx, my, glowR);
+    if (m.lunarUmbraFrac > 0.25) {
+      glow.addColorStop(0, `rgba(225, 68, 42, ${0.42 * m.lunarUmbraFrac})`);
+      glow.addColorStop(1, 'rgba(225, 68, 42, 0)');
+    } else {
+      glow.addColorStop(0, 'rgba(218, 232, 255, 0.24)');
+      glow.addColorStop(1, 'rgba(218, 232, 255, 0)');
+    }
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(mx, my, glowR, 0, TWO_PI);
+    ctx.fill();
+
+    // Moon Disc
+    ctx.save();
+    ctx.translate(mx, my);
+    ctx.beginPath();
+    ctx.arc(0, 0, R_MOON, 0, TWO_PI);
+    ctx.clip();
+
+    // Lit lunar regolith base
+    const mGrad = ctx.createRadialGradient(-R_MOON * 0.4, -R_MOON * 0.15, 1, 0, 0, R_MOON * 1.15);
+    mGrad.addColorStop(0, '#f3f4f8');
+    mGrad.addColorStop(0.6, '#c5cbd8');
+    mGrad.addColorStop(1, '#7c8598');
+    ctx.fillStyle = mGrad;
+    ctx.fillRect(-R_MOON, -R_MOON, R_MOON * 2, R_MOON * 2);
+
+    // Subtle maria
+    ctx.fillStyle = 'rgba(72, 80, 96, 0.34)';
+    for (let i = 0; i < lunarMaria.length; i++) {
+      const ma = lunarMaria[i];
+      ctx.beginPath();
+      ctx.ellipse(ma.x * R_MOON, ma.y * R_MOON, ma.rx * R_MOON, ma.ry * R_MOON, ma.rot, 0, TWO_PI);
+      ctx.fill();
+    }
+
+    // Moon's own day/night hemisphere (Sun is to the left -> right half is night!)
+    const mShadow = ctx.createLinearGradient(-2.5, 0, 3.5, 0);
+    mShadow.addColorStop(0, 'rgba(4, 7, 16, 0)');
+    mShadow.addColorStop(0.5, 'rgba(4, 7, 16, 0.55)');
+    mShadow.addColorStop(1, 'rgba(4, 7, 16, 0.92)');
+    ctx.fillStyle = mShadow;
+    ctx.fillRect(-3, -R_MOON, R_MOON + 5, R_MOON * 2);
+
+    // Blood Moon / Lunar Eclipse tint when inside Earth's shadow
+    if (m.lunarPenFrac > 0.01) {
+      ctx.fillStyle = `rgba(18, 8, 8, ${0.35 * m.lunarPenFrac})`;
+      ctx.fillRect(-R_MOON, -R_MOON, R_MOON * 2, R_MOON * 2);
+    }
+    if (m.lunarUmbraFrac > 0.01) {
+      const bloodGrad = ctx.createRadialGradient(-3, 0, 1, 0, 0, R_MOON * 1.2);
+      bloodGrad.addColorStop(0, `rgba(220, 66, 30, ${0.86 * m.lunarUmbraFrac})`);
+      bloodGrad.addColorStop(0.7, `rgba(138, 24, 16, ${0.88 * m.lunarUmbraFrac})`);
+      bloodGrad.addColorStop(1, `rgba(52, 8, 8, ${0.92 * m.lunarUmbraFrac})`);
+      ctx.fillStyle = bloodGrad;
+      ctx.fillRect(-R_MOON, -R_MOON, R_MOON * 2, R_MOON * 2);
+    }
+
+    ctx.restore();
+
+    // Crisp lunar rim highlight
+    ctx.strokeStyle = m.lunarUmbraFrac > 0.4 ? 'rgba(255, 118, 82, 0.65)' : 'rgba(230, 240, 255, 0.45)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(mx, my, R_MOON, 0, TWO_PI);
+    ctx.stroke();
+
+    // Moon label + elevation badge if inclined
+    if (state.showLabels) {
+      ctx.font = '700 10px ui-monospace, monospace';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#eef3ff';
+      ctx.fillText('MOON', mx, my - R_MOON - 9);
+      if (state.inclinationDeg > 0.15) {
+        const sign = m.betaDeg >= 0 ? '+' : '';
+        ctx.font = '600 9px ui-monospace, monospace';
+        ctx.fillStyle = m.betaDeg >= 0 ? '#58dcff' : '#a78bfa';
+        ctx.fillText(`${sign}${m.betaDeg.toFixed(1)}°`, mx, my + R_MOON + 14);
+      }
+    }
+
+    ctx.restore();
+  }
+
+  // =========================================================================
+  // PICTURE-IN-PICTURE 1: LIVE SKY VIEW FROM EARTH
+  // =========================================================================
+  function drawSkyViewPiP(m) {
+    const w = 158;
+    const h = 158;
+    const cx = w * 0.5;
+    const cy = h * 0.5;
+
+    pipSkyCtx.save();
+    pipSkyCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    // Decide whether Sky View shows the Solar Eclipse theater (near New Moon) or Lunar Phase / Lunar Eclipse theater
+    const solarWindow = Math.abs(m.dSolarHorizDeg) < 16;
+    const modeTag = $('pip-sky-mode');
+
+    if (solarWindow) {
+      modeTag.textContent =
+        m.eclipseKind === 'totality' ? 'TOTALITY' :
+        m.eclipseKind === 'annular' ? 'ANNULAR' :
+        m.eclipseKind === 'partial-solar' ? 'SOLAR' : 'NEW / SUN';
+      modeTag.style.color =
+        m.eclipseKind === 'totality' ? '#ffbe5c' :
+        m.eclipseKind === 'annular' ? '#ff944d' : '#58dcff';
+
+      // Sky darkness deepens dramatically during totality!
+      const skyDark = Math.pow(m.solarCoverage, 2.2);
+      const skyBg = pipSkyCtx.createRadialGradient(cx, cy, 8, cx, cy, w * 0.72);
+      const r0 = Math.round(28 * (1 - skyDark * 0.85) + 6);
+      const g0 = Math.round(62 * (1 - skyDark * 0.88) + 9);
+      const b0 = Math.round(122 * (1 - skyDark * 0.80) + 22);
+      skyBg.addColorStop(0, `rgb(${r0 + 18}, ${g0 + 22}, ${b0 + 30})`);
+      skyBg.addColorStop(1, `rgb(${Math.round(r0 * 0.3)}, ${Math.round(g0 * 0.35)}, ${Math.round(b0 * 0.45)})`);
+      pipSkyCtx.fillStyle = skyBg;
+      pipSkyCtx.fillRect(0, 0, w, h);
+
+      // Stars emerge during near-totality / totality!
+      if (skyDark > 0.35) {
+        const starVis = (skyDark - 0.35) / 0.65;
+        for (let i = 0; i < pipStars.length; i++) {
+          const s = pipStars[i];
+          const tw = 0.7 + 0.3 * Math.sin(state.time * 2 + s.phase);
+          pipSkyCtx.globalAlpha = s.alpha * starVis * tw;
+          pipSkyCtx.fillStyle = '#e8f0ff';
+          pipSkyCtx.beginPath();
+          pipSkyCtx.arc(s.x * w, s.y * h, s.r, 0, TWO_PI);
+          pipSkyCtx.fill();
+        }
+        pipSkyCtx.globalAlpha = 1;
+      }
+
+      // Scale angular degrees -> pixels in PiP
+      const pxPerDeg = 102; // Sun radius (~0.267 deg) => ~27.2 px!
+      const rSunPx = m.rSunDeg * pxPerDeg;
+      const rMoonPx = m.rMoonDeg * pxPerDeg;
+      const mx = cx + m.solarDxDeg * pxPerDeg;
+      const my = cy - m.solarDyDeg * pxPerDeg;
+
+      // SOLAR CORONA (dramatic pearly streamers blooming during Totality!)
+      const coronaStrength =
+        m.eclipseKind === 'totality'
+          ? 1.0
+          : Math.max(0, (m.solarCoverage - 0.88) / 0.12) * 0.72;
+
+      if (coronaStrength > 0.02) {
+        pipSkyCtx.save();
+        pipSkyCtx.translate(cx, cy);
+        // Inner pearly corona halo
+        const cHalo = pipSkyCtx.createRadialGradient(0, 0, rSunPx * 0.96, 0, 0, rSunPx * 2.7);
+        cHalo.addColorStop(0, `rgba(255, 250, 238, ${0.88 * coronaStrength})`);
+        cHalo.addColorStop(0.18, `rgba(214, 232, 255, ${0.42 * coronaStrength})`);
+        cHalo.addColorStop(0.55, `rgba(148, 186, 255, ${0.14 * coronaStrength})`);
+        cHalo.addColorStop(1, 'rgba(120, 160, 255, 0)');
+        pipSkyCtx.fillStyle = cHalo;
+        pipSkyCtx.beginPath();
+        pipSkyCtx.arc(0, 0, rSunPx * 2.7, 0, TWO_PI);
+        pipSkyCtx.fill();
+
+        // Equatorial Helmet Streamers & Polar Plumes
+        const rayCount = 24;
+        for (let i = 0; i < rayCount; i++) {
+          const ang = (i / rayCount) * TWO_PI + Math.sin(i * 3.1) * 0.08;
+          const eqBoost = 1 + 0.65 * Math.pow(Math.abs(Math.cos(ang)), 2.2);
+          const len = rSunPx * (1.55 + 0.75 * ((i * 7) % 5) / 4) * eqBoost;
+          const width = 0.09 + (i % 3) * 0.04;
+          const shimmer = 0.88 + 0.12 * Math.sin(state.time * 1.4 + i * 1.7);
+
+          const rg = pipSkyCtx.createLinearGradient(0, 0, Math.cos(ang) * len, Math.sin(ang) * len);
+          rg.addColorStop(0, `rgba(240, 248, 255, ${0.32 * coronaStrength * shimmer})`);
+          rg.addColorStop(0.55, `rgba(176, 212, 255, ${0.11 * coronaStrength * shimmer})`);
+          rg.addColorStop(1, 'rgba(140, 180, 255, 0)');
+          pipSkyCtx.fillStyle = rg;
+          pipSkyCtx.beginPath();
+          pipSkyCtx.moveTo(Math.cos(ang - width) * rSunPx * 0.95, Math.sin(ang - width) * rSunPx * 0.95);
+          pipSkyCtx.lineTo(Math.cos(ang) * len, Math.sin(ang) * len);
+          pipSkyCtx.lineTo(Math.cos(ang + width) * rSunPx * 0.95, Math.sin(ang + width) * rSunPx * 0.95);
+          pipSkyCtx.closePath();
+          pipSkyCtx.fill();
+        }
+        pipSkyCtx.restore();
+      } else {
+        // Normal blinding solar glare
+        const glare = pipSkyCtx.createRadialGradient(cx, cy, rSunPx * 0.8, cx, cy, rSunPx * 2.2);
+        glare.addColorStop(0, 'rgba(255, 224, 146, 0.55)');
+        glare.addColorStop(0.45, 'rgba(255, 170, 72, 0.16)');
+        glare.addColorStop(1, 'rgba(255, 160, 64, 0)');
+        pipSkyCtx.fillStyle = glare;
+        pipSkyCtx.beginPath();
+        pipSkyCtx.arc(cx, cy, rSunPx * 2.2, 0, TWO_PI);
+        pipSkyCtx.fill();
+      }
+
+      // Solar Photosphere Disc (with realistic limb darkening)
+      const sunGrad = pipSkyCtx.createRadialGradient(cx, cy, rSunPx * 0.15, cx, cy, rSunPx);
+      sunGrad.addColorStop(0, '#fffef2');
+      sunGrad.addColorStop(0.75, '#ffe28a');
+      sunGrad.addColorStop(0.94, '#ffae42');
+      sunGrad.addColorStop(1, '#ff7b24');
+      pipSkyCtx.fillStyle = sunGrad;
+      pipSkyCtx.beginPath();
+      pipSkyCtx.arc(cx, cy, rSunPx, 0, TWO_PI);
+      pipSkyCtx.fill();
+
+      // Rosy Chromosphere & Solar Prominences visible during Totality
+      if (m.eclipseKind === 'totality') {
+        pipSkyCtx.strokeStyle = 'rgba(255, 92, 142, 0.85)';
+        pipSkyCtx.lineWidth = 1.6;
+        pipSkyCtx.beginPath();
+        pipSkyCtx.arc(cx, cy, rSunPx + 0.8, 0, TWO_PI);
+        pipSkyCtx.stroke();
+
+        // Tiny ruby prominences
+        const promAngles = [-0.55, 1.15, 2.55, -2.1];
+        pipSkyCtx.fillStyle = '#ff4d88';
+        for (let i = 0; i < promAngles.length; i++) {
+          const pa = promAngles[i];
+          const px = cx + Math.cos(pa) * (rSunPx + 1.4);
+          const py = cy + Math.sin(pa) * (rSunPx + 1.4);
+          pipSkyCtx.beginPath();
+          pipSkyCtx.arc(px, py, 2.2, 0, TWO_PI);
+          pipSkyCtx.fill();
+        }
+      }
+
+      // Dark Lunar Silhouette passing in front of the Sun
+      pipSkyCtx.save();
+      const moonFill = pipSkyCtx.createRadialGradient(mx, my, rMoonPx * 0.2, mx, my, rMoonPx);
+      moonFill.addColorStop(0, '#090d18');
+      moonFill.addColorStop(1, '#04060c');
+      pipSkyCtx.fillStyle = moonFill;
+      pipSkyCtx.beginPath();
+      pipSkyCtx.arc(mx, my, rMoonPx, 0, TWO_PI);
+      pipSkyCtx.fill();
+
+      // Subtle earthshine silhouette rim when off-Sun
+      if (m.solarSepDeg > m.rSunDeg + m.rMoonDeg * 0.4) {
+        pipSkyCtx.strokeStyle = 'rgba(130, 165, 220, 0.38)';
+        pipSkyCtx.lineWidth = 1;
+        pipSkyCtx.stroke();
+      }
+      pipSkyCtx.restore();
+
+      // DIAMOND RING & BAILY'S BEADS effect right at 2nd / 3rd contact!
+      const contactDist = Math.abs(m.rMoonDeg - m.rSunDeg);
+      const nearContact = Math.abs(m.solarSepDeg - contactDist);
+      if (m.rMoonDeg >= m.rSunDeg && nearContact < 0.055 && m.solarCoverage > 0.91) {
+        const ringAlpha = Math.max(0, 1 - nearContact / 0.055);
+        // Contact point on limb opposite the Moon's offset from Sun center
+        const angContact = Math.atan2(cy - my, cx - mx);
+        const bx = cx + Math.cos(angContact) * rSunPx;
+        const by = cy + Math.sin(angContact) * rSunPx;
+
+        // Blazing diamond flare
+        const flare = pipSkyCtx.createRadialGradient(bx, by, 0.5, bx, by, 24);
+        flare.addColorStop(0, `rgba(255, 255, 255, ${0.98 * ringAlpha})`);
+        flare.addColorStop(0.22, `rgba(255, 232, 168, ${0.72 * ringAlpha})`);
+        flare.addColorStop(0.55, `rgba(255, 180, 92, ${0.24 * ringAlpha})`);
+        flare.addColorStop(1, 'rgba(255, 180, 92, 0)');
+        pipSkyCtx.fillStyle = flare;
+        pipSkyCtx.beginPath();
+        pipSkyCtx.arc(bx, by, 24, 0, TWO_PI);
+        pipSkyCtx.fill();
+
+        // Cross-diffraction spikes
+        pipSkyCtx.strokeStyle = `rgba(255, 248, 226, ${0.85 * ringAlpha})`;
+        pipSkyCtx.lineWidth = 1.2;
+        for (let k = 0; k < 2; k++) {
+          const sa = k * (Math.PI / 2) + 0.35;
+          pipSkyCtx.beginPath();
+          pipSkyCtx.moveTo(bx - Math.cos(sa) * 18, by - Math.sin(sa) * 18);
+          pipSkyCtx.lineTo(bx + Math.cos(sa) * 18, by + Math.sin(sa) * 18);
+          pipSkyCtx.stroke();
+        }
+      }
+
+      // Caption inside PiP bottom
+      pipSkyCtx.font = '600 9.5px ui-monospace, monospace';
+      pipSkyCtx.textAlign = 'center';
+      if (m.eclipseKind === 'totality') {
+        pipSkyCtx.fillStyle = '#ffe3a8';
+        pipSkyCtx.fillText('TOTAL SOLAR ECLIPSE', cx, h - 8);
+      } else if (m.eclipseKind === 'annular') {
+        pipSkyCtx.fillStyle = '#ffb870';
+        pipSkyCtx.fillText('ANNULAR RING OF FIRE', cx, h - 8);
+      } else if (m.eclipseKind === 'partial-solar') {
+        pipSkyCtx.fillStyle = '#a8e6ff';
+        pipSkyCtx.fillText(`PARTIAL (${Math.round(m.solarCoverage * 100)}%)`, cx, h - 8);
+      } else {
+        pipSkyCtx.fillStyle = 'rgba(180, 198, 230, 0.78)';
+        pipSkyCtx.fillText(`MISSES SUN (β=${m.betaDeg.toFixed(1)}°)`, cx, h - 8);
+      }
+    } else {
+      // LUNAR PHASE & LUNAR ECLIPSE SKY VIEW
+      modeTag.textContent =
+        m.eclipseKind === 'blood' ? 'BLOOD MOON' :
+        m.eclipseKind === 'partial-lunar' ? 'LUNAR ECL' : 'MOON PHASE';
+      modeTag.style.color =
+        m.eclipseKind === 'blood' ? '#ff7676' : '#58dcff';
+
+      // Deep night sky
+      const nightGrad = pipSkyCtx.createRadialGradient(cx, cy, 6, cx, cy, w * 0.72);
+      nightGrad.addColorStop(0, '#0a1228');
+      nightGrad.addColorStop(1, '#02040a');
+      pipSkyCtx.fillStyle = nightGrad;
+      pipSkyCtx.fillRect(0, 0, w, h);
+
+      // Stars
+      for (let i = 0; i < pipStars.length; i++) {
+        const s = pipStars[i];
+        const tw = 0.7 + 0.3 * Math.sin(state.time * 1.8 + s.phase);
+        pipSkyCtx.globalAlpha = s.alpha * 0.75 * tw;
+        pipSkyCtx.fillStyle = '#dfeaff';
+        pipSkyCtx.beginPath();
+        pipSkyCtx.arc(s.x * w, s.y * h, s.r, 0, TWO_PI);
+        pipSkyCtx.fill();
+      }
+      pipSkyCtx.globalAlpha = 1;
+
+      // Apparent lunar radius scaled by Perigee/Apogee (so user sees Supermoon vs Micromoon!)
+      const rMoonPx = 40 * (MEAN_DIST_KM / m.dKm);
+
+      // Outer moonlight or Blood Moon glow
+      const mGlow = pipSkyCtx.createRadialGradient(cx, cy, rMoonPx * 0.85, cx, cy, rMoonPx * 1.7);
+      if (m.lunarUmbraFrac > 0.2) {
+        mGlow.addColorStop(0, `rgba(218, 64, 34, ${0.45 * m.lunarUmbraFrac})`);
+        mGlow.addColorStop(1, 'rgba(218, 64, 34, 0)');
+      } else {
+        mGlow.addColorStop(0, `rgba(205, 224, 255, ${0.28 * m.illumination})`);
+        mGlow.addColorStop(1, 'rgba(205, 224, 255, 0)');
+      }
+      pipSkyCtx.fillStyle = mGlow;
+      pipSkyCtx.beginPath();
+      pipSkyCtx.arc(cx, cy, rMoonPx * 1.7, 0, TWO_PI);
+      pipSkyCtx.fill();
+
+      // Draw Moon Disc + Exact Spherical Phase Terminator
+      pipSkyCtx.save();
+      pipSkyCtx.beginPath();
+      pipSkyCtx.arc(cx, cy, rMoonPx, 0, TWO_PI);
+      pipSkyCtx.clip();
+
+      // Base illuminated lunar disc
+      const discGrad = pipSkyCtx.createRadialGradient(cx - rMoonPx * 0.25, cy - rMoonPx * 0.2, 4, cx, cy, rMoonPx * 1.15);
+      discGrad.addColorStop(0, '#f4f6fa');
+      discGrad.addColorStop(0.68, '#d2d8e4');
+      discGrad.addColorStop(1, '#98a2b6');
+      pipSkyCtx.fillStyle = discGrad;
+      pipSkyCtx.fillRect(cx - rMoonPx, cy - rMoonPx, rMoonPx * 2, rMoonPx * 2);
+
+      // Lunar Maria
+      for (let i = 0; i < lunarMaria.length; i++) {
+        const ma = lunarMaria[i];
+        pipSkyCtx.fillStyle = `rgba(68, 76, 94, ${ma.a})`;
+        pipSkyCtx.beginPath();
+        pipSkyCtx.ellipse(
+          cx + ma.x * rMoonPx,
+          cy + ma.y * rMoonPx,
+          ma.rx * rMoonPx,
+          ma.ry * rMoonPx,
+          ma.rot,
+          0,
+          TWO_PI
+        );
+        pipSkyCtx.fill();
+      }
+
+      // Lunar Craters
+      for (let i = 0; i < lunarCraters.length; i++) {
+        const cr = lunarCraters[i];
+        const crx = cx + cr.x * rMoonPx;
+        const cry = cy + cr.y * rMoonPx;
+        const crr = cr.r * rMoonPx;
+        pipSkyCtx.fillStyle = cr.bright ? 'rgba(255, 255, 255, 0.26)' : 'rgba(52, 60, 74, 0.24)';
+        pipSkyCtx.beginPath();
+        pipSkyCtx.arc(crx, cry, crr, 0, TWO_PI);
+        pipSkyCtx.fill();
+      }
+
+      // Exact Spherical Phase Shadow Mask
+      // synodicRad = 0 (New, dark), PI/2 (1st Q, right lit), PI (Full, all lit), 3PI/2 (3rd Q, left lit)
+      const sRad = m.synodicRad;
+      const cosS = Math.cos(sRad); // +1 New, 0 Quarter, -1 Full
+      const waxing = sRad < Math.PI;
+
+      pipSkyCtx.save();
+      pipSkyCtx.fillStyle = 'rgba(6, 10, 22, 0.90)'; // slight earthshine lets maria stay ghostly visible!
+      pipSkyCtx.beginPath();
+      if (waxing) {
+        // Dark on LEFT side; lit on RIGHT side
+        pipSkyCtx.arc(cx, cy, rMoonPx + 1, Math.PI * 0.5, Math.PI * 1.5, false);
+        const rx = Math.abs(cosS) * rMoonPx;
+        // If cosS > 0 (crescent), shadow bulges right; if cosS < 0 (gibbous), shadow curves left
+        pipSkyCtx.ellipse(cx, cy, Math.max(0.5, rx), rMoonPx + 1, 0, -Math.PI * 0.5, Math.PI * 0.5, cosS < 0);
+      } else {
+        // Waning: Dark on RIGHT side; lit on LEFT side
+        pipSkyCtx.arc(cx, cy, rMoonPx + 1, -Math.PI * 0.5, Math.PI * 0.5, false);
+        const rx = Math.abs(cosS) * rMoonPx;
+        pipSkyCtx.ellipse(cx, cy, Math.max(0.5, rx), rMoonPx + 1, 0, Math.PI * 0.5, Math.PI * 1.5, cosS < 0);
+      }
+      pipSkyCtx.closePath();
+      pipSkyCtx.fill();
+      pipSkyCtx.restore();
+
+      // EARTH'S SHADOW SWEEPING ACROSS THE MOON DURING LUNAR ECLIPSE!
+      if (Math.abs(m.dLunarHorizDeg) < 22) {
+        const pxPerDeg = rMoonPx / m.rMoonDeg;
+        // Position of Earth's shadow center relative to Moon center
+        const ux = cx - m.lunarDxDeg * pxPerDeg;
+        const uy = cy + m.lunarDyDeg * pxPerDeg;
+        const penPx = m.rEarthPenDeg * pxPerDeg;
+        const umbPx = m.rEarthUmbraDeg * pxPerDeg;
+
+        // Penumbra soft shading
+        const pShade = pipSkyCtx.createRadialGradient(ux, uy, umbPx * 0.85, ux, uy, penPx);
+        pShade.addColorStop(0, 'rgba(30, 12, 10, 0.52)');
+        pShade.addColorStop(0.6, 'rgba(20, 10, 12, 0.25)');
+        pShade.addColorStop(1, 'rgba(20, 10, 12, 0)');
+        pipSkyCtx.fillStyle = pShade;
+        pipSkyCtx.beginPath();
+        pipSkyCtx.arc(ux, uy, penPx, 0, TWO_PI);
+        pipSkyCtx.fill();
+
+        // Deep Crimson-Copper Rayleigh-Refracted Umbra (Blood Moon!)
+        const uShade = pipSkyCtx.createRadialGradient(ux, uy, umbPx * 0.15, ux, uy, umbPx);
+        uShade.addColorStop(0, 'rgba(128, 20, 12, 0.90)');
+        uShade.addColorStop(0.58, 'rgba(186, 46, 20, 0.85)');
+        uShade.addColorStop(0.88, 'rgba(225, 86, 36, 0.78)');
+        uShade.addColorStop(0.96, 'rgba(84, 108, 165, 0.42)'); // turquoise ozone fringe!
+        uShade.addColorStop(1, 'rgba(40, 16, 16, 0)');
+        pipSkyCtx.fillStyle = uShade;
+        pipSkyCtx.beginPath();
+        pipSkyCtx.arc(ux, uy, umbPx * 1.04, 0, TWO_PI);
+        pipSkyCtx.fill();
+      }
+
+      pipSkyCtx.restore(); // end Moon disc clip
+
+      // Caption inside PiP bottom
+      pipSkyCtx.font = '600 9.5px ui-monospace, monospace';
+      pipSkyCtx.textAlign = 'center';
+      if (m.eclipseKind === 'blood') {
+        pipSkyCtx.fillStyle = '#ff968a';
+        pipSkyCtx.fillText('TOTAL LUNAR · BLOOD MOON', cx, h - 8);
+      } else if (m.eclipseKind === 'partial-lunar') {
+        pipSkyCtx.fillStyle = '#ffc09e';
+        pipSkyCtx.fillText(`PARTIAL UMBRA (${Math.round(m.lunarUmbraFrac * 100)}%)`, cx, h - 8);
+      } else {
+        pipSkyCtx.fillStyle = 'rgba(210, 224, 248, 0.85)';
+        pipSkyCtx.fillText(`${m.phaseName.toUpperCase()} (${Math.round(m.illumination * 100)}%)`, cx, h - 8);
+      }
+    }
+
+    pipSkyCtx.restore();
+  }
+
+  // =========================================================================
+  // PICTURE-IN-PICTURE 2: LIVE 24-HOUR COASTAL TIDE HEIGHT GRAPH
+  // =========================================================================
+  function drawTideGraphPiP(m) {
+    const w = pipTideCanvas.width / dpr;
+    const h = pipTideCanvas.height / dpr;
+
+    pipTideCtx.save();
+    pipTideCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    pipTideCtx.fillStyle = '#03060f';
+    pipTideCtx.fillRect(0, 0, w, h);
+
+    const padL = 24;
+    const padR = 8;
+    const padT = 12;
+    const padB = 16;
+    const gw = w - padL - padR;
+    const gh = h - padT - padB;
+    const midY = padT + gh * 0.5;
+    const maxScaleM = 2.4; // +/- 2.4m vertical scale
+
+    // Horizontal gridlines (+2m, 0m MSL, -2m)
+    pipTideCtx.strokeStyle = 'rgba(148, 179, 255, 0.12)';
+    pipTideCtx.lineWidth = 1;
+    pipTideCtx.beginPath();
+    pipTideCtx.moveTo(padL, midY);
+    pipTideCtx.lineTo(w - padR, midY);
+    pipTideCtx.stroke();
+
+    pipTideCtx.strokeStyle = 'rgba(148, 179, 255, 0.07)';
+    pipTideCtx.setLineDash([2, 3]);
+    const y2p = midY - (2.0 / maxScaleM) * (gh * 0.5);
+    const y2m = midY + (2.0 / maxScaleM) * (gh * 0.5);
+    pipTideCtx.beginPath();
+    pipTideCtx.moveTo(padL, y2p);
+    pipTideCtx.lineTo(w - padR, y2p);
+    pipTideCtx.moveTo(padL, y2m);
+    pipTideCtx.lineTo(w - padR, y2m);
+    pipTideCtx.stroke();
+    pipTideCtx.setLineDash([]);
+
+    // Y-axis labels
+    pipTideCtx.font = '600 8px ui-monospace, monospace';
+    pipTideCtx.fillStyle = 'rgba(148, 169, 204, 0.65)';
+    pipTideCtx.textAlign = 'right';
+    pipTideCtx.fillText('+2m', padL - 3, y2p + 3);
+    pipTideCtx.fillText('0m', padL - 3, midY + 3);
+    pipTideCtx.fillText('-2m', padL - 3, y2m + 3);
+
+    // X-axis 0h..24h ticks
+    pipTideCtx.textAlign = 'center';
+    for (let hr = 0; hr <= 24; hr += 6) {
+      const x = padL + (hr / 24) * gw;
+      pipTideCtx.fillText(`${hr}h`, x, h - 4);
+    }
+
+    // Helper: local hour [0..24] -> observer angle phi = (hr - 12)/24 * 2PI + PI = hr/24 * 2PI
+    const hourToPhi = (hr) => (hr / 24) * TWO_PI;
+
+    // Optional faint Solar component wave (amber dashed)
+    pipTideCtx.strokeStyle = 'rgba(255, 190, 92, 0.32)';
+    pipTideCtx.lineWidth = 1;
+    pipTideCtx.setLineDash([3, 3]);
+    pipTideCtx.beginPath();
+    for (let i = 0; i <= 96; i++) {
+      const hr = (i / 96) * 24;
+      const phi = hourToPhi(hr);
+      const val = m.solarAmpM * Math.cos(2 * (phi - m.solarBulgeAngle));
+      const x = padL + (i / 96) * gw;
+      const y = midY - (val / maxScaleM) * (gh * 0.5);
+      if (i === 0) pipTideCtx.moveTo(x, y);
+      else pipTideCtx.lineTo(x, y);
+    }
+    pipTideCtx.stroke();
+    pipTideCtx.setLineDash([]);
+
+    // Combined 24h Coastal Tide Wave (filled area + glowing cyan stroke)
+    pipTideCtx.beginPath();
+    for (let i = 0; i <= 120; i++) {
+      const hr = (i / 120) * 24;
+      const phi = hourToPhi(hr);
+      const val =
+        m.lunarAmpM * Math.cos(2 * (phi - m.lunarBulgeAngle)) +
+        m.solarAmpM * Math.cos(2 * (phi - m.solarBulgeAngle));
+      const x = padL + (i / 120) * gw;
+      const y = midY - (val / maxScaleM) * (gh * 0.5);
+      if (i === 0) pipTideCtx.moveTo(x, y);
+      else pipTideCtx.lineTo(x, y);
+    }
+    pipTideCtx.strokeStyle = '#58dcff';
+    pipTideCtx.lineWidth = 1.8;
+    pipTideCtx.stroke();
+
+    // Fill under curve to MSL
+    pipTideCtx.lineTo(padL + gw, midY);
+    pipTideCtx.lineTo(padL, midY);
+    pipTideCtx.closePath();
+    const areaGrad = pipTideCtx.createLinearGradient(0, padT, 0, padT + gh);
+    areaGrad.addColorStop(0, 'rgba(88, 220, 255, 0.28)');
+    areaGrad.addColorStop(0.5, 'rgba(88, 220, 255, 0.04)');
+    areaGrad.addColorStop(1, 'rgba(58, 120, 235, 0.22)');
+    pipTideCtx.fillStyle = areaGrad;
+    pipTideCtx.fill();
+
+    // Live Observer "NOW" Marker synced to Earth's rotating equatorial pin!
+    const nowX = padL + (m.localHours / 24) * gw;
+    const nowY = midY - (m.obsHeightM / maxScaleM) * (gh * 0.5);
+
+    pipTideCtx.strokeStyle = 'rgba(74, 242, 178, 0.55)';
+    pipTideCtx.lineWidth = 1;
+    pipTideCtx.beginPath();
+    pipTideCtx.moveTo(nowX, padT);
+    pipTideCtx.lineTo(nowX, padT + gh);
+    pipTideCtx.stroke();
+
+    pipTideCtx.fillStyle = '#4af2b2';
+    pipTideCtx.shadowColor = '#4af2b2';
+    pipTideCtx.shadowBlur = 7;
+    pipTideCtx.beginPath();
+    pipTideCtx.arc(nowX, nowY, 3.6, 0, TWO_PI);
+    pipTideCtx.fill();
+    pipTideCtx.shadowBlur = 0;
+
+    pipTideCtx.restore();
+  }
+
+  // =========================================================================
+  // PICTURE-IN-PICTURE 3: EDGE-ON ECLIPTIC PLANE (NODAL TILT VIEW)
+  // =========================================================================
+  function drawNodalEdgePiP(m) {
+    const w = pipNodeCanvas.width / dpr;
+    const h = pipNodeCanvas.height / dpr;
+
+    pipNodeCtx.save();
+    pipNodeCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    pipNodeCtx.fillStyle = '#03060f';
+    pipNodeCtx.fillRect(0, 0, w, h);
+
+    const midY = h * 0.5;
+    const earthX = w * 0.56;
+    const scaleX = (w * 0.34) / R_ORBIT_MEAN;
+
+    // Ecliptic plane line (Sun-Earth axis)
+    pipNodeCtx.strokeStyle = 'rgba(255, 198, 102, 0.28)';
+    pipNodeCtx.lineWidth = 1;
+    pipNodeCtx.setLineDash([4, 3]);
+    pipNodeCtx.beginPath();
+    pipNodeCtx.moveTo(10, midY);
+    pipNodeCtx.lineTo(w - 8, midY);
+    pipNodeCtx.stroke();
+    pipNodeCtx.setLineDash([]);
+
+    // Sun glow on far left
+    const sg = pipNodeCtx.createRadialGradient(2, midY, 2, 2, midY, 22);
+    sg.addColorStop(0, '#ffe394');
+    sg.addColorStop(0.5, 'rgba(255, 165, 62, 0.25)');
+    sg.addColorStop(1, 'rgba(255, 165, 62, 0)');
+    pipNodeCtx.fillStyle = sg;
+    pipNodeCtx.beginPath();
+    pipNodeCtx.arc(2, midY, 22, 0, TWO_PI);
+    pipNodeCtx.fill();
+
+    // Earth's shadow cone edge-on
+    pipNodeCtx.fillStyle = 'rgba(180, 42, 34, 0.24)';
+    pipNodeCtx.beginPath();
+    pipNodeCtx.moveTo(earthX, midY - 6);
+    pipNodeCtx.lineTo(w - 4, midY - 2.5);
+    pipNodeCtx.lineTo(w - 4, midY + 2.5);
+    pipNodeCtx.lineTo(earthX, midY + 6);
+    pipNodeCtx.closePath();
+    pipNodeCtx.fill();
+
+    // Tilted Moon orbital plane projection (edge-on ellipse trace)
+    pipNodeCtx.strokeStyle = 'rgba(167, 139, 250, 0.45)';
+    pipNodeCtx.lineWidth = 1.1;
+    pipNodeCtx.beginPath();
+    for (let i = 0; i <= 64; i++) {
+      const a = (i / 64) * TWO_PI;
+      const px = earthX + R_ORBIT_MEAN * Math.cos(a) * scaleX;
+      const sinB = Math.sin(state.inclinationDeg * DEG) * Math.sin(a - state.nodeAngle);
+      const py = midY - sinB * 115; // exaggerated vertical tilt for clarity
+      if (i === 0) pipNodeCtx.moveTo(px, py);
+      else pipNodeCtx.lineTo(px, py);
+    }
+    pipNodeCtx.stroke();
+
+    // Earth dot
+    pipNodeCtx.fillStyle = '#3ca4ff';
+    pipNodeCtx.beginPath();
+    pipNodeCtx.arc(earthX, midY, 5.5, 0, TWO_PI);
+    pipNodeCtx.fill();
+
+    // Moon dot at true 3D (x, z)
+    const mx = earthX + m.moonX * scaleX;
+    const my = midY - Math.sin(m.betaRad) * 115;
+
+    // Moon shadow cone edge-on (shows why shadow passes ABOVE or BELOW Earth when tilted!)
+    pipNodeCtx.fillStyle = 'rgba(255, 206, 128, 0.24)';
+    pipNodeCtx.beginPath();
+    pipNodeCtx.moveTo(mx, my - 2.5);
+    pipNodeCtx.lineTo(mx + m.moonUmbraLen * scaleX, my);
+    pipNodeCtx.lineTo(mx, my + 2.5);
+    pipNodeCtx.closePath();
+    pipNodeCtx.fill();
+
+    pipNodeCtx.fillStyle = m.eclipseKind === 'blood' ? '#ff6454' : '#eef3ff';
+    pipNodeCtx.beginPath();
+    pipNodeCtx.arc(mx, my, 3.2, 0, TWO_PI);
+    pipNodeCtx.fill();
+
+    pipNodeCtx.restore();
+  }
+
+  // =========================================================================
+  // TELEMETRY & UI SYNCHRONIZATION
+  // =========================================================================
+  function updateTelemetryUI(m) {
+    // Top-left badge
+    const modeBadge = $('orbit-mode-badge');
+    if (state.inclinationDeg < 0.08) {
+      modeBadge.textContent = 'Coplanar 0.0°';
+      modeBadge.className = 'mode-badge coplanar';
+    } else {
+      modeBadge.textContent = `Tilted ${state.inclinationDeg.toFixed(2)}°`;
+      modeBadge.className = 'mode-badge';
+    }
+
+    const eBadge = $('eclipse-badge');
+    eBadge.textContent = m.eclipseLabel;
+    eBadge.className = 'status-pill' + (m.eclipseClass ? ' ' + m.eclipseClass : '');
+
+    // Telemetry grid
+    $('tel-phase').textContent = m.phaseName;
+    $('tel-illum').textContent = `${(m.illumination * 100).toFixed(1)}% lit`;
+    $('tel-dist').textContent = `${Math.round(m.dKm).toLocaleString()} km`;
+    $('tel-apsis').textContent = m.apsisLabel;
+    $('tel-tide-state').textContent = m.tideState;
+    const signH = m.obsHeightM >= 0 ? '+' : '';
+    $('tel-tide-h').textContent = `${signH}${m.obsHeightM.toFixed(2)} m`;
+
+    const signB = m.betaDeg >= 0 ? '+' : '';
+    $('tel-node').textContent = `${signB}${m.betaDeg.toFixed(2)}°`;
+    $('tel-ang').textContent = `${m.moonAngDiamArcmin.toFixed(1)}′ / ${SUN_ANG_DIAM_ARCMIN.toFixed(1)}′`;
+    $('tel-day').textContent = `Day ${m.synodicDay.toFixed(1)}`;
+
+    // Syzygy tidal range bar
+    $('syzygy-fill').style.width = `${m.springNeapPct}%`;
+    $('tel-syzygy-pct').textContent = `${m.springNeapPct}%`;
+
+    // Clock row
+    $('tel-local-time').textContent = `${m.localTimeStr}`;
+    $('tel-tide-force').textContent = `${m.relativeTideForce.toFixed(2)}×`;
+    $('tel-ratio').textContent = `${m.sizeRatio.toFixed(3)}×`;
+
+    // PiP tags
+    $('pip-tide-readout').textContent = `${signH}${m.obsHeightM.toFixed(2)} m`;
+    $('pip-node-readout').textContent = `β = ${signB}${m.betaDeg.toFixed(2)}°`;
+
+    // Drawer live stats
+    $('st-lunar-amp').textContent = `${m.lunarAmpM.toFixed(2)} m`;
+    $('st-solar-amp').textContent = `${m.solarAmpM.toFixed(2)} m`;
+    $('st-tide-range').textContent = `${(m.combinedAmpM * 2).toFixed(2)} m`;
+    $('st-obs-level').textContent = `${signH}${m.obsHeightM.toFixed(2)} m`;
+    $('st-lead-deg').textContent = `+${state.frictionDeg.toFixed(1)}°`;
+
+    // Sync moon angle slider smoothly without fighting user drag
+    const degVal = normAngle(state.theta) * RAD;
+    if (document.activeElement !== $('sl-moon-angle')) {
+      $('sl-moon-angle').value = degVal.toFixed(1);
+    }
+    $('val-moon-angle').textContent = `${degVal.toFixed(1)}°`;
+
+    // Trigger ethereal chime on eclipse entry
+    if (
+      (m.eclipseKind === 'totality' || m.eclipseKind === 'annular' || m.eclipseKind === 'blood') &&
+      state.lastChimeKind !== m.eclipseKind
+    ) {
+      playSyzygyChime(m.eclipseKind);
+    }
+    state.lastChimeKind = m.eclipseKind;
+
+    // Modulate ocean tide swell
+    updateOceanAudio(m.tideHeightNorm);
+  }
+
+  function syncSlidersFromState() {
+    const degMoon = normAngle(state.theta) * RAD;
+    $('sl-moon-angle').value = degMoon.toFixed(1);
+    $('val-moon-angle').textContent = `${degMoon.toFixed(1)}°`;
+
+    $('sl-ecc').value = state.eccentricity.toFixed(3);
+    $('val-ecc').textContent = state.eccentricity.toFixed(3);
+
+    const perDeg = Math.round(normAngle(state.perigeeAngle) * RAD);
+    $('sl-perigee').value = perDeg;
+    let perHint = '';
+    if (Math.abs(perDeg - 180) < 20) perHint = ' (New=Perigee)';
+    else if (perDeg < 20 || perDeg > 340) perHint = ' (New=Apogee)';
+    $('val-perigee').textContent = `${perDeg}°${perHint}`;
+
+    $('sl-incl').value = state.inclinationDeg.toFixed(2);
+    $('val-incl').textContent = `${state.inclinationDeg.toFixed(2)}°`;
+
+    const nodeDeg = Math.round(normAngle(state.nodeAngle) * RAD);
+    $('sl-node-axis').value = nodeDeg;
+    $('val-node-axis').textContent = `${nodeDeg}°`;
+
+    $('sl-tide-scale').value = state.tideScale.toFixed(2);
+    $('val-tide-scale').textContent = `${state.tideScale.toFixed(2)}×`;
+
+    $('sl-friction').value = state.frictionDeg;
+    $('val-friction').textContent = `${state.frictionDeg}°`;
+
+    $('sl-spin').value = state.spinSpeed.toFixed(1);
+    $('val-spin').textContent = `${state.spinSpeed.toFixed(1)}×`;
+  }
+
+  // =========================================================================
+  // CURATED PRESETS
+  // =========================================================================
+  const PRESETS = {
+    'total-solar': {
+      theta: Math.PI,          // Exact New Moon Totality!
+      eccentricity: 0.065,     // Perigee = 356,500 km
+      perigeeAngle: Math.PI,   // Perigee at New Moon
+      inclinationDeg: 0.0,
+      nodeAngle: 0.0,
+      earthSpin: Math.PI,
+      speed: 0.15,
+      spinSpeed: 0.6
+    },
+    'annular-solar': {
+      theta: Math.PI,          // Exact New Moon Annular Ring of Fire!
+      eccentricity: 0.065,     // Apogee = 406,700 km
+      perigeeAngle: 0.0,       // Perigee at Full Moon -> Apogee at New Moon!
+      inclinationDeg: 0.0,
+      nodeAngle: 0.0,
+      earthSpin: Math.PI,
+      speed: 0.15,
+      spinSpeed: 0.6
+    },
+    'blood-moon': {
+      theta: 0.0,              // Exact Full Moon inside Earth's crimson umbra!
+      eccentricity: 0.055,
+      perigeeAngle: 0.0,       // Super Blood Moon!
+      inclinationDeg: 0.0,
+      nodeAngle: 0.0,
+      earthSpin: 0.0,
+      speed: 0.15,
+      spinSpeed: 0.6
+    },
+    'spring-tide': {
+      theta: Math.PI - 0.12,   // Syzygy Perigean Spring Tide
+      eccentricity: 0.065,
+      perigeeAngle: Math.PI,
+      inclinationDeg: 0.0,
+      nodeAngle: 0.0,
+      earthSpin: Math.PI + 0.16,
+      speed: 0.5,
+      spinSpeed: 1.4
+    },
+    'neap-tide': {
+      theta: Math.PI * 1.5,    // 1st Quarter Quadrature
+      eccentricity: 0.055,
+      perigeeAngle: 0.0,
+      inclinationDeg: 0.0,
+      nodeAngle: 0.0,
+      earthSpin: Math.PI * 1.5,
+      speed: 0.5,
+      spinSpeed: 1.4
+    },
+    'tilted-orbit': {
+      theta: Math.PI - 0.25,   // Approaches New Moon off-node so shadow misses Earth!
+      eccentricity: 0.055,
+      perigeeAngle: Math.PI,
+      inclinationDeg: 5.14,    // Real 5.14° lunar inclination!
+      nodeAngle: 68 * DEG,
+      earthSpin: Math.PI,
+      speed: 1.0,
+      spinSpeed: 1.0
+    }
+  };
+
+  function applyPreset(name) {
+    const p = PRESETS[name];
+    if (!p) return;
+    state.preset = name;
+    state.theta = p.theta;
+    state.eccentricity = p.eccentricity;
+    state.perigeeAngle = p.perigeeAngle;
+    state.inclinationDeg = p.inclinationDeg;
+    state.nodeAngle = p.nodeAngle;
+    state.earthSpin = p.earthSpin;
+    state.speed = p.speed;
+    state.spinSpeed = p.spinSpeed;
+    state.camX = 0;
+    state.camY = 0;
+    state.zoom = 1.0;
+
+    // Highlight active preset button
+    document.querySelectorAll('.preset-btn').forEach((b) => {
+      b.classList.toggle('active', b.dataset.preset === name);
+    });
+    // Highlight active speed button
+    document.querySelectorAll('.speed-btn').forEach((b) => {
+      b.classList.toggle('active', Math.abs(parseFloat(b.dataset.speed) - state.speed) < 0.02);
+    });
+
+    syncSlidersFromState();
+  }
+
+  // =========================================================================
+  // POINTER & KEYBOARD INTERACTION (DIRECT MOON DRAGGING + PAN/ZOOM)
+  // =========================================================================
+  function hitTestMoon(sx, sy, m) {
+    const pos = worldToScreen(m.moonX, m.moonY);
+    const d = Math.hypot(sx - pos.x, sy - pos.y);
+    return d <= Math.max(26, (R_MOON + 14) * state.zoom);
+  }
+
+  function hitTestObserver(sx, sy, m) {
+    if (!state.showObserver) return false;
+    const ox = R_EARTH * Math.cos(m.phiObs);
+    const oy = -R_EARTH * Math.sin(m.phiObs);
+    const pos = worldToScreen(ox, oy);
+    return Math.hypot(sx - pos.x, sy - pos.y) <= 18;
+  }
+
+  canvas.addEventListener('pointerdown', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const sx = e.clientX - rect.left;
+    const sy = e.clientY - rect.top;
+    const m = computeSystemMetrics();
+
+    if (e.button === 0 && hitTestMoon(sx, sy, m)) {
+      state.dragMode = 'moon';
+      canvas.classList.add('dragging');
+      canvas.setPointerCapture(e.pointerId);
+      return;
+    }
+
+    if (e.button === 0 && hitTestObserver(sx, sy, m)) {
+      state.dragMode = 'observer';
+      canvas.classList.add('dragging');
+      canvas.setPointerCapture(e.pointerId);
+      return;
+    }
+
+    // Pan camera
+    state.dragMode = 'pan';
+    state.dragStartX = sx;
+    state.dragStartY = sy;
+    state.camStartX = state.camX;
+    state.camStartY = state.camY;
+    canvas.classList.add('dragging');
+    canvas.setPointerCapture(e.pointerId);
+  });
+
+  canvas.addEventListener('pointermove', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const sx = e.clientX - rect.left;
+    const sy = e.clientY - rect.top;
+
+    if (state.dragMode === 'moon') {
+      const wPos = screenToWorld(sx, sy);
+      // Standard math angle: x = r cos(theta), y = -r sin(theta)
+      state.theta = normAngle(Math.atan2(-wPos.y, wPos.x));
+      return;
+    }
+
+    if (state.dragMode === 'observer') {
+      const wPos = screenToWorld(sx, sy);
+      state.earthSpin = normAngle(Math.atan2(-wPos.y, wPos.x));
+      return;
+    }
+
+    if (state.dragMode === 'pan') {
+      state.camX = state.camStartX + (sx - state.dragStartX);
+      state.camY = state.camStartY + (sy - state.dragStartY);
+      return;
+    }
+
+    // Hover feedback
+    const m = computeSystemMetrics();
+    if (hitTestMoon(sx, sy, m)) {
+      state.hoverTarget = 'moon';
+      canvas.classList.add('hover-drag');
+    } else if (hitTestObserver(sx, sy, m)) {
+      state.hoverTarget = 'observer';
+      canvas.classList.add('hover-drag');
+    } else {
+      state.hoverTarget = null;
+      canvas.classList.remove('hover-drag');
+    }
+  });
+
+  canvas.addEventListener('pointerup', (e) => {
+    state.dragMode = null;
+    canvas.classList.remove('dragging');
+    if (canvas.hasPointerCapture(e.pointerId)) {
+      canvas.releasePointerCapture(e.pointerId);
+    }
+  });
+
+  canvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const factor = Math.exp(-e.deltaY * 0.0011);
+    state.zoom = Math.max(0.55, Math.min(2.6, state.zoom * factor));
+  }, { passive: false });
+
+  canvas.addEventListener('dblclick', () => {
+    state.camX = 0;
+    state.camY = 0;
+    state.zoom = 1.0;
+  });
+
+  // =========================================================================
+  // UI EVENT WIRING
+  // =========================================================================
+  function setPlayState(playing) {
+    state.playing = playing;
+    const btn = $('btn-play');
+    btn.textContent = playing ? '⏸ Pause' : '▶ Play';
+    btn.classList.toggle('active', playing);
+  }
+
+  function toggleZenMode() {
+    document.body.classList.toggle('zen-mode');
+  }
+
+  // Drawer tabs
+  document.querySelectorAll('.tab-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const tab = btn.dataset.tab;
+      document.querySelectorAll('.tab-btn').forEach((b) => b.classList.toggle('active', b === btn));
+      document.querySelectorAll('.tab-pane').forEach((p) => p.classList.toggle('active', p.id === `tab-${tab}`));
+    });
+  });
+
+  // Preset buttons
+  document.querySelectorAll('.preset-btn').forEach((btn) => {
+    btn.addEventListener('click', () => applyPreset(btn.dataset.preset));
+  });
+
+  // Quick Phase Jump pills
+  // Note: New = 180°, 1st Q = 270°, Full = 0°, 3rd Q = 90° in CCW math coordinates
+  const phaseJumpMap = { '180': Math.PI, '90': Math.PI * 1.5, '0': 0, '270': Math.PI * 0.5 };
+  document.querySelectorAll('#phase-jump-row .seg-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const key = btn.dataset.phase;
+      if (phaseJumpMap[key] !== undefined) {
+        state.theta = phaseJumpMap[key];
+        syncSlidersFromState();
+      }
+    });
+  });
+
+  // Sliders
+  $('sl-moon-angle').addEventListener('input', (e) => {
+    state.theta = parseFloat(e.target.value) * DEG;
+    $('val-moon-angle').textContent = `${parseFloat(e.target.value).toFixed(1)}°`;
+  });
+
+  $('sl-ecc').addEventListener('input', (e) => {
+    state.eccentricity = parseFloat(e.target.value);
+    $('val-ecc').textContent = state.eccentricity.toFixed(3);
+  });
+
+  $('sl-perigee').addEventListener('input', (e) => {
+    const d = parseFloat(e.target.value);
+    state.perigeeAngle = d * DEG;
+    let hint = '';
+    if (Math.abs(d - 180) < 20) hint = ' (New=Perigee)';
+    else if (d < 20 || d > 340) hint = ' (New=Apogee)';
+    $('val-perigee').textContent = `${Math.round(d)}°${hint}`;
+  });
+
+  $('btn-set-perigee').addEventListener('click', () => {
+    state.eccentricity = 0.065;
+    state.perigeeAngle = state.theta; // put Perigee right under current Moon position!
+    syncSlidersFromState();
+  });
+
+  $('btn-set-apogee').addEventListener('click', () => {
+    state.eccentricity = 0.065;
+    state.perigeeAngle = normAngle(state.theta + Math.PI); // put Apogee right under current Moon!
+    syncSlidersFromState();
+  });
+
+  $('sl-incl').addEventListener('input', (e) => {
+    state.inclinationDeg = parseFloat(e.target.value);
+    $('val-incl').textContent = `${state.inclinationDeg.toFixed(2)}°`;
+  });
+
+  $('sl-node-axis').addEventListener('input', (e) => {
+    const d = parseFloat(e.target.value);
+    state.nodeAngle = d * DEG;
+    $('val-node-axis').textContent = `${Math.round(d)}°`;
+  });
+
+  $('btn-real-tilt').addEventListener('click', () => {
+    state.inclinationDeg = 5.14;
+    syncSlidersFromState();
+  });
+
+  $('btn-align-nodes').addEventListener('click', () => {
+    state.nodeAngle = 0.0; // aligns nodes with Sun-Earth syzygy axis -> eclipse season!
+    syncSlidersFromState();
+  });
+
+  $('sl-tide-scale').addEventListener('input', (e) => {
+    state.tideScale = parseFloat(e.target.value);
+    $('val-tide-scale').textContent = `${state.tideScale.toFixed(2)}×`;
+  });
+
+  $('sl-friction').addEventListener('input', (e) => {
+    state.frictionDeg = parseFloat(e.target.value);
+    $('val-friction').textContent = `${Math.round(state.frictionDeg)}°`;
+  });
+
+  $('sl-spin').addEventListener('input', (e) => {
+    state.spinSpeed = parseFloat(e.target.value);
+    $('val-spin').textContent = `${state.spinSpeed.toFixed(1)}×`;
+  });
+
+  // Toggles
+  $('chk-bulge-total').addEventListener('change', (e) => { state.showBulgeTotal = e.target.checked; });
+  $('chk-bulge-parts').addEventListener('change', (e) => { state.showBulgeParts = e.target.checked; });
+  $('chk-observer').addEventListener('change', (e) => { state.showObserver = e.target.checked; });
+  $('chk-tidal-arrows').addEventListener('change', (e) => { state.showTidalArrows = e.target.checked; });
+  $('chk-shadows').addEventListener('change', (e) => { state.showShadows = e.target.checked; });
+  $('chk-rays').addEventListener('change', (e) => { state.showRays = e.target.checked; });
+  $('chk-pip').addEventListener('change', (e) => {
+    state.showPip = e.target.checked;
+    $('pip-dock').classList.toggle('hidden', !state.showPip);
+  });
+  $('chk-orbit-guides').addEventListener('change', (e) => { state.showOrbitGuides = e.target.checked; });
+  $('chk-labels').addEventListener('change', (e) => { state.showLabels = e.target.checked; });
+  $('chk-stars').addEventListener('change', (e) => { state.showStars = e.target.checked; });
+
+  // Transport Bar
+  $('btn-play').addEventListener('click', () => setPlayState(!state.playing));
+  $('btn-reset').addEventListener('click', () => applyPreset(state.preset));
+
+  document.querySelectorAll('.speed-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      state.speed = parseFloat(btn.dataset.speed);
+      document.querySelectorAll('.speed-btn').forEach((b) => b.classList.toggle('active', b === btn));
+    });
+  });
+
+  $('btn-sound').addEventListener('click', () => setAudioEnabled(!state.audioEnabled));
+
+  $('btn-toggle-drawer').addEventListener('click', () => {
+    const drawer = $('drawer');
+    const collapsed = drawer.classList.toggle('collapsed');
+    $('btn-toggle-drawer').classList.toggle('active', !collapsed);
+  });
+
+  $('btn-zen').addEventListener('click', toggleZenMode);
+  $('btn-zen-restore').addEventListener('click', toggleZenMode);
+
+  // Keyboard shortcuts
+  window.addEventListener('keydown', (e) => {
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+    if (e.code === 'Space') {
+      e.preventDefault();
+      setPlayState(!state.playing);
+    } else if (e.key === 'h' || e.key === 'H') {
+      toggleZenMode();
+    } else if (e.key === 'r' || e.key === 'R') {
+      applyPreset(state.preset);
+    } else if (e.code === 'ArrowRight') {
+      e.preventDefault();
+      state.theta = normAngle(state.theta + (e.shiftKey ? 0.25 : 2.0) * DEG);
+    } else if (e.code === 'ArrowLeft') {
+      e.preventDefault();
+      state.theta = normAngle(state.theta - (e.shiftKey ? 0.25 : 2.0) * DEG);
+    } else if (e.key >= '1' && e.key <= '6') {
+      const keys = ['total-solar', 'annular-solar', 'blood-moon', 'spring-tide', 'neap-tide', 'tilted-orbit'];
+      applyPreset(keys[parseInt(e.key, 10) - 1]);
+    }
+  });
+
+  window.addEventListener('resize', resizeCanvases);
+
+  // =========================================================================
+  // MAIN ANIMATION LOOP
+  // =========================================================================
+  let lastTs = performance.now();
+
+  function frame(ts) {
+    const dt = Math.min(0.05, (ts - lastTs) / 1000);
+    lastTs = ts;
+    state.time += dt;
+
+    if (state.playing && state.dragMode !== 'moon') {
+      // Base lunar orbital angular speed (~0.22 rad/s at 1x -> 28.5s per synodic month)
+      // Kepler's 2nd law modulation: moves slightly faster at Perigee, slower at Apogee!
+      const keplerBoost = Math.pow(1 + state.eccentricity * Math.cos(state.theta - state.perigeeAngle), 2);
+      state.theta = normAngle(state.theta + dt * 0.22 * state.speed * keplerBoost);
+    }
+
+    if (state.playing && state.dragMode !== 'observer') {
+      // Earth rotates visibly faster than Moon orbits (showing 2 high & 2 low tides per day!)
+      state.earthSpin = normAngle(state.earthSpin + dt * 1.15 * state.spinSpeed * Math.max(0.35, Math.min(2.2, state.speed * 2.2)));
+    }
+
+    const m = computeSystemMetrics();
+    const center = getEarthScreenCenter();
+
+    // Render Main Canvas
+    drawBackground(m);
+    drawSunLimbAndRays(center, m);
+    drawOrbitAndGuides(center, m);
+    drawShadowCones(center, m);
+    drawEarthAndTides(center, m);
+    drawMoonBody(center, m);
+
+    // Render Live Picture-in-Picture Canvases
+    if (state.showPip) {
+      drawSkyViewPiP(m);
+      drawTideGraphPiP(m);
+      drawNodalEdgePiP(m);
+    }
+
+    // Update HUD Telemetry
+    updateTelemetryUI(m);
+
+    requestAnimationFrame(frame);
+  }
+
+  // Boot
+  resizeCanvases();
+  applyPreset('total-solar');
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
