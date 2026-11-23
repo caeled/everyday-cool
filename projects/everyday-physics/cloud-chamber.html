@@ -1,0 +1,3248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Half-Life — Radioactive Decay Chains &amp; Cloud Chamber</title>
+<style>
+  :root {
+    --bg-deep: #040711;
+    --panel-bg: rgba(9, 13, 24, 0.78);
+    --panel-bg-strong: rgba(8, 12, 22, 0.92);
+    --panel-border: rgba(148, 179, 255, 0.16);
+    --panel-border-hi: rgba(148, 179, 255, 0.36);
+    --text-main: #eef3ff;
+    --text-dim: #9aa9cc;
+    --text-muted: #68789c;
+    --accent-amber: #ffbe5c;
+    --accent-cyan: #58dcff;
+    --accent-mint: #4af2b2;
+    --accent-rose: #ff6083;
+    --accent-violet: #d07dff;
+    --accent-ice: #cfe8ff;
+    --radius-lg: 14px;
+    --radius-md: 10px;
+    --radius-sm: 7px;
+    --mono: ui-monospace, "Cascadia Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Inter, Helvetica, Arial, sans-serif;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg-deep);
+    color: var(--text-main);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    touch-action: none;
+  }
+
+  #sim-canvas {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    cursor: crosshair;
+  }
+  #sim-canvas.grab {
+    cursor: grab;
+  }
+  #sim-canvas.grabbing {
+    cursor: grabbing;
+  }
+
+  /* HUD Layer */
+  .hud {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 10;
+  }
+  body.zen-mode .hud > :not(.zen-restore) {
+    opacity: 0;
+    pointer-events: none !important;
+  }
+
+  .panel {
+    pointer-events: auto;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-lg);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.52), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    transition: opacity 0.25s ease, transform 0.25s ease;
+  }
+
+  /* Top-Left Brand + Telemetry */
+  .top-left {
+    position: fixed;
+    top: 14px;
+    left: 14px;
+    width: min(414px, calc(100vw - 364px));
+    min-width: 280px;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .brand-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .brand-title-wrap {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .brand-title {
+    font-size: 16px;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    background: linear-gradient(120deg, #fff6df 0%, #ffbe5c 40%, #58dcff 75%, #d07dff 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .mode-badge {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 190, 92, 0.42);
+    background: rgba(255, 190, 92, 0.12);
+    color: var(--accent-amber);
+    white-space: nowrap;
+  }
+
+  .status-pill {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: rgba(74, 242, 178, 0.14);
+    color: var(--accent-mint);
+    border: 1px solid rgba(74, 242, 178, 0.36);
+    white-space: nowrap;
+  }
+  .status-pill.hot {
+    background: rgba(255, 190, 92, 0.16);
+    color: var(--accent-amber);
+    border-color: rgba(255, 190, 92, 0.44);
+  }
+  .status-pill.stable {
+    background: rgba(148, 179, 255, 0.14);
+    color: var(--text-dim);
+    border-color: rgba(148, 179, 255, 0.32);
+  }
+
+  .telemetry-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+  }
+
+  .tele-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(148, 179, 255, 0.1);
+    border-radius: var(--radius-sm);
+    padding: 6px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .tele-label {
+    font-size: 9px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .tele-val {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--text-main);
+    white-space: nowrap;
+  }
+  .tele-val.amber { color: var(--accent-amber); }
+  .tele-val.cyan { color: var(--accent-cyan); }
+  .tele-val.mint { color: var(--accent-mint); }
+  .tele-val.violet { color: var(--accent-violet); }
+  .tele-val.rose { color: var(--accent-rose); }
+
+  /* Stacked population bar */
+  .pop-bar-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+  .pop-track {
+    flex: 1;
+    height: 7px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.07);
+    overflow: hidden;
+    display: flex;
+  }
+  .pop-seg {
+    height: 100%;
+    transition: width 0.15s linear;
+  }
+  .pop-seg.parent { background: linear-gradient(90deg, #ff9f43, #ffbe5c); }
+  .pop-seg.inter { background: linear-gradient(90deg, #58dcff, #a78bfa); }
+  .pop-seg.stable { background: linear-gradient(90deg, #43577d, #687fa8); }
+
+  .legend-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    flex-wrap: wrap;
+    padding-top: 5px;
+    border-top: 1px solid rgba(148, 179, 255, 0.1);
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+  .leg-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-family: var(--mono);
+  }
+  .leg-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+
+  .clock-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding-top: 4px;
+    border-top: 1px solid rgba(148, 179, 255, 0.1);
+    font-size: 10.5px;
+    color: var(--text-dim);
+    font-family: var(--mono);
+  }
+  .clock-row span strong {
+    color: var(--text-main);
+    font-weight: 600;
+  }
+
+  /* Right Control Drawer */
+  .drawer {
+    position: fixed;
+    top: 14px;
+    right: 14px;
+    bottom: 14px;
+    width: 330px;
+    max-width: calc(100vw - 28px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: transform 0.25s ease, opacity 0.25s ease;
+  }
+  .drawer.collapsed {
+    transform: translateX(calc(100% + 24px));
+    pointer-events: none;
+  }
+
+  .drawer-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+    padding: 8px 8px 6px;
+    border-bottom: 1px solid var(--panel-border);
+    background: rgba(4, 7, 15, 0.45);
+  }
+
+  .tab-btn {
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    padding: 7px 5px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .tab-btn:hover {
+    color: var(--text-main);
+    background: rgba(255, 255, 255, 0.04);
+  }
+  .tab-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.16);
+    border-color: rgba(88, 220, 255, 0.4);
+  }
+
+  .drawer-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 11px 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .drawer-body::-webkit-scrollbar {
+    width: 5px;
+  }
+  .drawer-body::-webkit-scrollbar-thumb {
+    background: rgba(148, 179, 255, 0.22);
+    border-radius: 999px;
+  }
+
+  .tab-pane {
+    display: none;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .tab-pane.active {
+    display: flex;
+  }
+
+  .section {
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(148, 179, 255, 0.11);
+    border-radius: var(--radius-md);
+    padding: 10px 11px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .section-title {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  /* Isotope presets grid */
+  .preset-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .preset-btn {
+    text-align: left;
+    padding: 7px 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(148, 179, 255, 0.14);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-main);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .preset-btn:hover {
+    border-color: rgba(255, 190, 92, 0.45);
+    background: rgba(255, 190, 92, 0.08);
+  }
+  .preset-btn.active {
+    border-color: var(--accent-amber);
+    background: rgba(255, 190, 92, 0.14);
+  }
+  .preset-name {
+    font-size: 11.5px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 4px;
+  }
+  .preset-tag {
+    font-family: var(--mono);
+    font-size: 9px;
+    font-weight: 700;
+    padding: 1px 4px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--accent-cyan);
+  }
+  .preset-tag.alpha { color: var(--accent-amber); background: rgba(255, 190, 92, 0.14); }
+  .preset-tag.beta { color: var(--accent-cyan); background: rgba(88, 220, 255, 0.14); }
+  .preset-tag.pos { color: var(--accent-violet); background: rgba(208, 125, 255, 0.16); }
+  .preset-tag.gamma { color: var(--accent-mint); background: rgba(74, 242, 178, 0.14); }
+
+  .preset-sub {
+    font-size: 9.5px;
+    color: var(--text-muted);
+    line-height: 1.25;
+  }
+
+  /* Decay Graph Canvas */
+  .graph-wrap {
+    position: relative;
+    width: 100%;
+    height: 132px;
+    border-radius: var(--radius-sm);
+    background: rgba(3, 6, 14, 0.72);
+    border: 1px solid rgba(148, 179, 255, 0.14);
+    overflow: hidden;
+  }
+  #decay-graph {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+  .graph-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 10px;
+    font-size: 9.5px;
+    color: var(--text-dim);
+    font-family: var(--mono);
+  }
+  .graph-leg-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .graph-leg-line {
+    width: 10px;
+    height: 2.5px;
+    border-radius: 2px;
+    display: inline-block;
+  }
+
+  /* Isotope breakdown list */
+  .chain-list {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    max-height: 220px;
+    overflow-y: auto;
+    padding-right: 2px;
+  }
+  .chain-list::-webkit-scrollbar {
+    width: 4px;
+  }
+  .chain-list::-webkit-scrollbar-thumb {
+    background: rgba(148, 179, 255, 0.2);
+    border-radius: 999px;
+  }
+  .iso-row {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 5px 7px;
+    border-radius: var(--radius-sm);
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(148, 179, 255, 0.09);
+  }
+  .iso-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 10.5px;
+    gap: 5px;
+  }
+  .iso-left {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    min-width: 0;
+  }
+  .iso-sym {
+    font-family: var(--mono);
+    font-weight: 700;
+    color: var(--text-main);
+    font-size: 11px;
+  }
+  .iso-hl {
+    font-family: var(--mono);
+    font-size: 9.5px;
+    color: var(--text-muted);
+  }
+  .iso-mode {
+    font-family: var(--mono);
+    font-size: 9px;
+    font-weight: 700;
+    padding: 1px 4px;
+    border-radius: 4px;
+    border: 1px solid transparent;
+  }
+  .iso-mode.alpha { color: #ffcf7d; background: rgba(255, 190, 92, 0.14); border-color: rgba(255, 190, 92, 0.3); }
+  .iso-mode.beta { color: #8ae8ff; background: rgba(88, 220, 255, 0.14); border-color: rgba(88, 220, 255, 0.3); }
+  .iso-mode.pos { color: #e2a8ff; background: rgba(208, 125, 255, 0.16); border-color: rgba(208, 125, 255, 0.35); }
+  .iso-mode.stable { color: #9db0d4; background: rgba(148, 179, 255, 0.1); border-color: rgba(148, 179, 255, 0.22); }
+
+  .iso-count {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--text-main);
+    font-weight: 600;
+  }
+  .iso-bar-bg {
+    width: 100%;
+    height: 4px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.06);
+    overflow: hidden;
+  }
+  .iso-bar-fill {
+    height: 100%;
+    border-radius: 999px;
+    transition: width 0.15s linear;
+  }
+
+  /* Sliders */
+  .control-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .control-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+  .control-head .val {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-main);
+    font-weight: 600;
+  }
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 5px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.18);
+    outline: none;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent-cyan);
+    border: 2px solid #08101f;
+    box-shadow: 0 0 10px rgba(88, 220, 255, 0.65);
+    cursor: pointer;
+  }
+  input[type="range"].amber::-webkit-slider-thumb {
+    background: var(--accent-amber);
+    box-shadow: 0 0 10px rgba(255, 190, 92, 0.65);
+  }
+  input[type="range"].violet::-webkit-slider-thumb {
+    background: var(--accent-violet);
+    box-shadow: 0 0 10px rgba(208, 125, 255, 0.65);
+  }
+  input[type="range"].mint::-webkit-slider-thumb {
+    background: var(--accent-mint);
+    box-shadow: 0 0 10px rgba(74, 242, 178, 0.65);
+  }
+
+  /* Segmented pills */
+  .seg-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(56px, 1fr));
+    gap: 4px;
+  }
+  .seg-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-dim);
+    font-size: 10.5px;
+    font-weight: 650;
+    padding: 6px 5px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-align: center;
+  }
+  .seg-btn:hover {
+    color: #fff;
+    border-color: rgba(148, 179, 255, 0.35);
+  }
+  .seg-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.18);
+    border-color: var(--accent-cyan);
+  }
+  .seg-btn.active.amber {
+    background: rgba(255, 190, 92, 0.18);
+    border-color: var(--accent-amber);
+    color: #ffdfaa;
+  }
+  .seg-btn.active.violet {
+    background: rgba(208, 125, 255, 0.18);
+    border-color: var(--accent-violet);
+    color: #f0d6ff;
+  }
+
+  /* Buttons */
+  .btn-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .btn {
+    border: 1px solid rgba(148, 179, 255, 0.22);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-main);
+    font-size: 11px;
+    font-weight: 700;
+    padding: 7px 9px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+  }
+  .btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 179, 255, 0.45);
+  }
+  .btn:active {
+    transform: scale(0.98);
+  }
+  .btn.primary {
+    background: linear-gradient(135deg, rgba(88, 220, 255, 0.26), rgba(56, 140, 255, 0.22));
+    border-color: rgba(88, 220, 255, 0.52);
+    color: #e6f9ff;
+  }
+  .btn.amber {
+    background: linear-gradient(135deg, rgba(255, 190, 92, 0.24), rgba(255, 120, 60, 0.2));
+    border-color: rgba(255, 190, 92, 0.52);
+    color: #fff3db;
+  }
+
+  /* Toggle switches */
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11px;
+    color: var(--text-dim);
+    cursor: pointer;
+    gap: 8px;
+  }
+  .toggle-row input {
+    display: none;
+  }
+  .switch {
+    width: 34px;
+    height: 18px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.2);
+    border: 1px solid rgba(148, 179, 255, 0.25);
+    position: relative;
+    transition: all 0.18s ease;
+    flex-shrink: 0;
+  }
+  .switch::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #c8d7f5;
+    transition: transform 0.18s ease, background 0.18s ease;
+  }
+  .toggle-row input:checked + .switch {
+    background: rgba(88, 220, 255, 0.32);
+    border-color: var(--accent-cyan);
+  }
+  .toggle-row input:checked + .switch::after {
+    transform: translateX(16px);
+    background: #fff;
+  }
+
+  /* Bottom Transport Bar */
+  .bottom-bar {
+    position: fixed;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 7px 10px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    flex-wrap: nowrap;
+  }
+
+  .bar-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-main);
+    font-size: 11px;
+    font-weight: 650;
+    padding: 6px 9px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    white-space: nowrap;
+  }
+  .bar-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 179, 255, 0.4);
+  }
+  .bar-btn.active {
+    background: rgba(88, 220, 255, 0.2);
+    border-color: var(--accent-cyan);
+    color: #fff;
+  }
+  .bar-btn.amber-active {
+    background: rgba(255, 190, 92, 0.2);
+    border-color: var(--accent-amber);
+    color: #ffdfaa;
+  }
+
+  .bar-divider {
+    width: 1px;
+    height: 20px;
+    background: rgba(148, 179, 255, 0.16);
+    margin: 0 2px;
+  }
+
+  /* Bottom-left interaction hint */
+  .hint-pill {
+    position: fixed;
+    bottom: 14px;
+    left: 14px;
+    padding: 7px 11px;
+    font-size: 10.5px;
+    color: var(--text-dim);
+    max-width: 318px;
+    line-height: 1.45;
+  }
+  .hint-pill kbd {
+    font-family: var(--mono);
+    font-size: 9.5px;
+    padding: 1px 4px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #fff;
+  }
+
+  /* Toast Banner */
+  .event-banner {
+    position: fixed;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%) translateY(-10px);
+    padding: 8px 14px;
+    border-radius: var(--radius-md);
+    background: rgba(8, 16, 28, 0.88);
+    border: 1px solid rgba(88, 220, 255, 0.45);
+    color: #d6f4ff;
+    font-size: 11.5px;
+    font-weight: 650;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease, transform 0.25s ease;
+    z-index: 20;
+    backdrop-filter: blur(12px);
+    white-space: nowrap;
+  }
+  .event-banner.visible {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+
+  .zen-restore {
+    position: fixed;
+    bottom: 14px;
+    right: 14px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+  }
+  body.zen-mode .zen-restore {
+    opacity: 0.9;
+    pointer-events: auto;
+  }
+
+  .note-small {
+    font-size: 10px;
+    color: var(--text-muted);
+    line-height: 1.38;
+  }
+
+  @media (max-width: 960px) {
+    .top-left {
+      width: calc(100vw - 28px);
+      max-width: none;
+    }
+    .drawer {
+      top: auto;
+      bottom: 62px;
+      height: 50vh;
+      width: calc(100vw - 28px);
+    }
+    .hint-pill {
+      display: none;
+    }
+  }
+</style>
+</head>
+<body>
+<canvas id="sim-canvas"></canvas>
+
+<div class="hud">
+  <!-- Top-Left Telemetry -->
+  <div class="panel top-left">
+    <div class="brand-row">
+      <div class="brand-title-wrap">
+        <div class="brand-title">Half-Life</div>
+        <span id="source-badge" class="mode-badge">U-238 Series</span>
+      </div>
+      <span id="chamber-status" class="status-pill hot">Active Cascade</span>
+    </div>
+
+    <div class="telemetry-grid">
+      <div class="tele-card">
+        <span class="tele-label">Activity</span>
+        <span id="tel-activity" class="tele-val amber">0.0 Bq*</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Magnetic Field B</span>
+        <span id="tel-bfield" class="tele-val cyan">+1.20 T ⊙</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Parent Left</span>
+        <span id="tel-parent" class="tele-val mint">100.0%</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Alpha (α)</span>
+        <span id="tel-alpha" class="tele-val amber">0</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Beta (β⁻ / β⁺)</span>
+        <span id="tel-beta" class="tele-val cyan">0 / 0</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Gamma / Pair</span>
+        <span id="tel-gamma" class="tele-val violet">0 / 0</span>
+      </div>
+    </div>
+
+    <div class="pop-bar-wrap">
+      <span>Chain</span>
+      <div class="pop-track">
+        <div id="bar-parent" class="pop-seg parent" style="width:100%"></div>
+        <div id="bar-inter" class="pop-seg inter" style="width:0%"></div>
+        <div id="bar-stable" class="pop-seg stable" style="width:0%"></div>
+      </div>
+      <span id="tel-stable-pct" style="font-family:var(--mono); color:var(--text-main);">0% Pb</span>
+    </div>
+
+    <div class="legend-row">
+      <span class="leg-item"><i class="leg-dot" style="background:#ffcf6e;box-shadow:0 0 6px #ffbe5c;"></i>α He²⁺</span>
+      <span class="leg-item"><i class="leg-dot" style="background:#58dcff;box-shadow:0 0 6px #58dcff;"></i>β⁻ e⁻</span>
+      <span class="leg-item"><i class="leg-dot" style="background:#d96bff;box-shadow:0 0 6px #d07dff;"></i>β⁺ e⁺</span>
+      <span class="leg-item"><i class="leg-dot" style="background:#4af2b2;box-shadow:0 0 6px #4af2b2;"></i>γ Ray</span>
+      <span class="leg-item"><i class="leg-dot" style="background:#cfe8ff;box-shadow:0 0 6px #cfe8ff;"></i>μ Cosmic</span>
+    </div>
+
+    <div class="clock-row">
+      <span>Sim t: <strong id="tel-time">0.0 s</strong></span>
+      <span>Parent t½: <strong id="tel-hl-elapsed">0.00×</strong></span>
+      <span>Nuclei: <strong id="tel-total">600</strong></span>
+    </div>
+  </div>
+
+  <!-- Right Control Drawer -->
+  <aside id="drawer" class="panel drawer">
+    <div class="drawer-tabs">
+      <button class="tab-btn active" data-tab="isotopes">Decay Chain</button>
+      <button class="tab-btn" data-tab="chamber">Field &amp; Shield</button>
+      <button class="tab-btn" data-tab="visuals">Chamber Lab</button>
+    </div>
+
+    <div class="drawer-body">
+      <!-- TAB 1: ISOTOPES & DECAY GRAPH -->
+      <div id="tab-isotopes" class="tab-pane active">
+        <div class="section">
+          <div class="section-title">
+            <span>Radioactive Sources</span>
+            <span id="chain-steps-label" style="font-family:var(--mono); color:var(--accent-amber);">14 steps</span>
+          </div>
+          <div class="preset-grid" id="preset-grid">
+            <button class="preset-btn active" data-source="u238">
+              <span class="preset-name">Uranium-238 <span class="preset-tag alpha">α+β+γ</span></span>
+              <span class="preset-sub">Full 14-step cascade → ²⁰⁶Pb</span>
+            </button>
+            <button class="preset-btn" data-source="ra226">
+              <span class="preset-name">Radium-226 <span class="preset-tag alpha">α→Rn</span></span>
+              <span class="preset-sub">²²⁶Ra → ²²²Rn gas → ²¹⁰Pb</span>
+            </button>
+            <button class="preset-btn" data-source="c14">
+              <span class="preset-name">Carbon-14 <span class="preset-tag beta">β⁻</span></span>
+              <span class="preset-sub">5,730 yr radiocarbon → ¹⁴N</span>
+            </button>
+            <button class="preset-btn" data-source="na22">
+              <span class="preset-name">Sodium-22 <span class="preset-tag pos">β⁺+γ</span></span>
+              <span class="preset-sub">Positrons &amp; 511 keV annih.</span>
+            </button>
+            <button class="preset-btn" data-source="am241">
+              <span class="preset-name">Americium-241 <span class="preset-tag alpha">Pure α</span></span>
+              <span class="preset-sub">Smoke-detector heavy α</span>
+            </button>
+            <button class="preset-btn" data-source="co60">
+              <span class="preset-name">Cobalt-60 <span class="preset-tag gamma">β⁻+γγ</span></span>
+              <span class="preset-sub">Compton &amp; e⁻/e⁺ pairs</span>
+            </button>
+          </div>
+          <p id="source-desc" class="note-small">
+            Compressed timescale of the natural 4n+2 Uranium series: watch parent ²³⁸U decay through Radon &amp; Polonium into stable Lead-206.
+          </p>
+        </div>
+
+        <div class="section">
+          <div class="section-title">
+            <span>Live Decay Curve N(t)</span>
+            <span id="graph-scale-lbl" style="font-family:var(--mono); color:var(--text-muted);">Bateman</span>
+          </div>
+          <div class="graph-wrap">
+            <canvas id="decay-graph"></canvas>
+          </div>
+          <div id="graph-legend" class="graph-legend"></div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">
+            <span>Isotope Population</span>
+            <span id="pop-live-label" style="font-family:var(--mono); color:var(--accent-cyan);">Live</span>
+          </div>
+          <div id="chain-list" class="chain-list"></div>
+        </div>
+      </div>
+
+      <!-- TAB 2: FIELD & SHIELD -->
+      <div id="tab-chamber" class="tab-pane">
+        <div class="section">
+          <div class="section-title">
+            <span>Magnetic Field (Perpendicular B)</span>
+            <span id="b-polarity-lbl" style="font-family:var(--mono); color:var(--accent-cyan);">⊙ Out of Page</span>
+          </div>
+          <div class="control-row">
+            <div class="control-head">
+              <span>Field Strength B</span>
+              <span id="val-bfield" class="val">+1.20 T</span>
+            </div>
+            <input id="sl-bfield" type="range" min="-3.0" max="3.0" step="0.05" value="1.20" />
+          </div>
+          <div class="seg-row">
+            <button class="seg-btn" id="btn-b-neg">-2.0 T</button>
+            <button class="seg-btn" id="btn-b-zero">0 T</button>
+            <button class="seg-btn" id="btn-b-pos">+2.0 T</button>
+            <button class="seg-btn" id="btn-b-flip">Flip B</button>
+          </div>
+          <p class="note-small">
+            Lorentz force <strong>F = q(v × B)</strong> curls light β⁻ (cyan) and β⁺ (magenta) into opposite spirals, while heavy α (He²⁺) bends gently. Sweep B across 0 T to reverse all spirals!
+          </p>
+        </div>
+
+        <div class="section">
+          <div class="section-title">
+            <span>Absorber Shielding Plate</span>
+            <label class="toggle-row" style="gap:6px;">
+              <span style="font-size:10px;">Active</span>
+              <input id="chk-shield" type="checkbox" checked />
+              <span class="switch"></span>
+            </label>
+          </div>
+
+          <div class="seg-row" id="shield-mat-row">
+            <button class="seg-btn active amber" data-mat="paper">Paper</button>
+            <button class="seg-btn" data-mat="aluminum">Aluminum</button>
+            <button class="seg-btn" data-mat="lead">Lead (Pb)</button>
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Plate Angle</span>
+              <span id="val-shield-angle" class="val">0°</span>
+            </div>
+            <input id="sl-shield-angle" class="amber" type="range" min="-90" max="90" step="1" value="0" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Plate Thickness</span>
+              <span id="val-shield-thick" class="val">1.0×</span>
+            </div>
+            <input id="sl-shield-thick" class="amber" type="range" min="0.5" max="2.5" step="0.1" value="1.0" />
+          </div>
+
+          <div class="btn-row">
+            <button id="btn-shield-place" class="btn">Position Near Source</button>
+            <button id="btn-source-center" class="btn">Center Source</button>
+          </div>
+
+          <p id="shield-info" class="note-small">
+            <strong>Paper (0.1 mm):</strong> Stops heavy α particles at the surface (Bragg spark), while β⁻/β⁺ pass with slight scattering and γ penetrates freely.
+          </p>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Sample Activity &amp; Geometry</span></div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Activity / Time Compression</span>
+              <span id="val-activity" class="val">1.00×</span>
+            </div>
+            <input id="sl-activity" class="amber" type="range" min="0.2" max="4.0" step="0.05" value="1.0" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Initial Sample Nuclei</span>
+              <span id="val-sample-n" class="val">600</span>
+            </div>
+            <input id="sl-sample-n" type="range" min="100" max="1800" step="50" value="600" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Click-Drop Cluster Size</span>
+              <span id="val-drop-n" class="val">90</span>
+            </div>
+            <input id="sl-drop-n" class="violet" type="range" min="20" max="300" step="10" value="90" />
+          </div>
+
+          <div class="seg-row" id="geom-row">
+            <button class="seg-btn active" data-geom="point">Point Source</button>
+            <button class="seg-btn" data-geom="dispersed">Dispersed Mist</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 3: CHAMBER LAB & AUDIO -->
+      <div id="tab-visuals" class="tab-pane">
+        <div class="section">
+          <div class="section-title"><span>Supersaturated Alcohol Vapor</span></div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Supersaturation (Trail Life)</span>
+              <span id="val-supersat" class="val">72%</span>
+            </div>
+            <input id="sl-supersat" class="mint" type="range" min="20" max="100" step="1" value="72" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Thermal Convection Drift</span>
+              <span id="val-drift" class="val">1.0×</span>
+            </div>
+            <input id="sl-drift" type="range" min="0" max="2.5" step="0.1" value="1.0" />
+          </div>
+
+          <label class="toggle-row">
+            <span>Cosmic Ray Muons (Background)</span>
+            <input id="chk-muons" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Show Ghostly γ Photon Rays</span>
+            <input id="chk-gamma-rays" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Magnetic Field ⊙ / ⊗ Grid</span>
+            <input id="chk-bfield-grid" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Vapor Convection Mist Layer</span>
+            <input id="chk-mist" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Delta-Ray Fuzz &amp; Bragg Peaks</span>
+            <input id="chk-bragg" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Event Callout Tags (Annih / Pair)</span>
+            <input id="chk-callouts" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+        </div>
+
+        <div class="section">
+          <div class="section-title">
+            <span>Geiger-Müller Audio</span>
+            <span id="audio-badge" style="font-family:var(--mono); color:var(--text-muted);">Muted</span>
+          </div>
+          <label class="toggle-row">
+            <span>Enable Geiger Counter Clicks</span>
+            <input id="chk-audio" type="checkbox" />
+            <span class="switch"></span>
+          </label>
+          <div class="control-row">
+            <div class="control-head">
+              <span>Click Volume</span>
+              <span id="val-vol" class="val">55%</span>
+            </div>
+            <input id="sl-vol" class="amber" type="range" min="5" max="100" step="5" value="55" />
+          </div>
+          <p class="note-small">
+            Pure Web Audio synthesis: deeper resonant clicks for heavy <strong>α</strong>, crisp snappy ticks for <strong>β⁻/β⁺</strong>, and high delicate pings for <strong>γ/μ</strong>.
+          </p>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Chamber Actions</span></div>
+          <div class="btn-row">
+            <button id="btn-clear-tracks" class="btn">Clear Vapor Trails</button>
+            <button id="btn-cosmic-shower" class="btn primary">Cosmic Shower</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Toast Event Banner -->
+  <div id="event-banner" class="event-banner">
+    <span id="event-text">Positron annihilation detected — dual 511 keV γ rays emitted.</span>
+  </div>
+
+  <!-- Bottom-Left Hint -->
+  <div class="panel hint-pill">
+    <div><strong>Click chamber</strong> drop unstable nuclei · <strong>Drag</strong> source or shield · <strong>Scroll</strong> on shield to rotate</div>
+    <div><kbd>Space</kbd> Pause · <kbd>R</kbd> Reset · <kbd>F</kbd> Flip B · <kbd>G</kbd> Geiger · <kbd>H</kbd> Zen</div>
+  </div>
+
+  <!-- Bottom-Center Transport Bar -->
+  <div class="panel bottom-bar">
+    <button id="btn-play" class="bar-btn active">Pause</button>
+    <button id="btn-reset" class="bar-btn">Reset</button>
+    <button id="btn-inject" class="bar-btn">Inject Burst</button>
+    <div class="bar-divider"></div>
+    <button class="bar-btn speed-btn" data-speed="0.25">0.25×</button>
+    <button class="bar-btn speed-btn active" data-speed="1">1×</button>
+    <button class="bar-btn speed-btn" data-speed="3">3×</button>
+    <button class="bar-btn speed-btn" data-speed="8">8×</button>
+    <div class="bar-divider"></div>
+    <button id="btn-geiger" class="bar-btn">Geiger 🔇</button>
+    <button id="btn-drawer" class="bar-btn active">Panel</button>
+    <button id="btn-zen" class="bar-btn">Zen</button>
+  </div>
+
+  <!-- Zen Restore Button -->
+  <button id="btn-zen-restore" class="panel bar-btn zen-restore">Exit Zen (H)</button>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  /* =========================================================================
+     ISOTOPE DECAY CHAINS (Real nuclear modes, energies & compressed t1/2)
+     ========================================================================= */
+  const SOURCES = {
+    u238: {
+      name: 'Uranium-238',
+      badge: 'U-238 Series',
+      stableLabel: 'Pb-206',
+      description: 'Natural 4n+2 Uranium series (compressed timescale): watch ²³⁸U cascade through 14 α and β⁻ transitions, Radon gas diffusion, high-energy ²¹⁴Bi/²¹⁴Po decays, and stable ²⁰⁶Pb accumulation.',
+      graphIndices: [0, 6, 9, 14], // U-238, Rn-222, Bi-214, Pb-206
+      chain: [
+        { sym: '²³⁸U',  name: 'Uranium-238',   realHL: '4.47 Gyr', simHL: 11.0, mode: 'alpha', eMeV: 4.20, gamma: 0.05, color: '#ffbe5c' },
+        { sym: '²³⁴Th', name: 'Thorium-234',   realHL: '24.1 d',   simHL: 2.8,  mode: 'beta',  eMeV: 0.27, gamma: 0.12, color: '#6ee7ff' },
+        { sym: '²³⁴Pa', name: 'Protact.-234m', realHL: '1.17 m',   simHL: 1.5,  mode: 'beta',  eMeV: 2.27, gamma: 0.25, color: '#58dcff' },
+        { sym: '²³⁴U',  name: 'Uranium-234',   realHL: '245 kyr',  simHL: 4.5,  mode: 'alpha', eMeV: 4.77, gamma: 0.05, color: '#ffcf7d' },
+        { sym: '²³⁰Th', name: 'Thorium-230',   realHL: '75.4 kyr', simHL: 4.2,  mode: 'alpha', eMeV: 4.69, gamma: 0.06, color: '#ffa94d' },
+        { sym: '²²⁶Ra', name: 'Radium-226',    realHL: '1,600 yr', simHL: 5.0,  mode: 'alpha', eMeV: 4.78, gamma: 0.14, color: '#ff965a' },
+        { sym: '²²²Rn', name: 'Radon-222',     realHL: '3.82 d',   simHL: 4.8,  mode: 'alpha', eMeV: 5.49, gamma: 0.05, gas: true, color: '#4af2b2' },
+        { sym: '²¹⁸Po', name: 'Polonium-218',  realHL: '3.10 m',   simHL: 2.0,  mode: 'alpha', eMeV: 6.00, gamma: 0.04, color: '#ffd166' },
+        { sym: '²¹⁴Pb', name: 'Lead-214',      realHL: '26.8 m',   simHL: 3.4,  mode: 'beta',  eMeV: 1.02, gamma: 0.42, color: '#4cc9f0' },
+        { sym: '²¹⁴Bi', name: 'Bismuth-214',   realHL: '19.9 m',   simHL: 3.8,  mode: 'beta',  eMeV: 3.27, gamma: 0.78, gammaMeV: 1.76, color: '#c084fc' },
+        { sym: '²¹⁴Po', name: 'Polonium-214',  realHL: '164 µs',   simHL: 0.35, mode: 'alpha', eMeV: 7.69, gamma: 0.02, color: '#ffe58f' },
+        { sym: '²¹⁰Pb', name: 'Lead-210',      realHL: '22.3 yr',  simHL: 5.5,  mode: 'beta',  eMeV: 0.06, gamma: 0.08, color: '#7dd3fc' },
+        { sym: '²¹⁰Bi', name: 'Bismuth-210',   realHL: '5.01 d',   simHL: 3.0,  mode: 'beta',  eMeV: 1.16, gamma: 0.05, color: '#38bdf8' },
+        { sym: '²¹⁰Po', name: 'Polonium-210',  realHL: '138.4 d',  simHL: 4.6,  mode: 'alpha', eMeV: 5.30, gamma: 0.02, color: '#f59e0b' },
+        { sym: '²⁰⁶Pb', name: 'Lead-206',      realHL: 'Stable',   simHL: Infinity, mode: 'stable', eMeV: 0, gamma: 0, color: '#8da2c7' }
+      ]
+    },
+    ra226: {
+      name: 'Radium-226',
+      badge: 'Ra-226 → Rn-222',
+      stableLabel: 'Pb-210',
+      description: 'Classic cloud-chamber alpha showcase: ²²⁶Ra decays into noble gas ²²²Rn which gently diffuses outward before firing rapid double-α cascades via ²¹⁸Po and ultra-fast 7.7 MeV ²¹⁴Po.',
+      graphIndices: [0, 1, 4, 6], // Ra-226, Rn-222, Bi-214, Pb-210
+      chain: [
+        { sym: '²²⁶Ra', name: 'Radium-226',   realHL: '1,600 yr', simHL: 10.5, mode: 'alpha', eMeV: 4.78, gamma: 0.16, color: '#ffbe5c' },
+        { sym: '²²²Rn', name: 'Radon-222',    realHL: '3.82 d',   simHL: 6.2,  mode: 'alpha', eMeV: 5.49, gamma: 0.06, gas: true, color: '#4af2b2' },
+        { sym: '²¹⁸Po', name: 'Polonium-218', realHL: '3.10 m',   simHL: 2.2,  mode: 'alpha', eMeV: 6.00, gamma: 0.04, color: '#ffd166' },
+        { sym: '²¹⁴Pb', name: 'Lead-214',     realHL: '26.8 m',   simHL: 4.2,  mode: 'beta',  eMeV: 1.02, gamma: 0.45, color: '#58dcff' },
+        { sym: '²¹⁴Bi', name: 'Bismuth-214',  realHL: '19.9 m',   simHL: 4.5,  mode: 'beta',  eMeV: 3.27, gamma: 0.72, gammaMeV: 1.76, color: '#d07dff' },
+        { sym: '²¹⁴Po', name: 'Polonium-214', realHL: '164 µs',   simHL: 0.30, mode: 'alpha', eMeV: 7.69, gamma: 0.03, color: '#fff0a6' },
+        { sym: '²¹⁰Pb', name: 'Lead-210',     realHL: '22.3 yr',  simHL: Infinity, mode: 'stable', eMeV: 0, gamma: 0, color: '#8da2c7' }
+      ]
+    },
+    c14: {
+      name: 'Carbon-14',
+      badge: '¹⁴C → ¹⁴N (β⁻)',
+      stableLabel: 'N-14',
+      description: 'Pure β⁻ emitter used in archaeological radiocarbon dating (t½ = 5,730 yr). Low-energy electrons curl into delicate tight cyan spirals with frequent Coulomb scattering kinks.',
+      graphIndices: [0, 1],
+      chain: [
+        { sym: '¹⁴C', name: 'Carbon-14',   realHL: '5,730 yr', simHL: 14.0, mode: 'beta', eMeV: 0.156, gamma: 0, color: '#58dcff' },
+        { sym: '¹⁴N', name: 'Nitrogen-14', realHL: 'Stable',   simHL: Infinity, mode: 'stable', eMeV: 0, gamma: 0, color: '#8da2c7' }
+      ]
+    },
+    na22: {
+      name: 'Sodium-22',
+      badge: '²²Na → ²²Ne (β⁺)',
+      stableLabel: 'Ne-22',
+      description: 'Antimatter positron showcase! β⁺ tracks (violet-magenta) curl opposite to electrons in the magnetic field, then annihilate into twin back-to-back 511 keV gamma flashes.',
+      graphIndices: [0, 1],
+      chain: [
+        { sym: '²²Na', name: 'Sodium-22', realHL: '2.60 yr', simHL: 13.0, mode: 'pos', eMeV: 0.546, gamma: 0.90, gammaMeV: 1.275, color: '#d07dff' },
+        { sym: '²²Ne', name: 'Neon-22',   realHL: 'Stable',  simHL: Infinity, mode: 'stable', eMeV: 0, gamma: 0, color: '#8da2c7' }
+      ]
+    },
+    am241: {
+      name: 'Americium-241',
+      badge: '²⁴¹Am (Pure α)',
+      stableLabel: 'Np-237',
+      description: 'Used in household ionization smoke detectors. Fires dense, bright 5.49 MeV golden-white alpha tracks ending in sharp Bragg peaks—completely halted by a single sheet of paper.',
+      graphIndices: [0, 1],
+      chain: [
+        { sym: '²⁴¹Am', name: 'Americium-241', realHL: '432.2 yr', simHL: 15.0, mode: 'alpha', eMeV: 5.49, gamma: 0.25, gammaMeV: 0.06, color: '#ffbe5c' },
+        { sym: '²³⁷Np', name: 'Neptunium-237', realHL: '2.14 Myr', simHL: Infinity, mode: 'stable', eMeV: 0, gamma: 0, color: '#8da2c7' }
+      ]
+    },
+    co60: {
+      name: 'Cobalt-60',
+      badge: '⁶⁰Co (β⁻ + γγ)',
+      stableLabel: 'Ni-60',
+      description: 'Industrial & radiotherapy powerhouse: β⁻ decay followed immediately by twin 1.17 & 1.33 MeV gammas, triggering Compton recoil electrons and e⁻/e⁺ pair-production V-spirals!',
+      graphIndices: [0, 1],
+      chain: [
+        { sym: '⁶⁰Co', name: 'Cobalt-60', realHL: '5.27 yr', simHL: 13.5, mode: 'beta', eMeV: 0.318, gamma: 1.0, doubleGamma: true, gammaMeV: 1.33, color: '#4af2b2' },
+        { sym: '⁶⁰Ni', name: 'Nickel-60', realHL: 'Stable',  simHL: Infinity, mode: 'stable', eMeV: 0, gamma: 0, color: '#8da2c7' }
+      ]
+    }
+  };
+
+  /* Shielding material physics constants */
+  const SHIELD_MATS = {
+    paper: {
+      label: 'Paper (0.1 mm)',
+      fill: 'rgba(232, 224, 205, 0.22)',
+      stroke: 'rgba(245, 236, 214, 0.72)',
+      hatch: 'rgba(255, 245, 225, 0.14)',
+      baseWidth: 10,
+      alphaStop: 1.0,
+      betaDrag: 0.04,
+      betaScatter: 0.28,
+      gammaMu: 0.002,
+      info: '<strong>Paper (0.1 mm):</strong> Stops heavy α particles immediately at the surface (Bragg spark), while β⁻/β⁺ pass with slight scattering and γ penetrates freely.'
+    },
+    aluminum: {
+      label: 'Aluminum (4 mm)',
+      fill: 'rgba(155, 195, 235, 0.25)',
+      stroke: 'rgba(182, 218, 255, 0.78)',
+      hatch: 'rgba(200, 230, 255, 0.18)',
+      baseWidth: 18,
+      alphaStop: 1.0,
+      betaDrag: 0.55,
+      betaScatter: 0.55,
+      gammaMu: 0.012,
+      info: '<strong>Aluminum (4 mm):</strong> Blocks 100% of α and absorbs ~95% of β⁻/β⁺ particles inside the metal, while high-energy γ photons mostly pass right through.'
+    },
+    lead: {
+      label: 'Lead Pb (25 mm)',
+      fill: 'rgba(98, 108, 138, 0.48)',
+      stroke: 'rgba(162, 178, 214, 0.85)',
+      hatch: 'rgba(195, 210, 245, 0.2)',
+      baseWidth: 28,
+      alphaStop: 1.0,
+      betaDrag: 1.8,
+      betaScatter: 0.8,
+      gammaMu: 0.068,
+      info: '<strong>Lead Pb (25 mm):</strong> Dense high-Z absorber. Halts α &amp; β completely and exponentially attenuates γ rays (Beer-Lambert law), though energetic photons occasionally penetrate.'
+    }
+  };
+
+  /* =========================================================================
+     DOM ELEMENTS
+     ========================================================================= */
+  const canvas = document.getElementById('sim-canvas');
+  const ctx = canvas.getContext('2d', { alpha: false });
+  const graphCanvas = document.getElementById('decay-graph');
+  const gctx = graphCanvas.getContext('2d');
+
+  const els = {
+    sourceBadge: document.getElementById('source-badge'),
+    chamberStatus: document.getElementById('chamber-status'),
+    telActivity: document.getElementById('tel-activity'),
+    telBfield: document.getElementById('tel-bfield'),
+    telParent: document.getElementById('tel-parent'),
+    telAlpha: document.getElementById('tel-alpha'),
+    telBeta: document.getElementById('tel-beta'),
+    telGamma: document.getElementById('tel-gamma'),
+    barParent: document.getElementById('bar-parent'),
+    barInter: document.getElementById('bar-inter'),
+    barStable: document.getElementById('bar-stable'),
+    telStablePct: document.getElementById('tel-stable-pct'),
+    telTime: document.getElementById('tel-time'),
+    telHlElapsed: document.getElementById('tel-hl-elapsed'),
+    telTotal: document.getElementById('tel-total'),
+    chainStepsLabel: document.getElementById('chain-steps-label'),
+    sourceDesc: document.getElementById('source-desc'),
+    graphLegend: document.getElementById('graph-legend'),
+    graphScaleLbl: document.getElementById('graph-scale-lbl'),
+    chainList: document.getElementById('chain-list'),
+    popLiveLabel: document.getElementById('pop-live-label'),
+    bPolarityLbl: document.getElementById('b-polarity-lbl'),
+    valBfield: document.getElementById('val-bfield'),
+    slBfield: document.getElementById('sl-bfield'),
+    btnBNeg: document.getElementById('btn-b-neg'),
+    btnBZero: document.getElementById('btn-b-zero'),
+    btnBPos: document.getElementById('btn-b-pos'),
+    btnBFlip: document.getElementById('btn-b-flip'),
+    chkShield: document.getElementById('chk-shield'),
+    shieldMatRow: document.getElementById('shield-mat-row'),
+    valShieldAngle: document.getElementById('val-shield-angle'),
+    slShieldAngle: document.getElementById('sl-shield-angle'),
+    valShieldThick: document.getElementById('val-shield-thick'),
+    slShieldThick: document.getElementById('sl-shield-thick'),
+    btnShieldPlace: document.getElementById('btn-shield-place'),
+    btnSourceCenter: document.getElementById('btn-source-center'),
+    shieldInfo: document.getElementById('shield-info'),
+    valActivity: document.getElementById('val-activity'),
+    slActivity: document.getElementById('sl-activity'),
+    valSampleN: document.getElementById('val-sample-n'),
+    slSampleN: document.getElementById('sl-sample-n'),
+    valDropN: document.getElementById('val-drop-n'),
+    slDropN: document.getElementById('sl-drop-n'),
+    geomRow: document.getElementById('geom-row'),
+    valSupersat: document.getElementById('val-supersat'),
+    slSupersat: document.getElementById('sl-supersat'),
+    valDrift: document.getElementById('val-drift'),
+    slDrift: document.getElementById('sl-drift'),
+    chkMuons: document.getElementById('chk-muons'),
+    chkGammaRays: document.getElementById('chk-gamma-rays'),
+    chkBfieldGrid: document.getElementById('chk-bfield-grid'),
+    chkMist: document.getElementById('chk-mist'),
+    chkBragg: document.getElementById('chk-bragg'),
+    chkCallouts: document.getElementById('chk-callouts'),
+    audioBadge: document.getElementById('audio-badge'),
+    chkAudio: document.getElementById('chk-audio'),
+    valVol: document.getElementById('val-vol'),
+    slVol: document.getElementById('sl-vol'),
+    btnClearTracks: document.getElementById('btn-clear-tracks'),
+    btnCosmicShower: document.getElementById('btn-cosmic-shower'),
+    eventBanner: document.getElementById('event-banner'),
+    eventText: document.getElementById('event-text'),
+    btnPlay: document.getElementById('btn-play'),
+    btnReset: document.getElementById('btn-reset'),
+    btnInject: document.getElementById('btn-inject'),
+    btnGeiger: document.getElementById('btn-geiger'),
+    btnDrawer: document.getElementById('btn-drawer'),
+    btnZen: document.getElementById('btn-zen'),
+    btnZenRestore: document.getElementById('btn-zen-restore'),
+    drawer: document.getElementById('drawer'),
+    presetGrid: document.getElementById('preset-grid')
+  };
+
+  /* =========================================================================
+     SIMULATION STATE
+     ========================================================================= */
+  let W = window.innerWidth;
+  let H = window.innerHeight;
+  let DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+  const state = {
+    sourceKey: 'u238',
+    running: true,
+    speed: 1.0,
+    activityScale: 1.0,
+    bField: 1.20,          // Tesla (-3 to +3)
+    supersat: 0.72,        // 0.2 to 1.0 -> trail persistence
+    driftScale: 1.0,
+    sampleN: 600,
+    dropN: 90,
+    geometry: 'point',     // 'point' | 'dispersed'
+    showMuons: true,
+    showGammaRays: true,
+    showBGrid: true,
+    showMist: true,
+    showBragg: true,
+    showCallouts: true,
+    audioEnabled: false,
+    audioVolume: 0.55,
+    simTime: 0,
+    realClock: 0,
+    drawerOpen: true,
+    zenMode: false
+  };
+
+  /* Interactive Chamber Objects */
+  const sourceObj = {
+    x: 0,
+    y: 0,
+    radius: 17,
+    dragging: false
+  };
+
+  const shield = {
+    enabled: true,
+    mat: 'paper',
+    x: 0,
+    y: 0,
+    angle: 0,         // radians
+    length: 195,
+    thickMult: 1.0,
+    dragging: false,
+    dragOffX: 0,
+    dragOffY: 0,
+    hover: false
+  };
+
+  /* Dynamic Collections */
+  let nuclei = [];         // { x, y, vx, vy, isoIdx, fromMain }
+  let clusters = [];       // { x, y, r, born, count } visual ripple for dropped clusters
+  let tracks = [];         // Vapor condensation trails
+  let gammaRays = [];      // Transient dashed gamma flashes
+  let flashes = [];        // Point flashes (annihilation, Bragg impact, Compton, pair prod)
+  let callouts = [];       // Subtle floating labels ("e⁺e⁻ 511 keV", "Pair Prod", etc.)
+  let mistWisps = [];      // Background alcohol vapor clouds
+  let droplets = [];       // Falling shimmering alcohol micro-droplets
+
+  /* Telemetry & History */
+  const stats = {
+    alpha: 0,
+    betaMinus: 0,
+    betaPlus: 0,
+    gamma: 0,
+    pairProd: 0,
+    compton: 0,
+    annihilations: 0,
+    muons: 0,
+    recentDecays: []       // timestamps (realClock) for rolling decays/sec
+  };
+
+  let history = [];        // { t, total, counts: [...] }
+  let lastHistorySample = -1;
+  let lastHudUpdate = 0;
+  let bannerTimer = null;
+
+  /* =========================================================================
+     GEIGER-MÜLLER WEB AUDIO SYNTHESIZER (Muted by default)
+     ========================================================================= */
+  const geiger = {
+    ctx: null,
+    noiseBuf: null,
+    lastClickTime: 0,
+    init() {
+      if (this.ctx) {
+        if (this.ctx.state === 'suspended') this.ctx.resume();
+        return;
+      }
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      this.ctx = new AC();
+      const len = Math.floor(this.ctx.sampleRate * 0.014);
+      this.noiseBuf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+      const data = this.noiseBuf.getChannelData(0);
+      for (let i = 0; i < len; i++) {
+        const env = Math.exp(-i / (len * 0.18));
+        data[i] = (Math.random() * 2 - 1) * env;
+      }
+    },
+    click(type) {
+      if (!state.audioEnabled) return;
+      this.init();
+      if (!this.ctx || !this.noiseBuf) return;
+      const now = this.ctx.currentTime;
+      // Realistic GM tube dead-time limiter for pleasant crisp audio
+      if (now - this.lastClickTime < 0.011) return;
+      this.lastClickTime = now;
+
+      const vol = state.audioVolume * 0.34;
+      const src = this.ctx.createBufferSource();
+      src.buffer = this.noiseBuf;
+
+      const bp = this.ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+
+      const gain = this.ctx.createGain();
+      if (type === 'alpha') {
+        bp.frequency.value = 1050 + Math.random() * 220;
+        bp.Q.value = 1.6;
+        gain.gain.setValueAtTime(vol * 1.35, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.013);
+        // Subtle warm low thump for heavy alpha
+        const osc = this.ctx.createOscillator();
+        const og = this.ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(210 + Math.random() * 40, now);
+        osc.frequency.exponentialRampToValueAtTime(65, now + 0.012);
+        og.gain.setValueAtTime(vol * 0.55, now);
+        og.gain.exponentialRampToValueAtTime(0.001, now + 0.012);
+        osc.connect(og).connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.014);
+      } else if (type === 'beta' || type === 'pos') {
+        bp.frequency.value = (type === 'pos' ? 3100 : 2550) + Math.random() * 450;
+        bp.Q.value = 2.6;
+        gain.gain.setValueAtTime(vol * 0.85, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.007);
+      } else {
+        // gamma / muon
+        bp.frequency.value = 4300 + Math.random() * 700;
+        bp.Q.value = 3.5;
+        gain.gain.setValueAtTime(vol * 0.62, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.005);
+      }
+
+      src.connect(bp).connect(gain).connect(this.ctx.destination);
+      src.start(now);
+      src.stop(now + 0.015);
+    }
+  };
+
+  /* =========================================================================
+     CHAMBER ENVIRONMENT & CONVECTION FIELD
+     ========================================================================= */
+  function initAtmosphere() {
+    mistWisps = [];
+    for (let i = 0; i < 24; i++) {
+      mistWisps.push({
+        x: Math.random() * W,
+        y: Math.random() * H,
+        r: 120 + Math.random() * 240,
+        vx: (Math.random() - 0.5) * 9,
+        vy: (Math.random() - 0.5) * 6,
+        alpha: 0.018 + Math.random() * 0.026,
+        hue: 208 + Math.random() * 28,
+        phase: Math.random() * Math.PI * 2
+      });
+    }
+    droplets = [];
+    for (let i = 0; i < 110; i++) {
+      droplets.push({
+        x: Math.random() * W,
+        y: Math.random() * H,
+        vy: 5 + Math.random() * 14,
+        vx: (Math.random() - 0.5) * 3.5,
+        size: 0.6 + Math.random() * 1.15,
+        alpha: 0.07 + Math.random() * 0.18,
+        twinkle: Math.random() * Math.PI * 2
+      });
+    }
+  }
+
+  // Smooth divergence-free thermal convection flow for realistic vapor drift
+  function convectionAt(x, y, t) {
+    const s = 0.0032;
+    const vx = Math.sin(y * s + t * 0.28) * 11 + Math.cos((x + y) * s * 0.7 - t * 0.19) * 6;
+    const vy = Math.cos(x * s * 1.1 - t * 0.23) * 10 + Math.sin((x - y) * s * 0.6 + t * 0.15) * 5;
+    return { vx: vx * state.driftScale, vy: vy * state.driftScale };
+  }
+
+  /* =========================================================================
+     SHIELD GEOMETRY HELPERS (Oriented Bounding Box)
+     ========================================================================= */
+  function getShieldHalfExtents() {
+    const mat = SHIELD_MATS[shield.mat];
+    const hw = (mat.baseWidth * shield.thickMult) * 0.5;
+    const hh = shield.length * 0.5;
+    return { hw, hh };
+  }
+
+  function worldToShieldLocal(px, py) {
+    const dx = px - shield.x;
+    const dy = py - shield.y;
+    const c = Math.cos(-shield.angle);
+    const s = Math.sin(-shield.angle);
+    return {
+      lx: dx * c - dy * s,
+      ly: dx * s + dy * c
+    };
+  }
+
+  function isPointInShield(px, py, pad = 0) {
+    if (!shield.enabled) return false;
+    const { lx, ly } = worldToShieldLocal(px, py);
+    const { hw, hh } = getShieldHalfExtents();
+    return Math.abs(lx) <= hw + pad && Math.abs(ly) <= hh + pad;
+  }
+
+  /* =========================================================================
+     TRACK PHYSICS & GENERATION (α, β⁻, β⁺, γ, Compton, Pair Prod, Muons)
+     ========================================================================= */
+  function pushTrack(track) {
+    tracks.push(track);
+    if (tracks.length > 260) {
+      tracks.shift();
+    }
+  }
+
+  function addFlash(x, y, color, maxR, life = 0.42, ring = false) {
+    flashes.push({ x, y, color, maxR, age: 0, life, ring });
+    if (flashes.length > 90) flashes.shift();
+  }
+
+  function addCallout(x, y, text, color) {
+    if (!state.showCallouts) return;
+    callouts.push({ x, y, text, color, age: 0, life: 2.3 });
+    if (callouts.length > 18) callouts.shift();
+  }
+
+  function showBanner(msg) {
+    els.eventText.textContent = msg;
+    els.eventBanner.classList.add('visible');
+    if (bannerTimer) clearTimeout(bannerTimer);
+    bannerTimer = setTimeout(() => {
+      els.eventBanner.classList.remove('visible');
+    }, 3200);
+  }
+
+  // 1. ALPHA PARTICLE (He2+, heavy, bright, straight/slightly curved, sharp Bragg peak)
+  function spawnAlpha(x, y, eMeV, angleOpt) {
+    stats.alpha++;
+    geiger.click('alpha');
+
+    const angle = angleOpt !== undefined ? angleOpt : Math.random() * Math.PI * 2;
+    // Range scales strongly with MeV (4.2 MeV ~ 95px, 5.5 MeV ~ 128px, 7.7 MeV ~ 185px)
+    const targetRange = (42 + Math.pow(eMeV, 1.38) * 10.5) * (0.9 + Math.random() * 0.2);
+    const stepLen = 3.2;
+    const steps = Math.max(12, Math.floor(targetRange / stepLen));
+
+    let px = x, py = y;
+    let dir = angle;
+    // Heavy He2+: gentle Lorentz curvature (q = +2, large momentum -> small curvature)
+    const baseCurv = (state.bField * 0.00145) / Math.sqrt(Math.max(eMeV, 1.5));
+
+    const pts = [];
+    let stoppedByShield = false;
+
+    for (let i = 0; i <= steps; i++) {
+      const frac = i / steps; // 0 -> 1 (Bragg peak near 0.92)
+      // Slight increase in curvature as particle slows near end of range
+      const slowFactor = 1 / Math.max(0.28, Math.sqrt(1 - frac * 0.88));
+      dir += baseCurv * stepLen * slowFactor + (Math.random() - 0.5) * 0.012;
+
+      const nx = px + Math.cos(dir) * stepLen;
+      const ny = py + Math.sin(dir) * stepLen;
+
+      if (isPointInShield(nx, ny, 0)) {
+        // Alpha stopped immediately by Paper, Al, or Pb!
+        stoppedByShield = true;
+        pts.push({
+          x: nx, y: ny,
+          w: 4.8,
+          bragg: 1.0,
+          delta: null
+        });
+        addFlash(nx, ny, '#ffcf6e', 16, 0.35, true);
+        break;
+      }
+
+      // Bragg curve ionization density: peaks dramatically right before stopping
+      const bragg = 0.72 + 0.58 * Math.exp(-Math.pow((frac - 0.91) / 0.11, 2));
+      let delta = null;
+      if (Math.random() < 0.28) {
+        const dAng = dir + (Math.random() < 0.5 ? 1 : -1) * (0.65 + Math.random() * 0.7);
+        delta = { ang: dAng, len: 4 + Math.random() * 8.5 };
+      }
+
+      pts.push({
+        x: px, y: py,
+        w: 3.1 * bragg,
+        bragg,
+        delta
+      });
+      px = nx;
+      py = ny;
+    }
+
+    const baseLife = 2.6 + state.supersat * 7.8;
+    pushTrack({
+      kind: 'alpha',
+      pts,
+      reveal: 0,
+      revealSpeed: 15.5,
+      age: 0,
+      life: baseLife * (0.88 + Math.random() * 0.24),
+      stoppedByShield,
+      eMeV
+    });
+  }
+
+  // 2. BETA-MINUS (e-, q=-1) or POSITRON (e+, q=+1)
+  function spawnBeta(x, y, eMeV, charge = -1, angleOpt, isSecondary = false) {
+    if (!isSecondary) {
+      if (charge < 0) stats.betaMinus++;
+      else stats.betaPlus++;
+      geiger.click(charge < 0 ? 'beta' : 'pos');
+    }
+
+    // Continuous beta energy spectrum (average ~40% of Q-value)
+    const energy = isSecondary ? eMeV : Math.max(0.06, eMeV * (0.22 + 0.78 * Math.random() * Math.random() + 0.25 * Math.random()));
+    let dir = angleOpt !== undefined ? angleOpt : Math.random() * Math.PI * 2;
+
+    // Relativistic momentum proxy p = sqrt(E^2 + 2*E*0.511)
+    let E = energy;
+    const stepLen = 3.4;
+    const maxSteps = Math.min(240, Math.floor(65 + E * 155));
+
+    let px = x, py = y;
+    const pts = [];
+    let stoppedByShield = false;
+    let annihilated = false;
+
+    for (let i = 0; i < maxSteps; i++) {
+      const p = Math.sqrt(E * E + 1.022 * E);
+      // Lorentz curvature: kappa = q * B / p (opposite signs for e- vs e+!)
+      // With B > 0 (out of page), q > 0 curves clockwise (+angle in screen Y-down), q < 0 curves counter-clockwise (-angle)
+      const kappa = (charge * state.bField * 0.036) / Math.max(0.14, p);
+      // Stochastic multiple Coulomb scattering (increases sharply at low energy)
+      const scatterStd = 0.038 / Math.max(0.22, p);
+      let kink = (Math.random() - 0.5) * scatterStd * 2.1;
+      if (Math.random() < 0.045) {
+        // Occasional dramatic nuclear Coulomb deflection kink
+        kink += (Math.random() - 0.5) * (0.55 / Math.max(0.35, p));
+      }
+
+      dir += kappa * stepLen + kink;
+      const nx = px + Math.cos(dir) * stepLen;
+      const ny = py + Math.sin(dir) * stepLen;
+
+      // Check Shield interaction
+      if (isPointInShield(nx, ny, 0)) {
+        const mat = SHIELD_MATS[shield.mat];
+        E -= mat.betaDrag * 0.22 * shield.thickMult;
+        dir += (Math.random() - 0.5) * mat.betaScatter;
+        if (E <= 0.025) {
+          stoppedByShield = true;
+          pts.push({ x: nx, y: ny, w: 1.5, bragg: 1.0, delta: null });
+          addFlash(nx, ny, charge < 0 ? '#58dcff' : '#d96bff', 12, 0.3, false);
+          break;
+        }
+      }
+
+      // Continuous ionization energy loss in alcohol vapor
+      E -= (0.0038 + 0.0022 / Math.max(0.18, E)) * (stepLen / 3.4);
+
+      pts.push({
+        x: px, y: py,
+        w: 1.15 + Math.min(0.9, 0.22 / Math.max(0.12, E)),
+        bragg: 0.7,
+        delta: null
+      });
+
+      px = nx;
+      py = ny;
+
+      if (px < -40 || px > W + 40 || py < -40 || py > H + 40) break;
+
+      // Positron annihilation when slowed down (or small in-flight chance)
+      if (charge > 0 && (E <= 0.045 || (i > 22 && Math.random() < 0.008))) {
+        annihilated = true;
+        break;
+      }
+      if (E <= 0.02) break;
+    }
+
+    const baseLife = 2.1 + state.supersat * 6.5;
+    pushTrack({
+      kind: charge < 0 ? 'beta' : 'pos',
+      pts,
+      reveal: 0,
+      revealSpeed: 22.0,
+      age: 0,
+      life: baseLife * (0.85 + Math.random() * 0.3),
+      stoppedByShield,
+      eMeV: energy
+    });
+
+    // Positron-electron annihilation -> back-to-back 511 keV gamma rays!
+    if (annihilated) {
+      stats.annihilations++;
+      const delayMs = Math.min(260, (pts.length / 22) * 18);
+      const ax = px, ay = py;
+      setTimeout(() => {
+        if (!state.running && state.simTime === 0) return;
+        addFlash(ax, ay, '#f0a6ff', 28, 0.55, true);
+        addCallout(ax, ay - 12, 'e⁺e⁻ → 2γ (511 keV)', '#e6a8ff');
+        const gAng = Math.random() * Math.PI * 2;
+        spawnGamma(ax, ay, 0.511, gAng, true);
+        spawnGamma(ax, ay, 0.511, gAng + Math.PI, true);
+      }, delayMs);
+    }
+  }
+
+  // 3. GAMMA PHOTON (Straight ray -> optional Shield attenuation, Compton recoil, or Pair Production!)
+  function spawnGamma(x, y, eMeV = 1.2, angleOpt, fromAnnih = false) {
+    stats.gamma++;
+    if (!fromAnnih) geiger.click('gamma');
+
+    const ang = angleOpt !== undefined ? angleOpt : Math.random() * Math.PI * 2;
+    const dx = Math.cos(ang);
+    const dy = Math.sin(ang);
+    const maxDist = Math.hypot(W, H);
+    const step = 6;
+
+    let endX = x + dx * maxDist;
+    let endY = y + dy * maxDist;
+    let absorbedInShield = false;
+    let interactionType = null; // 'compton' | 'pair'
+    let interX = 0, interY = 0;
+
+    // Probability per step inside vapor for Compton / Pair Production (boosted slightly for museum visibility)
+    const comptonProbPerStep = 0.0022;
+    const pairProbPerStep = eMeV > 1.022 ? 0.0019 * (eMeV - 1.022) : 0;
+
+    for (let d = 14; d < maxDist; d += step) {
+      const px = x + dx * d;
+      const py = y + dy * d;
+      if (px < -10 || px > W + 10 || py < -10 || py > H + 10) {
+        endX = px;
+        endY = py;
+        break;
+      }
+
+      // Check shield Beer-Lambert attenuation
+      if (isPointInShield(px, py, 0)) {
+        const mat = SHIELD_MATS[shield.mat];
+        const pAbs = 1 - Math.exp(-mat.gammaMu * step * shield.thickMult);
+        if (Math.random() < pAbs) {
+          endX = px;
+          endY = py;
+          absorbedInShield = true;
+          addFlash(px, py, '#4af2b2', 14, 0.35, true);
+          break;
+        }
+      } else if (d > 48 && px > 40 && px < W - 40 && py > 40 && py < H - 40) {
+        // Pair Production (requires E_gamma > 1.022 MeV = 2 m_e c^2)
+        if (pairProbPerStep > 0 && Math.random() < pairProbPerStep) {
+          interactionType = 'pair';
+          interX = px;
+          interY = py;
+          endX = px;
+          endY = py;
+          break;
+        }
+        // Compton Scattering
+        if (Math.random() < comptonProbPerStep) {
+          interactionType = 'compton';
+          interX = px;
+          interY = py;
+          endX = px;
+          endY = py;
+          break;
+        }
+      }
+    }
+
+    gammaRays.push({
+      x1: x, y1: y,
+      x2: endX, y2: endY,
+      age: 0,
+      life: 0.72,
+      eMeV,
+      absorbedInShield
+    });
+    if (gammaRays.length > 80) gammaRays.shift();
+
+    if (interactionType === 'pair') {
+      stats.pairProd++;
+      const availE = Math.max(0.28, (eMeV - 1.022) * 0.9 + 0.35);
+      const split = 0.35 + Math.random() * 0.3;
+      addFlash(interX, interY, '#7ef9ff', 24, 0.5, true);
+      addCallout(interX, interY - 12, 'γ → e⁻ + e⁺ Pair', '#7ef9ff');
+      // Classic cloud-chamber V-spiral: e- and e+ open slightly and curl opposite ways!
+      spawnBeta(interX, interY, availE * split, -1, ang - 0.18, true);
+      spawnBeta(interX, interY, availE * (1 - split), +1, ang + 0.18, true);
+      geiger.click('pos');
+    } else if (interactionType === 'compton') {
+      stats.compton++;
+      const recoilE = Math.max(0.18, eMeV * (0.25 + Math.random() * 0.45));
+      const recoilAng = ang + (Math.random() < 0.5 ? 1 : -1) * (0.22 + Math.random() * 0.65);
+      addFlash(interX, interY, '#58dcff', 13, 0.32, false);
+      spawnBeta(interX, interY, recoilE, -1, recoilAng, true);
+    }
+  }
+
+  // 4. COSMIC RAY MUON (High-energy straight relativistic track slicing across chamber)
+  function spawnCosmicMuon() {
+    stats.muons++;
+    geiger.click('gamma');
+
+    const edge = Math.floor(Math.random() * 4);
+    let x, y, ang;
+    if (edge === 0) { // top
+      x = Math.random() * W;
+      y = -8;
+      ang = Math.PI * 0.25 + Math.random() * Math.PI * 0.5;
+    } else if (edge === 1) { // left
+      x = -8;
+      y = Math.random() * H;
+      ang = -Math.PI * 0.35 + Math.random() * Math.PI * 0.7;
+    } else if (edge === 2) { // right
+      x = W + 8;
+      y = Math.random() * H;
+      ang = Math.PI * 0.65 + Math.random() * Math.PI * 0.7;
+    } else { // top-skew
+      x = Math.random() * W;
+      y = -8;
+      ang = Math.PI * 0.35 + Math.random() * Math.PI * 0.3;
+    }
+
+    const step = 8;
+    const maxDist = Math.hypot(W, H) + 40;
+    let px = x, py = y;
+    const charge = Math.random() < 0.5 ? 1 : -1;
+    // Muons have GeV momentum -> barely curved even in 3T!
+    const curv = charge * state.bField * 0.00018;
+    const pts = [];
+
+    for (let d = 0; d < maxDist; d += step) {
+      ang += curv * step + (Math.random() - 0.5) * 0.003;
+      px += Math.cos(ang) * step;
+      py += Math.sin(ang) * step;
+      pts.push({ x: px, y: py, w: 1.55, bragg: 0.9, delta: null });
+      if (d > 80 && (px < -30 || px > W + 30 || py < -30 || py > H + 30)) break;
+    }
+
+    const baseLife = 2.4 + state.supersat * 6.0;
+    pushTrack({
+      kind: 'muon',
+      pts,
+      reveal: 0,
+      revealSpeed: 48.0,
+      age: 0,
+      life: baseLife,
+      stoppedByShield: false,
+      eMeV: 3000
+    });
+  }
+
+  /* =========================================================================
+     NUCLEI MANAGEMENT & STOCHASTIC POISSON DECAY ENGINE
+     ========================================================================= */
+  function seedSample(resetClock = true) {
+    const src = SOURCES[state.sourceKey];
+    nuclei = [];
+    clusters = [];
+    tracks = [];
+    gammaRays = [];
+    flashes = [];
+    callouts = [];
+    history = [];
+    lastHistorySample = -1;
+
+    if (resetClock) {
+      state.simTime = 0;
+      stats.alpha = 0;
+      stats.betaMinus = 0;
+      stats.betaPlus = 0;
+      stats.gamma = 0;
+      stats.pairProd = 0;
+      stats.compton = 0;
+      stats.annihilations = 0;
+      stats.muons = 0;
+      stats.recentDecays = [];
+    }
+
+    addNucleiCluster(sourceObj.x, sourceObj.y, state.sampleN, state.geometry === 'dispersed', true);
+    buildChainListDOM();
+    recordHistoryPoint(true);
+    updateHUD(true);
+  }
+
+  function addNucleiCluster(cx, cy, count, dispersed = false, fromMain = false) {
+    const spread = dispersed ? Math.min(W, H) * 0.36 : 11;
+    for (let i = 0; i < count; i++) {
+      const r = dispersed
+        ? Math.sqrt(Math.random()) * spread
+        : Math.sqrt(Math.random()) * spread;
+      const a = Math.random() * Math.PI * 2;
+      nuclei.push({
+        x: Math.max(24, Math.min(W - 24, cx + Math.cos(a) * r)),
+        y: Math.max(24, Math.min(H - 24, cy + Math.sin(a) * r)),
+        vx: (Math.random() - 0.5) * (dispersed ? 5 : 0),
+        vy: (Math.random() - 0.5) * (dispersed ? 5 : 0),
+        isoIdx: 0,
+        fromMain
+      });
+    }
+    if (!fromMain) {
+      clusters.push({ x: cx, y: cy, r: 8, maxR: 36, age: 0, life: 0.75 });
+    }
+  }
+
+  function stepPhysics(dt) {
+    if (!state.running) return;
+
+    const simDt = dt * state.speed;
+    state.simTime += simDt;
+    const src = SOURCES[state.sourceKey];
+    const chain = src.chain;
+    const ln2 = Math.LN2;
+
+    // Precompute decay probability p = 1 - exp(-lambda * dt) per isotope step
+    const probs = new Float64Array(chain.length);
+    for (let i = 0; i < chain.length; i++) {
+      const hl = chain[i].simHL;
+      if (isFinite(hl) && hl > 0) {
+        const lambda = (ln2 / hl) * state.activityScale;
+        probs[i] = 1 - Math.exp(-lambda * simDt);
+      } else {
+        probs[i] = 0;
+      }
+    }
+
+    // Track burst cap per frame so 8x speed stays smooth & legible
+    let emittedTracksThisFrame = 0;
+    const maxTracksPerFrame = 9;
+
+    for (let i = 0; i < nuclei.length; i++) {
+      const n = nuclei[i];
+      const iso = chain[n.isoIdx];
+
+      // Gas diffusion (e.g., Radon-222 gently drifts outward into chamber!)
+      if (iso.gas || state.geometry === 'dispersed') {
+        n.vx += (Math.random() - 0.5) * 26 * dt;
+        n.vy += (Math.random() - 0.5) * 26 * dt;
+        n.vx *= 0.985;
+        n.vy *= 0.985;
+        n.x += n.vx * dt;
+        n.y += n.vy * dt;
+        if (n.x < 30 || n.x > W - 30) n.vx *= -1;
+        if (n.y < 30 || n.y > H - 30) n.vy *= -1;
+      } else if (n.fromMain && state.geometry === 'point') {
+        // Keep main sample bound tightly to draggable source capsule
+        const dx = n.x - sourceObj.x;
+        const dy = n.y - sourceObj.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist > 14) {
+          n.x = sourceObj.x + (dx / dist) * 11;
+          n.y = sourceObj.y + (dy / dist) * 11;
+        }
+      }
+
+      const p = probs[n.isoIdx];
+      if (p > 0 && Math.random() < p) {
+        // Stochastic Decay Event!
+        const nextIdx = Math.min(chain.length - 1, n.isoIdx + 1);
+        n.isoIdx = nextIdx;
+        stats.recentDecays.push(state.realClock);
+
+        // Give noble-gas daughters (Radon-222) a little recoil drift kick
+        if (chain[nextIdx].gas) {
+          const kickA = Math.random() * Math.PI * 2;
+          n.vx = Math.cos(kickA) * (14 + Math.random() * 18);
+          n.vy = Math.sin(kickA) * (14 + Math.random() * 18);
+        }
+
+        if (emittedTracksThisFrame < maxTracksPerFrame) {
+          emittedTracksThisFrame++;
+          if (iso.mode === 'alpha') {
+            spawnAlpha(n.x, n.y, iso.eMeV);
+          } else if (iso.mode === 'beta') {
+            spawnBeta(n.x, n.y, iso.eMeV, -1);
+          } else if (iso.mode === 'pos') {
+            spawnBeta(n.x, n.y, iso.eMeV, +1);
+          }
+
+          // Prompt de-excitation gamma(s)
+          if (iso.gamma > 0 && Math.random() < iso.gamma) {
+            const gE = iso.gammaMeV || 0.85;
+            spawnGamma(n.x, n.y, gE);
+            if (iso.doubleGamma) {
+              spawnGamma(n.x, n.y, 1.17);
+            }
+          }
+        } else {
+          // Still count stats accurately even during intense bursts
+          if (iso.mode === 'alpha') stats.alpha++;
+          else if (iso.mode === 'beta') stats.betaMinus++;
+          else if (iso.mode === 'pos') stats.betaPlus++;
+          if (iso.gamma > 0 && Math.random() < iso.gamma) stats.gamma++;
+        }
+      }
+    }
+
+    // Background cosmic ray muons (~0.45 / sec)
+    if (state.showMuons && Math.random() < 0.48 * dt) {
+      spawnCosmicMuon();
+    }
+
+    // Update vapor tracks (progressive head reveal + convection drift + organic aging)
+    for (let i = tracks.length - 1; i >= 0; i--) {
+      const tr = tracks[i];
+      tr.age += dt;
+      if (tr.reveal < tr.pts.length) {
+        tr.reveal = Math.min(tr.pts.length, tr.reveal + tr.revealSpeed * dt * 20);
+      }
+
+      // Advect vapor points gently with chamber convection
+      if (state.driftScale > 0.01) {
+        const driftDt = dt * (0.45 + 0.55 * (tr.age / tr.life));
+        for (let j = 0; j < tr.pts.length; j++) {
+          const pt = tr.pts[j];
+          const c = convectionAt(pt.x, pt.y, state.realClock);
+          pt.x += c.vx * driftDt;
+          pt.y += c.vy * driftDt;
+        }
+      }
+
+      if (tr.age >= tr.life) {
+        tracks.splice(i, 1);
+      }
+    }
+
+    // Update gamma flashes
+    for (let i = gammaRays.length - 1; i >= 0; i--) {
+      gammaRays[i].age += dt;
+      if (gammaRays[i].age >= gammaRays[i].life) gammaRays.splice(i, 1);
+    }
+
+    // Update point flashes
+    for (let i = flashes.length - 1; i >= 0; i--) {
+      flashes[i].age += dt;
+      if (flashes[i].age >= flashes[i].life) flashes.splice(i, 1);
+    }
+
+    // Update cluster drop ripples
+    for (let i = clusters.length - 1; i >= 0; i--) {
+      clusters[i].age += dt;
+      if (clusters[i].age >= clusters[i].life) clusters.splice(i, 1);
+    }
+
+    // Update floating callouts
+    for (let i = callouts.length - 1; i >= 0; i--) {
+      callouts[i].age += dt;
+      callouts[i].y -= 8 * dt;
+      if (callouts[i].age >= callouts[i].life) callouts.splice(i, 1);
+    }
+
+    // Record decay history every 0.35s of simTime
+    if (state.simTime - lastHistorySample >= 0.35) {
+      recordHistoryPoint(false);
+    }
+  }
+
+  function updateAtmosphere(dt) {
+    // Mist & droplets keep gently drifting even if paused (live chamber feel)
+    for (let i = 0; i < mistWisps.length; i++) {
+      const m = mistWisps[i];
+      m.x += m.vx * dt * (0.4 + state.driftScale * 0.6);
+      m.y += m.vy * dt * (0.4 + state.driftScale * 0.6);
+      if (m.x < -m.r) m.x = W + m.r;
+      if (m.x > W + m.r) m.x = -m.r;
+      if (m.y < -m.r) m.y = H + m.r;
+      if (m.y > H + m.r) m.y = -m.r;
+    }
+    for (let i = 0; i < droplets.length; i++) {
+      const d = droplets[i];
+      d.x += d.vx * dt;
+      d.y += d.vy * dt;
+      if (d.y > H + 4) {
+        d.y = -4;
+        d.x = Math.random() * W;
+      }
+      if (d.x < -4) d.x = W + 4;
+      if (d.x > W + 4) d.x = -4;
+    }
+  }
+
+  function getPopCounts() {
+    const chain = SOURCES[state.sourceKey].chain;
+    const counts = new Int32Array(chain.length);
+    for (let i = 0; i < nuclei.length; i++) {
+      counts[nuclei[i].isoIdx]++;
+    }
+    return counts;
+  }
+
+  function recordHistoryPoint(force) {
+    if (!force && state.simTime - lastHistorySample < 0.3) return;
+    lastHistorySample = state.simTime;
+    const counts = Array.from(getPopCounts());
+    history.push({ t: state.simTime, total: Math.max(1, nuclei.length), counts });
+    if (history.length > 260) {
+      // Thin older points cleanly to preserve full curve from t=0
+      const compacted = [];
+      for (let i = 0; i < history.length; i += 2) {
+        compacted.push(history[i]);
+      }
+      if (compacted[compacted.length - 1] !== history[history.length - 1]) {
+        compacted.push(history[history.length - 1]);
+      }
+      history = compacted;
+    }
+  }
+
+  /* =========================================================================
+     RENDERING — CLOUD CHAMBER CANVAS
+     ========================================================================= */
+  function renderChamber() {
+    // 1. Deep cooled Peltier plate backdrop
+    ctx.fillStyle = '#040711';
+    ctx.fillRect(0, 0, W, H);
+
+    // Subtle raking museum LED chamber lighting (top/left/right cold slate glow)
+    const cx = W * 0.45;
+    const cy = H * 0.5;
+    const rad = Math.max(W, H) * 0.72;
+    const bgGrad = ctx.createRadialGradient(cx, cy, 20, cx, cy, rad);
+    bgGrad.addColorStop(0, 'rgba(20, 34, 62, 0.36)');
+    bgGrad.addColorStop(0.55, 'rgba(9, 15, 30, 0.18)');
+    bgGrad.addColorStop(1, 'rgba(2, 4, 10, 0.72)');
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, W, H);
+
+    // Subtle circular cold-plate chamber ring etching
+    const ringR = Math.min(W, H) * 0.44;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(130, 168, 235, 0.065)';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.arc(W * 0.46, H * 0.5, ringR, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(130, 168, 235, 0.035)';
+    ctx.setLineDash([4, 8]);
+    ctx.beginPath();
+    ctx.arc(W * 0.46, H * 0.5, ringR * 0.62, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+
+    // 2. Alcohol vapor mist & falling supersaturated micro-droplets
+    if (state.showMist) {
+      for (let i = 0; i < mistWisps.length; i++) {
+        const m = mistWisps[i];
+        const pulse = 0.8 + 0.2 * Math.sin(state.realClock * 0.5 + m.phase);
+        const g = ctx.createRadialGradient(m.x, m.y, 0, m.x, m.y, m.r);
+        g.addColorStop(0, `hsla(${m.hue}, 55%, 72%, ${m.alpha * pulse * state.supersat})`);
+        g.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(m.x, m.y, m.r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.fillStyle = 'rgba(180, 215, 255, 0.25)';
+      for (let i = 0; i < droplets.length; i++) {
+        const d = droplets[i];
+        const a = d.alpha * (0.55 + 0.45 * Math.sin(state.realClock * 2.1 + d.twinkle)) * state.supersat;
+        ctx.fillStyle = `rgba(195, 224, 255, ${a.toFixed(3)})`;
+        ctx.fillRect(d.x, d.y, d.size, d.size);
+      }
+    }
+
+    // 3. Magnetic Field Perpendicular Grid (⊙ out / ⊗ into page)
+    if (state.showBGrid && Math.abs(state.bField) > 0.04) {
+      const mag = Math.min(1, Math.abs(state.bField) / 3.0);
+      const isOut = state.bField > 0;
+      const spacing = 84;
+      const alpha = 0.06 + mag * 0.14;
+      ctx.save();
+      ctx.strokeStyle = isOut ? `rgba(88, 220, 255, ${alpha})` : `rgba(208, 125, 255, ${alpha})`;
+      ctx.fillStyle = isOut ? `rgba(88, 220, 255, ${alpha * 1.45})` : `rgba(208, 125, 255, ${alpha * 1.45})`;
+      ctx.lineWidth = 1;
+      const rSym = 5.5 + mag * 2.5;
+      for (let gx = spacing * 0.5; gx < W; gx += spacing) {
+        for (let gy = spacing * 0.5; gy < H; gy += spacing) {
+          ctx.beginPath();
+          ctx.arc(gx, gy, rSym, 0, Math.PI * 2);
+          ctx.stroke();
+          if (isOut) {
+            ctx.beginPath();
+            ctx.arc(gx, gy, 1.8, 0, Math.PI * 2);
+            ctx.fill();
+          } else {
+            const d = rSym * 0.58;
+            ctx.beginPath();
+            ctx.moveTo(gx - d, gy - d);
+            ctx.lineTo(gx + d, gy + d);
+            ctx.moveTo(gx + d, gy - d);
+            ctx.lineTo(gx - d, gy + d);
+            ctx.stroke();
+          }
+        }
+      }
+      ctx.restore();
+    }
+
+    // 4. Unstable Nuclei (individual glowing specks for dispersed / dropped / Radon gas)
+    const chain = SOURCES[state.sourceKey].chain;
+    const stableIdx = chain.length - 1;
+    for (let i = 0; i < nuclei.length; i++) {
+      const n = nuclei[i];
+      if (n.fromMain && state.geometry === 'point' && !chain[n.isoIdx].gas) continue;
+      if (n.isoIdx === stableIdx) {
+        ctx.fillStyle = 'rgba(130, 150, 185, 0.22)';
+        ctx.fillRect(n.x - 1, n.y - 1, 2, 2);
+      } else {
+        ctx.fillStyle = chain[n.isoIdx].color;
+        ctx.globalAlpha = 0.65;
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, 1.6, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    ctx.globalAlpha = 1;
+
+    // Dropped cluster ripples
+    for (let i = 0; i < clusters.length; i++) {
+      const cl = clusters[i];
+      const p = cl.age / cl.life;
+      ctx.save();
+      ctx.strokeStyle = `rgba(255, 190, 92, ${(1 - p) * 0.7})`;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(cl.x, cl.y, cl.r + (cl.maxR - cl.r) * p, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // 5. Draggable Radioactive Source Capsule (in Point mode)
+    if (state.geometry === 'point') {
+      drawSourceCapsule();
+    }
+
+    // 6. Draggable Metal Absorber Shielding Plate
+    if (shield.enabled) {
+      drawShieldPlate();
+    }
+
+    // 7. Ghostly Gamma Photon Rays
+    if (state.showGammaRays && gammaRays.length > 0) {
+      ctx.save();
+      ctx.setLineDash([7, 7]);
+      for (let i = 0; i < gammaRays.length; i++) {
+        const g = gammaRays[i];
+        const a = Math.max(0, 1 - g.age / g.life);
+        ctx.strokeStyle = `rgba(74, 242, 178, ${(a * 0.42).toFixed(3)})`;
+        ctx.lineWidth = 1.25;
+        ctx.beginPath();
+        ctx.moveTo(g.x1, g.y1);
+        ctx.lineTo(g.x2, g.y2);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    // 8. Supersaturated Vapor Condensation Tracks (with diffusion & glow!)
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.globalCompositeOperation = 'lighter';
+
+    for (let i = 0; i < tracks.length; i++) {
+      drawTrack(tracks[i]);
+    }
+
+    // 9. Interaction Flashes (Bragg impact, e+e- annihilation, Pair Production)
+    for (let i = 0; i < flashes.length; i++) {
+      const f = flashes[i];
+      const p = f.age / f.life;
+      const alpha = Math.pow(1 - p, 1.6);
+      const r = 3 + f.maxR * p;
+
+      const grad = ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, r);
+      grad.addColorStop(0, `rgba(255, 255, 255, ${alpha})`);
+      grad.addColorStop(0.35, hexToRgba(f.color, alpha * 0.72));
+      grad.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(f.x, f.y, r, 0, Math.PI * 2);
+      ctx.fill();
+
+      if (f.ring) {
+        ctx.strokeStyle = hexToRgba(f.color, alpha * 0.65);
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.arc(f.x, f.y, r * 0.9, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+
+    // 10. Event Callout Labels
+    if (state.showCallouts && callouts.length > 0) {
+      ctx.save();
+      ctx.font = '600 10.5px ui-monospace, Menlo, Consolas, monospace';
+      ctx.textAlign = 'center';
+      for (let i = 0; i < callouts.length; i++) {
+        const c = callouts[i];
+        const a = Math.min(1, (1 - c.age / c.life) * 1.4);
+        ctx.fillStyle = hexToRgba(c.color, a * 0.92);
+        ctx.fillText(c.text, c.x, c.y);
+      }
+      ctx.restore();
+    }
+  }
+
+  function drawTrack(tr) {
+    const nPts = Math.min(tr.pts.length, Math.floor(tr.reveal));
+    if (nPts < 2) return;
+
+    const lifeFrac = tr.age / tr.life;
+    // Organic fade: bright crisp formation -> soft widening vapor mist -> fade
+    const fade = lifeFrac < 0.12
+      ? 1.0
+      : Math.pow(Math.max(0, 1 - (lifeFrac - 0.12) / 0.88), 1.45);
+    const spread = 1 + lifeFrac * 2.8; // Vapor widens as it diffuses!
+
+    if (tr.kind === 'alpha') {
+      // Outer warm golden vapor halo
+      ctx.beginPath();
+      ctx.moveTo(tr.pts[0].x, tr.pts[0].y);
+      for (let j = 1; j < nPts; j++) ctx.lineTo(tr.pts[j].x, tr.pts[j].y);
+      ctx.strokeStyle = `rgba(255, 186, 82, ${(fade * 0.28).toFixed(3)})`;
+      ctx.lineWidth = 6.2 * spread;
+      ctx.stroke();
+
+      // Dense luminous core
+      ctx.strokeStyle = `rgba(255, 245, 212, ${(fade * 0.92).toFixed(3)})`;
+      ctx.lineWidth = 2.6 * (1 + lifeFrac * 1.15);
+      ctx.stroke();
+
+      // Delta-ray fuzz & sharp Bragg Peak terminus
+      if (state.showBragg) {
+        ctx.strokeStyle = `rgba(255, 224, 155, ${(fade * 0.45).toFixed(3)})`;
+        ctx.lineWidth = 1.0 + lifeFrac * 0.8;
+        ctx.beginPath();
+        for (let j = 1; j < nPts; j++) {
+          const p = tr.pts[j];
+          if (p.delta) {
+            ctx.moveTo(p.x, p.y);
+            ctx.lineTo(p.x + Math.cos(p.delta.ang) * p.delta.len, p.y + Math.sin(p.delta.ang) * p.delta.len);
+          }
+        }
+        ctx.stroke();
+
+        // Bulbous Bragg peak glow at track end
+        if (nPts >= tr.pts.length - 1) {
+          const end = tr.pts[nPts - 1];
+          const brR = (5.5 + lifeFrac * 4.5);
+          const g = ctx.createRadialGradient(end.x, end.y, 0, end.x, end.y, brR);
+          g.addColorStop(0, `rgba(255, 252, 232, ${(fade * 0.95).toFixed(3)})`);
+          g.addColorStop(0.5, `rgba(255, 190, 92, ${(fade * 0.5).toFixed(3)})`);
+          g.addColorStop(1, 'rgba(0,0,0,0)');
+          ctx.fillStyle = g;
+          ctx.beginPath();
+          ctx.arc(end.x, end.y, brR, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    } else if (tr.kind === 'beta' || tr.kind === 'pos') {
+      const isPos = tr.kind === 'pos';
+      ctx.beginPath();
+      ctx.moveTo(tr.pts[0].x, tr.pts[0].y);
+      for (let j = 1; j < nPts; j++) ctx.lineTo(tr.pts[j].x, tr.pts[j].y);
+
+      // Soft chromatic vapor glow
+      ctx.strokeStyle = isPos
+        ? `rgba(217, 107, 255, ${(fade * 0.34).toFixed(3)})`
+        : `rgba(88, 220, 255, ${(fade * 0.32).toFixed(3)})`;
+      ctx.lineWidth = 3.6 * spread;
+      ctx.stroke();
+
+      // Crisp inner condensation thread
+      ctx.strokeStyle = isPos
+        ? `rgba(248, 224, 255, ${(fade * 0.88).toFixed(3)})`
+        : `rgba(220, 248, 255, ${(fade * 0.86).toFixed(3)})`;
+      ctx.lineWidth = 1.25 * (1 + lifeFrac * 0.75);
+      ctx.stroke();
+    } else if (tr.kind === 'muon') {
+      ctx.beginPath();
+      ctx.moveTo(tr.pts[0].x, tr.pts[0].y);
+      for (let j = 1; j < nPts; j++) ctx.lineTo(tr.pts[j].x, tr.pts[j].y);
+
+      ctx.strokeStyle = `rgba(175, 215, 255, ${(fade * 0.25).toFixed(3)})`;
+      ctx.lineWidth = 3.8 * spread;
+      ctx.stroke();
+
+      ctx.strokeStyle = `rgba(235, 246, 255, ${(fade * 0.92).toFixed(3)})`;
+      ctx.lineWidth = 1.45 * (1 + lifeFrac * 0.6);
+      ctx.stroke();
+    }
+  }
+
+  function drawSourceCapsule() {
+    const src = SOURCES[state.sourceKey];
+    const counts = getPopCounts();
+    const unstableCount = nuclei.length - counts[counts.length - 1];
+    const activityGlow = Math.min(1, unstableCount / Math.max(1, state.sampleN));
+    const pulse = 0.86 + 0.14 * Math.sin(state.realClock * 3.4);
+
+    ctx.save();
+    // Outer soft radioactive halo
+    const haloR = 38 + 18 * activityGlow * pulse;
+    const g = ctx.createRadialGradient(sourceObj.x, sourceObj.y, 4, sourceObj.x, sourceObj.y, haloR);
+    const baseCol = src.chain[0].color;
+    g.addColorStop(0, hexToRgba(baseCol, 0.38 * activityGlow + 0.08));
+    g.addColorStop(0.5, hexToRgba(baseCol, 0.12 * activityGlow));
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(sourceObj.x, sourceObj.y, haloR, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Metallic capsule bezel
+    ctx.fillStyle = '#12192b';
+    ctx.strokeStyle = sourceObj.dragging ? '#ffffff' : 'rgba(180, 206, 255, 0.55)';
+    ctx.lineWidth = sourceObj.dragging ? 2 : 1.4;
+    ctx.beginPath();
+    ctx.arc(sourceObj.x, sourceObj.y, sourceObj.radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Glowing active sample core
+    const coreG = ctx.createRadialGradient(sourceObj.x - 2, sourceObj.y - 2, 1, sourceObj.x, sourceObj.y, 10);
+    coreG.addColorStop(0, '#ffffff');
+    coreG.addColorStop(0.45, hexToRgba(baseCol, 0.92));
+    coreG.addColorStop(1, hexToRgba(baseCol, 0.15));
+    ctx.fillStyle = coreG;
+    ctx.beginPath();
+    ctx.arc(sourceObj.x, sourceObj.y, 9.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Label beneath source
+    ctx.font = '700 10.5px ui-monospace, Menlo, Consolas, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(238, 243, 255, 0.85)';
+    ctx.fillText(src.chain[0].sym + ' Source', sourceObj.x, sourceObj.y + sourceObj.radius + 15);
+    ctx.restore();
+  }
+
+  function drawShieldPlate() {
+    const mat = SHIELD_MATS[shield.mat];
+    const { hw, hh } = getShieldHalfExtents();
+
+    ctx.save();
+    ctx.translate(shield.x, shield.y);
+    ctx.rotate(shield.angle);
+
+    // Subtle shadow glow
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.65)';
+    ctx.shadowBlur = 14;
+
+    // Plate body
+    ctx.fillStyle = mat.fill;
+    ctx.strokeStyle = shield.dragging || shield.hover ? '#ffffff' : mat.stroke;
+    ctx.lineWidth = shield.dragging ? 2.2 : 1.5;
+    roundRect(ctx, -hw, -hh, hw * 2, hh * 2, 4);
+    ctx.fill();
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // Diagonal metallic hatching inside plate
+    ctx.save();
+    roundRect(ctx, -hw, -hh, hw * 2, hh * 2, 4);
+    ctx.clip();
+    ctx.strokeStyle = mat.hatch;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let y = -hh - hw * 2; y < hh + hw * 2; y += 10) {
+      ctx.moveTo(-hw - 2, y);
+      ctx.lineTo(hw + 2, y + hw * 2);
+    }
+    ctx.stroke();
+    ctx.restore();
+
+    // Center grip pip
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
+    ctx.beginPath();
+    ctx.arc(0, 0, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Material label
+    ctx.font = '700 10px ui-monospace, Menlo, Consolas, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = mat.stroke;
+    ctx.fillText(mat.label, 0, -hh - 8);
+
+    ctx.restore();
+  }
+
+  function roundRect(c, x, y, w, h, r) {
+    c.beginPath();
+    c.moveTo(x + r, y);
+    c.lineTo(x + w - r, y);
+    c.quadraticCurveTo(x + w, y, x + w, y + r);
+    c.lineTo(x + w, y + h - r);
+    c.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    c.lineTo(x + r, y + h);
+    c.quadraticCurveTo(x, y + h, x, y + h - r);
+    c.lineTo(x, y + r);
+    c.quadraticCurveTo(x, y, x + r, y);
+    c.closePath();
+  }
+
+  function hexToRgba(hex, a) {
+    const h = hex.replace('#', '');
+    const r = parseInt(h.substring(0, 2), 16);
+    const g = parseInt(h.substring(2, 4), 16);
+    const b = parseInt(h.substring(4, 6), 16);
+    return `rgba(${r}, ${g}, ${b}, ${Math.max(0, Math.min(1, a)).toFixed(3)})`;
+  }
+
+  /* =========================================================================
+     LIVE DECAY CURVE GRAPH (N(t) vs Time)
+     ========================================================================= */
+  function renderDecayGraph() {
+    const rect = graphCanvas.getBoundingClientRect();
+    if (rect.width < 10 || rect.height < 10) return;
+
+    const gw = Math.round(rect.width * DPR);
+    const gh = Math.round(rect.height * DPR);
+    if (graphCanvas.width !== gw || graphCanvas.height !== gh) {
+      graphCanvas.width = gw;
+      graphCanvas.height = gh;
+    }
+
+    gctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    const w = rect.width;
+    const h = rect.height;
+
+    gctx.fillStyle = 'rgba(4, 8, 18, 0.92)';
+    gctx.fillRect(0, 0, w, h);
+
+    const padL = 26, padR = 8, padT = 10, padB = 18;
+    const pw = w - padL - padR;
+    const ph = h - padT - padB;
+
+    const src = SOURCES[state.sourceKey];
+    const chain = src.chain;
+    const maxT = Math.max(20, state.simTime * 1.05);
+
+    // Subtle horizontal grid (0%, 50%, 100%)
+    gctx.strokeStyle = 'rgba(148, 179, 255, 0.11)';
+    gctx.lineWidth = 1;
+    gctx.font = '600 8.5px ui-monospace, Menlo, Consolas, monospace';
+    gctx.fillStyle = 'rgba(154, 169, 204, 0.65)';
+    gctx.textAlign = 'right';
+
+    [0, 0.5, 1].forEach(frac => {
+      const y = padT + ph * (1 - frac);
+      gctx.beginPath();
+      gctx.moveTo(padL, y);
+      gctx.lineTo(padL + pw, y);
+      gctx.stroke();
+      gctx.fillText(Math.round(frac * 100) + '%', padL - 4, y + 3);
+    });
+
+    // Vertical parent half-life markers (1 t1/2, 2 t1/2, 3 t1/2)
+    const parentEffHL = chain[0].simHL / state.activityScale;
+    gctx.save();
+    gctx.setLineDash([2, 3]);
+    gctx.strokeStyle = 'rgba(255, 190, 92, 0.2)';
+    gctx.fillStyle = 'rgba(255, 190, 92, 0.55)';
+    gctx.textAlign = 'center';
+    for (let k = 1; k <= 4; k++) {
+      const tx = k * parentEffHL;
+      if (tx >= maxT) break;
+      const x = padL + (tx / maxT) * pw;
+      gctx.beginPath();
+      gctx.moveTo(x, padT);
+      gctx.lineTo(x, padT + ph);
+      gctx.stroke();
+      gctx.fillText(k + 't½', x, h - 5);
+    }
+    gctx.restore();
+
+    // Theoretical exponential parent curve dashed overlay N0*2^(-t/t1/2)
+    gctx.save();
+    gctx.setLineDash([3, 3]);
+    gctx.strokeStyle = 'rgba(255, 190, 92, 0.25)';
+    gctx.lineWidth = 1;
+    gctx.beginPath();
+    for (let px = 0; px <= pw; px += 4) {
+      const t = (px / pw) * maxT;
+      const yFrac = Math.pow(0.5, t / parentEffHL);
+      const x = padL + px;
+      const y = padT + ph * (1 - yFrac);
+      if (px === 0) gctx.moveTo(x, y);
+      else gctx.lineTo(x, y);
+    }
+    gctx.stroke();
+    gctx.restore();
+
+    // Live stochastic population curves
+    if (history.length >= 2) {
+      const indices = src.graphIndices;
+      for (let k = 0; k < indices.length; k++) {
+        const idx = indices[k];
+        const col = chain[idx].color;
+        gctx.strokeStyle = col;
+        gctx.lineWidth = idx === 0 ? 2.0 : 1.65;
+        gctx.beginPath();
+        for (let i = 0; i < history.length; i++) {
+          const pt = history[i];
+          const x = padL + (pt.t / maxT) * pw;
+          const frac = (pt.counts[idx] || 0) / pt.total;
+          const y = padT + ph * (1 - frac);
+          if (i === 0) gctx.moveTo(x, y);
+          else gctx.lineTo(x, y);
+        }
+        gctx.stroke();
+      }
+    }
+
+    // Current time axis label
+    gctx.fillStyle = 'rgba(154, 169, 204, 0.72)';
+    gctx.textAlign = 'right';
+    gctx.fillText(maxT.toFixed(0) + 's', w - 6, h - 5);
+  }
+
+  /* =========================================================================
+     HUD & ISOTOPE POPULATION DOM UPDATES
+     ========================================================================= */
+  let isoRowRefs = [];
+
+  function buildChainListDOM() {
+    const src = SOURCES[state.sourceKey];
+    const chain = src.chain;
+
+    els.sourceBadge.textContent = src.badge;
+    els.sourceDesc.textContent = src.description;
+    els.chainStepsLabel.textContent = (chain.length - 1) + (chain.length - 1 === 1 ? ' step' : ' steps');
+
+    // Graph legend chips
+    els.graphLegend.innerHTML = '';
+    src.graphIndices.forEach(idx => {
+      const iso = chain[idx];
+      const chip = document.createElement('span');
+      chip.className = 'graph-leg-chip';
+      chip.innerHTML = `<i class="graph-leg-line" style="background:${iso.color}"></i>${iso.sym}`;
+      els.graphLegend.appendChild(chip);
+    });
+
+    // Chain population rows
+    els.chainList.innerHTML = '';
+    isoRowRefs = [];
+    chain.forEach((iso, idx) => {
+      const row = document.createElement('div');
+      row.className = 'iso-row';
+      const modeTxt = iso.mode === 'alpha' ? 'α'
+        : iso.mode === 'beta' ? (iso.gamma > 0.35 ? 'β⁻+γ' : 'β⁻')
+        : iso.mode === 'pos' ? 'β⁺+γ'
+        : 'Stable';
+      const modeCls = iso.mode;
+
+      row.innerHTML = `
+        <div class="iso-head">
+          <div class="iso-left">
+            <span class="iso-sym" style="color:${iso.color}">${iso.sym}</span>
+            <span class="iso-mode ${modeCls}">${modeTxt}</span>
+            <span class="iso-hl">${iso.realHL}</span>
+          </div>
+          <span class="iso-count">0</span>
+        </div>
+        <div class="iso-bar-bg">
+          <div class="iso-bar-fill" style="width:0%;background:${iso.color}"></div>
+        </div>
+      `;
+      els.chainList.appendChild(row);
+      isoRowRefs.push({
+        countEl: row.querySelector('.iso-count'),
+        barEl: row.querySelector('.iso-bar-fill')
+      });
+    });
+  }
+
+  function updateHUD(force = false) {
+    if (!force && state.realClock - lastHudUpdate < 0.1) return;
+    lastHudUpdate = state.realClock;
+
+    const src = SOURCES[state.sourceKey];
+    const chain = src.chain;
+    const counts = getPopCounts();
+    const total = Math.max(1, nuclei.length);
+
+    // Rolling decays per second over last 1.5s
+    const cutoff = state.realClock - 1.5;
+    while (stats.recentDecays.length && stats.recentDecays[0] < cutoff) {
+      stats.recentDecays.shift();
+    }
+    const rate = stats.recentDecays.length / 1.5;
+
+    const parentCount = counts[0];
+    const stableCount = counts[chain.length - 1];
+    const interCount = Math.max(0, nuclei.length - parentCount - stableCount);
+
+    const parentPct = (parentCount / total) * 100;
+    const interPct = (interCount / total) * 100;
+    const stablePct = (stableCount / total) * 100;
+
+    els.telActivity.textContent = `${rate.toFixed(1)} /s`;
+    const bSign = state.bField > 0.02 ? '+' : '';
+    const bSym = Math.abs(state.bField) < 0.03 ? '○' : (state.bField > 0 ? '⊙' : '⊗');
+    els.telBfield.textContent = `${bSign}${state.bField.toFixed(2)} T ${bSym}`;
+    els.telBfield.className = 'tele-val ' + (Math.abs(state.bField) < 0.03 ? '' : (state.bField > 0 ? 'cyan' : 'violet'));
+    els.telParent.textContent = `${parentPct.toFixed(1)}%`;
+    els.telAlpha.textContent = stats.alpha.toLocaleString();
+    els.telBeta.textContent = `${stats.betaMinus} / ${stats.betaPlus}`;
+    els.telGamma.textContent = `${stats.gamma} / ${stats.pairProd}`;
+
+    els.barParent.style.width = `${parentPct.toFixed(1)}%`;
+    els.barInter.style.width = `${interPct.toFixed(1)}%`;
+    els.barStable.style.width = `${stablePct.toFixed(1)}%`;
+    els.telStablePct.textContent = `${Math.round(stablePct)}% ${src.stableLabel}`;
+
+    els.telTime.textContent = `${state.simTime.toFixed(1)} s`;
+    const effHL = chain[0].simHL / state.activityScale;
+    els.telHlElapsed.textContent = `${(state.simTime / effHL).toFixed(2)}×`;
+    els.telTotal.textContent = nuclei.length.toLocaleString();
+
+    // Status pill
+    if (stableCount >= nuclei.length) {
+      els.chamberStatus.textContent = 'Stable End';
+      els.chamberStatus.className = 'status-pill stable';
+    } else if (rate > 12) {
+      els.chamberStatus.textContent = 'High Activity';
+      els.chamberStatus.className = 'status-pill hot';
+    } else {
+      els.chamberStatus.textContent = 'Active Cascade';
+      els.chamberStatus.className = 'status-pill';
+    }
+
+    // Update isotope rows
+    for (let i = 0; i < isoRowRefs.length; i++) {
+      const c = counts[i] || 0;
+      const pct = (c / total) * 100;
+      isoRowRefs[i].countEl.textContent = `${c} (${pct.toFixed(0)}%)`;
+      isoRowRefs[i].barEl.style.width = `${pct.toFixed(1)}%`;
+    }
+
+    renderDecayGraph();
+  }
+
+  /* =========================================================================
+     INTERACTION (Click to drop cluster, Drag Source / Shield, Scroll rotate)
+     ========================================================================= */
+  function getCanvasPos(e) {
+    const rect = canvas.getBoundingClientRect();
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  }
+
+  function hitSource(px, py) {
+    if (state.geometry !== 'point') return false;
+    return Math.hypot(px - sourceObj.x, py - sourceObj.y) <= sourceObj.radius + 10;
+  }
+
+  canvas.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    const { x, y } = getCanvasPos(e);
+
+    if (hitSource(x, y)) {
+      sourceObj.dragging = true;
+      canvas.setPointerCapture(e.pointerId);
+      canvas.classList.add('grabbing');
+      return;
+    }
+
+    if (isPointInShield(x, y, 8)) {
+      shield.dragging = true;
+      shield.dragOffX = shield.x - x;
+      shield.dragOffY = shield.y - y;
+      canvas.setPointerCapture(e.pointerId);
+      canvas.classList.add('grabbing');
+      return;
+    }
+
+    // Click empty chamber space -> drop a fresh cluster of unstable parent nuclei!
+    addNucleiCluster(x, y, state.dropN, false, false);
+    addFlash(x, y, SOURCES[state.sourceKey].chain[0].color, 26, 0.45, true);
+    updateHUD(true);
+  });
+
+  canvas.addEventListener('pointermove', (e) => {
+    const { x, y } = getCanvasPos(e);
+
+    if (sourceObj.dragging) {
+      const dx = x - sourceObj.x;
+      const dy = y - sourceObj.y;
+      sourceObj.x = Math.max(30, Math.min(W - 30, x));
+      sourceObj.y = Math.max(30, Math.min(H - 30, y));
+      // Move main point-source nuclei along with the capsule
+      for (let i = 0; i < nuclei.length; i++) {
+        if (nuclei[i].fromMain && !SOURCES[state.sourceKey].chain[nuclei[i].isoIdx].gas) {
+          nuclei[i].x += dx;
+          nuclei[i].y += dy;
+        }
+      }
+      return;
+    }
+
+    if (shield.dragging) {
+      shield.x = Math.max(24, Math.min(W - 24, x + shield.dragOffX));
+      shield.y = Math.max(24, Math.min(H - 24, y + shield.dragOffY));
+      return;
+    }
+
+    const overShield = isPointInShield(x, y, 8);
+    const overSrc = hitSource(x, y);
+    shield.hover = overShield;
+    canvas.classList.toggle('grab', overShield || overSrc);
+  });
+
+  canvas.addEventListener('pointerup', (e) => {
+    sourceObj.dragging = false;
+    shield.dragging = false;
+    canvas.classList.remove('grabbing');
+    try { canvas.releasePointerCapture(e.pointerId); } catch (_) {}
+  });
+
+  canvas.addEventListener('wheel', (e) => {
+    const { x, y } = getCanvasPos(e);
+    if (isPointInShield(x, y, 22)) {
+      e.preventDefault();
+      let deg = Math.round((shield.angle * 180) / Math.PI) + (e.deltaY > 0 ? 5 : -5);
+      deg = Math.max(-90, Math.min(90, deg));
+      setShieldAngle(deg);
+    }
+  }, { passive: false });
+
+  /* =========================================================================
+     UI CONTROLS & EVENT WIRING
+     ========================================================================= */
+  // Drawer tabs
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      const pane = document.getElementById('tab-' + btn.dataset.tab);
+      if (pane) pane.classList.add('active');
+      if (btn.dataset.tab === 'isotopes') renderDecayGraph();
+    });
+  });
+
+  // Isotope Source Presets
+  els.presetGrid.querySelectorAll('.preset-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      els.presetGrid.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      state.sourceKey = btn.dataset.source;
+      seedSample(true);
+      showBanner(`Loaded ${SOURCES[state.sourceKey].name} source (${SOURCES[state.sourceKey].badge})`);
+    });
+  });
+
+  // Magnetic field controls
+  function setBField(val) {
+    state.bField = Math.max(-3, Math.min(3, Math.round(val * 20) / 20));
+    els.slBfield.value = state.bField.toFixed(2);
+    const sign = state.bField > 0.01 ? '+' : '';
+    els.valBfield.textContent = `${sign}${state.bField.toFixed(2)} T`;
+    if (Math.abs(state.bField) < 0.03) {
+      els.bPolarityLbl.textContent = '○ Field Off';
+      els.bPolarityLbl.style.color = 'var(--text-dim)';
+    } else if (state.bField > 0) {
+      els.bPolarityLbl.textContent = '⊙ Out of Page';
+      els.bPolarityLbl.style.color = 'var(--accent-cyan)';
+    } else {
+      els.bPolarityLbl.textContent = '⊗ Into Page';
+      els.bPolarityLbl.style.color = 'var(--accent-violet)';
+    }
+    updateHUD(true);
+  }
+
+  els.slBfield.addEventListener('input', () => setBField(parseFloat(els.slBfield.value)));
+  els.btnBNeg.addEventListener('click', () => setBField(-2.0));
+  els.btnBZero.addEventListener('click', () => setBField(0.0));
+  els.btnBPos.addEventListener('click', () => setBField(2.0));
+  els.btnBFlip.addEventListener('click', () => {
+    setBField(-state.bField || 1.2);
+    showBanner(`Magnetic field flipped to ${state.bField >= 0 ? '+' : ''}${state.bField.toFixed(2)} T`);
+  });
+
+  // Shield controls
+  els.chkShield.addEventListener('change', () => {
+    shield.enabled = els.chkShield.checked;
+  });
+
+  els.shieldMatRow.querySelectorAll('.seg-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      els.shieldMatRow.querySelectorAll('.seg-btn').forEach(b => b.classList.remove('active', 'amber'));
+      btn.classList.add('active', 'amber');
+      shield.mat = btn.dataset.mat;
+      els.shieldInfo.innerHTML = SHIELD_MATS[shield.mat].info;
+    });
+  });
+
+  function setShieldAngle(deg) {
+    shield.angle = (deg * Math.PI) / 180;
+    els.slShieldAngle.value = deg;
+    els.valShieldAngle.textContent = `${deg}°`;
+  }
+  els.slShieldAngle.addEventListener('input', () => setShieldAngle(parseInt(els.slShieldAngle.value, 10)));
+
+  els.slShieldThick.addEventListener('input', () => {
+    shield.thickMult = parseFloat(els.slShieldThick.value);
+    els.valShieldThick.textContent = `${shield.thickMult.toFixed(1)}×`;
+  });
+
+  els.btnShieldPlace.addEventListener('click', () => {
+    shield.enabled = true;
+    els.chkShield.checked = true;
+    shield.x = Math.min(W - 80, sourceObj.x + 88);
+    shield.y = sourceObj.y;
+    setShieldAngle(0);
+  });
+
+  els.btnSourceCenter.addEventListener('click', () => {
+    const nx = W * 0.44;
+    const ny = H * 0.5;
+    const dx = nx - sourceObj.x;
+    const dy = ny - sourceObj.y;
+    sourceObj.x = nx;
+    sourceObj.y = ny;
+    for (let i = 0; i < nuclei.length; i++) {
+      if (nuclei[i].fromMain) {
+        nuclei[i].x += dx;
+        nuclei[i].y += dy;
+      }
+    }
+  });
+
+  // Activity, sample size, drop size, geometry
+  els.slActivity.addEventListener('input', () => {
+    state.activityScale = parseFloat(els.slActivity.value);
+    els.valActivity.textContent = `${state.activityScale.toFixed(2)}×`;
+  });
+
+  els.slSampleN.addEventListener('input', () => {
+    state.sampleN = parseInt(els.slSampleN.value, 10);
+    els.valSampleN.textContent = state.sampleN;
+  });
+  els.slSampleN.addEventListener('change', () => seedSample(true));
+
+  els.slDropN.addEventListener('input', () => {
+    state.dropN = parseInt(els.slDropN.value, 10);
+    els.valDropN.textContent = state.dropN;
+  });
+
+  els.geomRow.querySelectorAll('.seg-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      els.geomRow.querySelectorAll('.seg-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      state.geometry = btn.dataset.geom;
+      seedSample(true);
+    });
+  });
+
+  // Chamber Lab visuals & audio
+  els.slSupersat.addEventListener('input', () => {
+    const pct = parseInt(els.slSupersat.value, 10);
+    state.supersat = pct / 100;
+    els.valSupersat.textContent = `${pct}%`;
+  });
+
+  els.slDrift.addEventListener('input', () => {
+    state.driftScale = parseFloat(els.slDrift.value);
+    els.valDrift.textContent = `${state.driftScale.toFixed(1)}×`;
+  });
+
+  els.chkMuons.addEventListener('change', () => { state.showMuons = els.chkMuons.checked; });
+  els.chkGammaRays.addEventListener('change', () => { state.showGammaRays = els.chkGammaRays.checked; });
+  els.chkBfieldGrid.addEventListener('change', () => { state.showBGrid = els.chkBfieldGrid.checked; });
+  els.chkMist.addEventListener('change', () => { state.showMist = els.chkMist.checked; });
+  els.chkBragg.addEventListener('change', () => { state.showBragg = els.chkBragg.checked; });
+  els.chkCallouts.addEventListener('change', () => { state.showCallouts = els.chkCallouts.checked; });
+
+  function setAudioEnabled(on) {
+    state.audioEnabled = on;
+    els.chkAudio.checked = on;
+    els.audioBadge.textContent = on ? 'Live' : 'Muted';
+    els.audioBadge.style.color = on ? 'var(--accent-amber)' : 'var(--text-muted)';
+    els.btnGeiger.textContent = on ? 'Geiger 🔊' : 'Geiger 🔇';
+    els.btnGeiger.classList.toggle('amber-active', on);
+    if (on) {
+      geiger.init();
+      geiger.click('beta');
+    }
+  }
+  els.chkAudio.addEventListener('change', () => setAudioEnabled(els.chkAudio.checked));
+  els.btnGeiger.addEventListener('click', () => setAudioEnabled(!state.audioEnabled));
+
+  els.slVol.addEventListener('input', () => {
+    const v = parseInt(els.slVol.value, 10);
+    state.audioVolume = v / 100;
+    els.valVol.textContent = `${v}%`;
+  });
+
+  els.btnClearTracks.addEventListener('click', () => {
+    tracks = [];
+    gammaRays = [];
+    flashes = [];
+    callouts = [];
+  });
+
+  els.btnCosmicShower.addEventListener('click', () => {
+    for (let i = 0; i < 8; i++) {
+      setTimeout(() => spawnCosmicMuon(), i * 55);
+    }
+    showBanner('Extensive cosmic-ray muon shower crossing the chamber!');
+  });
+
+  // Bottom Transport Bar
+  function setRunning(run) {
+    state.running = run;
+    els.btnPlay.textContent = run ? 'Pause' : 'Play';
+    els.btnPlay.classList.toggle('active', run);
+  }
+  els.btnPlay.addEventListener('click', () => setRunning(!state.running));
+  els.btnReset.addEventListener('click', () => seedSample(true));
+  els.btnInject.addEventListener('click', () => {
+    addNucleiCluster(sourceObj.x, sourceObj.y, Math.max(120, state.dropN), state.geometry === 'dispersed', true);
+    addFlash(sourceObj.x, sourceObj.y, SOURCES[state.sourceKey].chain[0].color, 34, 0.5, true);
+    updateHUD(true);
+  });
+
+  document.querySelectorAll('.speed-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.speed-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      state.speed = parseFloat(btn.dataset.speed);
+    });
+  });
+
+  function toggleDrawer() {
+    state.drawerOpen = !state.drawerOpen;
+    els.drawer.classList.toggle('collapsed', !state.drawerOpen);
+    els.btnDrawer.classList.toggle('active', state.drawerOpen);
+  }
+  els.btnDrawer.addEventListener('click', toggleDrawer);
+
+  function setZen(z) {
+    state.zenMode = z;
+    document.body.classList.toggle('zen-mode', z);
+  }
+  els.btnZen.addEventListener('click', () => setZen(true));
+  els.btnZenRestore.addEventListener('click', () => setZen(false));
+
+  // Keyboard shortcuts
+  window.addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'INPUT') return;
+    const k = e.key.toLowerCase();
+    if (e.code === 'Space') {
+      e.preventDefault();
+      setRunning(!state.running);
+    } else if (k === 'r') {
+      seedSample(true);
+    } else if (k === 'f') {
+      setBField(-state.bField || 1.2);
+      showBanner(`Magnetic field flipped to ${state.bField >= 0 ? '+' : ''}${state.bField.toFixed(2)} T`);
+    } else if (k === 'g') {
+      setAudioEnabled(!state.audioEnabled);
+    } else if (k === 'h') {
+      setZen(!state.zenMode);
+    } else if (k === 'i') {
+      els.btnInject.click();
+    }
+  });
+
+  /* =========================================================================
+     RESIZE & MAIN ANIMATION LOOP
+     ========================================================================= */
+  function resize() {
+    W = window.innerWidth;
+    H = window.innerHeight;
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.round(W * DPR);
+    canvas.height = Math.round(H * DPR);
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+
+    if (sourceObj.x === 0 && sourceObj.y === 0) {
+      sourceObj.x = W * 0.42;
+      sourceObj.y = H * 0.50;
+      shield.x = Math.min(W - 370, sourceObj.x + 92);
+      shield.y = H * 0.50;
+    } else {
+      sourceObj.x = Math.max(30, Math.min(W - 30, sourceObj.x));
+      sourceObj.y = Math.max(30, Math.min(H - 30, sourceObj.y));
+      shield.x = Math.max(30, Math.min(W - 30, shield.x));
+      shield.y = Math.max(30, Math.min(H - 30, shield.y));
+    }
+    renderDecayGraph();
+  }
+
+  window.addEventListener('resize', resize);
+
+  let lastFrame = performance.now();
+  function frame(now) {
+    const dt = Math.min(0.05, Math.max(0.001, (now - lastFrame) / 1000));
+    lastFrame = now;
+    state.realClock += dt;
+
+    updateAtmosphere(dt);
+    stepPhysics(dt);
+    renderChamber();
+    updateHUD(false);
+
+    requestAnimationFrame(frame);
+  }
+
+  /* =========================================================================
+     BOOT
+     ========================================================================= */
+  resize();
+  initAtmosphere();
+  setBField(1.20);
+  seedSample(true);
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

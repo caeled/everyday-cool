@@ -1,0 +1,3097 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Curie Point — 2D Ising Ferromagnet &amp; Phase Transitions</title>
+<style>
+  :root {
+    --bg-deep: #040711;
+    --panel-bg: rgba(9, 13, 24, 0.78);
+    --panel-bg-strong: rgba(8, 12, 22, 0.92);
+    --panel-border: rgba(148, 179, 255, 0.16);
+    --panel-border-hi: rgba(148, 179, 255, 0.36);
+    --text-main: #eef3ff;
+    --text-dim: #9aa9cc;
+    --text-muted: #68789c;
+    --accent-amber: #ffbe5c;
+    --accent-cyan: #58dcff;
+    --accent-mint: #4af2b2;
+    --accent-rose: #ff6083;
+    --accent-violet: #a78bfa;
+    --radius-lg: 14px;
+    --radius-md: 10px;
+    --radius-sm: 7px;
+    --mono: ui-monospace, "Cascadia Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Inter, Helvetica, Arial, sans-serif;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg-deep);
+    color: var(--text-main);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    touch-action: none;
+  }
+
+  #sim-canvas {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    cursor: crosshair;
+  }
+
+  /* HUD Layer */
+  .hud {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 10;
+  }
+  body.zen-mode .hud > :not(.zen-restore) {
+    opacity: 0;
+    pointer-events: none !important;
+  }
+
+  .panel {
+    pointer-events: auto;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-lg);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.52), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    transition: opacity 0.25s ease, transform 0.25s ease;
+  }
+
+  /* Top-Left Brand + Telemetry */
+  .top-left {
+    position: fixed;
+    top: 14px;
+    left: 14px;
+    width: min(392px, calc(100vw - 362px));
+    min-width: 280px;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .brand-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .brand-title-wrap {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .brand-title {
+    font-size: 16px;
+    font-weight: 800;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+    background: linear-gradient(120deg, #e2f9ff 0%, #58dcff 46%, #ffbe5c 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .mode-badge {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 999px;
+    border: 1px solid rgba(88, 220, 255, 0.42);
+    background: rgba(88, 220, 255, 0.12);
+    color: var(--accent-cyan);
+  }
+  .mode-badge.wolff {
+    border-color: rgba(167, 139, 250, 0.48);
+    background: rgba(167, 139, 250, 0.16);
+    color: #d5c5ff;
+  }
+
+  .status-pill {
+    font-size: 10px;
+    font-weight: 750;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: rgba(88, 220, 255, 0.14);
+    color: var(--accent-cyan);
+    border: 1px solid rgba(88, 220, 255, 0.4);
+    white-space: nowrap;
+  }
+  .status-pill.critical {
+    background: rgba(255, 190, 92, 0.18);
+    color: var(--accent-amber);
+    border-color: rgba(255, 190, 92, 0.55);
+    box-shadow: 0 0 12px rgba(255, 190, 92, 0.25);
+  }
+  .status-pill.para {
+    background: rgba(255, 96, 131, 0.16);
+    color: var(--accent-rose);
+    border-color: rgba(255, 96, 131, 0.45);
+  }
+  .status-pill.afm {
+    background: rgba(167, 139, 250, 0.18);
+    color: #c9b5ff;
+    border-color: rgba(167, 139, 250, 0.48);
+  }
+
+  .telemetry-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+  }
+
+  .tele-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(148, 179, 255, 0.1);
+    border-radius: var(--radius-sm);
+    padding: 5px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+
+  .tele-label {
+    font-size: 9.5px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .tele-val {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--text-main);
+  }
+  .tele-val.amber { color: var(--accent-amber); }
+  .tele-val.cyan { color: var(--accent-cyan); }
+  .tele-val.mint { color: var(--accent-mint); }
+  .tele-val.rose { color: var(--accent-rose); }
+  .tele-val.violet { color: var(--accent-violet); }
+
+  /* Magnetization bipolar bar */
+  .mag-bar-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 10px;
+    color: var(--text-dim);
+    font-family: var(--mono);
+  }
+  .mag-track {
+    flex: 1;
+    height: 7px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, rgba(163, 41, 99, 0.35), rgba(34, 24, 62, 0.6) 50%, rgba(56, 217, 255, 0.35));
+    border: 1px solid rgba(148, 179, 255, 0.14);
+    position: relative;
+    overflow: hidden;
+  }
+  .mag-center-tick {
+    position: absolute;
+    left: 50%;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: rgba(255, 255, 255, 0.32);
+  }
+  .mag-fill {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    border-radius: 999px;
+    transition: left 0.06s linear, width 0.06s linear;
+  }
+
+  /* Embedded live plot box */
+  .plot-box {
+    background: rgba(4, 7, 16, 0.68);
+    border: 1px solid rgba(148, 179, 255, 0.12);
+    border-radius: var(--radius-md);
+    padding: 6px 8px 7px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+  .plot-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+  }
+  .plot-tabs {
+    display: flex;
+    gap: 4px;
+  }
+  .mini-tab {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-dim);
+    font-size: 10px;
+    font-weight: 700;
+    padding: 3px 7px;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: all 0.14s ease;
+  }
+  .mini-tab:hover {
+    color: #fff;
+  }
+  .mini-tab.active {
+    background: rgba(88, 220, 255, 0.16);
+    border-color: rgba(88, 220, 255, 0.45);
+    color: #e6faff;
+  }
+  .mini-clear {
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 10px;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 2px 4px;
+  }
+  .mini-clear:hover {
+    color: var(--accent-rose);
+  }
+  #plot-canvas {
+    width: 100%;
+    height: 102px;
+    display: block;
+    border-radius: 5px;
+  }
+
+  .clock-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding-top: 4px;
+    border-top: 1px solid rgba(148, 179, 255, 0.1);
+    font-size: 10.5px;
+    color: var(--text-dim);
+    font-family: var(--mono);
+  }
+  .clock-row span strong {
+    color: var(--text-main);
+    font-weight: 600;
+  }
+
+  /* Right Control Drawer */
+  .drawer {
+    position: fixed;
+    top: 14px;
+    right: 14px;
+    bottom: 14px;
+    width: 330px;
+    max-width: calc(100vw - 28px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: transform 0.25s ease, opacity 0.25s ease;
+  }
+  .drawer.collapsed {
+    transform: translateX(calc(100% + 24px));
+    pointer-events: none;
+  }
+
+  .drawer-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+    padding: 8px 8px 6px;
+    border-bottom: 1px solid var(--panel-border);
+    background: rgba(4, 7, 15, 0.4);
+  }
+
+  .tab-btn {
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    padding: 7px 5px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .tab-btn:hover {
+    color: var(--text-main);
+    background: rgba(255, 255, 255, 0.04);
+  }
+  .tab-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.16);
+    border-color: rgba(88, 220, 255, 0.4);
+  }
+
+  .drawer-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 11px 12px 15px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .drawer-body::-webkit-scrollbar {
+    width: 5px;
+  }
+  .drawer-body::-webkit-scrollbar-thumb {
+    background: rgba(148, 179, 255, 0.22);
+    border-radius: 999px;
+  }
+
+  .tab-pane {
+    display: none;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .tab-pane.active {
+    display: flex;
+  }
+
+  .section {
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(148, 179, 255, 0.11);
+    border-radius: var(--radius-md);
+    padding: 10px 11px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .section-title {
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  /* Presets grid */
+  .preset-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .preset-btn {
+    text-align: left;
+    padding: 7px 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(148, 179, 255, 0.14);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-main);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .preset-btn:hover {
+    border-color: rgba(255, 190, 92, 0.45);
+    background: rgba(255, 190, 92, 0.08);
+  }
+  .preset-btn.active {
+    border-color: var(--accent-amber);
+    background: rgba(255, 190, 92, 0.14);
+  }
+  .preset-name {
+    font-size: 11px;
+    font-weight: 700;
+  }
+  .preset-sub {
+    font-size: 9.5px;
+    color: var(--text-muted);
+    line-height: 1.25;
+  }
+
+  /* Sliders with Tc marker */
+  .control-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .control-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11.5px;
+    color: var(--text-dim);
+    gap: 6px;
+  }
+  .control-head-right {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .control-head .val {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--text-main);
+    font-weight: 650;
+  }
+
+  .tc-chip {
+    border: 1px solid rgba(255, 190, 92, 0.42);
+    background: rgba(255, 190, 92, 0.12);
+    color: var(--accent-amber);
+    font-family: var(--mono);
+    font-size: 9.5px;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: all 0.14s ease;
+  }
+  .tc-chip:hover {
+    background: rgba(255, 190, 92, 0.26);
+    color: #fff3d6;
+  }
+  .tc-chip.cyan {
+    border-color: rgba(88, 220, 255, 0.4);
+    background: rgba(88, 220, 255, 0.12);
+    color: var(--accent-cyan);
+  }
+  .tc-chip.cyan:hover {
+    background: rgba(88, 220, 255, 0.25);
+    color: #e8faff;
+  }
+
+  .slider-wrap {
+    position: relative;
+    padding: 4px 0 11px;
+  }
+  .tc-marker {
+    position: absolute;
+    top: 1px;
+    /* Tc = 2.269185 on [0.40, 4.50] => (2.269185 - 0.40) / 4.10 = 45.59% */
+    left: 45.59%;
+    transform: translateX(-50%);
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .tc-tick {
+    width: 2px;
+    height: 11px;
+    background: var(--accent-amber);
+    border-radius: 2px;
+    box-shadow: 0 0 8px rgba(255, 190, 92, 0.85);
+  }
+  .tc-label {
+    font-family: var(--mono);
+    font-size: 9px;
+    font-weight: 700;
+    color: var(--accent-amber);
+    margin-top: 1px;
+    white-space: nowrap;
+  }
+
+  .zero-marker {
+    position: absolute;
+    top: 1px;
+    left: 50%;
+    transform: translateX(-50%);
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .zero-tick {
+    width: 1.5px;
+    height: 10px;
+    background: rgba(148, 179, 255, 0.5);
+  }
+  .zero-label {
+    font-family: var(--mono);
+    font-size: 8.5px;
+    color: var(--text-muted);
+    margin-top: 1px;
+  }
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 5px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.18);
+    outline: none;
+    cursor: pointer;
+    position: relative;
+    z-index: 2;
+  }
+  input[type="range"].temp-track {
+    background: linear-gradient(90deg, rgba(88, 220, 255, 0.52) 0%, rgba(255, 190, 92, 0.65) 45.6%, rgba(255, 96, 131, 0.58) 100%);
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent-cyan);
+    border: 2px solid #08101f;
+    box-shadow: 0 0 10px rgba(88, 220, 255, 0.65);
+    cursor: pointer;
+  }
+  input[type="range"].amber::-webkit-slider-thumb {
+    background: var(--accent-amber);
+    box-shadow: 0 0 10px rgba(255, 190, 92, 0.72);
+  }
+
+  /* Segmented pills */
+  .seg-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(60px, 1fr));
+    gap: 4px;
+  }
+  .seg-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-dim);
+    font-size: 11px;
+    font-weight: 650;
+    padding: 6px 5px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-align: center;
+  }
+  .seg-btn:hover {
+    color: #fff;
+    border-color: rgba(148, 179, 255, 0.35);
+  }
+  .seg-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.18);
+    border-color: var(--accent-cyan);
+  }
+  .seg-btn.active.amber {
+    background: rgba(255, 190, 92, 0.18);
+    border-color: var(--accent-amber);
+    color: #ffdfaa;
+  }
+  .seg-btn.active.violet {
+    background: rgba(167, 139, 250, 0.22);
+    border-color: var(--accent-violet);
+    color: #efe8ff;
+  }
+
+  /* Action Buttons */
+  .btn-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .btn-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .btn {
+    border: 1px solid rgba(148, 179, 255, 0.22);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-main);
+    font-size: 11.5px;
+    font-weight: 700;
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+  .btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 179, 255, 0.45);
+  }
+  .btn:active {
+    transform: scale(0.98);
+  }
+  .btn.primary {
+    background: linear-gradient(135deg, rgba(88, 220, 255, 0.26), rgba(56, 140, 255, 0.22));
+    border-color: rgba(88, 220, 255, 0.55);
+    color: #e6f9ff;
+  }
+  .btn.primary:hover {
+    background: linear-gradient(135deg, rgba(88, 220, 255, 0.38), rgba(56, 140, 255, 0.34));
+  }
+  .btn.amber {
+    background: linear-gradient(135deg, rgba(255, 190, 92, 0.24), rgba(255, 120, 60, 0.2));
+    border-color: rgba(255, 190, 92, 0.55);
+    color: #fff3db;
+  }
+  .btn.amber:hover {
+    background: linear-gradient(135deg, rgba(255, 190, 92, 0.36), rgba(255, 120, 60, 0.32));
+  }
+  .btn.sweeping {
+    background: linear-gradient(135deg, rgba(74, 242, 178, 0.32), rgba(88, 220, 255, 0.28));
+    border-color: var(--accent-mint);
+    color: #eafff7;
+    box-shadow: 0 0 16px rgba(74, 242, 178, 0.28);
+  }
+
+  .sweep-status {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--accent-mint);
+    background: rgba(74, 242, 178, 0.08);
+    border: 1px solid rgba(74, 242, 178, 0.26);
+    border-radius: var(--radius-sm);
+    padding: 5px 8px;
+    display: none;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .sweep-status.active {
+    display: flex;
+  }
+
+  /* Toggle switches */
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11.5px;
+    color: var(--text-dim);
+    cursor: pointer;
+  }
+  .toggle-row input {
+    display: none;
+  }
+  .switch {
+    width: 34px;
+    height: 18px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.2);
+    border: 1px solid rgba(148, 179, 255, 0.25);
+    position: relative;
+    transition: all 0.18s ease;
+    flex-shrink: 0;
+  }
+  .switch::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #c8d7f5;
+    transition: transform 0.18s ease, background 0.18s ease;
+  }
+  .toggle-row input:checked + .switch {
+    background: rgba(88, 220, 255, 0.32);
+    border-color: var(--accent-cyan);
+  }
+  .toggle-row input:checked + .switch::after {
+    transform: translateX(16px);
+    background: #fff;
+  }
+
+  .formula-card {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: #c8daf8;
+    background: rgba(4, 8, 18, 0.62);
+    border: 1px solid rgba(148, 179, 255, 0.14);
+    border-radius: var(--radius-sm);
+    padding: 7px 9px;
+    line-height: 1.5;
+  }
+
+  .note-small {
+    font-size: 10.5px;
+    color: var(--text-muted);
+    line-height: 1.38;
+  }
+
+  /* Bottom Transport Bar */
+  .bottom-bar {
+    position: fixed;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 7px 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: nowrap;
+  }
+
+  .bar-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-main);
+    font-size: 11.5px;
+    font-weight: 650;
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    white-space: nowrap;
+  }
+  .bar-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 179, 255, 0.4);
+  }
+  .bar-btn.active {
+    background: rgba(88, 220, 255, 0.2);
+    border-color: var(--accent-cyan);
+    color: #fff;
+  }
+
+  .bar-divider {
+    width: 1px;
+    height: 20px;
+    background: rgba(148, 179, 255, 0.16);
+    margin: 0 2px;
+  }
+
+  /* Bottom-left interaction hint */
+  .hint-pill {
+    position: fixed;
+    bottom: 14px;
+    left: 14px;
+    padding: 7px 11px;
+    font-size: 11px;
+    color: var(--text-dim);
+    max-width: 315px;
+    line-height: 1.4;
+  }
+  .hint-pill kbd {
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #fff;
+  }
+
+  /* Event Banner */
+  .event-banner {
+    position: fixed;
+    top: 18px;
+    left: 50%;
+    transform: translateX(-50%) translateY(-10px);
+    padding: 9px 15px;
+    border-radius: var(--radius-md);
+    background: rgba(10, 16, 30, 0.9);
+    border: 1px solid rgba(255, 190, 92, 0.55);
+    color: #ffefd2;
+    font-size: 12px;
+    font-weight: 650;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease, transform 0.25s ease;
+    z-index: 25;
+    backdrop-filter: blur(12px);
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+  }
+  .event-banner.visible {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateX(-50%) translateY(0);
+  }
+  .event-banner.cyan {
+    border-color: rgba(88, 220, 255, 0.55);
+    color: #dbf7ff;
+  }
+
+  .zen-restore {
+    position: fixed;
+    bottom: 14px;
+    right: 14px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+  }
+  body.zen-mode .zen-restore {
+    opacity: 0.9;
+    pointer-events: auto;
+  }
+
+  @media (max-width: 960px) {
+    .top-left {
+      width: calc(100vw - 28px);
+      max-width: none;
+    }
+    .drawer {
+      top: auto;
+      bottom: 62px;
+      height: 50vh;
+      width: calc(100vw - 28px);
+    }
+    .hint-pill {
+      display: none;
+    }
+    .plot-box {
+      display: none;
+    }
+  }
+</style>
+</head>
+<body>
+<canvas id="sim-canvas"></canvas>
+
+<div class="hud">
+  <!-- Top-Left Telemetry & Live Plots -->
+  <div class="panel top-left">
+    <div class="brand-row">
+      <div class="brand-title-wrap">
+        <div class="brand-title">Curie Point</div>
+        <span id="algo-badge" class="mode-badge">Metropolis</span>
+      </div>
+      <span id="phase-badge" class="status-pill critical">Critical Point!</span>
+    </div>
+
+    <div class="telemetry-grid">
+      <div class="tele-card">
+        <span class="tele-label">Temp T / T_c</span>
+        <span id="tel-temp" class="tele-val amber">1.000 T_c</span>
+      </div>
+      <div class="tele-card">
+        <span id="tel-m-label" class="tele-label">Magnetization ⟨M⟩</span>
+        <span id="tel-m" class="tele-val cyan">+0.000</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Energy ⟨E⟩ / spin</span>
+        <span id="tel-e" class="tele-val">-1.414</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Susceptibility χ</span>
+        <span id="tel-chi" class="tele-val mint">0.00</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Spec. Heat Cᵥ</span>
+        <span id="tel-cv" class="tele-val amber">0.00</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Domain Walls</span>
+        <span id="tel-walls" class="tele-val rose">29.3%</span>
+      </div>
+    </div>
+
+    <div class="mag-bar-wrap">
+      <span style="color:#d46a9c;">↓ -1</span>
+      <div class="mag-track">
+        <div class="mag-center-tick"></div>
+        <div id="mag-fill" class="mag-fill"></div>
+      </div>
+      <span style="color:var(--accent-cyan);">+1 ↑</span>
+      <span id="tel-up-pct" style="color:var(--text-main); min-width:42px; text-align:right;">50%↑</span>
+    </div>
+
+    <!-- Embedded Live Sparkline & Hysteresis Plot -->
+    <div class="plot-box">
+      <div class="plot-header">
+        <div class="plot-tabs">
+          <button id="btn-plot-time" class="mini-tab active">M(t) &amp; E(t)</button>
+          <button id="btn-plot-hyst" class="mini-tab">Hysteresis M(h)</button>
+        </div>
+        <button id="btn-clear-plots" class="mini-clear" title="Clear plot history">Clear</button>
+      </div>
+      <canvas id="plot-canvas" width="360" height="102"></canvas>
+    </div>
+
+    <div class="clock-row">
+      <span>MCS: <strong id="tel-mcs">0</strong></span>
+      <span>Lattice: <strong id="tel-size">128×128</strong></span>
+      <span>Field h: <strong id="tel-h" style="color:var(--accent-cyan)">0.00</strong></span>
+    </div>
+  </div>
+
+  <!-- Right Collapsible 330px Control Drawer -->
+  <aside id="drawer" class="panel drawer">
+    <div class="drawer-tabs">
+      <button class="tab-btn active" data-tab="physics">Physics</button>
+      <button class="tab-btn" data-tab="brush">Lattice &amp; Brush</button>
+      <button class="tab-btn" data-tab="visuals">Visuals</button>
+    </div>
+
+    <div class="drawer-body">
+      <!-- TAB 1: PHYSICS & PRESETS -->
+      <div id="tab-physics" class="tab-pane active">
+        <div class="section">
+          <div class="section-title"><span>Curated Phase Presets</span></div>
+          <div class="preset-grid">
+            <button class="preset-btn active" data-preset="critical">
+              <span class="preset-name">Critical Point</span>
+              <span class="preset-sub">T = T_c ≈ 2.269 fractals</span>
+            </button>
+            <button class="preset-btn" data-preset="quench">
+              <span class="preset-name">Quench Coarsen</span>
+              <span class="preset-sub">T = 1.5 domain growth</span>
+            </button>
+            <button class="preset-btn" data-preset="hysteresis">
+              <span class="preset-name">Hysteresis Loop</span>
+              <span class="preset-sub">Ferromagnetic M vs h</span>
+            </button>
+            <button class="preset-btn" data-preset="antiferro">
+              <span class="preset-name">Antiferromagnet</span>
+              <span class="preset-sub">J = -1 Néel checkerboard</span>
+            </button>
+            <button class="preset-btn" data-preset="paramagnet">
+              <span class="preset-name">Thermal Noise</span>
+              <span class="preset-sub">T = 4.0 paramagnet</span>
+            </button>
+            <button class="preset-btn" data-preset="wolff">
+              <span class="preset-name">Wolff Clusters</span>
+              <span class="preset-sub">Critical opalescence</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">
+            <span>Thermodynamics</span>
+            <span id="temp-abs-readout" style="font-family:var(--mono); color:var(--accent-amber);">T = 2.269</span>
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Temperature (T)</span>
+              <div class="control-head-right">
+                <button id="btn-snap-tc" class="tc-chip" title="Snap to Onsager T_c">T_c = 2.269</button>
+                <span id="val-temp" class="val">2.269</span>
+              </div>
+            </div>
+            <div class="slider-wrap">
+              <input id="sl-temp" class="amber temp-track" type="range" min="0.40" max="4.50" step="0.005" value="2.269" />
+              <div class="tc-marker">
+                <div class="tc-tick"></div>
+                <div class="tc-label">T_c = 2.269</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>External Field (h)</span>
+              <div class="control-head-right">
+                <button id="btn-zero-h" class="tc-chip cyan" title="Zero external field">h = 0</button>
+                <span id="val-field" class="val">0.00</span>
+              </div>
+            </div>
+            <div class="slider-wrap">
+              <input id="sl-field" type="range" min="-1.50" max="1.50" step="0.01" value="0" />
+              <div class="zero-marker">
+                <div class="zero-tick"></div>
+                <div class="zero-label">0</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="control-row">
+            <div class="control-head"><span>Spin Coupling (J)</span></div>
+            <div class="seg-row" id="coupling-row">
+              <button class="seg-btn active" data-j="1">Ferro (J = +1)</button>
+              <button class="seg-btn" data-j="-1">Antiferro (J = -1)</button>
+            </div>
+          </div>
+
+          <div class="control-row">
+            <div class="control-head"><span>Monte Carlo Engine</span></div>
+            <div class="seg-row" id="algo-row">
+              <button class="seg-btn active" data-algo="metropolis">Metropolis-Hastings</button>
+              <button class="seg-btn" data-algo="wolff">Wolff Cluster</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Automated Phase Experiments</span></div>
+          <div class="btn-stack">
+            <button id="btn-sweep-hyst" class="btn primary">🔄 Sweep Hysteresis Loop</button>
+            <button id="btn-sweep-curie" class="btn amber">🌡️ Sweep Across Curie Point (T_c)</button>
+          </div>
+          <div id="sweep-status" class="sweep-status">
+            <span id="sweep-status-text">Sweeping...</span>
+            <span id="sweep-status-pct">0%</span>
+          </div>
+          <div class="formula-card">
+            H = &minus;J &Sigma;<sub>&langle;i,j&rangle;</sub> s<sub>i</sub>s<sub>j</sub> &minus; h &Sigma;<sub>i</sub> s<sub>i</sub><br />
+            T<sub>c</sub> = 2 / ln(1 + &radic;2) &approx; 2.269185
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 2: LATTICE & BRUSH -->
+      <div id="tab-brush" class="tab-pane">
+        <div class="section">
+          <div class="section-title"><span>Spin Lattice Resolution</span></div>
+          <div class="seg-row" id="size-row">
+            <button class="seg-btn" data-size="64">64×64</button>
+            <button class="seg-btn active" data-size="128">128×128</button>
+            <button class="seg-btn" data-size="200">200×200</button>
+          </div>
+          <p class="note-small">
+            <strong>64×64</strong> displays individual micro-arrows across the entire lattice. <strong>128×128</strong> &amp; <strong>200×200</strong> reveal crisp multi-scale percolation fractals at 60 fps.
+          </p>
+
+          <div class="btn-row">
+            <button id="btn-init-rand" class="btn">🎲 Randomize</button>
+            <button id="btn-init-bubble" class="btn amber">◎ Seed Bubble</button>
+          </div>
+          <div class="btn-row">
+            <button id="btn-init-up" class="btn primary">↑ All Spin Up</button>
+            <button id="btn-init-dn" class="btn">↓ All Spin Down</button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Interactive Magnetic Brush</span></div>
+          <div class="control-row">
+            <div class="control-head">
+              <span>Brush Radius</span>
+              <span id="val-brush" class="val">8 spins</span>
+            </div>
+            <input id="sl-brush" type="range" min="1" max="28" step="1" value="8" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head"><span>Mouse Button Polarity</span></div>
+            <div class="seg-row" id="brush-pol-row">
+              <button class="seg-btn active" data-pol="1">Left ↑ / Right ↓</button>
+              <button class="seg-btn" data-pol="-1">Left ↓ / Right ↑</button>
+            </div>
+          </div>
+
+          <p class="note-small">
+            Paint magnetic bubbles directly on the crystal below T<sub>c</sub>! Small bubbles shrink under domain-wall surface tension, while bubbles above critical nucleation radius expand under a favorable field <em>h</em>.
+          </p>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Sweep Calibration</span></div>
+          <div class="control-row">
+            <div class="control-head">
+              <span>Sweep Rate</span>
+              <span id="val-sweep-speed" class="val">1.0×</span>
+            </div>
+            <input id="sl-sweep-speed" type="range" min="0.4" max="2.4" step="0.1" value="1.0" />
+          </div>
+          <div class="control-row">
+            <div class="control-head">
+              <span>Hysteresis Field Range (±h)</span>
+              <span id="val-hmax" class="val">±1.20</span>
+            </div>
+            <input id="sl-hmax" class="amber" type="range" min="0.50" max="1.50" step="0.05" value="1.20" />
+          </div>
+          <button id="btn-clear-hyst" class="btn">Clear Hysteresis Trace</button>
+        </div>
+      </div>
+
+      <!-- TAB 3: VISUALS & AUDIO -->
+      <div id="tab-visuals" class="tab-pane">
+        <div class="section">
+          <div class="section-title"><span>Visual Rendering Modes</span></div>
+          <label class="toggle-row">
+            <span>Domain Wall Highlight (Gold)</span>
+            <input id="chk-walls" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Micro-Arrows View (↑ / ↓)</span>
+            <input id="chk-arrows" type="checkbox" />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Flip Activity Shimmer</span>
+            <input id="chk-shimmer" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>External Field Vectors</span>
+            <input id="chk-field-viz" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Ambient Phase Aura</span>
+            <input id="chk-halo" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Spin Color Palette</span></div>
+          <div class="seg-row" id="palette-row">
+            <button class="seg-btn active" data-palette="cyanrose">Cyan / Rose</button>
+            <button class="seg-btn" data-palette="plasma">Plasma</button>
+            <button class="seg-btn" data-palette="obsidian">Obsidian</button>
+          </div>
+          <div class="control-row">
+            <div class="control-head">
+              <span>Crystal Zoom</span>
+              <span id="val-zoom" class="val">1.00×</span>
+            </div>
+            <input id="sl-zoom" type="range" min="0.75" max="2.40" step="0.05" value="1.00" />
+          </div>
+          <button id="btn-reset-view" class="btn">Reset Zoom</button>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Barkhausen Domain Audio</span></div>
+          <div class="control-row">
+            <div class="control-head">
+              <span>Crackle Volume</span>
+              <span id="val-volume" class="val">45%</span>
+            </div>
+            <input id="sl-volume" class="amber" type="range" min="0.05" max="1.0" step="0.05" value="0.45" />
+          </div>
+          <p class="note-small">
+            Enable Audio in the bottom bar to hear subtle Geiger-like <strong>Barkhausen crackle</strong> — real ferromagnets emit acoustic clicks as domain walls snap across crystal barriers.
+          </p>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Event Notification Banner -->
+  <div id="event-banner" class="event-banner">
+    <span id="event-text">Curie Point crossed — spontaneous symmetry breaking!</span>
+  </div>
+
+  <!-- Bottom-Left Hint -->
+  <div class="panel hint-pill">
+    <div><strong>Left-drag</strong> Paint ↑ · <strong>Right-drag</strong> Paint ↓ · <strong>Scroll</strong> Brush</div>
+    <div><kbd>Space</kbd> Pause · <kbd>C</kbd> Jump to T_c · <kbd>W</kbd> Wolff · <kbd>D</kbd> Walls · <kbd>H</kbd> Cinema</div>
+  </div>
+
+  <!-- Bottom Transport Bar -->
+  <div class="panel bottom-bar">
+    <button id="btn-play" class="bar-btn active">⏸ Pause</button>
+    <button id="btn-step" class="bar-btn" title="Advance 1 step">⏭ Step</button>
+    <button id="btn-reset" class="bar-btn" title="Randomize spins (R)">↺ Quench</button>
+    <div class="bar-divider"></div>
+    <button class="bar-btn speed-btn" data-speed="0.25">0.25×</button>
+    <button class="bar-btn speed-btn active" data-speed="1">1×</button>
+    <button class="bar-btn speed-btn" data-speed="2">2×</button>
+    <button class="bar-btn speed-btn" data-speed="4">4×</button>
+    <button class="bar-btn speed-btn" data-speed="8">8×</button>
+    <div class="bar-divider"></div>
+    <button id="btn-sound" class="bar-btn">🔇 Audio</button>
+    <button id="btn-toggle-drawer" class="bar-btn active">Controls</button>
+    <button id="btn-zen" class="bar-btn" title="Hide HUD (H)">Cinema</button>
+  </div>
+
+  <button id="btn-zen-restore" class="panel bar-btn zen-restore">Show HUD (H)</button>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // =========================================================================
+  // EXACT ONSAGER 2D ISING CONSTANTS
+  // =========================================================================
+  const T_CRITICAL = 2.0 / Math.log(1.0 + Math.SQRT2); // 2.269185314213022
+
+  // Endianness check for direct Uint32 ImageData writes
+  const IS_LITTLE_ENDIAN = (() => {
+    const ab = new ArrayBuffer(4);
+    new Uint32Array(ab)[0] = 0x0a0b0c0d;
+    return new Uint8Array(ab)[0] === 0x0d;
+  })();
+
+  function packColor(r, g, b, a = 255) {
+    if (IS_LITTLE_ENDIAN) {
+      return ((a & 255) << 24) | ((b & 255) << 16) | ((g & 255) << 8) | (r & 255);
+    }
+    return ((r & 255) << 24) | ((g & 255) << 16) | ((b & 255) << 8) | (a & 255);
+  }
+
+  // Fast inline xorshift32 PRNG (avoids Math.random overhead in tight MC loops)
+  let rngState = (Date.now() ^ 0x9e3779b9) >>> 0;
+  if (rngState === 0) rngState = 0x12345678;
+  function randFloat() {
+    let x = rngState;
+    x ^= x << 13;
+    x ^= x >>> 17;
+    x ^= x << 5;
+    rngState = x >>> 0;
+    return (rngState & 0x7fffffff) * 4.656612875245797e-10; // / 2^31
+  }
+  function randInt(max) {
+    let x = rngState;
+    x ^= x << 13;
+    x ^= x >>> 17;
+    x ^= x << 5;
+    rngState = x >>> 0;
+    return rngState % max;
+  }
+
+  // =========================================================================
+  // PALETTES
+  // Each palette gives 5 energy-tier shades (0..4 unsatisfied bonds) for +1 & -1
+  // plus incandescent gold wall color and flash tint.
+  // =========================================================================
+  const PALETTES = {
+    cyanrose: {
+      up: [
+        [24, 186, 236],
+        [44, 206, 250],
+        [76, 224, 255],
+        [124, 238, 255],
+        [182, 248, 255],
+      ],
+      dn: [
+        [20, 14, 46],
+        [44, 20, 68],
+        [76, 26, 86],
+        [118, 34, 98],
+        [164, 46, 110],
+      ],
+      wall: [255, 210, 92],
+      wallHot: [255, 242, 178],
+      arrowUp: '#c8f8ff',
+      arrowDn: '#ff96b8',
+    },
+    plasma: {
+      up: [
+        [245, 162, 46],
+        [252, 188, 72],
+        [255, 212, 108],
+        [255, 232, 154],
+        [255, 246, 205],
+      ],
+      dn: [
+        [16, 12, 42],
+        [34, 18, 74],
+        [62, 24, 106],
+        [98, 32, 134],
+        [138, 46, 152],
+      ],
+      wall: [96, 242, 255],
+      wallHot: [204, 252, 255],
+      arrowUp: '#fff3cc',
+      arrowDn: '#c4a6ff',
+    },
+    obsidian: {
+      up: [
+        [194, 228, 250],
+        [210, 236, 255],
+        [226, 244, 255],
+        [238, 250, 255],
+        [250, 254, 255],
+      ],
+      dn: [
+        [10, 15, 26],
+        [18, 26, 42],
+        [30, 42, 66],
+        [48, 64, 92],
+        [70, 92, 126],
+      ],
+      wall: [255, 194, 78],
+      wallHot: [255, 238, 170],
+      arrowUp: '#06111e',
+      arrowDn: '#7ab2df',
+    },
+  };
+
+  // =========================================================================
+  // SIMULATION STATE
+  // =========================================================================
+  const state = {
+    N: 128,
+    N2: 128 * 128,
+    T: T_CRITICAL,
+    h: 0.0,
+    J: 1, // +1 ferromagnet, -1 antiferromagnet
+    algo: 'metropolis', // 'metropolis' | 'wolff'
+    running: true,
+    speed: 1.0,
+    stepCarry: 0,
+    mcs: 0,
+    flipsLastFrame: 0,
+    activePreset: 'critical',
+
+    // Visuals
+    showWalls: true,
+    showArrows: false,
+    showShimmer: true,
+    showFieldViz: true,
+    showHalo: true,
+    palette: 'cyanrose',
+    zoom: 1.0,
+
+    // Brush
+    brushRadius: 8,
+    brushLeftPol: 1,
+    painting: false,
+    paintSpin: 1,
+    hoverGridX: -1,
+    hoverGridY: -1,
+    mouseX: -1,
+    mouseY: -1,
+
+    // Plots
+    plotMode: 'time', // 'time' | 'hyst'
+    timeHistory: [], // { m, ms, e, t }
+    hystHistory: [], // { h, m }
+    maxTimePts: 220,
+    maxHystPts: 720,
+
+    // Observables & Rolling Thermodynamic Fluctuation Window
+    M: 0,
+    Ms: 0,
+    E: 0,
+    wallFrac: 0,
+    chi: 0,
+    cv: 0,
+    statBufM: new Float64Array(120),
+    statBufMabs: new Float64Array(120),
+    statBufE: new Float64Array(120),
+    statCount: 0,
+    statHead: 0,
+
+    // Automated Sweeps
+    sweepMode: null, // null | 'hysteresis' | 'curie'
+    sweepProgress: 0,
+    sweepSpeed: 1.0,
+    hystMax: 1.2,
+    curieCrossedBanner: false,
+
+    // Audio
+    soundEnabled: false,
+    volume: 0.45,
+  };
+
+  // Lattice arrays (reallocated on N change)
+  let spins = null;       // Int8Array(N2) values +1 or -1
+  let flipFlash = null;   // Uint8Array(N2) decay glow
+  let upIdx = null;       // Int32Array(N2)
+  let dnIdx = null;       // Int32Array(N2)
+  let ltIdx = null;       // Int32Array(N2)
+  let rtIdx = null;       // Int32Array(N2)
+  let wolffStack = null;  // Int32Array(N2)
+  let wolffVisit = null;  // Uint32Array(N2)
+  let wolffStamp = 1;
+
+  // Precomputed Metropolis Boltzmann lookup tables:
+  // Index by (sumNeighbors + 4) >> 1 in [0..4] for s = +1 and s = -1
+  const metroProbUp = new Float64Array(5); // current spin = +1
+  const metroProbDn = new Float64Array(5); // current spin = -1
+
+  // Offscreen crisp lattice canvas (2N x 2N for sub-cell glowing domain walls)
+  const offCanvas = document.createElement('canvas');
+  const offCtx = offCanvas.getContext('2d', { alpha: false });
+  let offImgData = null;
+  let offPixels32 = null;
+
+  // Main display canvas & layout metrics
+  const simCanvas = document.getElementById('sim-canvas');
+  const ctx = simCanvas.getContext('2d', { alpha: false });
+  const plotCanvas = document.getElementById('plot-canvas');
+  const plotCtx = plotCanvas.getContext('2d');
+
+  let viewW = window.innerWidth;
+  let viewH = window.innerHeight;
+  let dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+  // Bounding box of the rendered magnet square in CSS pixels
+  const boardRect = { x: 0, y: 0, size: 512 };
+
+  // =========================================================================
+  // LATTICE ALLOCATION & INITIALIZATION
+  // =========================================================================
+  function allocateLattice(N, initMode = 'random') {
+    state.N = N;
+    state.N2 = N * N;
+    spins = new Int8Array(state.N2);
+    flipFlash = new Uint8Array(state.N2);
+    upIdx = new Int32Array(state.N2);
+    dnIdx = new Int32Array(state.N2);
+    ltIdx = new Int32Array(state.N2);
+    rtIdx = new Int32Array(state.N2);
+    wolffStack = new Int32Array(state.N2);
+    wolffVisit = new Uint32Array(state.N2);
+    wolffStamp = 1;
+
+    for (let y = 0; y < N; y++) {
+      const yUp = (y === 0 ? N - 1 : y - 1) * N;
+      const yDn = (y === N - 1 ? 0 : y + 1) * N;
+      const row = y * N;
+      for (let x = 0; x < N; x++) {
+        const idx = row + x;
+        upIdx[idx] = yUp + x;
+        dnIdx[idx] = yDn + x;
+        ltIdx[idx] = row + (x === 0 ? N - 1 : x - 1);
+        rtIdx[idx] = row + (x === N - 1 ? 0 : x + 1);
+      }
+    }
+
+    offCanvas.width = N * 2;
+    offCanvas.height = N * 2;
+    offImgData = offCtx.createImageData(N * 2, N * 2);
+    offPixels32 = new Uint32Array(offImgData.data.buffer);
+
+    initSpins(initMode);
+  }
+
+  function initSpins(mode = 'random') {
+    const N = state.N;
+    const N2 = state.N2;
+    flipFlash.fill(0);
+    if (mode === 'up') {
+      spins.fill(1);
+    } else if (mode === 'down') {
+      spins.fill(-1);
+    } else if (mode === 'bubble') {
+      spins.fill(-1);
+      const cx = N * 0.5;
+      const cy = N * 0.5;
+      const r2 = (N * 0.22) * (N * 0.22);
+      for (let y = 0; y < N; y++) {
+        const dy = y - cy;
+        for (let x = 0; x < N; x++) {
+          const dx = x - cx;
+          if (dx * dx + dy * dy <= r2) {
+            spins[y * N + x] = 1;
+          }
+        }
+      }
+    } else if (mode === 'neel') {
+      for (let y = 0; y < N; y++) {
+        for (let x = 0; x < N; x++) {
+          spins[y * N + x] = ((x + y) & 1) === 0 ? 1 : -1;
+        }
+      }
+    } else {
+      for (let i = 0; i < N2; i++) {
+        spins[i] = randFloat() < 0.5 ? 1 : -1;
+      }
+    }
+    state.mcs = 0;
+    resetStats();
+    computeObservables(true);
+  }
+
+  function resetStats() {
+    state.statCount = 0;
+    state.statHead = 0;
+  }
+
+  function rebuildMetropolisTable() {
+    const invT = 1.0 / Math.max(0.01, state.T);
+    const J = state.J;
+    const h = state.h;
+    for (let k = 0; k < 5; k++) {
+      const sumNN = k * 2 - 4; // -4, -2, 0, +2, +4
+      const dEUp = 2.0 * (J * sumNN + h);
+      const dEDn = -2.0 * (J * sumNN + h);
+      metroProbUp[k] = dEUp <= 0 ? 1.0 : Math.exp(-dEUp * invT);
+      metroProbDn[k] = dEDn <= 0 ? 1.0 : Math.exp(-dEDn * invT);
+    }
+  }
+
+  // =========================================================================
+  // MONTE CARLO STEPPERS: METROPOLIS-HASTINGS & WOLFF CLUSTER
+  // =========================================================================
+  function stepMetropolis(sweepsFloat) {
+    const N2 = state.N2;
+    const attempts = Math.max(1, Math.round(N2 * sweepsFloat));
+    let flips = 0;
+    const sp = spins;
+    const fl = flipFlash;
+    const uI = upIdx, dI = dnIdx, lI = ltIdx, rI = rtIdx;
+    const pUp = metroProbUp, pDn = metroProbDn;
+    const shimmer = state.showShimmer;
+
+    for (let a = 0; a < attempts; a++) {
+      const idx = randInt(N2);
+      const s = sp[idx];
+      const sumNN = sp[uI[idx]] + sp[dI[idx]] + sp[lI[idx]] + sp[rI[idx]];
+      const k = (sumNN + 4) >> 1;
+      const prob = s === 1 ? pUp[k] : pDn[k];
+      if (prob >= 1.0 || randFloat() < prob) {
+        sp[idx] = -s;
+        flips++;
+        if (shimmer) fl[idx] = 255;
+      }
+    }
+    state.mcs += attempts / N2;
+    return flips;
+  }
+
+  function stepWolff(numClusters) {
+    const N2 = state.N2;
+    const J = state.J;
+    const h = state.h;
+    const invT = 1.0 / Math.max(0.01, state.T);
+    const pAdd = 1.0 - Math.exp(-2.0 * Math.abs(J) * invT);
+    const sp = spins;
+    const fl = flipFlash;
+    const uI = upIdx, dI = dnIdx, lI = ltIdx, rI = rtIdx;
+    const stack = wolffStack;
+    const visit = wolffVisit;
+    const shimmer = state.showShimmer;
+
+    let totalFlips = 0;
+    const count = Math.max(1, Math.round(numClusters));
+
+    for (let c = 0; c < count; c++) {
+      wolffStamp++;
+      if (wolffStamp >= 0xfffffffe) {
+        visit.fill(0);
+        wolffStamp = 1;
+      }
+      const stamp = wolffStamp;
+      const seed = randInt(N2);
+
+      let head = 0;
+      let tail = 0;
+      stack[tail++] = seed;
+      visit[seed] = stamp;
+      let clusterNetSpin = 0;
+
+      while (head < tail) {
+        const cur = stack[head++];
+        const sCur = sp[cur];
+        clusterNetSpin += sCur;
+
+        // Neighbor bond satisfied iff J * sCur * sNb > 0  <=>  sNb === J * sCur
+        const targetNbSpin = J === 1 ? sCur : -sCur;
+
+        const n0 = uI[cur];
+        if (visit[n0] !== stamp && sp[n0] === targetNbSpin && randFloat() < pAdd) {
+          visit[n0] = stamp;
+          stack[tail++] = n0;
+        }
+        const n1 = dI[cur];
+        if (visit[n1] !== stamp && sp[n1] === targetNbSpin && randFloat() < pAdd) {
+          visit[n1] = stamp;
+          stack[tail++] = n1;
+        }
+        const n2 = lI[cur];
+        if (visit[n2] !== stamp && sp[n2] === targetNbSpin && randFloat() < pAdd) {
+          visit[n2] = stamp;
+          stack[tail++] = n2;
+        }
+        const n3 = rI[cur];
+        if (visit[n3] !== stamp && sp[n3] === targetNbSpin && randFloat() < pAdd) {
+          visit[n3] = stamp;
+          stack[tail++] = n3;
+        }
+      }
+
+      // Exact Metropolis acceptance for external field h != 0
+      let accept = true;
+      if (h !== 0) {
+        const dEh = 2.0 * h * clusterNetSpin;
+        if (dEh > 0 && randFloat() >= Math.exp(-dEh * invT)) {
+          accept = false;
+        }
+      }
+
+      if (accept) {
+        for (let i = 0; i < tail; i++) {
+          const idx = stack[i];
+          sp[idx] = -sp[idx];
+          if (shimmer) fl[idx] = 255;
+        }
+        totalFlips += tail;
+      }
+    }
+
+    state.mcs += totalFlips / N2;
+    return totalFlips;
+  }
+
+  // =========================================================================
+  // THERMODYNAMIC OBSERVABLES
+  // =========================================================================
+  function computeObservables(recordHistory = false) {
+    const N = state.N;
+    const N2 = state.N2;
+    const J = state.J;
+    const h = state.h;
+    const sp = spins;
+    const dI = dnIdx;
+    const rI = rtIdx;
+
+    let sumS = 0;
+    let sumStag = 0;
+    let bondSum = 0;
+    let unsatisfiedBonds = 0;
+
+    for (let y = 0; y < N; y++) {
+      const row = y * N;
+      let stagSign = (y & 1) === 0 ? 1 : -1;
+      for (let x = 0; x < N; x++) {
+        const idx = row + x;
+        const s = sp[idx];
+        sumS += s;
+        sumStag += s * stagSign;
+        stagSign = -stagSign;
+
+        const sr = sp[rI[idx]];
+        const sd = sp[dI[idx]];
+        const pr = s * sr;
+        const pd = s * sd;
+        bondSum += pr + pd;
+        if (J * pr < 0) unsatisfiedBonds++;
+        if (J * pd < 0) unsatisfiedBonds++;
+      }
+    }
+
+    const m = sumS / N2;
+    const ms = sumStag / N2;
+    const e = (-J * bondSum - h * sumS) / N2;
+    const wallFrac = unsatisfiedBonds / (2.0 * N2);
+
+    state.M = m;
+    state.Ms = ms;
+    state.E = e;
+    state.wallFrac = wallFrac;
+
+    // Push into rolling fluctuation window for chi and Cv
+    const orderParam = J === 1 ? m : ms;
+    const cap = state.statBufM.length;
+    state.statBufM[state.statHead] = orderParam;
+    state.statBufMabs[state.statHead] = Math.abs(orderParam);
+    state.statBufE[state.statHead] = e;
+    state.statHead = (state.statHead + 1) % cap;
+    if (state.statCount < cap) state.statCount++;
+
+    if (state.statCount >= 6) {
+      const cnt = state.statCount;
+      let m2Sum = 0, mAbsSum = 0, eSum = 0, e2Sum = 0;
+      for (let i = 0; i < cnt; i++) {
+        const mv = state.statBufM[i];
+        const ma = state.statBufMabs[i];
+        const ev = state.statBufE[i];
+        m2Sum += mv * mv;
+        mAbsSum += ma;
+        eSum += ev;
+        e2Sum += ev * ev;
+      }
+      const meanM2 = m2Sum / cnt;
+      const meanMabs = mAbsSum / cnt;
+      const meanE = eSum / cnt;
+      const meanE2 = e2Sum / cnt;
+      const varM = Math.max(0, meanM2 - meanMabs * meanMabs);
+      const varE = Math.max(0, meanE2 - meanE * meanE);
+      const T = Math.max(0.05, state.T);
+      state.chi = (N2 / T) * varM;
+      state.cv = (N2 / (T * T)) * varE;
+    } else {
+      state.chi = 0;
+      state.cv = 0;
+    }
+
+    if (recordHistory) {
+      state.timeHistory.push({ m, ms, e, t: state.T });
+      if (state.timeHistory.length > state.maxTimePts) {
+        state.timeHistory.shift();
+      }
+      state.hystHistory.push({ h: state.h, m });
+      if (state.hystHistory.length > state.maxHystPts) {
+        state.hystHistory.shift();
+      }
+    }
+  }
+
+  // =========================================================================
+  // BARKHAUSEN MAGNETIC DOMAIN AUDIO (Web Audio API, Muted by Default)
+  // =========================================================================
+  const audio = {
+    ctx: null,
+    masterGain: null,
+    noiseBuffer: null,
+    humOsc: null,
+    humGain: null,
+    lastClickTime: 0,
+  };
+
+  function initAudio() {
+    if (audio.ctx) return;
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+    audio.ctx = new AudioCtx();
+    audio.masterGain = audio.ctx.createGain();
+    audio.masterGain.gain.value = state.volume * 0.45;
+    audio.masterGain.connect(audio.ctx.destination);
+
+    // Pre-generate 0.5s white noise buffer for short Barkhausen clicks
+    const sr = audio.ctx.sampleRate;
+    const len = Math.floor(sr * 0.5);
+    audio.noiseBuffer = audio.ctx.createBuffer(1, len, sr);
+    const data = audio.noiseBuffer.getChannelData(0);
+    for (let i = 0; i < len; i++) {
+      data[i] = (Math.random() * 2 - 1);
+    }
+
+    // Subtle magnetic field coil hum (only audible when |h| > 0)
+    audio.humOsc = audio.ctx.createOscillator();
+    audio.humOsc.type = 'sine';
+    audio.humOsc.frequency.value = 110;
+    audio.humGain = audio.ctx.createGain();
+    audio.humGain.gain.value = 0;
+    audio.humOsc.connect(audio.humGain);
+    audio.humGain.connect(audio.masterGain);
+    audio.humOsc.start();
+  }
+
+  function updateBarkhausenAudio(flips, dM) {
+    if (!state.soundEnabled || !audio.ctx) return;
+    if (audio.ctx.state === 'suspended') return;
+
+    const now = audio.ctx.currentTime;
+    audio.masterGain.gain.setTargetAtTime(state.volume * 0.45, now, 0.04);
+
+    // Subtle coil hum proportional to external magnetic field |h|
+    const absH = Math.abs(state.h);
+    audio.humOsc.frequency.setTargetAtTime(88 + absH * 62, now, 0.05);
+    audio.humGain.gain.setTargetAtTime(absH * 0.045, now, 0.06);
+
+    const flipFrac = flips / state.N2;
+    const avalancheBoost = Math.min(1.0, Math.abs(dM) * 14);
+    const activity = Math.min(1.0, flipFrac * 3.2 + avalancheBoost * 0.9);
+
+    if (activity < 0.002) return;
+
+    // Emit 1..4 subtle Geiger-like Barkhausen micro-impulses per frame
+    const maxClicks = activity > 0.35 ? 3 : 2;
+    for (let c = 0; c < maxClicks; c++) {
+      if (Math.random() > Math.min(0.88, activity * 1.45)) continue;
+      const offset = Math.random() * 0.015;
+      const t0 = now + offset;
+      const src = audio.ctx.createBufferSource();
+      src.buffer = audio.noiseBuffer;
+
+      const filter = audio.ctx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.frequency.value = 1400 + Math.random() * 3400 + avalancheBoost * 1200;
+      filter.Q.value = 2.8 + Math.random() * 4.5;
+
+      const g = audio.ctx.createGain();
+      const amp = (0.04 + 0.16 * Math.pow(Math.random(), 2) + 0.14 * avalancheBoost);
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(amp, t0 + 0.0012);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.006 + Math.random() * 0.008);
+
+      src.connect(filter);
+      filter.connect(g);
+      g.connect(audio.masterGain);
+
+      const startOffset = Math.random() * 0.42;
+      src.start(t0, startOffset, 0.02);
+    }
+  }
+
+  // =========================================================================
+  // AUTOMATED SWEEPS (HYSTERESIS LOOP & CURIE POINT COOLING)
+  // =========================================================================
+  let bannerTimer = null;
+  function showBanner(text, variant = 'amber', durationMs = 3600) {
+    const el = document.getElementById('event-banner');
+    const tx = document.getElementById('event-text');
+    tx.textContent = text;
+    el.className = 'event-banner visible' + (variant === 'cyan' ? ' cyan' : '');
+    if (bannerTimer) clearTimeout(bannerTimer);
+    bannerTimer = setTimeout(() => {
+      el.classList.remove('visible');
+    }, durationMs);
+  }
+
+  function stopSweep() {
+    state.sweepMode = null;
+    updateSweepUI();
+  }
+
+  function startHysteresisSweep() {
+    if (state.sweepMode === 'hysteresis') {
+      stopSweep();
+      return;
+    }
+    // Hysteresis requires Metropolis local barrier dynamics and Ferromagnetic J=+1
+    state.J = 1;
+    state.algo = 'metropolis';
+    if (state.T >= 2.05) {
+      state.T = 1.65;
+    }
+    state.h = -state.hystMax;
+    state.sweepMode = 'hysteresis';
+    state.sweepProgress = 0;
+    state.hystHistory = [];
+    state.plotMode = 'hyst';
+    state.running = true;
+
+    // Pre-saturate lattice downwards for a clean closed S-curve starting point
+    initSpins('down');
+    rebuildMetropolisTable();
+    syncControlsFromState();
+    updateSweepUI();
+    showBanner('Sweeping external field h: −' + state.hystMax.toFixed(2) + ' → +' + state.hystMax.toFixed(2) + ' → −' + state.hystMax.toFixed(2), 'cyan', 3200);
+  }
+
+  function startCurieSweep() {
+    if (state.sweepMode === 'curie') {
+      stopSweep();
+      return;
+    }
+    state.h = 0.0;
+    state.T = 4.0;
+    state.sweepMode = 'curie';
+    state.sweepProgress = 0;
+    state.curieCrossedBanner = false;
+    state.plotMode = 'time';
+    state.timeHistory = [];
+    state.running = true;
+
+    initSpins('random');
+    rebuildMetropolisTable();
+    syncControlsFromState();
+    updateSweepUI();
+    showBanner('Cooling from disordered paramagnet (T = 4.0) across Curie Point T_c = 2.269...', 'amber', 3600);
+  }
+
+  function advanceSweep(dt) {
+    if (!state.sweepMode) return;
+    const rate = state.sweepSpeed;
+
+    if (state.sweepMode === 'hysteresis') {
+      // Smooth full loop: phase u in [0, 1] => h = -hMax * cos(2*pi*u)
+      // Total cycle duration ~14 seconds at 1.0x
+      state.sweepProgress += (dt / 14.0) * rate;
+      if (state.sweepProgress >= 1.0) {
+        state.sweepProgress = 1.0;
+        state.h = -state.hystMax;
+        rebuildMetropolisTable();
+        syncControlsFromState();
+        stopSweep();
+        showBanner('Ferromagnetic hysteresis loop complete — notice the coercive lag!', 'cyan', 4200);
+        return;
+      }
+      const u = state.sweepProgress;
+      state.h = -state.hystMax * Math.cos(u * Math.PI * 2.0);
+      rebuildMetropolisTable();
+      syncSlidersLight();
+      updateSweepUI();
+    } else if (state.sweepMode === 'curie') {
+      // Cool from T = 4.00 down to T = 1.40 over ~18s, lingering slightly near T_c
+      const nearTc = Math.abs(state.T - T_CRITICAL) < 0.35;
+      const slowFactor = nearTc ? 0.52 : 1.0;
+      state.sweepProgress += (dt / 15.0) * rate * slowFactor;
+      if (state.sweepProgress >= 1.0) {
+        state.sweepProgress = 1.0;
+        state.T = 1.40;
+        rebuildMetropolisTable();
+        syncControlsFromState();
+        stopSweep();
+        showBanner('Spontaneous symmetry breaking complete at T = 1.40!', 'amber', 4000);
+        return;
+      }
+      const prevT = state.T;
+      state.T = 4.0 - state.sweepProgress * (4.0 - 1.4);
+      rebuildMetropolisTable();
+      syncSlidersLight();
+      updateSweepUI();
+
+      if (!state.curieCrossedBanner && prevT >= T_CRITICAL && state.T < T_CRITICAL) {
+        state.curieCrossedBanner = true;
+        showBanner('⚡ Curie Point T_c = 2.269 crossed — fractal domains & symmetry breaking!', 'amber', 4500);
+      }
+    }
+  }
+
+  // =========================================================================
+  // CURATED PRESETS
+  // =========================================================================
+  function applyPreset(name) {
+    stopSweep();
+    state.activePreset = name;
+    state.running = true;
+
+    if (name === 'critical') {
+      state.T = T_CRITICAL;
+      state.h = 0.0;
+      state.J = 1;
+      state.algo = 'metropolis';
+      state.showWalls = true;
+      state.plotMode = 'time';
+      initSpins('random');
+      // Quick warm-up with 12 Wolff clusters so fractal domains appear immediately!
+      rebuildMetropolisTable();
+      stepWolff(14);
+      state.mcs = 0;
+      resetStats();
+      computeObservables(true);
+    } else if (name === 'quench') {
+      state.T = 1.50;
+      state.h = 0.0;
+      state.J = 1;
+      state.algo = 'metropolis';
+      state.showWalls = true;
+      state.plotMode = 'time';
+      initSpins('random');
+      rebuildMetropolisTable();
+    } else if (name === 'hysteresis') {
+      state.T = 1.65;
+      state.J = 1;
+      state.algo = 'metropolis';
+      state.showWalls = true;
+      startHysteresisSweep();
+    } else if (name === 'antiferro') {
+      state.T = 1.55;
+      state.h = 0.0;
+      state.J = -1;
+      state.algo = 'metropolis';
+      state.showWalls = true;
+      state.plotMode = 'time';
+      initSpins('random');
+      rebuildMetropolisTable();
+      // Brief initial relaxation so Néel domains & golden walls emerge right away
+      stepMetropolis(4);
+      resetStats();
+      computeObservables(true);
+    } else if (name === 'paramagnet') {
+      state.T = 4.00;
+      state.h = 0.0;
+      state.J = 1;
+      state.algo = 'metropolis';
+      state.showWalls = false;
+      state.plotMode = 'time';
+      initSpins('random');
+      rebuildMetropolisTable();
+    } else if (name === 'wolff') {
+      state.T = T_CRITICAL;
+      state.h = 0.0;
+      state.J = 1;
+      state.algo = 'wolff';
+      state.showWalls = true;
+      state.plotMode = 'time';
+      initSpins('random');
+      rebuildMetropolisTable();
+      stepWolff(10);
+      state.mcs = 0;
+      resetStats();
+      computeObservables(true);
+    }
+
+    syncControlsFromState();
+  }
+
+  // =========================================================================
+  // RENDERING: HIGH-SPEED 2N×2N IMAGEDATA + BEZEL + ARROWS + LOUPE + PLOTS
+  // =========================================================================
+  function renderLatticeToBuffer() {
+    const N = state.N;
+    const J = state.J;
+    const sp = spins;
+    const fl = flipFlash;
+    const uI = upIdx, dI = dnIdx, lI = ltIdx, rI = rtIdx;
+    const pix = offPixels32;
+    const pal = PALETTES[state.palette] || PALETTES.cyanrose;
+    const upCols = pal.up;
+    const dnCols = pal.dn;
+    const wallCol = pal.wall;
+    const wallHot = pal.wallHot;
+    const showWalls = state.showWalls;
+    const showShimmer = state.showShimmer;
+
+    const w2 = N * 2;
+    const wallPacked = packColor(wallCol[0], wallCol[1], wallCol[2]);
+    const wallHotPacked = packColor(wallHot[0], wallHot[1], wallHot[2]);
+
+    for (let y = 0; y < N; y++) {
+      const row = y * N;
+      const py0 = (y * 2) * w2;
+      const py1 = py0 + w2;
+
+      for (let x = 0; x < N; x++) {
+        const idx = row + x;
+        const s = sp[idx];
+        const sr = sp[rI[idx]];
+        const sd = sp[dI[idx]];
+        const su = sp[uI[idx]];
+        const sl = sp[lI[idx]];
+
+        // Count unsatisfied bonds (0..4) for subtle energy depth shading
+        let unsat = 0;
+        const badR = (J * s * sr) < 0;
+        const badD = (J * s * sd) < 0;
+        if (badR) unsat++;
+        if (badD) unsat++;
+        if ((J * s * su) < 0) unsat++;
+        if ((J * s * sl) < 0) unsat++;
+
+        const base = s === 1 ? upCols[unsat] : dnCols[unsat];
+        let r = base[0], g = base[1], b = base[2];
+
+        // Subtle flip activity shimmer
+        if (showShimmer) {
+          const fv = fl[idx];
+          if (fv > 0) {
+            const boost = fv * 0.28;
+            r = r + boost > 255 ? 255 : (r + boost) | 0;
+            g = g + boost > 255 ? 255 : (g + boost) | 0;
+            b = b + boost * 0.85 > 255 ? 255 : (b + boost * 0.85) | 0;
+            fl[idx] = fv > 26 ? fv - 26 : 0;
+          }
+        } else if (fl[idx] > 0) {
+          fl[idx] = 0;
+        }
+
+        const cSpin = packColor(r, g, b);
+        const px = x * 2;
+
+        pix[py0 + px] = cSpin;
+        if (showWalls) {
+          pix[py0 + px + 1] = badR ? wallPacked : cSpin;
+          pix[py1 + px] = badD ? wallPacked : cSpin;
+          pix[py1 + px + 1] = (badR && badD) ? wallHotPacked : (badR || badD ? wallPacked : cSpin);
+        } else {
+          pix[py0 + px + 1] = cSpin;
+          pix[py1 + px] = cSpin;
+          pix[py1 + px + 1] = cSpin;
+        }
+      }
+    }
+
+    offCtx.putImageData(offImgData, 0, 0);
+  }
+
+  function computeBoardLayout() {
+    const drawerEl = document.getElementById('drawer');
+    const drawerOpen = !drawerEl.classList.contains('collapsed') && !document.body.classList.contains('zen-mode') && viewW > 960;
+    const leftPad = (!document.body.classList.contains('zen-mode') && viewW > 1220) ? 260 : 28;
+    const rightPad = drawerOpen ? 356 : 28;
+    const topPad = 36;
+    const bottomPad = 76;
+
+    const availW = Math.max(220, viewW - leftPad - rightPad);
+    const availH = Math.max(220, viewH - topPad - bottomPad);
+    const baseSize = Math.min(availW, availH, 740);
+    const size = Math.round(baseSize * state.zoom);
+
+    const cx = leftPad + availW * 0.5;
+    const cy = topPad + availH * 0.5;
+
+    boardRect.size = size;
+    boardRect.x = Math.round(cx - size * 0.5);
+    boardRect.y = Math.round(cy - size * 0.5);
+  }
+
+  function drawMicroArrows(bx, by, bSize) {
+    const N = state.N;
+    const cell = bSize / N;
+    const pal = PALETTES[state.palette] || PALETTES.cyanrose;
+
+    if (cell >= 6.5) {
+      // Full-lattice crisp vector micro-arrows
+      const sp = spins;
+      const half = cell * 0.5;
+      const len = Math.min(cell * 0.34, 9);
+      const head = Math.max(1.8, len * 0.48);
+
+      ctx.save();
+      ctx.lineWidth = Math.max(1.0, Math.min(2.0, cell * 0.14));
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+
+      // Batch all UP arrows
+      ctx.strokeStyle = pal.arrowUp;
+      ctx.beginPath();
+      for (let y = 0; y < N; y++) {
+        const cy = by + y * cell + half;
+        if (cy < -cell || cy > viewH + cell) continue;
+        const row = y * N;
+        for (let x = 0; x < N; x++) {
+          if (sp[row + x] !== 1) continue;
+          const cx = bx + x * cell + half;
+          if (cx < -cell || cx > viewW + cell) continue;
+          ctx.moveTo(cx, cy + len);
+          ctx.lineTo(cx, cy - len);
+          ctx.moveTo(cx - head, cy - len + head);
+          ctx.lineTo(cx, cy - len);
+          ctx.lineTo(cx + head, cy - len + head);
+        }
+      }
+      ctx.stroke();
+
+      // Batch all DOWN arrows
+      ctx.strokeStyle = pal.arrowDn;
+      ctx.beginPath();
+      for (let y = 0; y < N; y++) {
+        const cy = by + y * cell + half;
+        if (cy < -cell || cy > viewH + cell) continue;
+        const row = y * N;
+        for (let x = 0; x < N; x++) {
+          if (sp[row + x] !== -1) continue;
+          const cx = bx + x * cell + half;
+          if (cx < -cell || cx > viewW + cell) continue;
+          ctx.moveTo(cx, cy - len);
+          ctx.lineTo(cx, cy + len);
+          ctx.moveTo(cx - head, cy + len - head);
+          ctx.lineTo(cx, cy + len);
+          ctx.lineTo(cx + head, cy + len - head);
+        }
+      }
+      ctx.stroke();
+      ctx.restore();
+    } else if (state.hoverGridX >= 0 && state.hoverGridY >= 0) {
+      // Magnifying micro-arrow inspector loupe when lattice is high-res (128/200)
+      drawArrowLoupe(state.mouseX, state.mouseY, state.hoverGridX, state.hoverGridY);
+    }
+  }
+
+  function drawArrowLoupe(mx, my, gx, gy) {
+    const N = state.N;
+    const sp = spins;
+    const pal = PALETTES[state.palette] || PALETTES.cyanrose;
+    const radius = 66;
+    const span = 5; // 11x11 window
+    const cell = (radius * 2) / (span * 2 + 1);
+
+    // Offset loupe slightly up-right so it never blocks paint cursor
+    let lx = mx + 78;
+    let ly = my - 78;
+    if (lx + radius > viewW - 20) lx = mx - 78;
+    if (ly - radius < 20) ly = my + 78;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(lx, ly, radius, 0, Math.PI * 2);
+    ctx.clip();
+
+    ctx.fillStyle = '#060a16';
+    ctx.fillRect(lx - radius, ly - radius, radius * 2, radius * 2);
+
+    const x0 = lx - (span + 0.5) * cell;
+    const y0 = ly - (span + 0.5) * cell;
+
+    for (let dy = -span; dy <= span; dy++) {
+      const sy = (gy + dy + N) % N;
+      for (let dx = -span; dx <= span; dx++) {
+        const sx = (gx + dx + N) % N;
+        const s = sp[sy * N + sx];
+        const cx = x0 + (dx + span) * cell;
+        const cy = y0 + (dy + span) * cell;
+
+        const col = s === 1 ? pal.up[1] : pal.dn[1];
+        ctx.fillStyle = `rgb(${col[0]},${col[1]},${col[2]})`;
+        ctx.fillRect(cx + 0.5, cy + 0.5, cell - 1, cell - 1);
+
+        // Draw crisp arrow
+        const midX = cx + cell * 0.5;
+        const midY = cy + cell * 0.5;
+        const len = cell * 0.32;
+        const hd = cell * 0.2;
+        ctx.strokeStyle = s === 1 ? pal.arrowUp : pal.arrowDn;
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        if (s === 1) {
+          ctx.moveTo(midX, midY + len);
+          ctx.lineTo(midX, midY - len);
+          ctx.moveTo(midX - hd, midY - len + hd);
+          ctx.lineTo(midX, midY - len);
+          ctx.lineTo(midX + hd, midY - len + hd);
+        } else {
+          ctx.moveTo(midX, midY - len);
+          ctx.lineTo(midX, midY + len);
+          ctx.moveTo(midX - hd, midY + len - hd);
+          ctx.lineTo(midX, midY + len);
+          ctx.lineTo(midX + hd, midY + len - hd);
+        }
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+
+    // Loupe bezel ring
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(lx, ly, radius, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(88, 220, 255, 0.72)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(9, 13, 24, 0.85)';
+    ctx.fillRect(lx - 42, ly + radius - 14, 84, 15);
+    ctx.fillStyle = '#c8ecff';
+    ctx.font = '700 9px ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('MICRO-LOUPE', lx, ly + radius - 3);
+    ctx.restore();
+  }
+
+  function renderMainCanvas() {
+    computeBoardLayout();
+
+    // Deep cosmic #040711 backdrop
+    ctx.fillStyle = '#040711';
+    ctx.fillRect(0, 0, viewW, viewH);
+
+    const bx = boardRect.x;
+    const by = boardRect.y;
+    const bSize = boardRect.size;
+    const cx = bx + bSize * 0.5;
+    const cy = by + bSize * 0.5;
+
+    // Subtle ambient phase aura behind crystal
+    if (state.showHalo) {
+      const nearTc = Math.abs(state.T - T_CRITICAL) < 0.18;
+      let haloColor;
+      if (nearTc) {
+        haloColor = 'rgba(255, 190, 92, 0.14)';
+      } else if (state.J === -1 && state.T < T_CRITICAL) {
+        haloColor = 'rgba(167, 139, 250, 0.13)';
+      } else if (state.T > T_CRITICAL) {
+        haloColor = 'rgba(255, 96, 131, 0.10)';
+      } else {
+        haloColor = state.M >= 0 ? 'rgba(56, 217, 255, 0.14)' : 'rgba(186, 56, 120, 0.14)';
+      }
+      const grad = ctx.createRadialGradient(cx, cy, bSize * 0.2, cx, cy, bSize * 0.82);
+      grad.addColorStop(0, haloColor);
+      grad.addColorStop(1, 'rgba(4, 7, 17, 0)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, viewW, viewH);
+    }
+
+    // Subtle specimen frame glow & bezel
+    ctx.save();
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.72)';
+    ctx.shadowBlur = 32;
+    ctx.fillStyle = '#070b18';
+    ctx.fillRect(bx - 6, by - 6, bSize + 12, bSize + 12);
+    ctx.restore();
+
+    // Blit crisp GPU-scaled spin lattice
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(offCanvas, bx, by, bSize, bSize);
+    ctx.restore();
+
+    // Micro-Arrows overlay
+    if (state.showArrows) {
+      drawMicroArrows(bx, by, bSize);
+    }
+
+    // Crisp metallic bezel border + corner reticle ticks
+    ctx.save();
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.28)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(bx - 0.5, by - 0.5, bSize + 1, bSize + 1);
+
+    const tick = 12;
+    ctx.strokeStyle = Math.abs(state.T - T_CRITICAL) < 0.14 ? 'rgba(255, 190, 92, 0.85)' : 'rgba(88, 220, 255, 0.65)';
+    ctx.lineWidth = 2;
+    const corners = [
+      [bx - 6, by - 6, 1, 1],
+      [bx + bSize + 6, by - 6, -1, 1],
+      [bx - 6, by + bSize + 6, 1, -1],
+      [bx + bSize + 6, by + bSize + 6, -1, -1],
+    ];
+    for (const [x, y, dx, dy] of corners) {
+      ctx.beginPath();
+      ctx.moveTo(x + dx * tick, y);
+      ctx.lineTo(x, y);
+      ctx.lineTo(x, y + dy * tick);
+      ctx.stroke();
+    }
+
+    // Subtle specimen header above bezel
+    ctx.font = '600 10.5px ui-monospace, monospace';
+    ctx.fillStyle = 'rgba(154, 169, 204, 0.72)';
+    ctx.textAlign = 'left';
+    const couplingTag = state.J === 1 ? 'FERROMAGNET J=+1' : 'ANTIFERROMAGNET J=-1';
+    ctx.fillText(`2D ISING CRYSTAL · ${state.N}×${state.N} (${state.N2.toLocaleString()} SPINS) · ${couplingTag}`, bx, by - 11);
+
+    // External magnetic field h indicator vectors alongside the bezel
+    if (state.showFieldViz && Math.abs(state.h) > 0.015) {
+      const dir = state.h > 0 ? -1 : 1; // -1 = up arrow, +1 = down arrow
+      const strength = Math.min(1.0, Math.abs(state.h) / 1.5);
+      const arrowLen = 18 + strength * 26;
+      const col = state.h > 0 ? `rgba(88, 220, 255, ${0.35 + strength * 0.6})` : `rgba(255, 96, 131, ${0.35 + strength * 0.6})`;
+      ctx.strokeStyle = col;
+      ctx.fillStyle = col;
+      ctx.lineWidth = 2;
+
+      const sides = [bx - 22, bx + bSize + 22];
+      for (const sx of sides) {
+        if (sx < 14 || sx > viewW - 14) continue;
+        for (let k = 0; k < 5; k++) {
+          const ay = by + bSize * (0.14 + k * 0.18);
+          const y1 = ay - dir * (arrowLen * 0.5);
+          const y2 = ay + dir * (arrowLen * 0.5);
+          ctx.beginPath();
+          ctx.moveTo(sx, y1);
+          ctx.lineTo(sx, y2);
+          ctx.moveTo(sx - 4.5, y2 - dir * 6);
+          ctx.lineTo(sx, y2);
+          ctx.lineTo(sx + 4.5, y2 - dir * 6);
+          ctx.stroke();
+        }
+      }
+      ctx.textAlign = 'right';
+      ctx.fillText(`B_ext h = ${state.h >= 0 ? '+' : ''}${state.h.toFixed(2)} ${state.h > 0 ? '↑' : '↓'}`, bx + bSize, by - 11);
+    }
+
+    // Interactive brush preview circle on hover
+    if (state.hoverGridX >= 0 && state.hoverGridY >= 0) {
+      const pxRad = (state.brushRadius * bSize) / state.N;
+      const isUp = state.painting ? state.paintSpin === 1 : state.brushLeftPol === 1;
+      ctx.beginPath();
+      ctx.arc(state.mouseX, state.mouseY, Math.max(4, pxRad), 0, Math.PI * 2);
+      ctx.strokeStyle = isUp ? 'rgba(88, 220, 255, 0.85)' : 'rgba(255, 96, 131, 0.85)';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 3]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    ctx.restore();
+  }
+
+  // =========================================================================
+  // LIVE PLOTS: M(t) & E(t) SPARKLINE + HYSTERESIS LOOP (M vs h)
+  // =========================================================================
+  function renderPlots() {
+    const w = plotCanvas.width;
+    const h = plotCanvas.height;
+    const p = plotCtx;
+
+    p.clearRect(0, 0, w, h);
+    p.fillStyle = '#050914';
+    p.fillRect(0, 0, w, h);
+
+    if (state.plotMode === 'time') {
+      const padL = 28, padR = 8, padT = 14, padB = 12;
+      const pw = w - padL - padR;
+      const ph = h - padT - padB;
+      const midY = padT + ph * 0.5;
+
+      // Grid & zero line
+      p.strokeStyle = 'rgba(148, 179, 255, 0.12)';
+      p.lineWidth = 1;
+      p.beginPath();
+      p.moveTo(padL, padT);
+      p.lineTo(w - padR, padT);
+      p.moveTo(padL, midY);
+      p.lineTo(w - padR, midY);
+      p.moveTo(padL, padT + ph);
+      p.lineTo(w - padR, padT + ph);
+      p.stroke();
+
+      p.fillStyle = 'rgba(154, 169, 204, 0.68)';
+      p.font = '600 9px ui-monospace, monospace';
+      p.textAlign = 'right';
+      p.fillText('+1', padL - 4, padT + 4);
+      p.fillText('0', padL - 4, midY + 3);
+      p.fillText('-1', padL - 4, padT + ph + 3);
+
+      const hist = state.timeHistory;
+      if (hist.length > 1) {
+        const dx = pw / Math.max(1, state.maxTimePts - 1);
+        const startX = w - padR - (hist.length - 1) * dx;
+
+        // Energy E(t) mapped from [-2, 0] -> [padT + ph, padT]
+        p.strokeStyle = 'rgba(255, 190, 92, 0.85)';
+        p.lineWidth = 1.4;
+        p.beginPath();
+        for (let i = 0; i < hist.length; i++) {
+          const x = startX + i * dx;
+          const eNorm = Math.max(-1, Math.min(1, (hist[i].e + 1.0))); // -2 -> -1, 0 -> +1
+          const y = midY - eNorm * (ph * 0.48);
+          if (i === 0) p.moveTo(x, y);
+          else p.lineTo(x, y);
+        }
+        p.stroke();
+
+        // Magnetization M(t) (or staggered M_s for AFM)
+        const isAfm = state.J === -1;
+        p.strokeStyle = isAfm ? '#c9b5ff' : '#58dcff';
+        p.lineWidth = 1.9;
+        p.beginPath();
+        for (let i = 0; i < hist.length; i++) {
+          const x = startX + i * dx;
+          const val = isAfm ? hist[i].ms : hist[i].m;
+          const y = midY - Math.max(-1, Math.min(1, val)) * (ph * 0.48);
+          if (i === 0) p.moveTo(x, y);
+          else p.lineTo(x, y);
+        }
+        p.stroke();
+      }
+
+      // Legend
+      p.textAlign = 'left';
+      p.fillStyle = state.J === -1 ? '#c9b5ff' : '#58dcff';
+      p.fillText(state.J === -1 ? '● M_stag(t)' : '● M(t)', padL + 4, 10);
+      p.fillStyle = '#ffbe5c';
+      p.fillText('● E(t) [-2..0]', padL + 72, 10);
+    } else {
+      // HYSTERESIS LOOP: M vs h
+      const padL = 32, padR = 14, padT = 12, padB = 16;
+      const pw = w - padL - padR;
+      const ph = h - padT - padB;
+      const midX = padL + pw * 0.5;
+      const midY = padT + ph * 0.5;
+      const hSpan = Math.max(1.3, state.hystMax + 0.15);
+
+      // Axes
+      p.strokeStyle = 'rgba(148, 179, 255, 0.16)';
+      p.lineWidth = 1;
+      p.strokeRect(padL, padT, pw, ph);
+      p.beginPath();
+      p.moveTo(padL, midY);
+      p.lineTo(padL + pw, midY);
+      p.moveTo(midX, padT);
+      p.lineTo(midX, padT + ph);
+      p.stroke();
+
+      p.fillStyle = 'rgba(154, 169, 204, 0.68)';
+      p.font = '600 9px ui-monospace, monospace';
+      p.textAlign = 'right';
+      p.fillText('+1', padL - 4, padT + 5);
+      p.fillText('0', padL - 4, midY + 3);
+      p.fillText('-1', padL - 4, padT + ph + 2);
+
+      p.textAlign = 'center';
+      p.fillText(`-${hSpan.toFixed(1)}`, padL + 10, h - 3);
+      p.fillText('h = 0', midX, h - 3);
+      p.fillText(`+${hSpan.toFixed(1)}`, padL + pw - 10, h - 3);
+
+      const pts = state.hystHistory;
+      if (pts.length > 1) {
+        const len = pts.length;
+        for (let i = 1; i < len; i++) {
+          const t = i / len;
+          const x0 = midX + (pts[i - 1].h / hSpan) * (pw * 0.48);
+          const y0 = midY - pts[i - 1].m * (ph * 0.46);
+          const x1 = midX + (pts[i].h / hSpan) * (pw * 0.48);
+          const y1 = midY - pts[i].m * (ph * 0.46);
+          p.strokeStyle = `rgba(88, 220, 255, ${0.15 + 0.85 * t})`;
+          p.lineWidth = 1.2 + 1.1 * t;
+          p.beginPath();
+          p.moveTo(x0, y0);
+          p.lineTo(x1, y1);
+          p.stroke();
+        }
+      }
+
+      // Current (h, M) glowing head dot
+      const curX = midX + (Math.max(-hSpan, Math.min(hSpan, state.h)) / hSpan) * (pw * 0.48);
+      const curY = midY - state.M * (ph * 0.46);
+      p.fillStyle = '#ffbe5c';
+      p.beginPath();
+      p.arc(curX, curY, 3.6, 0, Math.PI * 2);
+      p.fill();
+
+      p.textAlign = 'left';
+      p.fillStyle = '#ffbe5c';
+      p.fillText('M vs h', padL + 5, padT + 9);
+    }
+  }
+
+  // =========================================================================
+  // INTERACTIVE BRUSH PAINTING
+  // =========================================================================
+  function screenToGrid(clientX, clientY) {
+    const rect = simCanvas.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+    state.mouseX = x;
+    state.mouseY = y;
+
+    if (
+      x >= boardRect.x && x < boardRect.x + boardRect.size &&
+      y >= boardRect.y && y < boardRect.y + boardRect.size
+    ) {
+      const gx = Math.floor(((x - boardRect.x) / boardRect.size) * state.N);
+      const gy = Math.floor(((y - boardRect.y) / boardRect.size) * state.N);
+      state.hoverGridX = Math.max(0, Math.min(state.N - 1, gx));
+      state.hoverGridY = Math.max(0, Math.min(state.N - 1, gy));
+      return true;
+    }
+    state.hoverGridX = -1;
+    state.hoverGridY = -1;
+    return false;
+  }
+
+  function paintAt(gx, gy, spinVal) {
+    const N = state.N;
+    const r = state.brushRadius;
+    const r2 = r * r;
+    const sp = spins;
+    const fl = flipFlash;
+    let painted = 0;
+
+    for (let dy = -r; dy <= r; dy++) {
+      const py = (gy + dy + N) % N;
+      const row = py * N;
+      for (let dx = -r; dx <= r; dx++) {
+        if (dx * dx + dy * dy > r2) continue;
+        const px = (gx + dx + N) % N;
+        const idx = row + px;
+        if (sp[idx] !== spinVal) {
+          sp[idx] = spinVal;
+          fl[idx] = 255;
+          painted++;
+        }
+      }
+    }
+    if (painted > 0) {
+      computeObservables(false);
+    }
+  }
+
+  simCanvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+  simCanvas.addEventListener('pointerdown', (e) => {
+    if (!screenToGrid(e.clientX, e.clientY)) return;
+    simCanvas.setPointerCapture(e.pointerId);
+    state.painting = true;
+    const isRight = e.button === 2;
+    state.paintSpin = isRight ? -state.brushLeftPol : state.brushLeftPol;
+    paintAt(state.hoverGridX, state.hoverGridY, state.paintSpin);
+  });
+
+  simCanvas.addEventListener('pointermove', (e) => {
+    const inside = screenToGrid(e.clientX, e.clientY);
+    if (state.painting && inside) {
+      paintAt(state.hoverGridX, state.hoverGridY, state.paintSpin);
+    }
+  });
+
+  window.addEventListener('pointerup', () => {
+    state.painting = false;
+  });
+
+  simCanvas.addEventListener('pointerleave', () => {
+    if (!state.painting) {
+      state.hoverGridX = -1;
+      state.hoverGridY = -1;
+    }
+  });
+
+  simCanvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const delta = e.deltaY < 0 ? 1 : -1;
+    state.brushRadius = Math.max(1, Math.min(28, state.brushRadius + delta));
+    document.getElementById('sl-brush').value = String(state.brushRadius);
+    document.getElementById('val-brush').textContent = state.brushRadius + (state.brushRadius === 1 ? ' spin' : ' spins');
+  }, { passive: false });
+
+  // =========================================================================
+  // TELEMETRY & UI SYNCHRONIZATION
+  // =========================================================================
+  const elAlgoBadge = document.getElementById('algo-badge');
+  const elPhaseBadge = document.getElementById('phase-badge');
+  const elTelTemp = document.getElementById('tel-temp');
+  const elTelMLabel = document.getElementById('tel-m-label');
+  const elTelM = document.getElementById('tel-m');
+  const elTelE = document.getElementById('tel-e');
+  const elTelChi = document.getElementById('tel-chi');
+  const elTelCv = document.getElementById('tel-cv');
+  const elTelWalls = document.getElementById('tel-walls');
+  const elMagFill = document.getElementById('mag-fill');
+  const elTelUpPct = document.getElementById('tel-up-pct');
+  const elTelMcs = document.getElementById('tel-mcs');
+  const elTelSize = document.getElementById('tel-size');
+  const elTelH = document.getElementById('tel-h');
+
+  function updateTelemetryUI() {
+    const tRatio = state.T / T_CRITICAL;
+    elTelTemp.textContent = tRatio.toFixed(3) + ' T_c';
+
+    const mDisp = state.J === 1 ? state.M : state.Ms;
+    elTelMLabel.textContent = state.J === 1 ? 'Magnetization ⟨M⟩' : 'Néel Order ⟨Mₛ⟩';
+    elTelM.textContent = (mDisp >= 0 ? '+' : '') + mDisp.toFixed(3);
+    elTelM.className = 'tele-val ' + (state.J === -1 ? 'violet' : (mDisp >= 0 ? 'cyan' : 'rose'));
+
+    elTelE.textContent = state.E.toFixed(3);
+    elTelChi.textContent = state.chi < 100 ? state.chi.toFixed(2) : state.chi.toFixed(0);
+    elTelCv.textContent = state.cv.toFixed(2);
+    elTelWalls.textContent = (state.wallFrac * 100).toFixed(1) + '%';
+
+    // Bipolar magnetization bar
+    const mClamped = Math.max(-1, Math.min(1, state.M));
+    if (mClamped >= 0) {
+      elMagFill.style.left = '50%';
+      elMagFill.style.width = (mClamped * 50).toFixed(1) + '%';
+      elMagFill.style.background = 'linear-gradient(90deg, rgba(88, 220, 255, 0.7), #58dcff)';
+    } else {
+      const wPct = (-mClamped * 50);
+      elMagFill.style.left = (50 - wPct).toFixed(1) + '%';
+      elMagFill.style.width = wPct.toFixed(1) + '%';
+      elMagFill.style.background = 'linear-gradient(90deg, #ff6083, rgba(255, 96, 131, 0.7))';
+    }
+    const upPct = Math.round(((state.M + 1) * 0.5) * 100);
+    elTelUpPct.textContent = upPct + '%↑';
+
+    elTelMcs.textContent = state.mcs < 1000 ? state.mcs.toFixed(1) : Math.round(state.mcs).toLocaleString();
+    elTelSize.textContent = `${state.N}×${state.N}`;
+    elTelH.textContent = (state.h >= 0 ? '+' : '') + state.h.toFixed(2);
+
+    // Phase classification badge
+    const nearTc = Math.abs(state.T - T_CRITICAL) < 0.12 && Math.abs(state.h) < 0.25;
+    if (nearTc) {
+      elPhaseBadge.textContent = 'Critical Point!';
+      elPhaseBadge.className = 'status-pill critical';
+    } else if (state.T > T_CRITICAL) {
+      elPhaseBadge.textContent = 'Paramagnetic';
+      elPhaseBadge.className = 'status-pill para';
+    } else if (state.J === -1) {
+      elPhaseBadge.textContent = 'Antiferromagnetic';
+      elPhaseBadge.className = 'status-pill afm';
+    } else {
+      elPhaseBadge.textContent = 'Ferromagnetic';
+      elPhaseBadge.className = 'status-pill';
+    }
+  }
+
+  function syncSlidersLight() {
+    document.getElementById('sl-temp').value = state.T.toFixed(3);
+    document.getElementById('val-temp').textContent = state.T.toFixed(3);
+    document.getElementById('temp-abs-readout').textContent = 'T = ' + state.T.toFixed(3);
+    document.getElementById('sl-field').value = state.h.toFixed(2);
+    document.getElementById('val-field').textContent = (state.h >= 0 ? '+' : '') + state.h.toFixed(2);
+  }
+
+  function updateSweepUI() {
+    const btnH = document.getElementById('btn-sweep-hyst');
+    const btnC = document.getElementById('btn-sweep-curie');
+    const box = document.getElementById('sweep-status');
+    const txt = document.getElementById('sweep-status-text');
+    const pct = document.getElementById('sweep-status-pct');
+
+    btnH.classList.toggle('sweeping', state.sweepMode === 'hysteresis');
+    btnH.textContent = state.sweepMode === 'hysteresis' ? '⏹ Stop Hysteresis Sweep' : '🔄 Sweep Hysteresis Loop';
+
+    btnC.classList.toggle('sweeping', state.sweepMode === 'curie');
+    btnC.textContent = state.sweepMode === 'curie' ? '⏹ Stop Curie Point Sweep' : '🌡️ Sweep Across Curie Point (T_c)';
+
+    if (state.sweepMode) {
+      box.classList.add('active');
+      txt.textContent = state.sweepMode === 'hysteresis'
+        ? `Sweeping h = ${state.h >= 0 ? '+' : ''}${state.h.toFixed(2)}`
+        : `Cooling T = ${state.T.toFixed(3)}`;
+      pct.textContent = Math.round(state.sweepProgress * 100) + '%';
+    } else {
+      box.classList.remove('active');
+    }
+  }
+
+  function syncControlsFromState() {
+    syncSlidersLight();
+
+    // Algorithm badge & buttons
+    elAlgoBadge.textContent = state.algo === 'wolff' ? 'Wolff Cluster' : 'Metropolis';
+    elAlgoBadge.className = 'mode-badge' + (state.algo === 'wolff' ? ' wolff' : '');
+
+    document.querySelectorAll('#algo-row .seg-btn').forEach((b) => {
+      b.classList.toggle('active', b.dataset.algo === state.algo);
+      b.classList.toggle('violet', b.dataset.algo === 'wolff' && state.algo === 'wolff');
+    });
+
+    document.querySelectorAll('#coupling-row .seg-btn').forEach((b) => {
+      const isAct = Number(b.dataset.j) === state.J;
+      b.classList.toggle('active', isAct);
+      b.classList.toggle('violet', isAct && state.J === -1);
+    });
+
+    document.querySelectorAll('#size-row .seg-btn').forEach((b) => {
+      b.classList.toggle('active', Number(b.dataset.size) === state.N);
+    });
+
+    document.querySelectorAll('.preset-btn').forEach((b) => {
+      b.classList.toggle('active', b.dataset.preset === state.activePreset);
+    });
+
+    document.getElementById('chk-walls').checked = state.showWalls;
+    document.getElementById('chk-arrows').checked = state.showArrows;
+    document.getElementById('chk-shimmer').checked = state.showShimmer;
+    document.getElementById('chk-field-viz').checked = state.showFieldViz;
+    document.getElementById('chk-halo').checked = state.showHalo;
+
+    document.getElementById('btn-plot-time').classList.toggle('active', state.plotMode === 'time');
+    document.getElementById('btn-plot-hyst').classList.toggle('active', state.plotMode === 'hyst');
+
+    const playBtn = document.getElementById('btn-play');
+    playBtn.textContent = state.running ? '⏸ Pause' : '▶ Play';
+    playBtn.classList.toggle('active', state.running);
+
+    updateSweepUI();
+  }
+
+  // =========================================================================
+  // EVENT BINDINGS
+  // =========================================================================
+  // Drawer tabs
+  document.querySelectorAll('.tab-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const target = btn.dataset.tab;
+      document.querySelectorAll('.tab-btn').forEach((b) => b.classList.toggle('active', b === btn));
+      document.querySelectorAll('.tab-pane').forEach((p) => p.classList.toggle('active', p.id === 'tab-' + target));
+    });
+  });
+
+  // Presets
+  document.querySelectorAll('.preset-btn').forEach((btn) => {
+    btn.addEventListener('click', () => applyPreset(btn.dataset.preset));
+  });
+
+  // Temperature & Field sliders
+  document.getElementById('sl-temp').addEventListener('input', (e) => {
+    if (state.sweepMode === 'curie') stopSweep();
+    state.T = parseFloat(e.target.value);
+    state.activePreset = '';
+    rebuildMetropolisTable();
+    resetStats();
+    syncSlidersLight();
+    document.querySelectorAll('.preset-btn').forEach((b) => b.classList.remove('active'));
+  });
+
+  document.getElementById('btn-snap-tc').addEventListener('click', () => {
+    if (state.sweepMode === 'curie') stopSweep();
+    state.T = T_CRITICAL;
+    rebuildMetropolisTable();
+    resetStats();
+    syncSlidersLight();
+    showBanner('Snapped to exact Onsager Critical Point T_c = 2.269185', 'amber', 2400);
+  });
+
+  document.getElementById('sl-field').addEventListener('input', (e) => {
+    if (state.sweepMode === 'hysteresis') stopSweep();
+    state.h = parseFloat(e.target.value);
+    state.activePreset = '';
+    rebuildMetropolisTable();
+    syncSlidersLight();
+    document.querySelectorAll('.preset-btn').forEach((b) => b.classList.remove('active'));
+  });
+
+  document.getElementById('btn-zero-h').addEventListener('click', () => {
+    if (state.sweepMode === 'hysteresis') stopSweep();
+    state.h = 0.0;
+    rebuildMetropolisTable();
+    syncSlidersLight();
+  });
+
+  // Coupling J
+  document.querySelectorAll('#coupling-row .seg-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      stopSweep();
+      state.J = Number(btn.dataset.j);
+      state.activePreset = '';
+      rebuildMetropolisTable();
+      resetStats();
+      syncControlsFromState();
+    });
+  });
+
+  // Algorithm toggle
+  document.querySelectorAll('#algo-row .seg-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      state.algo = btn.dataset.algo;
+      state.activePreset = '';
+      resetStats();
+      syncControlsFromState();
+    });
+  });
+
+  // Sweeps
+  document.getElementById('btn-sweep-hyst').addEventListener('click', startHysteresisSweep);
+  document.getElementById('btn-sweep-curie').addEventListener('click', startCurieSweep);
+
+  // Plot switcher & clear
+  document.getElementById('btn-plot-time').addEventListener('click', () => {
+    state.plotMode = 'time';
+    syncControlsFromState();
+  });
+  document.getElementById('btn-plot-hyst').addEventListener('click', () => {
+    state.plotMode = 'hyst';
+    syncControlsFromState();
+  });
+  document.getElementById('btn-clear-plots').addEventListener('click', () => {
+    state.timeHistory = [];
+    state.hystHistory = [];
+  });
+  document.getElementById('btn-clear-hyst').addEventListener('click', () => {
+    state.hystHistory = [];
+  });
+
+  // Lattice Size & Spin Init
+  document.querySelectorAll('#size-row .seg-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const nextN = Number(btn.dataset.size);
+      if (nextN === state.N) return;
+      allocateLattice(nextN, 'random');
+      if (nextN === 64) {
+        state.showArrows = true;
+      }
+      syncControlsFromState();
+    });
+  });
+
+  document.getElementById('btn-init-rand').addEventListener('click', () => initSpins('random'));
+  document.getElementById('btn-init-up').addEventListener('click', () => initSpins('up'));
+  document.getElementById('btn-init-dn').addEventListener('click', () => initSpins('down'));
+  document.getElementById('btn-init-bubble').addEventListener('click', () => {
+    initSpins('bubble');
+    showBanner('Magnetic bubble nucleated — watch curvature-driven surface tension!', 'cyan', 2800);
+  });
+
+  // Brush controls
+  document.getElementById('sl-brush').addEventListener('input', (e) => {
+    state.brushRadius = parseInt(e.target.value, 10);
+    document.getElementById('val-brush').textContent = state.brushRadius + (state.brushRadius === 1 ? ' spin' : ' spins');
+  });
+
+  document.querySelectorAll('#brush-pol-row .seg-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      state.brushLeftPol = Number(btn.dataset.pol);
+      document.querySelectorAll('#brush-pol-row .seg-btn').forEach((b) => b.classList.toggle('active', b === btn));
+    });
+  });
+
+  // Sweep settings
+  document.getElementById('sl-sweep-speed').addEventListener('input', (e) => {
+    state.sweepSpeed = parseFloat(e.target.value);
+    document.getElementById('val-sweep-speed').textContent = state.sweepSpeed.toFixed(1) + '×';
+  });
+  document.getElementById('sl-hmax').addEventListener('input', (e) => {
+    state.hystMax = parseFloat(e.target.value);
+    document.getElementById('val-hmax').textContent = '±' + state.hystMax.toFixed(2);
+  });
+
+  // Visual toggles
+  document.getElementById('chk-walls').addEventListener('change', (e) => { state.showWalls = e.target.checked; });
+  document.getElementById('chk-arrows').addEventListener('change', (e) => { state.showArrows = e.target.checked; });
+  document.getElementById('chk-shimmer').addEventListener('change', (e) => { state.showShimmer = e.target.checked; });
+  document.getElementById('chk-field-viz').addEventListener('change', (e) => { state.showFieldViz = e.target.checked; });
+  document.getElementById('chk-halo').addEventListener('change', (e) => { state.showHalo = e.target.checked; });
+
+  document.querySelectorAll('#palette-row .seg-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      state.palette = btn.dataset.palette;
+      document.querySelectorAll('#palette-row .seg-btn').forEach((b) => b.classList.toggle('active', b === btn));
+    });
+  });
+
+  document.getElementById('sl-zoom').addEventListener('input', (e) => {
+    state.zoom = parseFloat(e.target.value);
+    document.getElementById('val-zoom').textContent = state.zoom.toFixed(2) + '×';
+  });
+  document.getElementById('btn-reset-view').addEventListener('click', () => {
+    state.zoom = 1.0;
+    document.getElementById('sl-zoom').value = '1.00';
+    document.getElementById('val-zoom').textContent = '1.00×';
+  });
+
+  document.getElementById('sl-volume').addEventListener('input', (e) => {
+    state.volume = parseFloat(e.target.value);
+    document.getElementById('val-volume').textContent = Math.round(state.volume * 100) + '%';
+  });
+
+  // Transport bar
+  document.getElementById('btn-play').addEventListener('click', () => {
+    state.running = !state.running;
+    syncControlsFromState();
+  });
+
+  document.getElementById('btn-step').addEventListener('click', () => {
+    state.running = false;
+    const prevM = state.M;
+    const flips = state.algo === 'wolff' ? stepWolff(1) : stepMetropolis(1.0);
+    state.flipsLastFrame = flips;
+    computeObservables(true);
+    updateBarkhausenAudio(flips, state.M - prevM);
+    syncControlsFromState();
+  });
+
+  document.getElementById('btn-reset').addEventListener('click', () => {
+    stopSweep();
+    initSpins('random');
+    syncControlsFromState();
+  });
+
+  document.querySelectorAll('.speed-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      state.speed = parseFloat(btn.dataset.speed);
+      document.querySelectorAll('.speed-btn').forEach((b) => b.classList.toggle('active', b === btn));
+    });
+  });
+
+  document.getElementById('btn-sound').addEventListener('click', () => {
+    state.soundEnabled = !state.soundEnabled;
+    const btn = document.getElementById('btn-sound');
+    if (state.soundEnabled) {
+      initAudio();
+      if (audio.ctx && audio.ctx.state === 'suspended') {
+        audio.ctx.resume();
+      }
+      btn.textContent = '🔊 Audio';
+      btn.classList.add('active');
+    } else {
+      if (audio.humGain && audio.ctx) {
+        audio.humGain.gain.setTargetAtTime(0, audio.ctx.currentTime, 0.03);
+      }
+      btn.textContent = '🔇 Audio';
+      btn.classList.remove('active');
+    }
+  });
+
+  document.getElementById('btn-toggle-drawer').addEventListener('click', () => {
+    const drawer = document.getElementById('drawer');
+    const collapsed = drawer.classList.toggle('collapsed');
+    document.getElementById('btn-toggle-drawer').classList.toggle('active', !collapsed);
+  });
+
+  function toggleZen() {
+    document.body.classList.toggle('zen-mode');
+  }
+  document.getElementById('btn-zen').addEventListener('click', toggleZen);
+  document.getElementById('btn-zen-restore').addEventListener('click', toggleZen);
+
+  // Keyboard shortcuts
+  window.addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'INPUT') return;
+    if (e.code === 'Space') {
+      e.preventDefault();
+      state.running = !state.running;
+      syncControlsFromState();
+    } else if (e.key === 'h' || e.key === 'H') {
+      toggleZen();
+    } else if (e.key === 'r' || e.key === 'R') {
+      stopSweep();
+      initSpins('random');
+    } else if (e.key === 'c' || e.key === 'C') {
+      if (state.sweepMode === 'curie') stopSweep();
+      state.T = T_CRITICAL;
+      rebuildMetropolisTable();
+      resetStats();
+      syncSlidersLight();
+      showBanner('Snapped to Curie Point T_c = 2.269185', 'amber', 2200);
+    } else if (e.key === 'w' || e.key === 'W') {
+      state.algo = state.algo === 'wolff' ? 'metropolis' : 'wolff';
+      resetStats();
+      syncControlsFromState();
+    } else if (e.key === 'd' || e.key === 'D') {
+      state.showWalls = !state.showWalls;
+      syncControlsFromState();
+    } else if (e.key === 'a' || e.key === 'A') {
+      state.showArrows = !state.showArrows;
+      syncControlsFromState();
+    } else if (e.key === '[') {
+      state.brushRadius = Math.max(1, state.brushRadius - 1);
+      document.getElementById('sl-brush').value = String(state.brushRadius);
+      document.getElementById('val-brush').textContent = state.brushRadius + (state.brushRadius === 1 ? ' spin' : ' spins');
+    } else if (e.key === ']') {
+      state.brushRadius = Math.min(28, state.brushRadius + 1);
+      document.getElementById('sl-brush').value = String(state.brushRadius);
+      document.getElementById('val-brush').textContent = state.brushRadius + (state.brushRadius === 1 ? ' spin' : ' spins');
+    }
+  });
+
+  // =========================================================================
+  // RESIZE & MAIN 60FPS ANIMATION LOOP
+  // =========================================================================
+  function resize() {
+    viewW = window.innerWidth;
+    viewH = window.innerHeight;
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    simCanvas.width = Math.round(viewW * dpr);
+    simCanvas.height = Math.round(viewH * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  window.addEventListener('resize', resize);
+
+  let lastTime = performance.now();
+  let frameCount = 0;
+
+  function tick(now) {
+    requestAnimationFrame(tick);
+    const dt = Math.min(0.05, (now - lastTime) * 0.001);
+    lastTime = now;
+    frameCount++;
+
+    if (state.running) {
+      advanceSweep(dt);
+
+      const prevM = state.M;
+      let flips = 0;
+
+      if (state.algo === 'metropolis') {
+        // Keep Hysteresis sweeps smoothly equilibrated with brisk MCS
+        const baseSweeps = state.sweepMode === 'hysteresis' ? 2.5 : 1.0;
+        const sweeps = baseSweeps * state.speed;
+        flips = stepMetropolis(sweeps);
+      } else {
+        // Wolff clusters: fractional carry supports slow 0.25x inspection cleanly
+        state.stepCarry += state.speed * 1.4;
+        const nClusters = Math.floor(state.stepCarry);
+        if (nClusters >= 1) {
+          state.stepCarry -= nClusters;
+          flips = stepWolff(Math.min(nClusters, 12));
+        }
+      }
+
+      state.flipsLastFrame = flips;
+      const shouldRecordPlot = (frameCount % 2 === 0);
+      computeObservables(shouldRecordPlot);
+      updateBarkhausenAudio(flips, state.M - prevM);
+    }
+
+    renderLatticeToBuffer();
+    renderMainCanvas();
+
+    if (frameCount % 2 === 0) {
+      updateTelemetryUI();
+      renderPlots();
+    }
+  }
+
+  // =========================================================================
+  // BOOTSTRAP
+  // =========================================================================
+  resize();
+  allocateLattice(128, 'random');
+  applyPreset('critical');
+  updateTelemetryUI();
+  renderPlots();
+  requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>

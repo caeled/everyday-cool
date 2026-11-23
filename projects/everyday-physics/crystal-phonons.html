@@ -1,0 +1,3358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Lattice — Crystal Phonons, Defects &amp; Phase Melting</title>
+<style>
+  :root {
+    --bg-deep: #040711;
+    --panel-bg: rgba(9, 13, 24, 0.78);
+    --panel-bg-strong: rgba(8, 12, 22, 0.92);
+    --panel-border: rgba(148, 179, 255, 0.16);
+    --panel-border-hi: rgba(148, 179, 255, 0.36);
+    --text-main: #eef3ff;
+    --text-dim: #9aa9cc;
+    --text-muted: #68789c;
+    --accent-amber: #ffbe5c;
+    --accent-cyan: #58dcff;
+    --accent-mint: #4af2b2;
+    --accent-rose: #ff6083;
+    --accent-violet: #a78bfa;
+    --radius-lg: 14px;
+    --radius-md: 10px;
+    --radius-sm: 7px;
+    --mono: ui-monospace, "Cascadia Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Inter, Helvetica, Arial, sans-serif;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg-deep);
+    color: var(--text-main);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    touch-action: none;
+  }
+
+  #sim-canvas {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    cursor: crosshair;
+  }
+  #sim-canvas.panning {
+    cursor: grabbing;
+  }
+  #sim-canvas.grab-ready {
+    cursor: grab;
+  }
+
+  /* HUD Layer */
+  .hud {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 10;
+  }
+  body.zen-mode .hud > :not(.zen-restore) {
+    opacity: 0;
+    pointer-events: none !important;
+  }
+
+  .panel {
+    pointer-events: auto;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-lg);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    transition: opacity 0.25s ease, transform 0.25s ease;
+  }
+
+  /* Top-Left Telemetry Card */
+  .top-left {
+    position: fixed;
+    top: 14px;
+    left: 14px;
+    width: min(414px, calc(100vw - 360px));
+    min-width: 290px;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .brand-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .brand-title-wrap {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .brand-title {
+    font-size: 16px;
+    font-weight: 800;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    background: linear-gradient(120deg, #fff5dc 0%, #ffbe5c 42%, #58dcff 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .mode-badge {
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 999px;
+    border: 1px solid rgba(88, 220, 255, 0.38);
+    background: rgba(88, 220, 255, 0.12);
+    color: var(--accent-cyan);
+  }
+  .mode-badge.diatomic {
+    border-color: rgba(255, 190, 92, 0.42);
+    background: rgba(255, 190, 92, 0.14);
+    color: var(--accent-amber);
+  }
+  .mode-badge.square {
+    border-color: rgba(167, 139, 250, 0.42);
+    background: rgba(167, 139, 250, 0.14);
+    color: var(--accent-violet);
+  }
+
+  .status-pill {
+    font-size: 10px;
+    font-weight: 750;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 3px 9px;
+    border-radius: 999px;
+    background: rgba(74, 242, 178, 0.14);
+    color: var(--accent-mint);
+    border: 1px solid rgba(74, 242, 178, 0.36);
+    white-space: nowrap;
+    transition: all 0.25s ease;
+  }
+  .status-pill.melting {
+    background: rgba(255, 190, 92, 0.16);
+    color: var(--accent-amber);
+    border-color: rgba(255, 190, 92, 0.44);
+  }
+  .status-pill.liquid {
+    background: rgba(88, 220, 255, 0.16);
+    color: var(--accent-cyan);
+    border-color: rgba(88, 220, 255, 0.44);
+  }
+  .status-pill.gas {
+    background: rgba(255, 96, 131, 0.18);
+    color: var(--accent-rose);
+    border-color: rgba(255, 96, 131, 0.46);
+  }
+
+  .telemetry-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+  }
+
+  .tele-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(148, 179, 255, 0.1);
+    border-radius: var(--radius-sm);
+    padding: 5px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+
+  .tele-label {
+    font-size: 9px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .tele-val {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--text-main);
+  }
+  .tele-val.amber { color: var(--accent-amber); }
+  .tele-val.cyan { color: var(--accent-cyan); }
+  .tele-val.mint { color: var(--accent-mint); }
+  .tele-val.rose { color: var(--accent-rose); }
+  .tele-val.violet { color: var(--accent-violet); }
+
+  /* Sparkline */
+  .spark-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    background: rgba(4, 7, 17, 0.45);
+    border: 1px solid rgba(148, 179, 255, 0.1);
+    border-radius: var(--radius-sm);
+    padding: 5px 7px 6px;
+  }
+  .spark-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 9.5px;
+    color: var(--text-muted);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .spark-legend {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    font-family: var(--mono);
+    font-size: 9.5px;
+  }
+  .dot-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .dot-swatch {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+  #spark-canvas {
+    width: 100%;
+    height: 44px;
+    display: block;
+  }
+
+  /* Energy Split Bar */
+  .energy-bar-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+  .energy-track {
+    flex: 1;
+    height: 5px;
+    border-radius: 999px;
+    background: rgba(88, 220, 255, 0.22);
+    overflow: hidden;
+    display: flex;
+  }
+  .energy-fill-k {
+    height: 100%;
+    width: 12%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #ffbe5c, #ff6083);
+    transition: width 0.12s linear;
+  }
+
+  .clock-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding-top: 4px;
+    border-top: 1px solid rgba(148, 179, 255, 0.1);
+    font-size: 10.5px;
+    color: var(--text-dim);
+    font-family: var(--mono);
+  }
+  .clock-row span strong {
+    color: var(--text-main);
+    font-weight: 600;
+  }
+
+  /* Right Control Drawer */
+  .drawer {
+    position: fixed;
+    top: 14px;
+    right: 14px;
+    bottom: 14px;
+    width: 330px;
+    max-width: calc(100vw - 28px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: transform 0.25s ease, opacity 0.25s ease;
+  }
+  .drawer.collapsed {
+    transform: translateX(calc(100% + 24px));
+    pointer-events: none;
+    opacity: 0;
+  }
+
+  .drawer-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+    padding: 8px 8px 6px;
+    border-bottom: 1px solid var(--panel-border);
+    background: rgba(4, 7, 17, 0.45);
+  }
+
+  .tab-btn {
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    padding: 7px 5px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .tab-btn:hover {
+    color: var(--text-main);
+    background: rgba(255, 255, 255, 0.04);
+  }
+  .tab-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.16);
+    border-color: rgba(88, 220, 255, 0.4);
+  }
+
+  .drawer-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 11px 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .drawer-body::-webkit-scrollbar {
+    width: 5px;
+  }
+  .drawer-body::-webkit-scrollbar-thumb {
+    background: rgba(148, 179, 255, 0.22);
+    border-radius: 999px;
+  }
+
+  .tab-pane {
+    display: none;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .tab-pane.active {
+    display: flex;
+  }
+
+  .section {
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(148, 179, 255, 0.11);
+    border-radius: var(--radius-md);
+    padding: 10px 11px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .section-title {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  /* Presets grid */
+  .preset-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .preset-btn {
+    text-align: left;
+    padding: 7px 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(148, 179, 255, 0.14);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-main);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .preset-btn:hover {
+    border-color: rgba(255, 190, 92, 0.45);
+    background: rgba(255, 190, 92, 0.08);
+  }
+  .preset-btn.active {
+    border-color: var(--accent-amber);
+    background: rgba(255, 190, 92, 0.15);
+  }
+  .preset-name {
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+  .preset-sub {
+    font-size: 9.5px;
+    color: var(--text-muted);
+    line-height: 1.25;
+  }
+
+  /* Tool selector */
+  .tool-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .tool-btn {
+    text-align: left;
+    padding: 8px 9px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-dim);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .tool-btn:hover {
+    color: #fff;
+    border-color: rgba(88, 220, 255, 0.4);
+    background: rgba(88, 220, 255, 0.07);
+  }
+  .tool-btn.active {
+    color: #fff;
+    border-color: var(--accent-cyan);
+    background: rgba(88, 220, 255, 0.17);
+    box-shadow: 0 0 14px rgba(88, 220, 255, 0.15);
+  }
+  .tool-btn.active.amber {
+    border-color: var(--accent-amber);
+    background: rgba(255, 190, 92, 0.16);
+    box-shadow: 0 0 14px rgba(255, 190, 92, 0.16);
+  }
+  .tool-btn.active.violet {
+    border-color: var(--accent-violet);
+    background: rgba(167, 139, 250, 0.16);
+    box-shadow: 0 0 14px rgba(167, 139, 250, 0.16);
+  }
+  .tool-btn.active.rose {
+    border-color: var(--accent-rose);
+    background: rgba(255, 96, 131, 0.16);
+    box-shadow: 0 0 14px rgba(255, 96, 131, 0.16);
+  }
+  .tool-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11.5px;
+    font-weight: 700;
+  }
+  .tool-key {
+    font-family: var(--mono);
+    font-size: 9.5px;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-dim);
+  }
+  .tool-desc {
+    font-size: 9.5px;
+    color: var(--text-muted);
+    line-height: 1.25;
+  }
+
+  /* Sliders */
+  .control-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .control-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11.5px;
+    color: var(--text-dim);
+  }
+  .control-head .val {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--text-main);
+    font-weight: 600;
+  }
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 5px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.18);
+    outline: none;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent-cyan);
+    border: 2px solid #08101f;
+    box-shadow: 0 0 10px rgba(88, 220, 255, 0.65);
+    cursor: pointer;
+  }
+  input[type="range"].amber::-webkit-slider-thumb {
+    background: var(--accent-amber);
+    box-shadow: 0 0 10px rgba(255, 190, 92, 0.65);
+  }
+  input[type="range"].rose::-webkit-slider-thumb {
+    background: var(--accent-rose);
+    box-shadow: 0 0 10px rgba(255, 96, 131, 0.65);
+  }
+
+  /* Segmented pills */
+  .seg-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(56px, 1fr));
+    gap: 4px;
+  }
+  .seg-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-dim);
+    font-size: 10.5px;
+    font-weight: 650;
+    padding: 6px 4px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-align: center;
+  }
+  .seg-btn:hover {
+    color: #fff;
+    border-color: rgba(148, 179, 255, 0.35);
+  }
+  .seg-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.18);
+    border-color: var(--accent-cyan);
+  }
+  .seg-btn.active.amber {
+    background: rgba(255, 190, 92, 0.18);
+    border-color: var(--accent-amber);
+    color: #ffdfaa;
+  }
+  .seg-btn.active.violet {
+    background: rgba(167, 139, 250, 0.2);
+    border-color: var(--accent-violet);
+    color: #e9dfff;
+  }
+
+  /* Action Buttons */
+  .btn-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .btn-row.tri {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+
+  .btn {
+    border: 1px solid rgba(148, 179, 255, 0.22);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-main);
+    font-size: 11px;
+    font-weight: 700;
+    padding: 7px 8px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    white-space: nowrap;
+  }
+  .btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 179, 255, 0.45);
+  }
+  .btn:active {
+    transform: scale(0.98);
+  }
+  .btn.primary {
+    background: linear-gradient(135deg, rgba(88, 220, 255, 0.26), rgba(56, 140, 255, 0.22));
+    border-color: rgba(88, 220, 255, 0.52);
+    color: #e6f9ff;
+  }
+  .btn.amber {
+    background: linear-gradient(135deg, rgba(255, 190, 92, 0.25), rgba(255, 120, 60, 0.22));
+    border-color: rgba(255, 190, 92, 0.55);
+    color: #fff3db;
+  }
+  .btn.mint {
+    background: linear-gradient(135deg, rgba(74, 242, 178, 0.22), rgba(32, 178, 170, 0.2));
+    border-color: rgba(74, 242, 178, 0.5);
+    color: #dcfff2;
+  }
+  .btn.danger {
+    background: rgba(255, 96, 131, 0.15);
+    border-color: rgba(255, 96, 131, 0.42);
+    color: #ffc2d0;
+  }
+
+  /* Toggle switches */
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11.5px;
+    color: var(--text-dim);
+    cursor: pointer;
+  }
+  .toggle-row input {
+    display: none;
+  }
+  .switch {
+    width: 34px;
+    height: 18px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.2);
+    border: 1px solid rgba(148, 179, 255, 0.25);
+    position: relative;
+    transition: all 0.18s ease;
+    flex-shrink: 0;
+  }
+  .switch::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #c8d7f5;
+    transition: transform 0.18s ease, background 0.18s ease;
+  }
+  .toggle-row input:checked + .switch {
+    background: rgba(88, 220, 255, 0.32);
+    border-color: var(--accent-cyan);
+  }
+  .toggle-row input:checked + .switch::after {
+    transform: translateX(16px);
+    background: #fff;
+  }
+
+  /* Color scale bar */
+  .legend-bar {
+    height: 7px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #ff5844 0%, #ffbe5c 28%, #4b618a 50%, #58dcff 82%, #b5f5ff 100%);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+  }
+  .legend-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 9.5px;
+    color: var(--text-muted);
+    font-family: var(--mono);
+  }
+
+  /* Bottom Transport Bar */
+  .bottom-bar {
+    position: fixed;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 7px 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: nowrap;
+  }
+
+  .bar-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-main);
+    font-size: 11.5px;
+    font-weight: 650;
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    white-space: nowrap;
+  }
+  .bar-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 179, 255, 0.4);
+  }
+  .bar-btn.active {
+    background: rgba(88, 220, 255, 0.2);
+    border-color: var(--accent-cyan);
+    color: #fff;
+  }
+  .bar-btn.amber-active {
+    background: rgba(255, 190, 92, 0.2);
+    border-color: var(--accent-amber);
+    color: #ffe7bf;
+  }
+
+  .bar-divider {
+    width: 1px;
+    height: 20px;
+    background: rgba(148, 179, 255, 0.16);
+    margin: 0 2px;
+  }
+
+  /* Bottom-left interaction hint */
+  .hint-pill {
+    position: fixed;
+    bottom: 14px;
+    left: 14px;
+    padding: 7px 11px;
+    font-size: 11px;
+    color: var(--text-dim);
+    max-width: 320px;
+    line-height: 1.4;
+  }
+  .hint-pill kbd {
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #fff;
+  }
+
+  /* Toast Banner */
+  .event-banner {
+    position: fixed;
+    top: 18px;
+    left: 50%;
+    transform: translateX(-50%) translateY(-10px);
+    padding: 8px 14px;
+    border-radius: var(--radius-md);
+    background: rgba(8, 16, 28, 0.88);
+    border: 1px solid rgba(88, 220, 255, 0.48);
+    color: #d6f4ff;
+    font-size: 12px;
+    font-weight: 650;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease, transform 0.25s ease;
+    z-index: 20;
+    backdrop-filter: blur(12px);
+    white-space: nowrap;
+  }
+  .event-banner.visible {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+  .event-banner.amber {
+    background: rgba(22, 14, 8, 0.9);
+    border-color: rgba(255, 190, 92, 0.55);
+    color: #ffe8c2;
+  }
+
+  .zen-restore {
+    position: fixed;
+    bottom: 14px;
+    right: 14px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+  }
+  body.zen-mode .zen-restore {
+    opacity: 0.9;
+    pointer-events: auto;
+  }
+
+  .note-small {
+    font-size: 10.5px;
+    color: var(--text-muted);
+    line-height: 1.35;
+  }
+
+  @media (max-width: 920px) {
+    .top-left {
+      width: calc(100vw - 28px);
+      max-width: none;
+    }
+    .drawer {
+      top: auto;
+      bottom: 62px;
+      height: 50vh;
+      width: calc(100vw - 28px);
+    }
+    .hint-pill {
+      display: none;
+    }
+  }
+</style>
+</head>
+<body>
+<canvas id="sim-canvas"></canvas>
+
+<div class="hud">
+  <!-- Top-Left Live Telemetry -->
+  <div class="panel top-left">
+    <div class="brand-row">
+      <div class="brand-title-wrap">
+        <div class="brand-title">Lattice</div>
+        <span id="lattice-badge" class="mode-badge">Hexagonal</span>
+      </div>
+      <span id="phase-badge" class="status-pill">Crystalline Solid</span>
+    </div>
+
+    <div class="telemetry-grid">
+      <div class="tele-card">
+        <span class="tele-label">Temperature</span>
+        <span id="tel-temp" class="tele-val amber">8 K</span>
+      </div>
+      <div class="tele-card">
+        <span id="tel-order-label" class="tele-label">Order Ψ₆</span>
+        <span id="tel-order" class="tele-val mint">0.98</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Defects / N</span>
+        <span id="tel-defects" class="tele-val violet">0 / 184</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Kinetic K</span>
+        <span id="tel-ke" class="tele-val amber">4.2 ε</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Potential U</span>
+        <span id="tel-pe" class="tele-val cyan">-512.0 ε</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Phonon RMS</span>
+        <span id="tel-rms" class="tele-val">0.03 σ</span>
+      </div>
+    </div>
+
+    <div class="spark-wrap">
+      <div class="spark-head">
+        <span>Thermal &amp; Phonon Telemetry</span>
+        <div class="spark-legend">
+          <span class="dot-tag" style="color:var(--accent-amber)"><i class="dot-swatch" style="background:var(--accent-amber)"></i>T (K)</span>
+          <span class="dot-tag" style="color:var(--accent-cyan)"><i class="dot-swatch" style="background:var(--accent-cyan)"></i>Order Ψ</span>
+        </div>
+      </div>
+      <canvas id="spark-canvas"></canvas>
+    </div>
+
+    <div class="energy-bar-wrap">
+      <span>K / |U|</span>
+      <div class="energy-track"><div id="energy-fill-k" class="energy-fill-k"></div></div>
+      <span id="tel-ratio" style="font-family: var(--mono); color: var(--text-main);">0.8%</span>
+    </div>
+
+    <div class="clock-row">
+      <span>E<sub>tot</sub>: <strong id="tel-etot">-507.8 ε</strong></span>
+      <span>Coord ⟨Z⟩: <strong id="tel-coord">5.42</strong></span>
+      <span>t: <strong id="tel-time">0.0 ps</strong></span>
+    </div>
+  </div>
+
+  <!-- Toast Banner -->
+  <div id="event-banner" class="event-banner"></div>
+
+  <!-- Right Collapsible Control Drawer -->
+  <aside id="drawer" class="panel drawer">
+    <div class="drawer-tabs">
+      <button class="tab-btn active" data-tab="lab">Lab &amp; Tools</button>
+      <button class="tab-btn" data-tab="thermal">Crystal &amp; Heat</button>
+      <button class="tab-btn" data-tab="visuals">Visuals &amp; Audio</button>
+    </div>
+
+    <div class="drawer-body">
+      <!-- TAB 1: LAB & TOOLS -->
+      <div id="tab-lab" class="tab-pane active">
+        <div class="section">
+          <div class="section-title"><span>Curated Scenarios</span></div>
+          <div class="preset-grid">
+            <button class="preset-btn active" data-preset="hex-phonons">
+              <span class="preset-name">Hexagonal Phonons</span>
+              <span class="preset-sub">Close-packed LJ wavepackets</span>
+            </button>
+            <button class="preset-btn" data-preset="diatomic">
+              <span class="preset-name">Diatomic Waves</span>
+              <span class="preset-sub">Acoustic vs Optical branches</span>
+            </button>
+            <button class="preset-btn" data-preset="melting">
+              <span class="preset-name">Melt &amp; Anneal</span>
+              <span class="preset-sub">Solid → Liquid → Recrystallize</span>
+            </button>
+            <button class="preset-btn" data-preset="impact">
+              <span class="preset-name">Hypervelocity Impact</span>
+              <span class="preset-sub">Shockwave &amp; crater cascade</span>
+            </button>
+            <button class="preset-btn" data-preset="defects">
+              <span class="preset-name">Defect Scattering</span>
+              <span class="preset-sub">Vacancy &amp; impurity diffraction</span>
+            </button>
+            <button class="preset-btn" data-preset="shear">
+              <span class="preset-name">Shear Dislocation</span>
+              <span class="preset-sub">Gliding 5-7 slip defects</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Interactive Mouse Tool</span></div>
+          <div class="tool-grid">
+            <button id="tool-pluck" class="tool-btn active" data-tool="pluck">
+              <div class="tool-head"><span>Pluck Wave</span><span class="tool-key">1</span></div>
+              <span class="tool-desc">Drag atom or flick row for phonons</span>
+            </button>
+            <button id="tool-impact" class="tool-btn" data-tool="impact">
+              <div class="tool-head"><span>Impact Hammer</span><span class="tool-key">2</span></div>
+              <span class="tool-desc">Drag &amp; fire shockwave projectile</span>
+            </button>
+            <button id="tool-defect" class="tool-btn" data-tool="defect">
+              <div class="tool-head"><span>Dope / Vacancy</span><span class="tool-key">3</span></div>
+              <span class="tool-desc">Remove atom or inject heavy mass</span>
+            </button>
+            <button id="tool-shear" class="tool-btn" data-tool="shear">
+              <div class="tool-head"><span>Shear Stress</span><span class="tool-key">4</span></div>
+              <span class="tool-desc">Drag top/bottom plates to slip</span>
+            </button>
+          </div>
+
+          <div id="defect-submode-wrap" style="display:none; flex-direction:column; gap:5px; padding-top:4px; border-top:1px solid rgba(148,179,255,0.1);">
+            <div class="control-head"><span>Defect Click Action</span></div>
+            <div class="seg-row">
+              <button class="seg-btn active" data-defect-action="vacancy">Vacancy (Del)</button>
+              <button class="seg-btn" data-defect-action="impurity">Heavy Impurity</button>
+              <button class="seg-btn" data-defect-action="add">Insert Atom</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Wave &amp; Shock Triggers</span></div>
+          <div class="btn-row">
+            <button id="btn-pulse-long" class="btn primary">Longitudinal Pulse</button>
+            <button id="btn-pulse-trans" class="btn">Transverse Wave</button>
+          </div>
+          <div class="btn-row">
+            <button id="btn-pulse-optical" class="btn amber">Optical Mode</button>
+            <button id="btn-fire-proj" class="btn danger">Fire Projectile</button>
+          </div>
+          <div class="control-row" style="margin-top:2px;">
+            <div class="control-head">
+              <span>Applied Shear Stress τ</span>
+              <span id="val-shear" class="val">0.00</span>
+            </div>
+            <input id="sl-shear" class="rose" type="range" min="-2.6" max="2.6" step="0.05" value="0" />
+          </div>
+          <div class="btn-row">
+            <button id="btn-shear-zero" class="btn">Release Shear</button>
+            <button id="btn-quench-vel" class="btn mint">Damp Vibrations</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 2: CRYSTAL & THERMAL -->
+      <div id="tab-thermal" class="tab-pane">
+        <div class="section">
+          <div class="section-title"><span>Crystal Symmetry</span></div>
+          <div class="seg-row">
+            <button class="seg-btn active" data-lattice="hex">Hexagonal</button>
+            <button class="seg-btn" data-lattice="square">Square</button>
+            <button class="seg-btn" data-lattice="diatomic">Diatomic</button>
+          </div>
+          <div class="control-row">
+            <div class="control-head">
+              <span>Heavy / Light Mass Ratio</span>
+              <span id="val-mass-ratio" class="val">3.5×</span>
+            </div>
+            <input id="sl-mass-ratio" class="amber" type="range" min="1.5" max="6.0" step="0.1" value="3.5" />
+          </div>
+          <div class="note-small">
+            Lennard-Jones 12-6 potential V(r) = 4ε[(σ/r)¹² − (σ/r)⁶]. Square &amp; Diatomic add a smooth 90° bond-angle term that breaks cleanly upon melting.
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">
+            <span>Thermal Bath (Thermostat)</span>
+            <span id="bath-state-tag" style="font-family:var(--mono); color:var(--text-muted);">NVE OFF</span>
+          </div>
+          <label class="toggle-row">
+            <span>Enable Thermostat Coupling</span>
+            <input id="chk-thermostat" type="checkbox" />
+            <span class="switch"></span>
+          </label>
+          <div class="control-row">
+            <div class="control-head">
+              <span>Target Temperature T</span>
+              <span id="val-temp-target" class="val" style="color:var(--accent-amber)">10 K</span>
+            </div>
+            <input id="sl-temp" class="amber" type="range" min="0" max="540" step="2" value="10" />
+          </div>
+          <div class="btn-row tri">
+            <button id="btn-phase-anneal" class="btn mint">Anneal 15K</button>
+            <button id="btn-phase-melt" class="btn amber">Melt 165K</button>
+            <button id="btn-phase-boil" class="btn danger">Boil 430K</button>
+          </div>
+          <div class="control-row">
+            <div class="control-head">
+              <span>Bath Coupling Rate</span>
+              <span id="val-coupling" class="val">0.08</span>
+            </div>
+            <input id="sl-coupling" type="range" min="0.01" max="0.30" step="0.01" value="0.08" />
+          </div>
+          <div class="control-row">
+            <div class="control-head">
+              <span>Viscous Damping</span>
+              <span id="val-damping" class="val">0.000</span>
+            </div>
+            <input id="sl-damping" type="range" min="0" max="0.06" step="0.002" value="0" />
+          </div>
+          <div class="note-small">
+            Tip: Boil into a gas, then click <strong>Anneal 15K</strong> to watch vapor condense into droplets and spontaneously recrystallize with grain boundaries!
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Bond Strain Legend</span></div>
+          <div class="legend-bar"></div>
+          <div class="legend-labels">
+            <span style="color:#ff846b">Compression</span>
+            <span>r₀ = 1.12σ</span>
+            <span style="color:var(--accent-cyan)">Tension</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 3: VISUALS & AUDIO -->
+      <div id="tab-visuals" class="tab-pane">
+        <div class="section">
+          <div class="section-title"><span>Atom Color Mapping</span></div>
+          <div class="seg-row" style="grid-template-columns:1fr 1fr;">
+            <button class="seg-btn active" data-colormode="kinetic">Thermal / KE</button>
+            <button class="seg-btn" data-colormode="order">Order Ψ (Defects)</button>
+            <button class="seg-btn" data-colormode="species">Mass / Species</button>
+            <button class="seg-btn" data-colormode="displacement">Displacement</button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Overlays &amp; Rendering</span></div>
+          <label class="toggle-row">
+            <span>Glowing Strain Bonds</span>
+            <input id="chk-bonds" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Dislocation &amp; Defect Rings</span>
+            <input id="chk-defects" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Velocity Vectors</span>
+            <input id="chk-vectors" type="checkbox" />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Chamber Walls &amp; Scale</span>
+            <input id="chk-chamber" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <div class="control-row">
+            <div class="control-head">
+              <span>Bond Strain Gain</span>
+              <span id="val-strain-gain" class="val">1.4×</span>
+            </div>
+            <input id="sl-strain-gain" type="range" min="0.5" max="3.0" step="0.1" value="1.4" />
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Acoustic Sonification</span></div>
+          <label class="toggle-row">
+            <span>Crystal Bell / Marimba Audio</span>
+            <input id="chk-audio" type="checkbox" />
+            <span class="switch"></span>
+          </label>
+          <div class="control-row">
+            <div class="control-head">
+              <span>Audio Volume</span>
+              <span id="val-volume" class="val">45%</span>
+            </div>
+            <input id="sl-volume" type="range" min="0" max="100" step="5" value="45" />
+          </div>
+          <div class="note-small">
+            Muted by default. Synthesizes subtle resonant marimba-bell harmonics when plucking phonons, doping defects, or firing shockwaves.
+          </div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Bottom-Center Transport Bar -->
+  <div class="panel bottom-bar">
+    <button id="btn-play" class="bar-btn active" title="Play / Pause (Space)">❚❚ Pause</button>
+    <button id="btn-step" class="bar-btn" title="Single Step (S)">Step</button>
+    <div class="bar-divider"></div>
+    <button class="bar-btn speed-btn" data-speed="0.25">0.25×</button>
+    <button class="bar-btn speed-btn" data-speed="0.5">0.5×</button>
+    <button class="bar-btn speed-btn active" data-speed="1">1×</button>
+    <button class="bar-btn speed-btn" data-speed="2">2×</button>
+    <div class="bar-divider"></div>
+    <button id="btn-reset" class="bar-btn" title="Reset Scenario (R)">↺ Reset</button>
+    <button id="btn-audio-quick" class="bar-btn" title="Toggle Audio (M)">🔇 Audio</button>
+    <button id="btn-zen" class="bar-btn" title="Hide HUD (H)">Zen</button>
+    <button id="btn-drawer" class="bar-btn active" title="Toggle Drawer (D)">Controls</button>
+  </div>
+
+  <!-- Bottom-Left Interaction Hints -->
+  <div id="hint-pill" class="panel hint-pill">
+    <strong style="color:var(--accent-cyan)">Pluck:</strong> Drag atom or flick across lattice · <kbd>Scroll</kbd> zoom · <kbd>Right-drag</kbd> pan · <kbd>1–4</kbd> tools · <kbd>Space</kbd> pause
+  </div>
+
+  <!-- Zen Restore Button -->
+  <button id="btn-zen-restore" class="panel bar-btn zen-restore">Show HUD (H)</button>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  /* ============================================================================
+     CONSTANTS & REDUCED LENNARD-JONES PHYSICS PARAMETERS
+     Units: sigma = 1.0, epsilon = 1.0, light atom mass = 1.0
+     r0 = 2^(1/6) = 1.122462048
+     Temperature scaling: 1.0 reduced T* = 300 K (crystal melts ~120-155 K)
+  ============================================================================ */
+  const R0 = Math.pow(2, 1 / 6);          // 1.122462
+  const R_CUT = 2.5;                      // LJ force cutoff
+  const R_CUT2 = R_CUT * R_CUT;
+  const R_BOND = 1.46;                    // Neighbor bond & order parameter cutoff
+  const R_BOND2 = R_BOND * R_BOND;
+  const R_SW = 1.46;                      // 3-body 90-deg bond-angle cutoff (square/diatomic)
+  const R_MIN_SOFT = 0.76;                // Soft-core safeguard radius for hypervelocity stability
+  const R_MIN_SOFT2 = R_MIN_SOFT * R_MIN_SOFT;
+  const T_SCALE_K = 300;                  // 1.0 T* = 300 K
+  const MAX_ATOMS = 360;
+  const MAX_NB = 14;
+
+  // Shifted-force LJ constants at R_CUT
+  const SC2 = 1 / R_CUT2;
+  const SC6 = SC2 * SC2 * SC2;
+  const SC12 = SC6 * SC6;
+  const V_CUT = 4 * (SC12 - SC6);
+  const F_CUT = 24 * (2 * SC12 - SC6) / R_CUT; // negative (attractive)
+
+  // Soft-core slope constants at R_MIN_SOFT
+  const SM2 = 1 / R_MIN_SOFT2;
+  const SM6 = SM2 * SM2 * SM2;
+  const SM12 = SM6 * SM6;
+  const F_SOFT_BASE = 24 * (2 * SM12 - SM6) / R_MIN_SOFT - F_CUT;
+  const V_SOFT_BASE = 4 * (SM12 - SM6) - V_CUT + F_CUT * (R_MIN_SOFT - R_CUT);
+
+  // Chamber half-extents in sigma units
+  const BOX_HALF_X = 14.2;
+  const BOX_HALF_Y = 9.6;
+
+  /* ============================================================================
+     STATE & PREALLOCATED TYPED ARRAYS
+  ============================================================================ */
+  const x = new Float64Array(MAX_ATOMS);
+  const y = new Float64Array(MAX_ATOMS);
+  const vx = new Float64Array(MAX_ATOMS);
+  const vy = new Float64Array(MAX_ATOMS);
+  const fx = new Float64Array(MAX_ATOMS);
+  const fy = new Float64Array(MAX_ATOMS);
+  const x0 = new Float64Array(MAX_ATOMS);
+  const y0 = new Float64Array(MAX_ATOMS);
+  const mass = new Float64Array(MAX_ATOMS);
+  const invMass = new Float64Array(MAX_ATOMS);
+  // species: 0 = light/standard, 1 = heavy sublattice, 2 = doped impurity, 3 = impactor projectile
+  const species = new Uint8Array(MAX_ATOMS);
+  const psiMag = new Float32Array(MAX_ATOMS);
+  const psiRe = new Float32Array(MAX_ATOMS);
+  const psiIm = new Float32Array(MAX_ATOMS);
+  const coord = new Uint8Array(MAX_ATOMS);
+
+  // Preallocated neighbor lists (filled during force calc)
+  const nbCount = new Uint8Array(MAX_ATOMS);
+  const nbIdx = new Int16Array(MAX_ATOMS * MAX_NB);
+  const nbDx = new Float32Array(MAX_ATOMS * MAX_NB);
+  const nbDy = new Float32Array(MAX_ATOMS * MAX_NB);
+  const nbDist = new Float32Array(MAX_ATOMS * MAX_NB);
+
+  // Spatial hash grid
+  const CELL_SIZE = R_CUT;
+  const GRID_COLS = Math.ceil((BOX_HALF_X * 2 + 12) / CELL_SIZE);
+  const GRID_ROWS = Math.ceil((BOX_HALF_Y * 2 + 12) / CELL_SIZE);
+  const GRID_ORIGIN_X = -(GRID_COLS * CELL_SIZE) * 0.5;
+  const GRID_ORIGIN_Y = -(GRID_ROWS * CELL_SIZE) * 0.5;
+  const gridHead = new Int32Array(GRID_COLS * GRID_ROWS);
+  const gridNext = new Int32Array(MAX_ATOMS);
+
+  // Bonds list for rendering (deduplicated pairs i < j)
+  const MAX_BONDS = MAX_ATOMS * 7;
+  const bondA = new Int16Array(MAX_BONDS);
+  const bondB = new Int16Array(MAX_BONDS);
+  const bondR = new Float32Array(MAX_BONDS);
+  let bondCount = 0;
+
+  // Visual transient ripples
+  const ripples = [];
+
+  // Simulation control state
+  const state = {
+    n: 0,
+    paused: false,
+    speed: 1.0,
+    simTime: 0,
+    preset: 'hex-phonons',
+    lattice: 'hex',          // 'hex' | 'square' | 'diatomic'
+    tool: 'pluck',           // 'pluck' | 'impact' | 'defect' | 'shear'
+    defectAction: 'vacancy', // 'vacancy' | 'impurity' | 'add'
+    colorMode: 'kinetic',    // 'kinetic' | 'order' | 'species' | 'displacement'
+    massRatio: 3.5,
+    thermostatOn: false,
+    targetTempK: 10,
+    coupling: 0.08,
+    damping: 0.0,
+    shearStress: 0.0,
+    showBonds: true,
+    showDefects: true,
+    showVectors: false,
+    showChamber: true,
+    strainGain: 1.4,
+    audioOn: false,
+    audioVolume: 0.45,
+
+    // Live telemetry
+    tempK: 0,
+    tempSmoothK: 0,
+    ke: 0,
+    pe: 0,
+    orderVal: 1.0,
+    orderSmooth: 1.0,
+    avgCoord: 5.5,
+    defectCount: 0,
+    rmsDisp: 0,
+    phase: 'solid', // 'solid' | 'melting' | 'liquid' | 'gas'
+
+    // Camera
+    camX: 0,
+    camY: 0,
+    zoom: 1.0,
+    baseScale: 34,
+
+    // Interaction
+    dragAtom: -1,
+    mouseWorldX: 0,
+    mouseWorldY: 0,
+    prevMouseWorldX: 0,
+    prevMouseWorldY: 0,
+    pointerDown: false,
+    panning: false,
+    panStartX: 0,
+    panStartY: 0,
+    camStartX: 0,
+    camStartY: 0,
+    aiming: false,
+    aimStartX: 0,
+    aimStartY: 0,
+    shearingDrag: false,
+    shearStartX: 0,
+    shearBaseStress: 0,
+    hoverAtom: -1,
+  };
+
+  // Sparkline circular history
+  const SPARK_LEN = 140;
+  const histTemp = new Float32Array(SPARK_LEN);
+  const histOrder = new Float32Array(SPARK_LEN);
+  let histPtr = 0;
+  let histCount = 0;
+  let sparkTimer = 0;
+
+  /* ============================================================================
+     WEB AUDIO SYNTHESIZER (RESONANT MARIMBA / CRYSTAL BELL)
+  ============================================================================ */
+  let audioCtx = null;
+  const PENTATONIC = [261.63, 293.66, 329.63, 392.00, 440.00, 523.25, 587.33, 659.25, 783.99, 880.00];
+  let lastSoundMs = 0;
+
+  function ensureAudio() {
+    if (!state.audioOn) return null;
+    if (!audioCtx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) audioCtx = new AC();
+    }
+    if (audioCtx && audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+    return audioCtx;
+  }
+
+  function playCrystalTone(intensity, pitchNorm, type = 'pluck') {
+    if (!state.audioOn || state.audioVolume <= 0.01) return;
+    const nowMs = performance.now();
+    if (nowMs - lastSoundMs < 45) return;
+    lastSoundMs = nowMs;
+
+    const ctx = ensureAudio();
+    if (!ctx) return;
+    const t0 = ctx.currentTime;
+    const vol = Math.min(0.28, Math.max(0.03, intensity * 0.22)) * state.audioVolume;
+    const idx = Math.max(0, Math.min(PENTATONIC.length - 1, Math.floor(pitchNorm * PENTATONIC.length)));
+    const f0 = PENTATONIC[idx] * (type === 'impact' ? 0.5 : type === 'defect' ? 1.5 : 1.0);
+
+    const master = ctx.createGain();
+    master.gain.setValueAtTime(0.0001, t0);
+    master.gain.exponentialRampToValueAtTime(vol, t0 + 0.008);
+    master.gain.exponentialRampToValueAtTime(0.0001, t0 + (type === 'impact' ? 0.85 : 0.55));
+    master.connect(ctx.destination);
+
+    // Fundamental + marimba/bell overtones (1, 2.756, 5.404)
+    const ratios = type === 'impact' ? [1.0, 1.58, 2.76] : [1.0, 2.756, 5.404];
+    const gains = type === 'impact' ? [1.0, 0.5, 0.25] : [1.0, 0.32, 0.12];
+    const decays = type === 'impact' ? [0.85, 0.45, 0.2] : [0.55, 0.26, 0.14];
+
+    for (let k = 0; k < ratios.length; k++) {
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = k === 0 ? 'sine' : 'triangle';
+      osc.frequency.setValueAtTime(f0 * ratios[k], t0);
+      if (type === 'impact' && k === 0) {
+        osc.frequency.exponentialRampToValueAtTime(f0 * 0.55, t0 + 0.35);
+      }
+      g.gain.setValueAtTime(gains[k], t0);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + decays[k]);
+      osc.connect(g);
+      g.connect(master);
+      osc.start(t0);
+      osc.stop(t0 + decays[k] + 0.05);
+    }
+  }
+
+  /* ============================================================================
+     DOM ELEMENTS
+  ============================================================================ */
+  const canvas = document.getElementById('sim-canvas');
+  const ctx = canvas.getContext('2d');
+  const sparkCanvas = document.getElementById('spark-canvas');
+  const sparkCtx = sparkCanvas.getContext('2d');
+
+  const elLatticeBadge = document.getElementById('lattice-badge');
+  const elPhaseBadge = document.getElementById('phase-badge');
+  const elTelTemp = document.getElementById('tel-temp');
+  const elTelOrderLabel = document.getElementById('tel-order-label');
+  const elTelOrder = document.getElementById('tel-order');
+  const elTelDefects = document.getElementById('tel-defects');
+  const elTelKe = document.getElementById('tel-ke');
+  const elTelPe = document.getElementById('tel-pe');
+  const elTelRms = document.getElementById('tel-rms');
+  const elEnergyFillK = document.getElementById('energy-fill-k');
+  const elTelRatio = document.getElementById('tel-ratio');
+  const elTelEtot = document.getElementById('tel-etot');
+  const elTelCoord = document.getElementById('tel-coord');
+  const elTelTime = document.getElementById('tel-time');
+  const elBanner = document.getElementById('event-banner');
+  const elDrawer = document.getElementById('drawer');
+  const elHintPill = document.getElementById('hint-pill');
+
+  const elDefectSubWrap = document.getElementById('defect-submode-wrap');
+  const elSlShear = document.getElementById('sl-shear');
+  const elValShear = document.getElementById('val-shear');
+  const elSlMassRatio = document.getElementById('sl-mass-ratio');
+  const elValMassRatio = document.getElementById('val-mass-ratio');
+  const elChkThermostat = document.getElementById('chk-thermostat');
+  const elBathStateTag = document.getElementById('bath-state-tag');
+  const elSlTemp = document.getElementById('sl-temp');
+  const elValTempTarget = document.getElementById('val-temp-target');
+  const elSlCoupling = document.getElementById('sl-coupling');
+  const elValCoupling = document.getElementById('val-coupling');
+  const elSlDamping = document.getElementById('sl-damping');
+  const elValDamping = document.getElementById('val-damping');
+
+  const elChkBonds = document.getElementById('chk-bonds');
+  const elChkDefects = document.getElementById('chk-defects');
+  const elChkVectors = document.getElementById('chk-vectors');
+  const elChkChamber = document.getElementById('chk-chamber');
+  const elSlStrainGain = document.getElementById('sl-strain-gain');
+  const elValStrainGain = document.getElementById('val-strain-gain');
+  const elChkAudio = document.getElementById('chk-audio');
+  const elSlVolume = document.getElementById('sl-volume');
+  const elValVolume = document.getElementById('val-volume');
+
+  const elBtnPlay = document.getElementById('btn-play');
+  const elBtnStep = document.getElementById('btn-step');
+  const elBtnReset = document.getElementById('btn-reset');
+  const elBtnAudioQuick = document.getElementById('btn-audio-quick');
+  const elBtnZen = document.getElementById('btn-zen');
+  const elBtnZenRestore = document.getElementById('btn-zen-restore');
+  const elBtnDrawer = document.getElementById('btn-drawer');
+
+  let bannerTimer = null;
+  function showBanner(msg, amber = false) {
+    elBanner.textContent = msg;
+    elBanner.classList.toggle('amber', amber);
+    elBanner.classList.add('visible');
+    if (bannerTimer) clearTimeout(bannerTimer);
+    bannerTimer = setTimeout(() => elBanner.classList.remove('visible'), 2600);
+  }
+
+  /* ============================================================================
+     CRYSTAL BUILDERS & PRESETS
+  ============================================================================ */
+  function addAtom(px, py, mvx, mvy, m, sp) {
+    if (state.n >= MAX_ATOMS) return -1;
+    const i = state.n++;
+    x[i] = px;
+    y[i] = py;
+    x0[i] = px;
+    y0[i] = py;
+    vx[i] = mvx;
+    vy[i] = mvy;
+    fx[i] = 0;
+    fy[i] = 0;
+    mass[i] = m;
+    invMass[i] = 1 / m;
+    species[i] = sp;
+    psiMag[i] = 1;
+    coord[i] = 0;
+    return i;
+  }
+
+  function removeAtom(idx) {
+    if (idx < 0 || idx >= state.n) return;
+    const last = state.n - 1;
+    if (idx !== last) {
+      x[idx] = x[last];
+      y[idx] = y[last];
+      x0[idx] = x0[last];
+      y0[idx] = y0[last];
+      vx[idx] = vx[last];
+      vy[idx] = vy[last];
+      fx[idx] = fx[last];
+      fy[idx] = fy[last];
+      mass[idx] = mass[last];
+      invMass[idx] = invMass[last];
+      species[idx] = species[last];
+      psiMag[idx] = psiMag[last];
+      coord[idx] = coord[last];
+    }
+    state.n--;
+    if (state.dragAtom === idx) state.dragAtom = -1;
+    else if (state.dragAtom === last) state.dragAtom = idx;
+  }
+
+  function assignThermalVelocities(tempK) {
+    const n = state.n;
+    if (n === 0) return;
+    const tStar = Math.max(0, tempK) / T_SCALE_K;
+    if (tStar <= 1e-6) {
+      for (let i = 0; i < n; i++) { vx[i] = 0; vy[i] = 0; }
+      return;
+    }
+    let px = 0, py = 0, totalM = 0;
+    for (let i = 0; i < n; i++) {
+      // Box-Muller normal
+      const u1 = Math.max(1e-7, Math.random());
+      const u2 = Math.random();
+      const mag = Math.sqrt(-2 * Math.log(u1));
+      const g1 = mag * Math.cos(2 * Math.PI * u2);
+      const g2 = mag * Math.sin(2 * Math.PI * u2);
+      const std = Math.sqrt(tStar * invMass[i]);
+      vx[i] = g1 * std;
+      vy[i] = g2 * std;
+      px += mass[i] * vx[i];
+      py += mass[i] * vy[i];
+      totalM += mass[i];
+    }
+    // Remove net center-of-mass drift
+    const vcx = px / totalM;
+    const vcy = py / totalM;
+    let ke = 0;
+    for (let i = 0; i < n; i++) {
+      vx[i] -= vcx;
+      vy[i] -= vcy;
+      ke += 0.5 * mass[i] * (vx[i] * vx[i] + vy[i] * vy[i]);
+    }
+    const curT = ke / Math.max(1, n);
+    if (curT > 1e-8) {
+      const s = Math.sqrt(tStar / curT);
+      for (let i = 0; i < n; i++) { vx[i] *= s; vy[i] *= s; }
+    }
+  }
+
+  function buildCrystal(type, cols, rows, initTempK) {
+    state.n = 0;
+    state.simTime = 0;
+    state.lattice = type;
+    histPtr = 0;
+    histCount = 0;
+    ripples.length = 0;
+
+    // Slight lattice spacing matched to shifted-force LJ minimum
+    const aHex = 1.114;
+    const aSq = 1.120;
+
+    if (type === 'hex') {
+      const dy = aHex * Math.sqrt(3) * 0.5;
+      const w = (cols - 0.5) * aHex;
+      const h = (rows - 1) * dy;
+      for (let r = 0; r < rows; r++) {
+        const xOff = (r % 2) * (aHex * 0.5);
+        const rowCols = (r % 2 === 1) ? cols - 1 : cols;
+        for (let c = 0; c < rowCols; c++) {
+          const px = -w * 0.5 + c * aHex + xOff;
+          const py = -h * 0.5 + r * dy;
+          addAtom(px, py, 0, 0, 1.0, 0);
+        }
+      }
+    } else if (type === 'square') {
+      const w = (cols - 1) * aSq;
+      const h = (rows - 1) * aSq;
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const px = -w * 0.5 + c * aSq;
+          const py = -h * 0.5 + r * aSq;
+          addAtom(px, py, 0, 0, 1.0, 0);
+        }
+      }
+    } else if (type === 'diatomic') {
+      const w = (cols - 1) * aSq;
+      const h = (rows - 1) * aSq;
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const px = -w * 0.5 + c * aSq;
+          const py = -h * 0.5 + r * aSq;
+          const isHeavy = ((r + c) % 2) === 1;
+          addAtom(px, py, 0, 0, isHeavy ? state.massRatio : 1.0, isHeavy ? 1 : 0);
+        }
+      }
+    }
+
+    assignThermalVelocities(initTempK);
+    computeForcesAndOrder();
+    updateTelemetryValues();
+    state.tempSmoothK = state.tempK;
+    state.orderSmooth = state.orderVal;
+    syncLatticeBadges();
+  }
+
+  function applyWavePulse(kind) {
+    const n = state.n;
+    if (n === 0) return;
+
+    // Find bounding x of crystal
+    let minX = Infinity, maxX = -Infinity;
+    for (let i = 0; i < n; i++) {
+      if (x[i] < minX) minX = x[i];
+      if (x[i] > maxX) maxX = x[i];
+    }
+
+    if (kind === 'longitudinal') {
+      // Crisp longitudinal compression pulse on left two columns
+      for (let i = 0; i < n; i++) {
+        const d = x[i] - minX;
+        if (d < 1.8) {
+          const w = Math.exp(-(d * d) / 1.4);
+          vx[i] += 2.3 * w;
+        }
+      }
+      ripples.push({ x: minX + 0.3, y: 0, r: 0.4, maxR: 5.5, alpha: 0.9, color: '#ffbe5c' });
+      playCrystalTone(0.7, 0.35, 'pluck');
+      showBanner('Longitudinal Compression Phonon Launched');
+    } else if (kind === 'transverse') {
+      // Transverse shear wavepacket on left columns
+      for (let i = 0; i < n; i++) {
+        const d = x[i] - minX;
+        if (d < 2.2) {
+          const w = Math.exp(-(d * d) / 1.8);
+          vy[i] += 2.1 * w;
+        }
+      }
+      ripples.push({ x: minX + 0.3, y: 0, r: 0.4, maxR: 5.5, alpha: 0.9, color: '#58dcff' });
+      playCrystalTone(0.65, 0.62, 'pluck');
+      showBanner('Transverse Shear Phonon Launched');
+    } else if (kind === 'optical') {
+      // Antiphase Optical Phonon Mode! Light and Heavy sublattices oscillate opposite each other
+      const mH = state.massRatio;
+      for (let i = 0; i < n; i++) {
+        const env = Math.exp(-(x[i] * x[i] + y[i] * y[i]) / 42);
+        if (state.lattice === 'diatomic') {
+          if (species[i] === 0) {
+            vx[i] += 1.65 * env;
+            vy[i] += 0.35 * env;
+          } else {
+            // Momentum-balanced opposite kick!
+            vx[i] -= (1.65 / mH) * env;
+            vy[i] -= (0.35 / mH) * env;
+          }
+        } else {
+          // Zone-boundary optical-like alternating ripple
+          const sign = (Math.round(x[i] / 1.12) % 2 === 0) ? 1 : -1;
+          vx[i] += sign * 1.15 * env;
+        }
+      }
+      ripples.push({ x: 0, y: 0, r: 0.5, maxR: 7.5, alpha: 0.85, color: '#a78bfa' });
+      playCrystalTone(0.8, 0.82, 'pluck');
+      showBanner('Optical Phonon Mode Excited (Antiphase Sublattices)', true);
+    }
+  }
+
+  function fireProjectile(sx, sy, svx, svy) {
+    const idx = addAtom(sx, sy, svx, svy, 2.2, 3);
+    if (idx >= 0) {
+      ripples.push({ x: sx, y: sy, r: 0.3, maxR: 3.4, alpha: 0.95, color: '#ff6083' });
+      playCrystalTone(0.95, 0.22, 'impact');
+    }
+  }
+
+  function loadPreset(name) {
+    state.preset = name;
+    state.shearStress = 0;
+    state.damping = 0;
+    state.camX = 0;
+    state.camY = 0;
+    state.zoom = 1.0;
+
+    if (name === 'hex-phonons') {
+      state.thermostatOn = false;
+      state.targetTempK = 8;
+      state.colorMode = 'kinetic';
+      state.tool = 'pluck';
+      buildCrystal('hex', 17, 11, 6);
+      applyWavePulse('longitudinal');
+      showBanner('Hexagonal Crystal — Drag atoms to pluck phonons');
+    } else if (name === 'diatomic') {
+      state.thermostatOn = false;
+      state.targetTempK = 6;
+      state.massRatio = 3.5;
+      state.colorMode = 'species';
+      state.tool = 'pluck';
+      buildCrystal('diatomic', 15, 11, 5);
+      applyWavePulse('optical');
+      showBanner('Diatomic Crystal — Light & Heavy Optical Mode Active', true);
+    } else if (name === 'melting') {
+      state.thermostatOn = true;
+      state.targetTempK = 165;
+      state.coupling = 0.08;
+      state.colorMode = 'order';
+      state.tool = 'pluck';
+      buildCrystal('hex', 17, 11, 115);
+      showBanner('Thermal Melting — Watch Ψ₆ drop as dislocations form', true);
+    } else if (name === 'impact') {
+      state.thermostatOn = false;
+      state.targetTempK = 5;
+      state.colorMode = 'kinetic';
+      state.tool = 'impact';
+      buildCrystal('hex', 16, 11, 4);
+      // Shift crystal slightly right so impactor has runway
+      for (let i = 0; i < state.n; i++) { x[i] += 1.5; x0[i] += 1.5; }
+      fireProjectile(-11.8, 0.2, 11.2, -0.15);
+      showBanner('Hypervelocity Impact — Shockwave & Dislocation Cascade', true);
+    } else if (name === 'defects') {
+      state.thermostatOn = false;
+      state.targetTempK = 6;
+      state.colorMode = 'kinetic';
+      state.tool = 'defect';
+      buildCrystal('hex', 17, 11, 5);
+      // Carve 3 vacancies and dope 4 heavy impurities near center
+      const toRemove = [];
+      for (let i = 0; i < state.n; i++) {
+        const d1 = Math.hypot(x[i] - 0.0, y[i] - 0.0);
+        const d2 = Math.hypot(x[i] - 1.1, y[i] - 1.9);
+        const d3 = Math.hypot(x[i] - 1.1, y[i] + 1.9);
+        if (d1 < 0.65 || d2 < 0.65 || d3 < 0.65) {
+          toRemove.push(i);
+        }
+      }
+      toRemove.sort((a, b) => b - a).forEach(removeAtom);
+      for (let i = 0; i < state.n; i++) {
+        const dA = Math.hypot(x[i] + 1.1, y[i] - 1.0);
+        const dB = Math.hypot(x[i] + 1.1, y[i] + 1.0);
+        const dC = Math.hypot(x[i] - 2.2, y[i] - 0.0);
+        const dD = Math.hypot(x[i] - 0.0, y[i] + 3.0);
+        if (dA < 0.7 || dB < 0.7 || dC < 0.7 || dD < 0.7) {
+          species[i] = 2;
+          mass[i] = 5.0;
+          invMass[i] = 1 / 5.0;
+        }
+      }
+      computeForcesAndOrder();
+      applyWavePulse('longitudinal');
+      showBanner('Vacancy & Impurity Scattering — Wavefront diffracts off defects');
+    } else if (name === 'shear') {
+      state.thermostatOn = true;
+      state.targetTempK = 28;
+      state.coupling = 0.05;
+      state.shearStress = 1.45;
+      state.colorMode = 'order';
+      state.tool = 'shear';
+      buildCrystal('hex', 17, 11, 22);
+      // Tiny edge notch to seed a clean gliding dislocation
+      let notch = -1;
+      for (let i = 0; i < state.n; i++) {
+        if (Math.hypot(x[i] + 7.5, y[i] - 0.5) < 0.85) { notch = i; break; }
+      }
+      if (notch >= 0) removeAtom(notch);
+      computeForcesAndOrder();
+      showBanner('Shear Stress Active — Nucleating Gliding 5-7 Dislocations', true);
+    }
+
+    syncUI();
+  }
+
+  /* ============================================================================
+     FORCE CALCULATION (SPATIAL HASH GRID + SHIFTED-FORCE LJ + 3-BODY ANGLE)
+  ============================================================================ */
+  function computeForcesAndOrder() {
+    const n = state.n;
+    for (let i = 0; i < n; i++) {
+      fx[i] = 0;
+      fy[i] = 0;
+      nbCount[i] = 0;
+      psiRe[i] = 0;
+      psiIm[i] = 0;
+      coord[i] = 0;
+    }
+
+    // Build spatial hash grid
+    gridHead.fill(-1);
+    for (let i = 0; i < n; i++) {
+      let cx = Math.floor((x[i] - GRID_ORIGIN_X) / CELL_SIZE);
+      let cy = Math.floor((y[i] - GRID_ORIGIN_Y) / CELL_SIZE);
+      if (cx < 0) cx = 0; else if (cx >= GRID_COLS) cx = GRID_COLS - 1;
+      if (cy < 0) cy = 0; else if (cy >= GRID_ROWS) cy = GRID_ROWS - 1;
+      const cIdx = cy * GRID_COLS + cx;
+      gridNext[i] = gridHead[cIdx];
+      gridHead[cIdx] = i;
+    }
+
+    let pe = 0;
+    bondCount = 0;
+    const symM = (state.lattice === 'hex') ? 6 : 4;
+
+    // Pairwise Lennard-Jones via 9-cell stencil (half-shell + same cell)
+    for (let cy = 0; cy < GRID_ROWS; cy++) {
+      const rowBase = cy * GRID_COLS;
+      for (let cx = 0; cx < GRID_COLS; cx++) {
+        const cIdx = rowBase + cx;
+        let i = gridHead[cIdx];
+        while (i !== -1) {
+          const xi = x[i];
+          const yi = y[i];
+
+          // 1) Same cell pairs (j comes after i in list)
+          let j = gridNext[i];
+          while (j !== -1) {
+            const dx = xi - x[j];
+            const dy = yi - y[j];
+            const r2 = dx * dx + dy * dy;
+            if (r2 < R_CUT2 && r2 > 1e-10) {
+              const r = Math.sqrt(r2);
+              let fOverR, vPair;
+              if (r2 < R_MIN_SOFT2) {
+                // Smooth soft-core repulsion safeguard
+                const pen = R_MIN_SOFT - r;
+                const fMag = F_SOFT_BASE + 900 * pen;
+                fOverR = fMag / r;
+                vPair = V_SOFT_BASE + F_SOFT_BASE * pen + 450 * pen * pen;
+              } else {
+                const s2 = 1 / r2;
+                const s6 = s2 * s2 * s2;
+                const s12 = s6 * s6;
+                fOverR = 24 * s2 * (2 * s12 - s6) - F_CUT / r;
+                vPair = 4 * (s12 - s6) - V_CUT + F_CUT * (r - R_CUT);
+              }
+              const fpx = fOverR * dx;
+              const fpy = fOverR * dy;
+              fx[i] += fpx;
+              fy[i] += fpy;
+              fx[j] -= fpx;
+              fy[j] -= fpy;
+              pe += vPair;
+
+              if (r2 < R_BOND2) {
+                recordBondAndNeighbor(i, j, dx, dy, r, symM);
+              }
+            }
+            j = gridNext[j];
+          }
+
+          // 2) Half-shell neighbor cells: (+1,0), (-1,+1), (0,+1), (+1,+1)
+          for (let d = 0; d < 4; d++) {
+            const ncx = cx + (d === 0 ? 1 : d === 1 ? -1 : d === 2 ? 0 : 1);
+            const ncy = cy + (d === 0 ? 0 : 1);
+            if (ncx < 0 || ncx >= GRID_COLS || ncy >= GRID_ROWS) continue;
+            let j2 = gridHead[ncy * GRID_COLS + ncx];
+            while (j2 !== -1) {
+              const dx = xi - x[j2];
+              const dy = yi - y[j2];
+              const r2 = dx * dx + dy * dy;
+              if (r2 < R_CUT2 && r2 > 1e-10) {
+                const r = Math.sqrt(r2);
+                let fOverR, vPair;
+                if (r2 < R_MIN_SOFT2) {
+                  const pen = R_MIN_SOFT - r;
+                  const fMag = F_SOFT_BASE + 900 * pen;
+                  fOverR = fMag / r;
+                  vPair = V_SOFT_BASE + F_SOFT_BASE * pen + 450 * pen * pen;
+                } else {
+                  const s2 = 1 / r2;
+                  const s6 = s2 * s2 * s2;
+                  const s12 = s6 * s6;
+                  fOverR = 24 * s2 * (2 * s12 - s6) - F_CUT / r;
+                  vPair = 4 * (s12 - s6) - V_CUT + F_CUT * (r - R_CUT);
+                }
+                const fpx = fOverR * dx;
+                const fpy = fOverR * dy;
+                fx[i] += fpx;
+                fy[i] += fpy;
+                fx[j2] -= fpx;
+                fy[j2] -= fpy;
+                pe += vPair;
+
+                if (r2 < R_BOND2) {
+                  recordBondAndNeighbor(i, j2, dx, dy, r, symM);
+                }
+              }
+              j2 = gridNext[j2];
+            }
+          }
+
+          i = gridNext[i];
+        }
+      }
+    }
+
+    // 3-body 90-degree bond-angle stabilization for Square & Diatomic crystals
+    // Smoothly vanishes at R_SW so crystals still melt completely into liquid & gas
+    if (state.lattice === 'square' || state.lattice === 'diatomic') {
+      const lambda3 = 6.2;
+      const invSpan = 1 / (R_SW - 1.0);
+      for (let i = 0; i < n; i++) {
+        const cnt = nbCount[i];
+        if (cnt < 2) continue;
+        const base = i * MAX_NB;
+        for (let a = 0; a < cnt - 1; a++) {
+          const r1 = nbDist[base + a];
+          if (r1 >= R_SW) continue;
+          const j = nbIdx[base + a];
+          const u1x = nbDx[base + a] / r1; // unit vector from i to j
+          const u1y = nbDy[base + a] / r1;
+          const t1 = (R_SW - r1) * invSpan;
+          const w1 = t1 * t1;
+          const dw1 = -2 * t1 * invSpan;
+
+          for (let b = a + 1; b < cnt; b++) {
+            const r2 = nbDist[base + b];
+            if (r2 >= R_SW) continue;
+            const k = nbIdx[base + b];
+            const u2x = nbDx[base + b] / r2; // unit vector from i to k
+            const u2y = nbDy[base + b] / r2;
+            const t2 = (R_SW - r2) * invSpan;
+            const w2 = t2 * t2;
+            const dw2 = -2 * t2 * invSpan;
+
+            let c = u1x * u2x + u1y * u2y;
+            if (c > 1) c = 1; else if (c < -1) c = -1;
+            const c2 = c * c;
+            const g = c2 * (1 - c2);
+            const dg = 2 * c * (1 - 2 * c2);
+
+            pe += lambda3 * w1 * w2 * g;
+
+            const prefJ = lambda3 * w2;
+            const radJ = prefJ * dw1 * g;
+            const angJ = prefJ * w1 * dg / r1;
+            const fjx = -(radJ * u1x + angJ * (u2x - c * u1x));
+            const fjy = -(radJ * u1y + angJ * (u2y - c * u1y));
+
+            const prefK = lambda3 * w1;
+            const radK = prefK * dw2 * g;
+            const angK = prefK * w2 * dg / r2;
+            const fkx = -(radK * u2x + angK * (u1x - c * u2x));
+            const fky = -(radK * u2y + angK * (u1y - c * u2y));
+
+            fx[j] += fjx;
+            fy[j] += fjy;
+            fx[k] += fkx;
+            fy[k] += fky;
+            fx[i] -= (fjx + fkx);
+            fy[i] -= (fjy + fky);
+          }
+        }
+      }
+    }
+
+    // Soft containment chamber walls (harmonic repulsive)
+    const wallK = 55.0;
+    const limX = BOX_HALF_X - 0.52;
+    const limY = BOX_HALF_Y - 0.52;
+    for (let i = 0; i < n; i++) {
+      if (x[i] < -limX) {
+        const d = -limX - x[i];
+        fx[i] += wallK * d;
+        pe += 0.5 * wallK * d * d;
+      } else if (x[i] > limX) {
+        const d = x[i] - limX;
+        fx[i] -= wallK * d;
+        pe += 0.5 * wallK * d * d;
+      }
+      if (y[i] < -limY) {
+        const d = -limY - y[i];
+        fy[i] += wallK * d;
+        pe += 0.5 * wallK * d * d;
+      } else if (y[i] > limY) {
+        const d = y[i] - limY;
+        fy[i] -= wallK * d;
+        pe += 0.5 * wallK * d * d;
+      }
+    }
+
+    // Applied Shear Stress on top & bottom layers of the crystal
+    if (Math.abs(state.shearStress) > 0.005 && n > 6) {
+      let minY = Infinity, maxY = -Infinity;
+      for (let i = 0; i < n; i++) {
+        if (y[i] < minY) minY = y[i];
+        if (y[i] > maxY) maxY = y[i];
+      }
+      const spanY = Math.max(2.0, maxY - minY);
+      const band = Math.min(1.35, spanY * 0.16);
+      const tau = state.shearStress;
+      for (let i = 0; i < n; i++) {
+        if (y[i] >= maxY - band) {
+          fx[i] += tau;
+          // Gentle vertical clamping to keep shear plate flat
+          fy[i] -= 0.8 * vy[i];
+        } else if (y[i] <= minY + band) {
+          fx[i] -= tau;
+          fy[i] -= 0.8 * vy[i];
+        }
+      }
+    }
+
+    // Interactive Pluck spring force when dragging an atom
+    if (state.tool === 'pluck' && state.pointerDown && state.dragAtom >= 0 && state.dragAtom < n) {
+      const i = state.dragAtom;
+      const kPull = 26.0;
+      const dx = state.mouseWorldX - x[i];
+      const dy = state.mouseWorldY - y[i];
+      const dist = Math.hypot(dx, dy);
+      const maxPull = 3.2;
+      const scale = dist > maxPull ? maxPull / dist : 1.0;
+      fx[i] += kPull * dx * scale - 4.0 * vx[i];
+      fy[i] += kPull * dy * scale - 4.0 * vy[i];
+    }
+
+    // Finalize local order parameter |psi_m(i)|
+    for (let i = 0; i < n; i++) {
+      const z = coord[i];
+      if (z > 0) {
+        const re = psiRe[i] / z;
+        const im = psiIm[i] / z;
+        psiRe[i] = re;
+        psiIm[i] = im;
+        psiMag[i] = Math.hypot(re, im);
+      } else {
+        psiMag[i] = 0;
+      }
+    }
+
+    state.pe = pe;
+  }
+
+  function recordBondAndNeighbor(i, j, dxij, dyij, r, symM) {
+    // dxij = x[i] - x[j]; vector from i to j is (-dxij, -dyij)
+    const vxij = -dxij;
+    const vyij = -dyij;
+
+    if (bondCount < MAX_BONDS) {
+      bondA[bondCount] = i;
+      bondB[bondCount] = j;
+      bondR[bondCount] = r;
+      bondCount++;
+    }
+
+    const ci = nbCount[i];
+    if (ci < MAX_NB) {
+      const idx = i * MAX_NB + ci;
+      nbIdx[idx] = j;
+      nbDx[idx] = vxij;
+      nbDy[idx] = vyij;
+      nbDist[idx] = r;
+      nbCount[i] = ci + 1;
+    }
+    const cj = nbCount[j];
+    if (cj < MAX_NB) {
+      const idx = j * MAX_NB + cj;
+      nbIdx[idx] = i;
+      nbDx[idx] = dxij;
+      nbDy[idx] = dyij;
+      nbDist[idx] = r;
+      nbCount[j] = cj + 1;
+    }
+
+    // Accumulate exp(i * m * theta) for both i->j and j->i
+    // Note: since m = 4 or 6 is even, exp(i * m * (theta + pi)) === exp(i * m * theta)!
+    const theta = Math.atan2(vyij, vxij);
+    const mTheta = symM * theta;
+    const cs = Math.cos(mTheta);
+    const sn = Math.sin(mTheta);
+    psiRe[i] += cs;
+    psiIm[i] += sn;
+    coord[i]++;
+    psiRe[j] += cs;
+    psiIm[j] += sn;
+    coord[j]++;
+  }
+
+  /* ============================================================================
+     VELOCITY-VERLET INTEGRATOR + BERENDSEN/LANGEVIN THERMOSTAT
+  ============================================================================ */
+  function stepPhysics(dt) {
+    const n = state.n;
+    if (n === 0) return;
+    const halfDt = 0.5 * dt;
+
+    // 1. Half-step velocity & full-step position
+    for (let i = 0; i < n; i++) {
+      const im = invMass[i];
+      const nvx = vx[i] + fx[i] * im * halfDt;
+      const nvy = vy[i] + fy[i] * im * halfDt;
+      vx[i] = nvx;
+      vy[i] = nvy;
+      x[i] += nvx * dt;
+      y[i] += nvy * dt;
+
+      // Hard safety boundary clamp
+      if (x[i] < -BOX_HALF_X) { x[i] = -BOX_HALF_X; vx[i] = Math.abs(vx[i]) * 0.85; }
+      else if (x[i] > BOX_HALF_X) { x[i] = BOX_HALF_X; vx[i] = -Math.abs(vx[i]) * 0.85; }
+      if (y[i] < -BOX_HALF_Y) { y[i] = -BOX_HALF_Y; vy[i] = Math.abs(vy[i]) * 0.85; }
+      else if (y[i] > BOX_HALF_Y) { y[i] = BOX_HALF_Y; vy[i] = -Math.abs(vy[i]) * 0.85; }
+    }
+
+    // 2. Recompute forces at new positions
+    computeForcesAndOrder();
+
+    // 3. Second half-step velocity + optional damping
+    const dampMul = state.damping > 0 ? Math.exp(-state.damping * dt * 10) : 1.0;
+    let ke = 0;
+    for (let i = 0; i < n; i++) {
+      const im = invMass[i];
+      let nvx = (vx[i] + fx[i] * im * halfDt) * dampMul;
+      let nvy = (vy[i] + fy[i] * im * halfDt) * dampMul;
+      // Velocity cap safeguard against extreme drags
+      const v2 = nvx * nvx + nvy * nvy;
+      if (v2 > 400) {
+        const s = 20 / Math.sqrt(v2);
+        nvx *= s;
+        nvy *= s;
+      }
+      vx[i] = nvx;
+      vy[i] = nvy;
+      ke += 0.5 * mass[i] * (nvx * nvx + nvy * nvy);
+    }
+
+    // 4. Thermostat (gentle Berendsen rescaling + micro-kick from 0K)
+    if (state.thermostatOn) {
+      const targetTStar = state.targetTempK / T_SCALE_K;
+      let curTStar = ke / Math.max(1, n);
+      if (curTStar < 1e-5 && targetTStar > 1e-4) {
+        // Seed tiny random thermal motion so rescaling can warm up from 0K
+        for (let i = 0; i < n; i++) {
+          vx[i] += (Math.random() - 0.5) * 0.08 * Math.sqrt(invMass[i]);
+          vy[i] += (Math.random() - 0.5) * 0.08 * Math.sqrt(invMass[i]);
+        }
+        ke = 0;
+        for (let i = 0; i < n; i++) ke += 0.5 * mass[i] * (vx[i] * vx[i] + vy[i] * vy[i]);
+        curTStar = ke / Math.max(1, n);
+      }
+      if (curTStar > 1e-8) {
+        const rate = state.coupling * dt * 18;
+        const ratio = targetTStar / curTStar;
+        let lambda = Math.sqrt(Math.max(0.01, 1 + rate * (ratio - 1)));
+        if (lambda > 1.15) lambda = 1.15;
+        if (lambda < 0.85) lambda = 0.85;
+        for (let i = 0; i < n; i++) {
+          vx[i] *= lambda;
+          vy[i] *= lambda;
+        }
+        ke *= lambda * lambda;
+      }
+    }
+
+    state.ke = ke;
+    state.simTime += dt;
+  }
+
+  function updateTelemetryValues() {
+    const n = state.n;
+    if (n === 0) return;
+
+    const tStar = state.ke / n;
+    state.tempK = tStar * T_SCALE_K;
+    state.tempSmoothK += (state.tempK - state.tempSmoothK) * 0.14;
+
+    let sumPsiLocal = 0;
+    let sumPsiRe = 0;
+    let sumPsiIm = 0;
+    let bondedCount = 0;
+    let sumCoord = 0;
+    let defects = 0;
+    let sumDisp2 = 0;
+
+    const idealZ = (state.lattice === 'hex') ? 6 : 4;
+    const minBulkZ = (state.lattice === 'hex') ? 4 : 3;
+
+    for (let i = 0; i < n; i++) {
+      const z = coord[i];
+      sumCoord += z;
+      if (z >= 2) {
+        sumPsiLocal += psiMag[i];
+        sumPsiRe += psiRe[i];
+        sumPsiIm += psiIm[i];
+        bondedCount++;
+      }
+      if (species[i] === 2) {
+        defects++;
+      } else if (z >= minBulkZ && z !== idealZ && psiMag[i] < 0.78) {
+        // Interior coordination defect (e.g., 5- or 7-fold dislocation core)
+        defects++;
+      }
+      const dx = x[i] - x0[i];
+      const dy = y[i] - y0[i];
+      sumDisp2 += dx * dx + dy * dy;
+    }
+
+    state.avgCoord = sumCoord / n;
+    state.defectCount = defects;
+    state.rmsDisp = Math.sqrt(sumDisp2 / n);
+
+    const localAvg = bondedCount > 0 ? (sumPsiLocal / n) : 0;
+    const globalCoh = bondedCount > 0 ? (Math.hypot(sumPsiRe, sumPsiIm) / n) : 0;
+    // Blend local hexatic/tetragonal symmetry with global orientational order
+    const rawOrder = Math.max(0, Math.min(1, 0.65 * localAvg + 0.35 * globalCoh));
+    state.orderVal = rawOrder;
+    state.orderSmooth += (rawOrder - state.orderSmooth) * 0.12;
+
+    // Phase classification with smooth thresholds
+    const ord = state.orderSmooth;
+    const zAvg = state.avgCoord;
+    const tS = state.tempSmoothK / T_SCALE_K;
+    const solidZThresh = (state.lattice === 'hex') ? 3.8 : 2.9;
+    const liquidZThresh = (state.lattice === 'hex') ? 2.2 : 1.85;
+
+    if (zAvg < liquidZThresh && (tS > 0.55 || ord < 0.28)) {
+      state.phase = 'gas';
+    } else if (ord >= 0.72 && zAvg >= solidZThresh) {
+      state.phase = 'solid';
+    } else if (ord >= 0.44 && zAvg >= liquidZThresh) {
+      state.phase = 'melting';
+    } else if (zAvg >= liquidZThresh) {
+      state.phase = 'liquid';
+    } else {
+      state.phase = 'gas';
+    }
+  }
+
+  /* ============================================================================
+     COORDINATE TRANSFORMS & RESIZE
+  ============================================================================ */
+  let viewW = window.innerWidth;
+  let viewH = window.innerHeight;
+  let dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+  function resizeCanvas() {
+    viewW = window.innerWidth;
+    viewH = window.innerHeight;
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.round(viewW * dpr);
+    canvas.height = Math.round(viewH * dpr);
+    // Compute base scale so full chamber fits nicely with HUD margins
+    const availW = Math.max(320, viewW - (elDrawer.classList.contains('collapsed') ? 60 : 370));
+    const availH = Math.max(260, viewH - 110);
+    state.baseScale = Math.min(availW / (BOX_HALF_X * 2 + 2.2), availH / (BOX_HALF_Y * 2 + 2.2));
+
+    // Sparkline HiDPI resize
+    const sRect = sparkCanvas.getBoundingClientRect();
+    if (sRect.width > 0) {
+      sparkCanvas.width = Math.round(sRect.width * dpr);
+      sparkCanvas.height = Math.round(sRect.height * dpr);
+    }
+  }
+
+  function screenCenterOffsetX() {
+    if (viewW > 920 && !elDrawer.classList.contains('collapsed') && !document.body.classList.contains('zen-mode')) {
+      return -155;
+    }
+    return 0;
+  }
+
+  function worldToScreenX(wx) {
+    const sc = state.baseScale * state.zoom;
+    return viewW * 0.5 + screenCenterOffsetX() + (wx - state.camX) * sc;
+  }
+  function worldToScreenY(wy) {
+    const sc = state.baseScale * state.zoom;
+    return viewH * 0.5 + (wy - state.camY) * sc;
+  }
+  function screenToWorldX(sx) {
+    const sc = state.baseScale * state.zoom;
+    return state.camX + (sx - (viewW * 0.5 + screenCenterOffsetX())) / sc;
+  }
+  function screenToWorldY(sy) {
+    const sc = state.baseScale * state.zoom;
+    return state.camY + (sy - viewH * 0.5) / sc;
+  }
+
+  function findAtomAt(wx, wy, maxRadius = 0.72) {
+    let best = -1;
+    let bestD2 = maxRadius * maxRadius;
+    for (let i = 0; i < state.n; i++) {
+      const dx = x[i] - wx;
+      const dy = y[i] - wy;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < bestD2) {
+        bestD2 = d2;
+        best = i;
+      }
+    }
+    return best;
+  }
+
+  /* ============================================================================
+     RENDERING (MUSEUM-GRADE HIGH-DPI CANVAS)
+  ============================================================================ */
+  function lerp(a, b, t) { return a + (b - a) * t; }
+
+  function bondColorAndWidth(r, sc) {
+    // strain < 0 = compression (hot amber/red), strain > 0 = tension (electric cyan)
+    const strain = (r - R0) / R0;
+    const g = state.strainGain;
+    // Fade smoothly near breaking distance R_BOND
+    let alphaFade = 1.0;
+    if (r > 1.30) {
+      alphaFade = Math.max(0, 1 - (r - 1.30) / (R_BOND - 1.30));
+    }
+
+    let cr, cg, cb, alpha, lw;
+    if (strain < 0) {
+      // Compression -> incandescent amber -> orange-red
+      const t = Math.min(1, (-strain) * 8.5 * g);
+      cr = Math.round(lerp(76, 255, Math.pow(t, 0.7)));
+      cg = Math.round(lerp(106, 178, t) - 70 * t * t);
+      cb = Math.round(lerp(168, 52, t));
+      alpha = (0.34 + 0.64 * t) * alphaFade;
+      lw = (1.6 + 2.4 * t) * Math.min(1.4, sc / 28);
+    } else {
+      // Tension -> electric cyan -> aqua
+      const t = Math.min(1, strain * 7.2 * g);
+      cr = Math.round(lerp(76, 98, t));
+      cg = Math.round(lerp(106, 232, Math.pow(t, 0.8)));
+      cb = Math.round(lerp(168, 255, Math.pow(t, 0.7)));
+      alpha = (0.34 + 0.58 * t) * alphaFade;
+      lw = (1.6 - 0.35 * t + 0.9 * t * (1 - t)) * Math.min(1.4, sc / 28);
+    }
+    return { color: `rgba(${cr},${cg},${cb},${alpha.toFixed(3)})`, lw, energy: Math.abs(strain) * g };
+  }
+
+  function atomFillColor(i) {
+    const mode = state.colorMode;
+    if (species[i] === 3) {
+      return { core: '#ff8da6', rim: '#ff3b6b', glow: 'rgba(255, 96, 131, 0.55)' };
+    }
+    if (species[i] === 2) {
+      return { core: '#e9d5ff', rim: '#a855f7', glow: 'rgba(167, 139, 250, 0.55)' };
+    }
+
+    if (mode === 'species') {
+      if (species[i] === 1) {
+        return { core: '#ffe9b8', rim: '#f59e0b', glow: 'rgba(255, 190, 92, 0.42)' };
+      }
+      return { core: '#e0f7ff', rim: '#38bdf8', glow: 'rgba(88, 220, 255, 0.38)' };
+    }
+
+    if (mode === 'order') {
+      const p = psiMag[i];
+      if (p >= 0.84) {
+        return { core: '#c8ffea', rim: '#2ee6a3', glow: 'rgba(74, 242, 178, 0.34)' };
+      } else if (p >= 0.56) {
+        return { core: '#ffebc2', rim: '#f59e0b', glow: 'rgba(255, 190, 92, 0.42)' };
+      } else {
+        return { core: '#ffc7d6', rim: '#ff4f7b', glow: 'rgba(255, 96, 131, 0.48)' };
+      }
+    }
+
+    if (mode === 'displacement') {
+      const d = Math.hypot(x[i] - x0[i], y[i] - y0[i]);
+      const t = Math.min(1, d / 1.8);
+      const r = Math.round(lerp(95, 255, t));
+      const g = Math.round(lerp(165, 110, t * t));
+      const b = Math.round(lerp(235, 210, t));
+      return {
+        core: `rgb(${Math.min(255, r + 65)},${Math.min(255, g + 65)},${Math.min(255, b + 40)})`,
+        rim: `rgb(${r},${g},${b})`,
+        glow: `rgba(${r},${g},${b},${(0.22 + 0.4 * t).toFixed(2)})`
+      };
+    }
+
+    // Default: 'kinetic' (Thermal / Phonon KE)
+    const kei = 0.5 * mass[i] * (vx[i] * vx[i] + vy[i] * vy[i]);
+    const t = Math.min(1, Math.pow(kei / 1.45, 0.58));
+    if (t < 0.45) {
+      const u = t / 0.45;
+      const r = Math.round(lerp(115, 88, u));
+      const g = Math.round(lerp(178, 226, u));
+      const b = Math.round(lerp(245, 255, u));
+      return {
+        core: `rgb(${Math.min(255, r + 95)},${Math.min(255, g + 55)},255)`,
+        rim: `rgb(${r},${g},${b})`,
+        glow: `rgba(${r},${g},${b},${(0.24 + 0.25 * u).toFixed(2)})`
+      };
+    } else {
+      const u = (t - 0.45) / 0.55;
+      const r = Math.round(lerp(88, 255, Math.pow(u, 0.6)));
+      const g = Math.round(lerp(226, 115, u));
+      const b = Math.round(lerp(255, 88, u));
+      return {
+        core: `rgb(255,${Math.round(lerp(248, 210, u))},${Math.round(lerp(245, 170, u))})`,
+        rim: `rgb(${r},${g},${b})`,
+        glow: `rgba(${r},${g},${b},${(0.45 + 0.35 * u).toFixed(2)})`
+      };
+    }
+  }
+
+  function render() {
+    ctx.save();
+    ctx.scale(dpr, dpr);
+
+    // 1. Deep backdrop #040711 + temperature-reactive ambient chamber glow
+    ctx.fillStyle = '#040711';
+    ctx.fillRect(0, 0, viewW, viewH);
+
+    const cx = worldToScreenX(0);
+    const cy = worldToScreenY(0);
+    const sc = state.baseScale * state.zoom;
+    const heatNorm = Math.min(1, state.tempSmoothK / 360);
+
+    const ambR = Math.max(viewW, viewH) * 0.58;
+    const bgGrad = ctx.createRadialGradient(cx, cy, 10, cx, cy, ambR);
+    if (heatNorm < 0.35) {
+      bgGrad.addColorStop(0, 'rgba(32, 72, 138, 0.19)');
+      bgGrad.addColorStop(0.55, 'rgba(11, 22, 48, 0.08)');
+      bgGrad.addColorStop(1, 'rgba(4, 7, 17, 0)');
+    } else {
+      const h = (heatNorm - 0.35) / 0.65;
+      bgGrad.addColorStop(0, `rgba(${Math.round(lerp(32, 185, h))}, ${Math.round(lerp(72, 68, h))}, ${Math.round(lerp(138, 52, h))}, ${(0.18 + 0.1 * h).toFixed(3)})`);
+      bgGrad.addColorStop(0.55, `rgba(${Math.round(lerp(11, 80, h))}, 18, 42, 0.09)`);
+      bgGrad.addColorStop(1, 'rgba(4, 7, 17, 0)');
+    }
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, viewW, viewH);
+
+    // 2. Chamber Box, subtle crystallographic grid & scale bar
+    const xL = worldToScreenX(-BOX_HALF_X);
+    const xR = worldToScreenX(BOX_HALF_X);
+    const yT = worldToScreenY(-BOX_HALF_Y);
+    const yB = worldToScreenY(BOX_HALF_Y);
+
+    if (state.showChamber) {
+      // Subtle micro-grid inside chamber
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(xL, yT, xR - xL, yB - yT);
+      ctx.clip();
+      ctx.strokeStyle = 'rgba(130, 165, 240, 0.042)';
+      ctx.lineWidth = 1;
+      const step = 2.0;
+      ctx.beginPath();
+      for (let gx = -Math.floor(BOX_HALF_X); gx <= BOX_HALF_X; gx += step) {
+        const sx = worldToScreenX(gx);
+        ctx.moveTo(sx, yT);
+        ctx.lineTo(sx, yB);
+      }
+      for (let gy = -Math.floor(BOX_HALF_Y); gy <= BOX_HALF_Y; gy += step) {
+        const sy = worldToScreenY(gy);
+        ctx.moveTo(xL, sy);
+        ctx.lineTo(xR, sy);
+      }
+      ctx.stroke();
+      ctx.restore();
+
+      // Chamber glass rim
+      ctx.strokeStyle = 'rgba(148, 179, 255, 0.22)';
+      ctx.lineWidth = 1.25;
+      ctx.strokeRect(xL, yT, xR - xL, yB - yT);
+
+      // Corner ticks
+      const tick = 10;
+      ctx.strokeStyle = 'rgba(88, 220, 255, 0.55)';
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      // TL
+      ctx.moveTo(xL, yT + tick); ctx.lineTo(xL, yT); ctx.lineTo(xL + tick, yT);
+      // TR
+      ctx.moveTo(xR - tick, yT); ctx.lineTo(xR, yT); ctx.lineTo(xR, yT + tick);
+      // BL
+      ctx.moveTo(xL, yB - tick); ctx.lineTo(xL, yB); ctx.lineTo(xL + tick, yB);
+      // BR
+      ctx.moveTo(xR - tick, yB); ctx.lineTo(xR, yB); ctx.lineTo(xR, yB - tick);
+      ctx.stroke();
+
+      // Scale bar (2 sigma)
+      const barPx = 2 * sc;
+      const bx = xR - barPx - 14;
+      const by = yB - 14;
+      ctx.strokeStyle = 'rgba(190, 215, 255, 0.55)';
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(bx, by - 4); ctx.lineTo(bx, by); ctx.lineTo(bx + barPx, by); ctx.lineTo(bx + barPx, by - 4);
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(180, 200, 235, 0.65)';
+      ctx.font = '10px ui-monospace, Menlo, Consolas, monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('2σ (6.8 Å)', bx + barPx * 0.5, by - 6);
+    }
+
+    // 3. Shear stress plate indicators (when shearStress != 0)
+    if (Math.abs(state.shearStress) > 0.05 && state.n > 6) {
+      let minY = Infinity, maxY = -Infinity, minX = Infinity, maxX = -Infinity;
+      for (let i = 0; i < state.n; i++) {
+        if (y[i] < minY) minY = y[i];
+        if (y[i] > maxY) maxY = y[i];
+        if (x[i] < minX) minX = x[i];
+        if (x[i] > maxX) maxX = x[i];
+      }
+      const dir = Math.sign(state.shearStress);
+      const mag = Math.min(1, Math.abs(state.shearStress) / 2.2);
+      const sx1 = worldToScreenX(minX);
+      const sx2 = worldToScreenX(maxX);
+      const syTop = worldToScreenY(maxY + 0.95);
+      const syBot = worldToScreenY(minY - 0.95);
+
+      drawShearArrow(sx1, sx2, syTop, dir, mag, 'rgba(255, 96, 131, 0.78)');
+      drawShearArrow(sx1, sx2, syBot, -dir, mag, 'rgba(88, 220, 255, 0.78)');
+    }
+
+    // 4. Glowing Strain-Colored Interatomic Bonds
+    if (state.showBonds) {
+      ctx.lineCap = 'round';
+      for (let b = 0; b < bondCount; b++) {
+        const i = bondA[b];
+        const j = bondB[b];
+        const r = bondR[b];
+        const sx1 = worldToScreenX(x[i]);
+        const sy1 = worldToScreenY(y[i]);
+        const sx2 = worldToScreenX(x[j]);
+        const sy2 = worldToScreenY(y[j]);
+
+        const style = bondColorAndWidth(r, sc);
+        ctx.strokeStyle = style.color;
+        ctx.lineWidth = style.lw;
+        ctx.beginPath();
+        ctx.moveTo(sx1, sy1);
+        ctx.lineTo(sx2, sy2);
+        ctx.stroke();
+
+        // Extra bloom highlight on strongly strained bonds (phonon crests!)
+        if (style.energy > 0.085) {
+          ctx.strokeStyle = r < R0
+            ? `rgba(255, 200, 110, ${Math.min(0.42, style.energy * 1.1).toFixed(2)})`
+            : `rgba(110, 235, 255, ${Math.min(0.36, style.energy * 0.95).toFixed(2)})`;
+          ctx.lineWidth = style.lw * 2.2;
+          ctx.beginPath();
+          ctx.moveTo(sx1, sy1);
+          ctx.lineTo(sx2, sy2);
+          ctx.stroke();
+        }
+      }
+    }
+
+    // 5. Transient Shock / Pluck Ripples
+    for (let k = ripples.length - 1; k >= 0; k--) {
+      const rp = ripples[k];
+      rp.r += 0.16;
+      rp.alpha *= 0.935;
+      if (rp.alpha < 0.02 || rp.r > rp.maxR) {
+        ripples.splice(k, 1);
+        continue;
+      }
+      ctx.save();
+      ctx.globalAlpha = rp.alpha;
+      ctx.strokeStyle = rp.color;
+      ctx.lineWidth = 2.0;
+      ctx.beginPath();
+      ctx.arc(worldToScreenX(rp.x), worldToScreenY(rp.y), rp.r * sc, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // 6. Atoms + Dislocation Rings + Velocity Vectors
+    const baseAtomR = Math.max(3.5, Math.min(18, sc * 0.285));
+    const idealZ = (state.lattice === 'hex') ? 6 : 4;
+    const minBulkZ = (state.lattice === 'hex') ? 4 : 3;
+
+    for (let i = 0; i < state.n; i++) {
+      const sx = worldToScreenX(x[i]);
+      const sy = worldToScreenY(y[i]);
+      const sp = species[i];
+      const rad = baseAtomR * (sp === 1 ? 1.17 : sp === 2 ? 1.24 : sp === 3 ? 1.22 : 1.0);
+      const col = atomFillColor(i);
+
+      // Soft outer halo
+      ctx.fillStyle = col.glow;
+      ctx.beginPath();
+      ctx.arc(sx, sy, rad * 1.68, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Core glossy sphere
+      const grad = ctx.createRadialGradient(
+        sx - rad * 0.32, sy - rad * 0.34, rad * 0.1,
+        sx, sy, rad
+      );
+      grad.addColorStop(0, col.core);
+      grad.addColorStop(0.65, col.rim);
+      grad.addColorStop(1, 'rgba(6, 12, 28, 0.92)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(sx, sy, rad, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Heavy impurity double-ring marker
+      if (sp === 2) {
+        ctx.strokeStyle = 'rgba(216, 180, 254, 0.85)';
+        ctx.lineWidth = 1.4;
+        ctx.setLineDash([3, 2]);
+        ctx.beginPath();
+        ctx.arc(sx, sy, rad * 1.45, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+
+      // Dislocation 5-7 coordination defect highlight
+      if (state.showDefects && sp !== 2 && sp !== 3) {
+        const z = coord[i];
+        if (z >= minBulkZ && z !== idealZ && psiMag[i] < 0.78) {
+          ctx.strokeStyle = z < idealZ
+            ? 'rgba(255, 190, 92, 0.85)'   // 5-fold disclination (amber)
+            : 'rgba(167, 139, 250, 0.88)'; // 7-fold disclination (violet)
+          ctx.lineWidth = 1.6;
+          ctx.beginPath();
+          ctx.arc(sx, sy, rad * 1.52, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      }
+
+      // Hover highlight
+      if (i === state.hoverAtom) {
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.arc(sx, sy, rad * 1.55, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+
+      // Optional velocity vectors
+      if (state.showVectors) {
+        const vm = Math.hypot(vx[i], vy[i]);
+        if (vm > 0.12) {
+          const ex = sx + vx[i] * sc * 0.42;
+          const ey = sy + vy[i] * sc * 0.42;
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.58)';
+          ctx.lineWidth = 1.25;
+          ctx.beginPath();
+          ctx.moveTo(sx, sy);
+          ctx.lineTo(ex, ey);
+          ctx.stroke();
+        }
+      }
+    }
+
+    // 7. Interactive Tool Overlays
+    // Pluck tether
+    if (state.tool === 'pluck' && state.pointerDown && state.dragAtom >= 0 && state.dragAtom < state.n) {
+      const ax = worldToScreenX(x[state.dragAtom]);
+      const ay = worldToScreenY(y[state.dragAtom]);
+      const mx = worldToScreenX(state.mouseWorldX);
+      const my = worldToScreenY(state.mouseWorldY);
+      ctx.strokeStyle = 'rgba(88, 220, 255, 0.85)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([5, 4]);
+      ctx.beginPath();
+      ctx.moveTo(ax, ay);
+      ctx.lineTo(mx, my);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#58dcff';
+      ctx.beginPath();
+      ctx.arc(mx, my, 4.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Impact slingshot aiming overlay
+    if (state.tool === 'impact' && state.aiming) {
+      const sx = worldToScreenX(state.aimStartX);
+      const sy = worldToScreenY(state.aimStartY);
+      const mx = worldToScreenX(state.mouseWorldX);
+      const my = worldToScreenY(state.mouseWorldY);
+      const dvx = (state.aimStartX - state.mouseWorldX) * 2.8;
+      const dvy = (state.aimStartY - state.mouseWorldY) * 2.8;
+      const spd = Math.min(15, Math.hypot(dvx, dvy));
+
+      // Forward trajectory preview
+      const tx = sx + (sx - mx) * 1.4;
+      const ty = sy + (sy - my) * 1.4;
+      ctx.strokeStyle = 'rgba(255, 96, 131, 0.8)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 5]);
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(tx, ty);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Pullback line
+      ctx.strokeStyle = 'rgba(255, 190, 92, 0.6)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(mx, my);
+      ctx.stroke();
+
+      // Projectile preview orb
+      ctx.fillStyle = '#ff6083';
+      ctx.beginPath();
+      ctx.arc(sx, sy, baseAtomR * 1.25, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#ffe3ea';
+      ctx.font = 'bold 11px ui-monospace, Menlo, Consolas, monospace';
+      ctx.textAlign = 'left';
+      ctx.fillText(`v = ${spd.toFixed(1)} σ/τ`, sx + 14, sy - 10);
+    }
+
+    ctx.restore();
+  }
+
+  function drawShearArrow(x1, x2, yPos, dir, mag, color) {
+    const mid = (x1 + x2) * 0.5;
+    const halfLen = Math.max(40, (x2 - x1) * 0.34) * (0.45 + 0.55 * mag);
+    const a = mid - dir * halfLen;
+    const b = mid + dir * halfLen;
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    ctx.moveTo(a, yPos);
+    ctx.lineTo(b, yPos);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(b, yPos);
+    ctx.lineTo(b - dir * 9, yPos - 5);
+    ctx.lineTo(b - dir * 9, yPos + 5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
+  /* ============================================================================
+     SPARKLINE RENDERER
+  ============================================================================ */
+  function recordSparkSample() {
+    histTemp[histPtr] = state.tempSmoothK;
+    histOrder[histPtr] = state.orderSmooth;
+    histPtr = (histPtr + 1) % SPARK_LEN;
+    if (histCount < SPARK_LEN) histCount++;
+  }
+
+  function renderSparkline() {
+    const w = sparkCanvas.width;
+    const h = sparkCanvas.height;
+    if (w === 0 || h === 0) return;
+
+    sparkCtx.save();
+    sparkCtx.clearRect(0, 0, w, h);
+
+    // Subtle horizontal gridlines
+    sparkCtx.strokeStyle = 'rgba(148, 179, 255, 0.1)';
+    sparkCtx.lineWidth = 1;
+    sparkCtx.beginPath();
+    sparkCtx.moveTo(0, h * 0.25); sparkCtx.lineTo(w, h * 0.25);
+    sparkCtx.moveTo(0, h * 0.5);  sparkCtx.lineTo(w, h * 0.5);
+    sparkCtx.moveTo(0, h * 0.75); sparkCtx.lineTo(w, h * 0.75);
+    sparkCtx.stroke();
+
+    if (histCount < 2) {
+      sparkCtx.restore();
+      return;
+    }
+
+    // Dynamic max scale for temperature (at least 120 K)
+    let maxT = 120;
+    for (let k = 0; k < histCount; k++) {
+      const idx = (histPtr - histCount + k + SPARK_LEN) % SPARK_LEN;
+      if (histTemp[idx] > maxT) maxT = histTemp[idx] * 1.15;
+    }
+
+    const pad = 3 * dpr;
+    const plotH = h - pad * 2;
+
+    // 1. Order parameter curve (cyan)
+    sparkCtx.strokeStyle = '#58dcff';
+    sparkCtx.lineWidth = 1.6 * dpr;
+    sparkCtx.beginPath();
+    for (let k = 0; k < histCount; k++) {
+      const idx = (histPtr - histCount + k + SPARK_LEN) % SPARK_LEN;
+      const px = (k / (SPARK_LEN - 1)) * w;
+      const py = pad + plotH * (1 - Math.max(0, Math.min(1, histOrder[idx])));
+      if (k === 0) sparkCtx.moveTo(px, py);
+      else sparkCtx.lineTo(px, py);
+    }
+    sparkCtx.stroke();
+
+    // 2. Temperature curve (amber)
+    sparkCtx.strokeStyle = '#ffbe5c';
+    sparkCtx.lineWidth = 1.6 * dpr;
+    sparkCtx.beginPath();
+    for (let k = 0; k < histCount; k++) {
+      const idx = (histPtr - histCount + k + SPARK_LEN) % SPARK_LEN;
+      const px = (k / (SPARK_LEN - 1)) * w;
+      const py = pad + plotH * (1 - Math.min(1, histTemp[idx] / maxT));
+      if (k === 0) sparkCtx.moveTo(px, py);
+      else sparkCtx.lineTo(px, py);
+    }
+    sparkCtx.stroke();
+
+    sparkCtx.restore();
+  }
+
+  /* ============================================================================
+     HUD UPDATES & UI SYNC
+  ============================================================================ */
+  function syncLatticeBadges() {
+    if (state.lattice === 'hex') {
+      elLatticeBadge.textContent = 'Hexagonal';
+      elLatticeBadge.className = 'mode-badge';
+      elTelOrderLabel.textContent = 'Order Ψ₆';
+    } else if (state.lattice === 'square') {
+      elLatticeBadge.textContent = 'Square';
+      elLatticeBadge.className = 'mode-badge square';
+      elTelOrderLabel.textContent = 'Order Ψ₄';
+    } else {
+      elLatticeBadge.textContent = 'Diatomic';
+      elLatticeBadge.className = 'mode-badge diatomic';
+      elTelOrderLabel.textContent = 'Order Ψ₄';
+    }
+  }
+
+  function updateHUD() {
+    elTelTemp.textContent = `${Math.round(state.tempSmoothK)} K`;
+    elTelOrder.textContent = state.orderSmooth.toFixed(2);
+    elTelDefects.textContent = `${state.defectCount} / ${state.n}`;
+    elTelKe.textContent = `${state.ke.toFixed(1)} ε`;
+    elTelPe.textContent = `${state.pe.toFixed(1)} ε`;
+    elTelRms.textContent = `${state.rmsDisp.toFixed(2)} σ`;
+
+    const etot = state.ke + state.pe;
+    elTelEtot.textContent = `${etot.toFixed(1)} ε`;
+    elTelCoord.textContent = state.avgCoord.toFixed(2);
+    // 1 LJ time unit ~ 2.15 ps (Argon-like scale)
+    elTelTime.textContent = `${(state.simTime * 2.15).toFixed(1)} ps`;
+
+    const denom = state.ke + Math.abs(state.pe) + 1e-6;
+    const kPct = Math.min(100, Math.max(0, (state.ke / denom) * 100));
+    elEnergyFillK.style.width = `${kPct.toFixed(1)}%`;
+    elTelRatio.textContent = `${kPct.toFixed(1)}%`;
+
+    // Order color coding
+    elTelOrder.className = 'tele-val ' + (
+      state.orderSmooth >= 0.72 ? 'mint' :
+      state.orderSmooth >= 0.44 ? 'amber' : 'rose'
+    );
+
+    // Phase state badge
+    if (state.phase === 'solid') {
+      elPhaseBadge.textContent = 'Crystalline Solid';
+      elPhaseBadge.className = 'status-pill';
+    } else if (state.phase === 'melting') {
+      elPhaseBadge.textContent = 'Melting / Dislocated';
+      elPhaseBadge.className = 'status-pill melting';
+    } else if (state.phase === 'liquid') {
+      elPhaseBadge.textContent = 'Liquid';
+      elPhaseBadge.className = 'status-pill liquid';
+    } else {
+      elPhaseBadge.textContent = 'Vapor / Gas';
+      elPhaseBadge.className = 'status-pill gas';
+    }
+  }
+
+  function updateHintText() {
+    const hints = {
+      pluck: `<strong style="color:var(--accent-cyan)">Pluck:</strong> Drag any atom or flick across a row for phonon waves · <kbd>Scroll</kbd> zoom · <kbd>1–4</kbd> tools`,
+      impact: `<strong style="color:var(--accent-rose)">Impact:</strong> Drag &amp; release to slingshot a projectile (or click to auto-fire) · <kbd>Scroll</kbd> zoom`,
+      defect: `<strong style="color:var(--accent-violet)">Defect:</strong> Click atom to ${state.defectAction === 'vacancy' ? 'remove (vacancy)' : state.defectAction === 'impurity' ? 'dope heavy mass' : 'insert new atom'} · <kbd>Shift+Click</kbd> toggles impurity`,
+      shear: `<strong style="color:var(--accent-amber)">Shear:</strong> Drag horizontally to shear top/bottom layers and glide edge dislocations`,
+    };
+    elHintPill.innerHTML = hints[state.tool] || hints.pluck;
+  }
+
+  function syncUI() {
+    syncLatticeBadges();
+
+    // Presets
+    document.querySelectorAll('.preset-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.preset === state.preset);
+    });
+
+    // Tools
+    const toolAccent = { pluck: '', impact: 'rose', defect: 'violet', shear: 'amber' };
+    document.querySelectorAll('.tool-btn').forEach(btn => {
+      const t = btn.dataset.tool;
+      btn.className = 'tool-btn' + (t === state.tool ? ` active ${toolAccent[t]}` : '');
+    });
+    elDefectSubWrap.style.display = state.tool === 'defect' ? 'flex' : 'none';
+    document.querySelectorAll('[data-defect-action]').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.defectAction === state.defectAction);
+    });
+
+    // Lattice seg buttons
+    document.querySelectorAll('[data-lattice]').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.lattice === state.lattice);
+    });
+
+    // Color mode seg buttons
+    document.querySelectorAll('[data-colormode]').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.colormode === state.colorMode);
+    });
+
+    // Sliders & toggles
+    elSlShear.value = state.shearStress;
+    elValShear.textContent = state.shearStress.toFixed(2);
+
+    elSlMassRatio.value = state.massRatio;
+    elValMassRatio.textContent = `${state.massRatio.toFixed(1)}×`;
+
+    elChkThermostat.checked = state.thermostatOn;
+    elBathStateTag.textContent = state.thermostatOn ? 'BATH ON' : 'NVE OFF';
+    elBathStateTag.style.color = state.thermostatOn ? 'var(--accent-amber)' : 'var(--text-muted)';
+
+    elSlTemp.value = state.targetTempK;
+    elValTempTarget.textContent = `${Math.round(state.targetTempK)} K`;
+
+    elSlCoupling.value = state.coupling;
+    elValCoupling.textContent = state.coupling.toFixed(2);
+
+    elSlDamping.value = state.damping;
+    elValDamping.textContent = state.damping.toFixed(3);
+
+    elChkBonds.checked = state.showBonds;
+    elChkDefects.checked = state.showDefects;
+    elChkVectors.checked = state.showVectors;
+    elChkChamber.checked = state.showChamber;
+    elSlStrainGain.value = state.strainGain;
+    elValStrainGain.textContent = `${state.strainGain.toFixed(1)}×`;
+
+    elChkAudio.checked = state.audioOn;
+    elSlVolume.value = Math.round(state.audioVolume * 100);
+    elValVolume.textContent = `${Math.round(state.audioVolume * 100)}%`;
+    elBtnAudioQuick.textContent = state.audioOn ? '🔊 Audio' : '🔇 Audio';
+    elBtnAudioQuick.classList.toggle('amber-active', state.audioOn);
+
+    elBtnPlay.textContent = state.paused ? '▶ Play' : '❚❚ Pause';
+    elBtnPlay.classList.toggle('active', !state.paused);
+
+    document.querySelectorAll('.speed-btn').forEach(btn => {
+      btn.classList.toggle('active', parseFloat(btn.dataset.speed) === state.speed);
+    });
+
+    updateHintText();
+  }
+
+  /* ============================================================================
+     EVENT LISTENERS — CANVAS INTERACTION
+  ============================================================================ */
+  canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+  canvas.addEventListener('pointerdown', e => {
+    canvas.setPointerCapture(e.pointerId);
+    const rect = canvas.getBoundingClientRect();
+    const sx = e.clientX - rect.left;
+    const sy = e.clientY - rect.top;
+    const wx = screenToWorldX(sx);
+    const wy = screenToWorldY(sy);
+
+    state.mouseWorldX = wx;
+    state.mouseWorldY = wy;
+    state.prevMouseWorldX = wx;
+    state.prevMouseWorldY = wy;
+
+    // Pan with right button, middle button, or Alt+Left
+    if (e.button === 1 || e.button === 2 || e.altKey) {
+      state.panning = true;
+      state.panStartX = sx;
+      state.panStartY = sy;
+      state.camStartX = state.camX;
+      state.camStartY = state.camY;
+      canvas.classList.add('panning');
+      return;
+    }
+
+    state.pointerDown = true;
+
+    if (state.tool === 'pluck') {
+      const hit = findAtomAt(wx, wy, 0.85);
+      state.dragAtom = hit;
+      if (hit >= 0) {
+        playCrystalTone(0.55, (x[hit] + BOX_HALF_X) / (BOX_HALF_X * 2), 'pluck');
+        ripples.push({ x: x[hit], y: y[hit], r: 0.25, maxR: 2.8, alpha: 0.7, color: '#58dcff' });
+      }
+    } else if (state.tool === 'impact') {
+      state.aiming = true;
+      state.aimStartX = wx;
+      state.aimStartY = wy;
+    } else if (state.tool === 'defect') {
+      const hit = findAtomAt(wx, wy, 0.78);
+      if (e.shiftKey && hit >= 0) {
+        toggleImpurity(hit);
+      } else if (state.defectAction === 'vacancy') {
+        if (hit >= 0) {
+          const rx = x[hit], ry = y[hit];
+          removeAtom(hit);
+          ripples.push({ x: rx, y: ry, r: 0.2, maxR: 2.6, alpha: 0.8, color: '#ff6083' });
+          playCrystalTone(0.5, 0.7, 'defect');
+          computeForcesAndOrder();
+        }
+      } else if (state.defectAction === 'impurity') {
+        if (hit >= 0) {
+          toggleImpurity(hit);
+        }
+      } else if (state.defectAction === 'add') {
+        if (hit < 0) {
+          const added = addAtom(wx, wy, 0, 0, 1.0, 0);
+          if (added >= 0) {
+            ripples.push({ x: wx, y: wy, r: 0.2, maxR: 2.4, alpha: 0.8, color: '#4af2b2' });
+            playCrystalTone(0.55, 0.85, 'defect');
+            computeForcesAndOrder();
+          }
+        }
+      }
+    } else if (state.tool === 'shear') {
+      state.shearingDrag = true;
+      state.shearStartX = sx;
+      state.shearBaseStress = state.shearStress;
+    }
+  });
+
+  function toggleImpurity(idx) {
+    if (species[idx] === 2) {
+      species[idx] = 0;
+      mass[idx] = 1.0;
+      invMass[idx] = 1.0;
+    } else {
+      species[idx] = 2;
+      mass[idx] = 5.0;
+      invMass[idx] = 0.2;
+    }
+    ripples.push({ x: x[idx], y: y[idx], r: 0.25, maxR: 2.6, alpha: 0.85, color: '#a78bfa' });
+    playCrystalTone(0.6, 0.55, 'defect');
+  }
+
+  canvas.addEventListener('pointermove', e => {
+    const rect = canvas.getBoundingClientRect();
+    const sx = e.clientX - rect.left;
+    const sy = e.clientY - rect.top;
+    const wx = screenToWorldX(sx);
+    const wy = screenToWorldY(sy);
+
+    if (state.panning) {
+      const sc = state.baseScale * state.zoom;
+      state.camX = state.camStartX - (sx - state.panStartX) / sc;
+      state.camY = state.camStartY - (sy - state.panStartY) / sc;
+      return;
+    }
+
+    state.prevMouseWorldX = state.mouseWorldX;
+    state.prevMouseWorldY = state.mouseWorldY;
+    state.mouseWorldX = wx;
+    state.mouseWorldY = wy;
+
+    // Hover feedback
+    state.hoverAtom = findAtomAt(wx, wy, 0.72);
+    canvas.classList.toggle('grab-ready', state.tool === 'pluck' && state.hoverAtom >= 0 && !state.pointerDown);
+
+    // Flick-across wave brush when dragging in Pluck mode without grabbing a single atom
+    if (state.tool === 'pluck' && state.pointerDown && state.dragAtom < 0) {
+      const dvx = (wx - state.prevMouseWorldX) * 1.9;
+      const dvy = (wy - state.prevMouseWorldY) * 1.9;
+      if (Math.hypot(dvx, dvy) > 0.05) {
+        for (let i = 0; i < state.n; i++) {
+          const d2 = (x[i] - wx) * (x[i] - wx) + (y[i] - wy) * (y[i] - wy);
+          if (d2 < 2.2) {
+            const w = Math.exp(-d2 / 0.9);
+            vx[i] += Math.max(-2.5, Math.min(2.5, dvx)) * w * 0.45;
+            vy[i] += Math.max(-2.5, Math.min(2.5, dvy)) * w * 0.45;
+          }
+        }
+      }
+    }
+
+    // Dragging Shear Stress
+    if (state.tool === 'shear' && state.shearingDrag) {
+      const delta = (sx - state.shearStartX) / 95;
+      state.shearStress = Math.max(-2.6, Math.min(2.6, state.shearBaseStress + delta));
+      elSlShear.value = state.shearStress;
+      elValShear.textContent = state.shearStress.toFixed(2);
+    }
+  });
+
+  canvas.addEventListener('pointerup', e => {
+    if (state.panning) {
+      state.panning = false;
+      canvas.classList.remove('panning');
+      return;
+    }
+
+    if (state.tool === 'impact' && state.aiming) {
+      let dvx = (state.aimStartX - state.mouseWorldX) * 2.8;
+      let dvy = (state.aimStartY - state.mouseWorldY) * 2.8;
+      let spd = Math.hypot(dvx, dvy);
+      if (spd < 0.7) {
+        // Quick click: auto-aim toward crystal center (0, 0)
+        const dx = -state.aimStartX;
+        const dy = -state.aimStartY;
+        const dist = Math.hypot(dx, dy) || 1;
+        dvx = (dx / dist) * 10.5;
+        dvy = (dy / dist) * 10.5;
+      } else if (spd > 15) {
+        dvx = (dvx / spd) * 15;
+        dvy = (dvy / spd) * 15;
+      }
+      fireProjectile(state.aimStartX, state.aimStartY, dvx, dvy);
+      state.aiming = false;
+    }
+
+    if (state.tool === 'pluck' && state.dragAtom >= 0) {
+      playCrystalTone(0.45, (x[state.dragAtom] + BOX_HALF_X) / (BOX_HALF_X * 2), 'pluck');
+    }
+
+    state.pointerDown = false;
+    state.dragAtom = -1;
+    state.shearingDrag = false;
+  });
+
+  canvas.addEventListener('wheel', e => {
+    e.preventDefault();
+    const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+    state.zoom = Math.max(0.55, Math.min(2.6, state.zoom * factor));
+  }, { passive: false });
+
+  /* ============================================================================
+     EVENT LISTENERS — HUD CONTROLS & KEYBOARD SHORTCUTS
+  ============================================================================ */
+  // Drawer Tabs
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+    });
+  });
+
+  // Presets
+  document.querySelectorAll('.preset-btn').forEach(btn => {
+    btn.addEventListener('click', () => loadPreset(btn.dataset.preset));
+  });
+
+  // Tools
+  document.querySelectorAll('.tool-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.tool = btn.dataset.tool;
+      syncUI();
+    });
+  });
+
+  // Defect sub-action
+  document.querySelectorAll('[data-defect-action]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.defectAction = btn.dataset.defectAction;
+      syncUI();
+    });
+  });
+
+  // Wave & Shock triggers
+  document.getElementById('btn-pulse-long').addEventListener('click', () => applyWavePulse('longitudinal'));
+  document.getElementById('btn-pulse-trans').addEventListener('click', () => applyWavePulse('transverse'));
+  document.getElementById('btn-pulse-optical').addEventListener('click', () => applyWavePulse('optical'));
+  document.getElementById('btn-fire-proj').addEventListener('click', () => {
+    const ry = (Math.random() - 0.5) * 4.5;
+    fireProjectile(-12.2, ry, 11.4, -ry * 0.14);
+    showBanner('Hypervelocity Projectile Fired', true);
+  });
+
+  elSlShear.addEventListener('input', () => {
+    state.shearStress = parseFloat(elSlShear.value);
+    elValShear.textContent = state.shearStress.toFixed(2);
+  });
+  document.getElementById('btn-shear-zero').addEventListener('click', () => {
+    state.shearStress = 0;
+    elSlShear.value = 0;
+    elValShear.textContent = '0.00';
+  });
+  document.getElementById('btn-quench-vel').addEventListener('click', () => {
+    for (let i = 0; i < state.n; i++) { vx[i] *= 0.2; vy[i] *= 0.2; }
+    showBanner('Vibrations Damped');
+  });
+
+  // Lattice symmetry switcher
+  document.querySelectorAll('[data-lattice]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const lat = btn.dataset.lattice;
+      const cols = lat === 'hex' ? 17 : 15;
+      const rows = 11;
+      buildCrystal(lat, cols, rows, state.thermostatOn ? state.targetTempK : 8);
+      if (lat === 'diatomic') state.colorMode = 'species';
+      syncUI();
+      showBanner(`Switched to ${lat.charAt(0).toUpperCase() + lat.slice(1)} Crystal`);
+    });
+  });
+
+  elSlMassRatio.addEventListener('input', () => {
+    state.massRatio = parseFloat(elSlMassRatio.value);
+    elValMassRatio.textContent = `${state.massRatio.toFixed(1)}×`;
+    for (let i = 0; i < state.n; i++) {
+      if (species[i] === 1) {
+        mass[i] = state.massRatio;
+        invMass[i] = 1 / state.massRatio;
+      }
+    }
+  });
+
+  // Thermostat controls
+  elChkThermostat.addEventListener('change', () => {
+    state.thermostatOn = elChkThermostat.checked;
+    syncUI();
+  });
+
+  elSlTemp.addEventListener('input', () => {
+    state.targetTempK = parseFloat(elSlTemp.value);
+    if (!state.thermostatOn) state.thermostatOn = true;
+    syncUI();
+  });
+
+  document.getElementById('btn-phase-anneal').addEventListener('click', () => {
+    state.thermostatOn = true;
+    state.targetTempK = 15;
+    state.coupling = 0.08;
+    syncUI();
+    showBanner('Annealing to 15 K — Watch Spontaneous Recrystallization');
+  });
+  document.getElementById('btn-phase-melt').addEventListener('click', () => {
+    state.thermostatOn = true;
+    state.targetTempK = 170;
+    state.coupling = 0.09;
+    syncUI();
+    showBanner('Heating to 170 K — Crystal Melting Transition', true);
+  });
+  document.getElementById('btn-phase-boil').addEventListener('click', () => {
+    state.thermostatOn = true;
+    state.targetTempK = 430;
+    state.coupling = 0.12;
+    syncUI();
+    showBanner('Boiling at 430 K — Vaporizing into Atomic Gas', true);
+  });
+
+  elSlCoupling.addEventListener('input', () => {
+    state.coupling = parseFloat(elSlCoupling.value);
+    elValCoupling.textContent = state.coupling.toFixed(2);
+  });
+  elSlDamping.addEventListener('input', () => {
+    state.damping = parseFloat(elSlDamping.value);
+    elValDamping.textContent = state.damping.toFixed(3);
+  });
+
+  // Visuals & Audio controls
+  document.querySelectorAll('[data-colormode]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.colorMode = btn.dataset.colormode;
+      syncUI();
+    });
+  });
+
+  elChkBonds.addEventListener('change', () => { state.showBonds = elChkBonds.checked; });
+  elChkDefects.addEventListener('change', () => { state.showDefects = elChkDefects.checked; });
+  elChkVectors.addEventListener('change', () => { state.showVectors = elChkVectors.checked; });
+  elChkChamber.addEventListener('change', () => { state.showChamber = elChkChamber.checked; });
+  elSlStrainGain.addEventListener('input', () => {
+    state.strainGain = parseFloat(elSlStrainGain.value);
+    elValStrainGain.textContent = `${state.strainGain.toFixed(1)}×`;
+  });
+
+  elChkAudio.addEventListener('change', () => {
+    state.audioOn = elChkAudio.checked;
+    if (state.audioOn) { ensureAudio(); playCrystalTone(0.5, 0.5, 'pluck'); }
+    syncUI();
+  });
+  elSlVolume.addEventListener('input', () => {
+    state.audioVolume = parseFloat(elSlVolume.value) / 100;
+    elValVolume.textContent = `${Math.round(state.audioVolume * 100)}%`;
+  });
+
+  // Bottom Transport Bar
+  elBtnPlay.addEventListener('click', () => {
+    state.paused = !state.paused;
+    syncUI();
+  });
+
+  elBtnStep.addEventListener('click', () => {
+    state.paused = true;
+    for (let s = 0; s < 4; s++) stepPhysics(0.005);
+    updateTelemetryValues();
+    recordSparkSample();
+    renderSparkline();
+    updateHUD();
+    syncUI();
+  });
+
+  document.querySelectorAll('.speed-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.speed = parseFloat(btn.dataset.speed);
+      syncUI();
+    });
+  });
+
+  elBtnReset.addEventListener('click', () => loadPreset(state.preset));
+
+  elBtnAudioQuick.addEventListener('click', () => {
+    state.audioOn = !state.audioOn;
+    if (state.audioOn) { ensureAudio(); playCrystalTone(0.5, 0.5, 'pluck'); }
+    syncUI();
+  });
+
+  function toggleZen() {
+    document.body.classList.toggle('zen-mode');
+    resizeCanvas();
+  }
+  elBtnZen.addEventListener('click', toggleZen);
+  elBtnZenRestore.addEventListener('click', toggleZen);
+
+  elBtnDrawer.addEventListener('click', () => {
+    elDrawer.classList.toggle('collapsed');
+    elBtnDrawer.classList.toggle('active', !elDrawer.classList.contains('collapsed'));
+    resizeCanvas();
+  });
+
+  // Keyboard shortcuts
+  window.addEventListener('keydown', e => {
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+    if (e.code === 'Space') {
+      e.preventDefault();
+      state.paused = !state.paused;
+      syncUI();
+    } else if (e.key === '1') { state.tool = 'pluck'; syncUI(); }
+    else if (e.key === '2') { state.tool = 'impact'; syncUI(); }
+    else if (e.key === '3') { state.tool = 'defect'; syncUI(); }
+    else if (e.key === '4') { state.tool = 'shear'; syncUI(); }
+    else if (e.key === 'r' || e.key === 'R') { loadPreset(state.preset); }
+    else if (e.key === 's' || e.key === 'S') { elBtnStep.click(); }
+    else if (e.key === 'm' || e.key === 'M') { elBtnAudioQuick.click(); }
+    else if (e.key === 'h' || e.key === 'H') { toggleZen(); }
+    else if (e.key === 'd' || e.key === 'D') { elBtnDrawer.click(); }
+  });
+
+  window.addEventListener('resize', resizeCanvas);
+
+  /* ============================================================================
+     MAIN ANIMATION LOOP
+  ============================================================================ */
+  let lastFrameMs = performance.now();
+  let hudTick = 0;
+
+  function frame(nowMs) {
+    const dtWall = Math.min(0.035, (nowMs - lastFrameMs) / 1000);
+    lastFrameMs = nowMs;
+
+    if (!state.paused) {
+      // Substeps scaled by speed for rock-solid Verlet stability
+      const baseSubsteps = Math.max(1, Math.round(7 * state.speed));
+      const dtSub = 0.0048 * (state.speed < 0.5 ? state.speed * 2 : 1.0);
+      const steps = state.speed < 0.5 ? 4 : baseSubsteps;
+      for (let s = 0; s < steps; s++) {
+        stepPhysics(dtSub);
+      }
+      updateTelemetryValues();
+
+      sparkTimer += dtWall;
+      if (sparkTimer >= 0.08) {
+        sparkTimer = 0;
+        recordSparkSample();
+        renderSparkline();
+      }
+    }
+
+    render();
+
+    hudTick++;
+    if (hudTick % 3 === 0) {
+      updateHUD();
+    }
+
+    requestAnimationFrame(frame);
+  }
+
+  /* ============================================================================
+     BOOT
+  ============================================================================ */
+  resizeCanvas();
+  loadPreset('hex-phonons');
+  recordSparkSample();
+  renderSparkline();
+  updateHUD();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

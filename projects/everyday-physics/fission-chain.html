@@ -1,0 +1,3447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Criticality — Nuclear Fission &amp; Chain Reaction Lab</title>
+<style>
+  :root {
+    --bg-deep: #040711;
+    --panel-bg: rgba(9, 13, 24, 0.78);
+    --panel-bg-strong: rgba(8, 12, 22, 0.92);
+    --panel-border: rgba(148, 179, 255, 0.16);
+    --panel-border-hi: rgba(148, 179, 255, 0.36);
+    --text-main: #eef3ff;
+    --text-dim: #9aa9cc;
+    --text-muted: #68789c;
+    --accent-amber: #ffbe5c;
+    --accent-cyan: #58dcff;
+    --accent-mint: #4af2b2;
+    --accent-rose: #ff587a;
+    --accent-violet: #b78bfa;
+    --accent-cherenkov: #2fa8ff;
+    --radius-lg: 14px;
+    --radius-md: 10px;
+    --radius-sm: 7px;
+    --mono: ui-monospace, "Cascadia Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Inter, Helvetica, Arial, sans-serif;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg-deep);
+    color: var(--text-main);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    touch-action: none;
+  }
+
+  #sim-canvas {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    cursor: crosshair;
+  }
+  #sim-canvas.rod-hover {
+    cursor: ns-resize;
+  }
+  #sim-canvas.rod-drag {
+    cursor: grabbing;
+  }
+
+  /* HUD Layer */
+  .hud {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 10;
+  }
+  body.zen-mode .hud > :not(.zen-restore):not(.event-banner.visible) {
+    opacity: 0;
+    pointer-events: none !important;
+  }
+
+  .panel {
+    pointer-events: auto;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-lg);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.52), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    transition: opacity 0.25s ease, transform 0.25s ease;
+  }
+
+  /* Top-Left Brand + Telemetry + Sparkline */
+  .top-left {
+    position: fixed;
+    top: 14px;
+    left: 14px;
+    width: min(392px, calc(100vw - 360px));
+    min-width: 288px;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .brand-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .brand-title-wrap {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .brand-title {
+    font-size: 16px;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    background: linear-gradient(120deg, #e8fbff 0%, #58dcff 48%, #ffbe5c 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .mode-badge {
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 999px;
+    border: 1px solid rgba(88, 220, 255, 0.36);
+    background: rgba(88, 220, 255, 0.11);
+    color: var(--accent-cyan);
+  }
+
+  .status-pill {
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: rgba(74, 242, 178, 0.14);
+    color: var(--accent-mint);
+    border: 1px solid rgba(74, 242, 178, 0.38);
+    white-space: nowrap;
+    transition: all 0.2s ease;
+  }
+  .status-pill.sub {
+    background: rgba(88, 220, 255, 0.13);
+    color: var(--accent-cyan);
+    border-color: rgba(88, 220, 255, 0.38);
+  }
+  .status-pill.warn {
+    background: rgba(255, 190, 92, 0.18);
+    color: var(--accent-amber);
+    border-color: rgba(255, 190, 92, 0.45);
+  }
+  .status-pill.danger {
+    background: rgba(255, 88, 122, 0.22);
+    color: #ff8aa2;
+    border-color: rgba(255, 88, 122, 0.6);
+    box-shadow: 0 0 14px rgba(255, 88, 122, 0.32);
+  }
+
+  .telemetry-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+  }
+
+  .tele-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(148, 179, 255, 0.1);
+    border-radius: var(--radius-sm);
+    padding: 5px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+
+  .tele-label {
+    font-size: 9px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .tele-val {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-main);
+  }
+  .tele-val.amber { color: var(--accent-amber); }
+  .tele-val.cyan { color: var(--accent-cyan); }
+  .tele-val.mint { color: var(--accent-mint); }
+  .tele-val.rose { color: var(--accent-rose); }
+  .tele-val.violet { color: var(--accent-violet); }
+
+  /* Sparkline container */
+  .sparkline-box {
+    background: rgba(3, 6, 14, 0.62);
+    border: 1px solid rgba(148, 179, 255, 0.12);
+    border-radius: var(--radius-sm);
+    padding: 6px 8px 5px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .sparkline-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 9.5px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .spark-legend {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--mono);
+    font-size: 9.5px;
+  }
+  .spark-dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    margin-right: 3px;
+    vertical-align: middle;
+  }
+  #sparkline-canvas {
+    width: 100%;
+    height: 54px;
+    display: block;
+    border-radius: 4px;
+  }
+
+  .temp-bar-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+  .temp-track {
+    flex: 1;
+    height: 6px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+    overflow: hidden;
+    position: relative;
+  }
+  .temp-fill {
+    height: 100%;
+    width: 22%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #35a8ff 0%, #4af2b2 35%, #ffbe5c 70%, #ff466e 100%);
+    transition: width 0.1s linear;
+  }
+
+  .clock-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding-top: 4px;
+    border-top: 1px solid rgba(148, 179, 255, 0.1);
+    font-size: 10.5px;
+    color: var(--text-dim);
+    font-family: var(--mono);
+  }
+  .clock-row span strong {
+    color: var(--text-main);
+    font-weight: 650;
+  }
+
+  /* Right Control Drawer */
+  .drawer {
+    position: fixed;
+    top: 14px;
+    right: 14px;
+    bottom: 14px;
+    width: 332px;
+    max-width: calc(100vw - 28px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: transform 0.25s ease, opacity 0.25s ease;
+  }
+  .drawer.collapsed {
+    transform: translateX(calc(100% + 24px));
+    pointer-events: none;
+  }
+
+  .drawer-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+    padding: 8px 8px 6px;
+    border-bottom: 1px solid var(--panel-border);
+    background: rgba(4, 7, 15, 0.4);
+  }
+
+  .tab-btn {
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 11.5px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    padding: 7px 6px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .tab-btn:hover {
+    color: var(--text-main);
+    background: rgba(255, 255, 255, 0.04);
+  }
+  .tab-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.16);
+    border-color: rgba(88, 220, 255, 0.4);
+  }
+
+  .drawer-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 11px 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .drawer-body::-webkit-scrollbar {
+    width: 5px;
+  }
+  .drawer-body::-webkit-scrollbar-thumb {
+    background: rgba(148, 179, 255, 0.22);
+    border-radius: 999px;
+  }
+
+  .tab-pane {
+    display: none;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .tab-pane.active {
+    display: flex;
+  }
+
+  .section {
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(148, 179, 255, 0.11);
+    border-radius: var(--radius-md);
+    padding: 10px 11px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .section-title {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  /* Presets grid */
+  .preset-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .preset-btn {
+    text-align: left;
+    padding: 7px 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(148, 179, 255, 0.14);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-main);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .preset-btn:hover {
+    border-color: rgba(88, 220, 255, 0.45);
+    background: rgba(88, 220, 255, 0.08);
+  }
+  .preset-btn.active {
+    border-color: var(--accent-cyan);
+    background: rgba(88, 220, 255, 0.15);
+  }
+  .preset-name {
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+  .preset-sub {
+    font-size: 9.2px;
+    color: var(--text-muted);
+    line-height: 1.25;
+  }
+
+  /* Sliders */
+  .control-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .control-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11.5px;
+    color: var(--text-dim);
+  }
+  .control-head .val {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--text-main);
+    font-weight: 650;
+  }
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 5px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.18);
+    outline: none;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent-cyan);
+    border: 2px solid #08101f;
+    box-shadow: 0 0 10px rgba(88, 220, 255, 0.65);
+    cursor: pointer;
+  }
+  input[type="range"].amber::-webkit-slider-thumb {
+    background: var(--accent-amber);
+    box-shadow: 0 0 10px rgba(255, 190, 92, 0.65);
+  }
+  input[type="range"].rose::-webkit-slider-thumb {
+    background: var(--accent-rose);
+    box-shadow: 0 0 10px rgba(255, 88, 122, 0.65);
+  }
+  input[type="range"].mint::-webkit-slider-thumb {
+    background: var(--accent-mint);
+    box-shadow: 0 0 10px rgba(74, 242, 178, 0.65);
+  }
+
+  /* Action Buttons */
+  .btn-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .btn {
+    border: 1px solid rgba(148, 179, 255, 0.22);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-main);
+    font-size: 11.5px;
+    font-weight: 700;
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+  .btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 179, 255, 0.45);
+  }
+  .btn:active {
+    transform: scale(0.98);
+  }
+  .btn.primary {
+    background: linear-gradient(135deg, rgba(88, 220, 255, 0.28), rgba(56, 140, 255, 0.24));
+    border-color: rgba(88, 220, 255, 0.55);
+    color: #e6f9ff;
+  }
+  .btn.primary:hover {
+    background: linear-gradient(135deg, rgba(88, 220, 255, 0.4), rgba(56, 140, 255, 0.35));
+  }
+  .btn.amber {
+    background: linear-gradient(135deg, rgba(255, 190, 92, 0.24), rgba(255, 120, 60, 0.2));
+    border-color: rgba(255, 190, 92, 0.5);
+    color: #fff3db;
+  }
+  .btn.violet {
+    background: linear-gradient(135deg, rgba(183, 139, 250, 0.24), rgba(130, 80, 220, 0.2));
+    border-color: rgba(183, 139, 250, 0.5);
+    color: #f0e6ff;
+  }
+
+  /* Big Red Emergency SCRAM Button */
+  .btn-scram {
+    width: 100%;
+    padding: 11px 12px;
+    border-radius: var(--radius-md);
+    border: 1.5px solid rgba(255, 86, 114, 0.85);
+    background: linear-gradient(180deg, rgba(235, 42, 74, 0.88) 0%, rgba(162, 18, 45, 0.92) 100%);
+    color: #fff5f7;
+    font-size: 13px;
+    font-weight: 900;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    cursor: pointer;
+    box-shadow: 0 0 22px rgba(255, 52, 88, 0.36), inset 0 1px 0 rgba(255, 255, 255, 0.28);
+    transition: all 0.14s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+  .btn-scram:hover {
+    background: linear-gradient(180deg, rgba(255, 56, 88, 0.96) 0%, rgba(190, 22, 52, 0.96) 100%);
+    box-shadow: 0 0 28px rgba(255, 56, 88, 0.58), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+    transform: translateY(-1px);
+  }
+  .btn-scram:active {
+    transform: scale(0.98);
+  }
+  .btn-scram.scrammed {
+    background: linear-gradient(180deg, rgba(110, 24, 40, 0.72), rgba(70, 14, 24, 0.85));
+    border-color: rgba(255, 100, 128, 0.45);
+    box-shadow: 0 0 12px rgba(255, 56, 88, 0.22);
+  }
+
+  /* Toggle switches */
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11.5px;
+    color: var(--text-dim);
+    cursor: pointer;
+    gap: 8px;
+  }
+  .toggle-row input {
+    display: none;
+  }
+  .switch {
+    width: 34px;
+    height: 18px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.2);
+    border: 1px solid rgba(148, 179, 255, 0.25);
+    position: relative;
+    transition: all 0.18s ease;
+    flex-shrink: 0;
+  }
+  .switch::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #c8d7f5;
+    transition: transform 0.18s ease, background 0.18s ease;
+  }
+  .toggle-row input:checked + .switch {
+    background: rgba(88, 220, 255, 0.32);
+    border-color: var(--accent-cyan);
+  }
+  .toggle-row input:checked + .switch::after {
+    transform: translateX(16px);
+    background: #fff;
+  }
+
+  /* Inventory / Legend rows */
+  .inv-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 5px;
+  }
+  .inv-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 5px 7px;
+    border-radius: var(--radius-sm);
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(148, 179, 255, 0.09);
+    font-size: 10.5px;
+  }
+  .inv-left {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--text-dim);
+  }
+  .inv-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .inv-num {
+    font-family: var(--mono);
+    font-weight: 700;
+    color: var(--text-main);
+  }
+
+  .legend-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .legend-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+  .legend-swatch {
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .legend-row strong {
+    color: var(--text-main);
+    font-weight: 650;
+  }
+
+  /* Bottom Transport Bar */
+  .bottom-bar {
+    position: fixed;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 7px 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: nowrap;
+  }
+
+  .bar-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-main);
+    font-size: 11.5px;
+    font-weight: 650;
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    white-space: nowrap;
+  }
+  .bar-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 179, 255, 0.4);
+  }
+  .bar-btn.active {
+    background: rgba(88, 220, 255, 0.2);
+    border-color: var(--accent-cyan);
+    color: #fff;
+  }
+  .bar-btn.scram-mini {
+    background: rgba(255, 62, 92, 0.22);
+    border-color: rgba(255, 76, 108, 0.55);
+    color: #ffd4dc;
+    font-weight: 800;
+  }
+  .bar-btn.scram-mini:hover {
+    background: rgba(255, 62, 92, 0.4);
+  }
+
+  .bar-divider {
+    width: 1px;
+    height: 20px;
+    background: rgba(148, 179, 255, 0.16);
+    margin: 0 2px;
+  }
+
+  /* Bottom-left interaction hint */
+  .hint-pill {
+    position: fixed;
+    bottom: 14px;
+    left: 14px;
+    padding: 7px 11px;
+    font-size: 11px;
+    color: var(--text-dim);
+    max-width: 318px;
+    line-height: 1.42;
+  }
+  .hint-pill kbd {
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #fff;
+  }
+
+  /* Event Notification Banner */
+  .event-banner {
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(-12px);
+    padding: 10px 16px;
+    border-radius: var(--radius-md);
+    background: rgba(24, 7, 14, 0.92);
+    border: 1px solid rgba(255, 86, 120, 0.65);
+    color: #ffdce4;
+    font-size: 12.5px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease, transform 0.25s ease;
+    z-index: 25;
+    backdrop-filter: blur(12px);
+    box-shadow: 0 10px 34px rgba(255, 40, 80, 0.25);
+  }
+  .event-banner.visible {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateX(-50%) translateY(0);
+  }
+  .event-banner.info {
+    background: rgba(8, 16, 28, 0.9);
+    border-color: rgba(88, 220, 255, 0.5);
+    color: #d6f4ff;
+    box-shadow: 0 10px 30px rgba(40, 180, 255, 0.18);
+  }
+
+  .zen-restore {
+    position: fixed;
+    bottom: 14px;
+    right: 14px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+  }
+  body.zen-mode .zen-restore {
+    opacity: 0.9;
+    pointer-events: auto;
+  }
+
+  .note-small {
+    font-size: 10.2px;
+    color: var(--text-muted);
+    line-height: 1.38;
+  }
+
+  @media (max-width: 960px) {
+    .top-left {
+      width: calc(100vw - 28px);
+      max-width: none;
+    }
+    .drawer {
+      top: auto;
+      bottom: 62px;
+      height: 50vh;
+      width: calc(100vw - 28px);
+    }
+    .hint-pill {
+      display: none;
+    }
+  }
+</style>
+</head>
+<body>
+<canvas id="sim-canvas"></canvas>
+
+<div class="hud">
+  <!-- Top-Left Reactor Telemetry & Sparkline -->
+  <div class="panel top-left">
+    <div class="brand-row">
+      <div class="brand-title-wrap">
+        <div class="brand-title">Criticality</div>
+        <span id="core-mode-badge" class="mode-badge">PWR Thermal Core</span>
+      </div>
+      <span id="reactor-status" class="status-pill">Critical</span>
+    </div>
+
+    <div class="telemetry-grid">
+      <div class="tele-card">
+        <span class="tele-label">k_eff Factor</span>
+        <span id="tel-keff" class="tele-val mint">1.00</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Neutrons (F/T)</span>
+        <span id="tel-neutrons" class="tele-val cyan">0</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Thermal Power</span>
+        <span id="tel-power" class="tele-val amber">0 MW</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Core Temp</span>
+        <span id="tel-temp" class="tele-val">285 °C</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Fissile Fuel</span>
+        <span id="tel-fissile" class="tele-val cyan">44%</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Xe-135 Poison</span>
+        <span id="tel-xe" class="tele-val violet">0</span>
+      </div>
+    </div>
+
+    <div class="sparkline-box">
+      <div class="sparkline-head">
+        <span>Live Flux &amp; Thermal Power</span>
+        <span class="spark-legend">
+          <span style="color:var(--accent-cyan)"><i class="spark-dot" style="background:var(--accent-cyan)"></i>Flux</span>
+          <span style="color:var(--accent-amber)"><i class="spark-dot" style="background:var(--accent-amber)"></i>MW</span>
+        </span>
+      </div>
+      <canvas id="sparkline-canvas" width="340" height="54"></canvas>
+    </div>
+
+    <div class="temp-bar-wrap">
+      <span>Core Thermal Load</span>
+      <div class="temp-track"><div id="temp-fill" class="temp-fill"></div></div>
+      <span id="tel-void" style="font-family: var(--mono); color: var(--text-main);">Void 0%</span>
+    </div>
+
+    <div class="clock-row">
+      <span>Fissions: <strong id="tel-fissions">0</strong></span>
+      <span>Rods: <strong id="tel-rods" style="color:var(--accent-amber)">42%</strong></span>
+      <span>Bred Pu: <strong id="tel-pu" style="color:var(--accent-mint)">0</strong></span>
+    </div>
+  </div>
+
+  <!-- Right Control Drawer -->
+  <aside id="drawer" class="panel drawer">
+    <div class="drawer-tabs">
+      <button class="tab-btn active" data-tab="reactor">Reactor</button>
+      <button class="tab-btn" data-tab="physics">Core &amp; Fuel</button>
+      <button class="tab-btn" data-tab="visuals">Visuals</button>
+    </div>
+
+    <div class="drawer-body">
+      <!-- TAB 1: REACTOR CONTROLS -->
+      <div id="tab-reactor" class="tab-pane active">
+        <button id="btn-scram" class="btn-scram" title="Emergency Control Rod Insertion (X)">
+          <span>⚠</span>
+          <span id="scram-label">SCRAM — EMERGENCY DROP</span>
+        </button>
+
+        <div class="section">
+          <div class="section-title"><span>Reactor Scenarios</span></div>
+          <div class="preset-grid">
+            <button class="preset-btn active" data-preset="critical">
+              <span class="preset-name">Steady-State Critical</span>
+              <span class="preset-sub">Balanced k ≈ 1.0 thermal PWR</span>
+            </button>
+            <button class="preset-btn" data-preset="runaway">
+              <span class="preset-name">Prompt Supercritical</span>
+              <span class="preset-sub">Unchecked exponential runaway</span>
+            </button>
+            <button class="preset-btn" data-preset="subcritical">
+              <span class="preset-name">Subcritical Decay</span>
+              <span class="preset-sub">Damped pulse, k &lt; 0.85</span>
+            </button>
+            <button class="preset-btn" data-preset="weapons">
+              <span class="preset-name">Weapons-Grade HEU</span>
+              <span class="preset-sub">94% U-235 fast spectrum surge</span>
+            </button>
+            <button class="preset-btn" data-preset="breeder">
+              <span class="preset-name">Breeder Core</span>
+              <span class="preset-sub">U-238 captures &rarr; fissile Pu-239</span>
+            </button>
+            <button class="preset-btn" data-preset="xenon">
+              <span class="preset-name">Xenon Poisoning</span>
+              <span class="preset-sub">Xe-135 iodine pit flux choke</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">
+            <span>Control &amp; Moderation</span>
+            <span id="rod-status-tag" style="color:var(--accent-amber); font-family:var(--mono);">B₄C ACTIVE</span>
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Control Rod Insertion</span>
+              <span id="val-rods" class="val">42%</span>
+            </div>
+            <input id="sl-rods" class="rose" type="range" min="0" max="100" step="1" value="42" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>U-235 Enrichment</span>
+              <span id="val-enrich" class="val">44%</span>
+            </div>
+            <input id="sl-enrich" class="cyan" type="range" min="5" max="96" step="1" value="44" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Moderator Density (H₂O/C)</span>
+              <span id="val-mod" class="val">85%</span>
+            </div>
+            <input id="sl-mod" type="range" min="0" max="100" step="1" value="85" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Primary Cooling Rate</span>
+              <span id="val-cool" class="val">58%</span>
+            </div>
+            <input id="sl-cool" class="mint" type="range" min="5" max="100" step="1" value="58" />
+          </div>
+
+          <div class="btn-row">
+            <button id="btn-burst" class="btn primary">✦ Fire Neutron Burst</button>
+            <button id="btn-refuel" class="btn amber">↻ Reload Core</button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Feedback &amp; Sources</span></div>
+
+          <label class="toggle-row">
+            <span>Auto-Source Neutrons (Cf-252)</span>
+            <input id="chk-autosource" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+
+          <label class="toggle-row">
+            <span>Void Coefficient (Boiling Feedback)</span>
+            <input id="chk-void" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+
+          <label class="toggle-row">
+            <span>Xe-135 Poison Buildup</span>
+            <input id="chk-xenon" type="checkbox" />
+            <span class="switch"></span>
+          </label>
+        </div>
+      </div>
+
+      <!-- TAB 2: CORE & FUEL PHYSICS -->
+      <div id="tab-physics" class="tab-pane">
+        <div class="section">
+          <div class="section-title"><span>Live Core Isotope Inventory</span></div>
+          <div class="inv-grid">
+            <div class="inv-item">
+              <span class="inv-left"><i class="inv-dot" style="background:#52d1ff"></i>U-235</span>
+              <span id="inv-u235" class="inv-num">0</span>
+            </div>
+            <div class="inv-item">
+              <span class="inv-left"><i class="inv-dot" style="background:#566a8f"></i>U-238</span>
+              <span id="inv-u238" class="inv-num">0</span>
+            </div>
+            <div class="inv-item">
+              <span class="inv-left"><i class="inv-dot" style="background:#3ff0aa"></i>Pu-239</span>
+              <span id="inv-pu239" class="inv-num">0</span>
+            </div>
+            <div class="inv-item">
+              <span class="inv-left"><i class="inv-dot" style="background:#b78bfa"></i>Xe-135</span>
+              <span id="inv-xe135" class="inv-num">0</span>
+            </div>
+            <div class="inv-item">
+              <span class="inv-left"><i class="inv-dot" style="background:#ffbe5c"></i>Excited *</span>
+              <span id="inv-excited" class="inv-num">0</span>
+            </div>
+            <div class="inv-item">
+              <span class="inv-left"><i class="inv-dot" style="background:#2c354c"></i>Depleted</span>
+              <span id="inv-depleted" class="inv-num">0</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Reactor Physics Parameters</span></div>
+
+          <label class="toggle-row">
+            <span>Continuous Equilibrium Refuel</span>
+            <input id="chk-refuel-auto" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+
+          <label class="toggle-row">
+            <span>Delayed Neutron Precursors (β)</span>
+            <input id="chk-delayed" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Vessel Reflector Efficiency</span>
+              <span id="val-reflect" class="val">50%</span>
+            </div>
+            <input id="sl-reflect" type="range" min="0" max="90" step="2" value="50" />
+          </div>
+
+          <div class="btn-row">
+            <button id="btn-inject-xe" class="btn violet">☢ Inject Xe-135 Surge</button>
+            <button id="btn-flush-xe" class="btn">✦ Purge Xenon</button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Nuclear Cross-Section Notes</span></div>
+          <p class="note-small">
+            <strong>Thermalization:</strong> Fission emits fast neutrons (~2 MeV, cyan-white). Collisions with moderator nuclei slow them to thermal energy (~0.025 eV, warm gold-mint), boosting U-235 fission cross-section by &gt;10&times;.
+          </p>
+          <p class="note-small">
+            <strong>Void Coefficient:</strong> Above 320&nbsp;&deg;C coolant boils into steam voids, lowering moderator density and providing negative self-stabilizing feedback in water-moderated cores.
+          </p>
+          <p class="note-small">
+            <strong>Breeding &amp; Poisoning:</strong> U-238 captures fast/epithermal neutrons to breed fissile Pu-239. Fission chains decay via I-135 into Xe-135, a potent thermal neutron absorber.
+          </p>
+        </div>
+      </div>
+
+      <!-- TAB 3: VISUALS & LEGEND -->
+      <div id="tab-visuals" class="tab-pane">
+        <div class="section">
+          <div class="section-title"><span>Visual Overlays</span></div>
+          <label class="toggle-row">
+            <span>Cherenkov Blue Radiation Glow</span>
+            <input id="chk-cherenkov" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Neutron Kinetic Trails</span>
+            <input id="chk-trails" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Gamma Flashes &amp; Shockwaves</span>
+            <input id="chk-flashes" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Ba-141 / Kr-92 Daughter Recoil</span>
+            <input id="chk-daughters" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Moderator Shimmer &amp; Steam Voids</span>
+            <input id="chk-bubbles" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Isotope Micro-Labels</span>
+            <input id="chk-labels" type="checkbox" />
+            <span class="switch"></span>
+          </label>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Particle &amp; Isotope Legend</span></div>
+          <div class="legend-list">
+            <div class="legend-row">
+              <span class="legend-swatch" style="background:#e6fbff; box-shadow:0 0 8px #58dcff;"></span>
+              <span><strong>Fast Neutron</strong> — high velocity, low U-235 capture</span>
+            </div>
+            <div class="legend-row">
+              <span class="legend-swatch" style="background:#ffd36a; box-shadow:0 0 8px #ffbe5c;"></span>
+              <span><strong>Thermal Neutron</strong> — moderated, triggers fission</span>
+            </div>
+            <div class="legend-row">
+              <span class="legend-swatch" style="background:#3bc8ff; box-shadow:0 0 8px rgba(59,200,255,0.6);"></span>
+              <span><strong>U-235</strong> — fissile uranium fuel</span>
+            </div>
+            <div class="legend-row">
+              <span class="legend-swatch" style="background:#4b5d82;"></span>
+              <span><strong>U-238</strong> — fertile, breeds Pu-239 on fast capture</span>
+            </div>
+            <div class="legend-row">
+              <span class="legend-swatch" style="background:#3ff0aa; box-shadow:0 0 8px rgba(63,240,170,0.6);"></span>
+              <span><strong>Pu-239</strong> — bred fissile plutonium (high &nu;)</span>
+            </div>
+            <div class="legend-row">
+              <span class="legend-swatch" style="background:#b78bfa; box-shadow:0 0 8px rgba(183,139,250,0.7);"></span>
+              <span><strong>Xe-135</strong> — neutron poison absorber</span>
+            </div>
+            <div class="legend-row">
+              <span class="legend-swatch" style="background:#ff904d; box-shadow:0 0 8px rgba(255,144,77,0.7);"></span>
+              <span><strong>Ba-141 / Kr-92</strong> — recoiling fission daughters</span>
+            </div>
+            <div class="legend-row">
+              <span class="legend-swatch" style="background:#6d7894; border:1px solid #ff6083; border-radius:3px;"></span>
+              <span><strong>B₄C Control Rods</strong> — boron neutron absorbers</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Event Notification Banner -->
+  <div id="event-banner" class="event-banner">
+    <span id="event-text">CORE MELTDOWN — Thermal structural limit exceeded!</span>
+    <button id="btn-banner-reset" class="btn primary" style="padding:5px 10px;">Reset Core</button>
+  </div>
+
+  <!-- Bottom-Left Hint -->
+  <div class="panel hint-pill">
+    <div><strong>Click / Hold core</strong> to inject neutrons · <strong>Drag rods</strong> directly</div>
+    <div><kbd>&uarr;</kbd>/<kbd>&darr;</kbd> Rods · <kbd>X</kbd> SCRAM · <kbd>Space</kbd> Pause · <kbd>H</kbd> Cinema</div>
+  </div>
+
+  <!-- Bottom Transport Bar -->
+  <div class="panel bottom-bar">
+    <button id="btn-play" class="bar-btn active">⏸ Pause</button>
+    <button id="btn-reset" class="bar-btn">↺ Reset</button>
+    <button id="btn-bar-scram" class="bar-btn scram-mini" title="Emergency SCRAM (X)">⚠ SCRAM</button>
+    <div class="bar-divider"></div>
+    <button class="bar-btn speed-btn" data-speed="0.35">0.35×</button>
+    <button class="bar-btn speed-btn active" data-speed="1">1×</button>
+    <button class="bar-btn speed-btn" data-speed="2">2×</button>
+    <div class="bar-divider"></div>
+    <button id="btn-sound" class="bar-btn">🔇 Audio</button>
+    <button id="btn-toggle-drawer" class="bar-btn active">Controls</button>
+    <button id="btn-zen" class="bar-btn" title="Hide HUD (H)">Cinema</button>
+  </div>
+
+  <button id="btn-zen-restore" class="panel bar-btn zen-restore">Show HUD (H)</button>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // =========================================================================
+  // CORE GEOMETRY & PHYSICAL CONSTANTS (Fixed World Coordinates)
+  // =========================================================================
+  const WORLD_W = 860;
+  const WORLD_H = 600;
+  const COLS = 18; // 6 fuel bundles of 3 columns
+  const ROWS = 13; // 18 * 13 = 234 fuel nuclei
+  const BUNDLE_SIZE = 3;
+  const NUM_RODS = 5;
+
+  const NUCLEUS_R = 9.2;
+  const HIT_R_THERMAL = 15.2;
+  const HIT_R_FAST = 11.4;
+
+  const FAST_SPEED = 365;
+  const THERMAL_SPEED = 152;
+  const MAX_NEUTRONS = 480;
+  const MAX_DAUGHTERS = 160;
+  const MAX_FLASHES = 50;
+  const MAX_SPARKS = 240;
+  const MAX_BUBBLES = 110;
+
+  const AMBIENT_TEMP = 270;   // °C pressurized coolant baseline
+  const BOIL_START_TEMP = 330; // °C void formation onset
+  const WARN_TEMP = 760;      // °C red warning threshold
+  const MELTDOWN_TEMP = 1100; // °C core meltdown limit
+
+  // Nucleus states
+  const TYPE_U235 = 0;
+  const TYPE_U238 = 1;
+  const TYPE_PU239 = 2;
+  const TYPE_U239 = 3;     // Short-lived breeding intermediate (U-238 + n -> U-239 -> Pu-239)
+  const TYPE_EXCITED = 4;  // U-236* or Pu-240* about to fission
+  const TYPE_DEPLETED = 5; // Fissioned empty/stable waste slot
+  const TYPE_I135 = 6;     // Iodine-135 decaying to Xe-135
+  const TYPE_XE135 = 7;    // Xenon-135 neutron poison
+
+  const PRESETS = {
+    critical: {
+      badge: 'PWR Thermal Core',
+      rods: 40,
+      enrich: 44,
+      mod: 86,
+      cool: 58,
+      reflect: 52,
+      autoSource: true,
+      voidCoeff: true,
+      xenon: false,
+      autoRefuel: true,
+      delayed: true,
+      initialBurst: 18,
+      initialXe: 0,
+      initialTemp: 308
+    },
+    runaway: {
+      badge: 'Uncontrolled Transient',
+      rods: 4,
+      enrich: 78,
+      mod: 90,
+      cool: 22,
+      reflect: 62,
+      autoSource: true,
+      voidCoeff: false,
+      xenon: false,
+      autoRefuel: true,
+      delayed: false,
+      initialBurst: 16,
+      initialXe: 0,
+      initialTemp: 315
+    },
+    subcritical: {
+      badge: 'Subcritical Assembly',
+      rods: 68,
+      enrich: 20,
+      mod: 75,
+      cool: 65,
+      reflect: 35,
+      autoSource: false,
+      voidCoeff: true,
+      xenon: false,
+      autoRefuel: false,
+      delayed: true,
+      initialBurst: 34,
+      initialXe: 0,
+      initialTemp: 280
+    },
+    weapons: {
+      badge: 'Fast Spectrum HEU',
+      rods: 0,
+      enrich: 94,
+      mod: 6,
+      cool: 18,
+      reflect: 76,
+      autoSource: true,
+      voidCoeff: false,
+      xenon: false,
+      autoRefuel: true,
+      delayed: false,
+      initialBurst: 14,
+      initialXe: 0,
+      initialTemp: 300
+    },
+    breeder: {
+      badge: 'Fast Breeder Core',
+      rods: 18,
+      enrich: 30,
+      mod: 32,
+      cool: 52,
+      reflect: 68,
+      autoSource: true,
+      voidCoeff: false,
+      xenon: false,
+      autoRefuel: false,
+      delayed: true,
+      initialBurst: 28,
+      initialXe: 0,
+      initialTemp: 315
+    },
+    xenon: {
+      badge: 'Xenon Iodine Pit',
+      rods: 26,
+      enrich: 50,
+      mod: 88,
+      cool: 56,
+      reflect: 52,
+      autoSource: true,
+      voidCoeff: true,
+      xenon: true,
+      autoRefuel: true,
+      delayed: true,
+      initialBurst: 26,
+      initialXe: 24,
+      initialTemp: 305
+    }
+  };
+
+  // =========================================================================
+  // CANVAS & VIEWPORT LAYOUT
+  // =========================================================================
+  const canvas = document.getElementById('sim-canvas');
+  const ctx = canvas.getContext('2d', { alpha: false });
+  const sparkCanvas = document.getElementById('sparkline-canvas');
+  const sparkCtx = sparkCanvas.getContext('2d');
+
+  let W = window.innerWidth;
+  let H = window.innerHeight;
+  let DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+  // Viewport transform from world core coordinates [0..WORLD_W, 0..WORLD_H] to screen px
+  const view = {
+    x: 0,
+    y: 0,
+    scale: 1,
+    targetX: 0,
+    targetY: 0,
+    targetScale: 1
+  };
+
+  let drawerOpen = true;
+  let zenMode = false;
+
+  function computeTargetView(snap = false) {
+    const isNarrow = W <= 960;
+    const leftPad = isNarrow ? 22 : (zenMode ? 40 : 412);
+    const rightPad = isNarrow ? 22 : (zenMode || !drawerOpen ? 40 : 362);
+    const topPad = isNarrow ? 235 : 54;
+    const bottomPad = isNarrow ? 76 : 78;
+
+    let availW = Math.max(260, W - leftPad - rightPad);
+    let availH = Math.max(220, H - topPad - bottomPad);
+
+    // If desktop screen is moderately narrow (e.g. 1024-1200px) and both side panels squeeze availW,
+    // allow the core to use a wider horizontal lane slightly overlapping transparent panel margins
+    if (!isNarrow && !zenMode && drawerOpen && availW < 460) {
+      const altLeft = 300;
+      const altRight = 340;
+      availW = Math.max(availW, W - altLeft - altRight);
+    }
+
+    const padW = WORLD_W + 84;
+    const padH = WORLD_H + 92;
+    const scale = Math.min(availW / padW, availH / padH, 1.32);
+
+    const centerX = zenMode || isNarrow
+      ? W * 0.5
+      : leftPad + availW * 0.5;
+    const centerY = topPad + availH * 0.5 + 8;
+
+    view.targetScale = Math.max(0.28, scale);
+    view.targetX = centerX - (WORLD_W * 0.5) * view.targetScale;
+    view.targetY = centerY - (WORLD_H * 0.5) * view.targetScale;
+
+    if (snap) {
+      view.scale = view.targetScale;
+      view.x = view.targetX;
+      view.y = view.targetY;
+    }
+  }
+
+  function worldToScreen(wx, wy) {
+    return {
+      x: view.x + wx * view.scale,
+      y: view.y + wy * view.scale
+    };
+  }
+
+  function screenToWorld(sx, sy) {
+    return {
+      x: (sx - view.x) / view.scale,
+      y: (sy - view.y) / view.scale
+    };
+  }
+
+  function resize() {
+    W = window.innerWidth;
+    H = window.innerHeight;
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.floor(W * DPR);
+    canvas.height = Math.floor(H * DPR);
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+
+    const spRect = sparkCanvas.getBoundingClientRect();
+    const spW = Math.max(220, Math.floor((spRect.width || 340) * DPR));
+    const spH = Math.max(44, Math.floor(54 * DPR));
+    sparkCanvas.width = spW;
+    sparkCanvas.height = spH;
+
+    computeTargetView(true);
+  }
+
+  // =========================================================================
+  // REACTOR STATE & PARAMETERS
+  // =========================================================================
+  const params = {
+    preset: 'critical',
+    rodTarget: 40,       // 0..100% target insertion
+    rodDepth: 40,        // 0..100% actual insertion (animated smoothly / fast on SCRAM)
+    enrich: 44,          // 5..96% U-235 enrichment
+    mod: 86,             // 0..100% moderator density
+    cool: 58,            // 5..100% cooling rate
+    reflect: 52,         // 0..90% vessel reflector efficiency
+    autoSource: true,
+    voidCoeff: true,
+    xenon: false,
+    autoRefuel: true,
+    delayed: true,
+    // Visual toggles
+    showCherenkov: true,
+    showTrails: true,
+    showFlashes: true,
+    showDaughters: true,
+    showBubbles: true,
+    showLabels: false
+  };
+
+  let paused = false;
+  let simSpeed = 1.0;
+  let simTime = 0;
+  let scramActive = false;
+  let meltdown = false;
+  let meltdownTimer = 0;
+
+  // Core thermal & telemetry state
+  let coreTemp = 308;
+  let thermalPowerMW = 0;
+  let voidFraction = 0;
+  let cherenkovLevel = 0;
+  let keffDisplay = 1.0;
+  let totalFissions = 0;
+  let totalBredPu = 0;
+  let overflowFluxBonus = 0;
+  let sourceAccum = 0;
+  let screenShake = 0;
+
+  // Rolling birth/death events for empirical k_eff
+  const kWindow = []; // { t, born, died }
+  const fissionWindow = []; // timestamps of fissions in last 1.2s
+
+  // Sparkline history buffers (110 samples)
+  const SPARK_LEN = 110;
+  const fluxHist = new Array(SPARK_LEN).fill(0);
+  const powerHist = new Array(SPARK_LEN).fill(0);
+  let sparkAccum = 0;
+
+  // Entities
+  const nuclei = [];
+  const rodXs = [];
+  const rodWidth = 15;
+  const rodTopY = 24;
+  const rodMaxLen = WORLD_H - 44;
+
+  const neutrons = [];
+  const delayedQueue = []; // { x, y, timer }
+  const daughters = [];
+  const flashes = [];
+  const sparks = [];
+  const bubbles = [];
+  const ripples = [];
+
+  // Interactive pointer / key state
+  const pointer = {
+    down: false,
+    wx: WORLD_W * 0.5,
+    wy: WORLD_H * 0.5,
+    draggingRod: false,
+    hoverRod: false,
+    holdAccum: 0
+  };
+  const keysHeld = { up: false, down: false };
+
+  // =========================================================================
+  // PRECOMPUTE LATTICE GEOMETRY
+  // =========================================================================
+  const colXs = [];
+  const rowYs = [];
+
+  function initGeometry() {
+    colXs.length = 0;
+    rowYs.length = 0;
+    rodXs.length = 0;
+
+    const pitchX = 36;
+    const rodGap = 62; // gap between columns straddling a control rod channel
+    let curX = 0;
+    const rawXs = [];
+    const rawRods = [];
+
+    for (let c = 0; c < COLS; c++) {
+      rawXs.push(curX);
+      if (c < COLS - 1) {
+        if ((c + 1) % BUNDLE_SIZE === 0) {
+          rawRods.push(curX + rodGap * 0.5);
+          curX += rodGap;
+        } else {
+          curX += pitchX;
+        }
+      }
+    }
+
+    const totalW = rawXs[rawXs.length - 1];
+    const offX = (WORLD_W - totalW) * 0.5;
+    for (let i = 0; i < rawXs.length; i++) colXs.push(rawXs[i] + offX);
+    for (let i = 0; i < rawRods.length; i++) rodXs.push(rawRods[i] + offX);
+
+    const pitchY = 40;
+    const totalH = (ROWS - 1) * pitchY;
+    const offY = (WORLD_H - totalH) * 0.5 + 4;
+    for (let r = 0; r < ROWS; r++) rowYs.push(offY + r * pitchY);
+  }
+
+  function buildCoreLattice(initialXe = 0) {
+    nuclei.length = 0;
+    const enrichProb = params.enrich / 100;
+
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        const isFissile = Math.random() < enrichProb;
+        nuclei.push({
+          id: r * COLS + c,
+          col: c,
+          row: r,
+          baseX: colXs[c],
+          baseY: rowYs[r],
+          x: colXs[c],
+          y: rowYs[r],
+          vx: 0,
+          vy: 0,
+          type: isFissile ? TYPE_U235 : TYPE_U238,
+          originFissile: isFissile,
+          timer: 0,
+          heat: 0,
+          phase: Math.random() * Math.PI * 2,
+          refuelTimer: 0,
+          isPuExcited: false
+        });
+      }
+    }
+
+    // Seed initial Xenon-135 if requested by preset
+    if (initialXe > 0) {
+      let placed = 0;
+      let tries = 0;
+      while (placed < initialXe && tries < 600) {
+        tries++;
+        const n = nuclei[Math.floor(Math.random() * nuclei.length)];
+        if (n.type === TYPE_U238 || (placed < initialXe && n.type === TYPE_U235 && Math.random() < 0.35)) {
+          n.type = TYPE_XE135;
+          n.timer = 18 + Math.random() * 24;
+          placed++;
+        }
+      }
+    }
+  }
+
+  function reapplyEnrichmentLive() {
+    // Adjust non-active nuclei cleanly when user moves enrichment slider
+    const targetFissile = Math.round(nuclei.length * (params.enrich / 100));
+    const u235List = [];
+    const u238List = [];
+    for (const n of nuclei) {
+      if (n.type === TYPE_U235) u235List.push(n);
+      else if (n.type === TYPE_U238) u238List.push(n);
+    }
+    const diff = targetFissile - u235List.length;
+    if (diff > 0) {
+      for (let i = 0; i < diff && u238List.length > 0; i++) {
+        const idx = Math.floor(Math.random() * u238List.length);
+        const picked = u238List.splice(idx, 1)[0];
+        picked.type = TYPE_U235;
+        picked.originFissile = true;
+      }
+    } else if (diff < 0) {
+      for (let i = 0; i < -diff && u235List.length > 0; i++) {
+        const idx = Math.floor(Math.random() * u235List.length);
+        const picked = u235List.splice(idx, 1)[0];
+        picked.type = TYPE_U238;
+        picked.originFissile = false;
+      }
+    }
+  }
+
+  // =========================================================================
+  // WEB AUDIO ENGINE (Muted by default)
+  // =========================================================================
+  const audio = {
+    enabled: false,
+    ctx: null,
+    masterGain: null,
+    humOsc1: null,
+    humOsc2: null,
+    humGain: null,
+    noiseBuf: null,
+    lastClickTime: 0,
+    lastAlarmTime: 0
+  };
+
+  function initAudio() {
+    if (audio.ctx) return;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    const ac = new AC();
+    audio.ctx = ac;
+
+    const master = ac.createGain();
+    master.gain.value = 0.0;
+    master.connect(ac.destination);
+    audio.masterGain = master;
+
+    // Create short white-noise buffer for Geiger clicks
+    const buf = ac.createBuffer(1, Math.floor(ac.sampleRate * 0.04), ac.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < data.length; i++) {
+      data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (data.length * 0.14));
+    }
+    audio.noiseBuf = buf;
+
+    // Deep Cherenkov reactor hum
+    const humFilter = ac.createBiquadFilter();
+    humFilter.type = 'lowpass';
+    humFilter.frequency.value = 175;
+
+    const humGain = ac.createGain();
+    humGain.gain.value = 0.03;
+
+    const osc1 = ac.createOscillator();
+    osc1.type = 'sine';
+    osc1.frequency.value = 54;
+
+    const osc2 = ac.createOscillator();
+    osc2.type = 'triangle';
+    osc2.frequency.value = 108.5;
+
+    osc1.connect(humFilter);
+    osc2.connect(humFilter);
+    humFilter.connect(humGain);
+    humGain.connect(master);
+
+    osc1.start();
+    osc2.start();
+
+    audio.humOsc1 = osc1;
+    audio.humOsc2 = osc2;
+    audio.humGain = humGain;
+  }
+
+  function setAudioEnabled(on) {
+    audio.enabled = on;
+    const btn = document.getElementById('btn-sound');
+    if (on) {
+      initAudio();
+      if (audio.ctx && audio.ctx.state === 'suspended') audio.ctx.resume();
+      if (audio.masterGain && audio.ctx) {
+        audio.masterGain.gain.setTargetAtTime(0.45, audio.ctx.currentTime, 0.08);
+      }
+      btn.textContent = '🔊 Audio';
+      btn.classList.add('active');
+    } else {
+      if (audio.masterGain && audio.ctx) {
+        audio.masterGain.gain.setTargetAtTime(0.0, audio.ctx.currentTime, 0.06);
+      }
+      btn.textContent = '🔇 Audio';
+      btn.classList.remove('active');
+    }
+  }
+
+  function playGeigerClick(intensity = 0.5, isFission = false) {
+    if (!audio.enabled || !audio.ctx || !audio.noiseBuf) return;
+    const now = audio.ctx.currentTime;
+    const minGap = isFission ? 0.018 : 0.028;
+    if (now - audio.lastClickTime < minGap) return;
+    audio.lastClickTime = now;
+
+    const src = audio.ctx.createBufferSource();
+    src.buffer = audio.noiseBuf;
+
+    const bp = audio.ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = isFission ? (1450 + Math.random() * 900) : (2600 + Math.random() * 1400);
+    bp.Q.value = isFission ? 2.2 : 4.5;
+
+    const g = audio.ctx.createGain();
+    g.gain.setValueAtTime(Math.min(0.24, 0.07 + intensity * 0.14), now);
+    g.gain.exponentialRampToValueAtTime(0.0008, now + (isFission ? 0.024 : 0.012));
+
+    src.connect(bp);
+    bp.connect(g);
+    g.connect(audio.masterGain);
+    src.start(now);
+    src.stop(now + 0.032);
+  }
+
+  function playScramClunk() {
+    if (!audio.enabled || !audio.ctx) return;
+    const now = audio.ctx.currentTime;
+    const osc = audio.ctx.createOscillator();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(160, now);
+    osc.frequency.exponentialRampToValueAtTime(34, now + 0.24);
+
+    const g = audio.ctx.createGain();
+    g.gain.setValueAtTime(0.28, now);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+
+    osc.connect(g);
+    g.connect(audio.masterGain);
+    osc.start(now);
+    osc.stop(now + 0.3);
+  }
+
+  function updateAudioHum() {
+    if (!audio.enabled || !audio.ctx || !audio.humGain) return;
+    const now = audio.ctx.currentTime;
+    const powerNorm = Math.min(1.6, thermalPowerMW / 1200);
+    const targetGain = 0.04 + powerNorm * 0.16;
+    const baseFreq = 50 + powerNorm * 42 + (coreTemp > WARN_TEMP ? 18 : 0);
+
+    audio.humGain.gain.setTargetAtTime(targetGain, now, 0.12);
+    audio.humOsc1.frequency.setTargetAtTime(baseFreq, now, 0.15);
+    audio.humOsc2.frequency.setTargetAtTime(baseFreq * 2.01, now, 0.15);
+
+    if (coreTemp > WARN_TEMP && now - audio.lastAlarmTime > (meltdown ? 0.55 : 0.95)) {
+      audio.lastAlarmTime = now;
+      const osc = audio.ctx.createOscillator();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(meltdown ? 620 : 480, now);
+      osc.frequency.setValueAtTime(meltdown ? 440 : 540, now + 0.11);
+      const g = audio.ctx.createGain();
+      g.gain.setValueAtTime(0.11, now);
+      g.gain.exponentialRampToValueAtTime(0.001, now + 0.23);
+      osc.connect(g);
+      g.connect(audio.masterGain);
+      osc.start(now);
+      osc.stop(now + 0.25);
+    }
+  }
+
+  // =========================================================================
+  // PARTICLE SPAWNERS
+  // =========================================================================
+  function spawnNeutron(x, y, fast = true, angle = null) {
+    if (neutrons.length >= MAX_NEUTRONS) {
+      overflowFluxBonus += 1.0;
+      return;
+    }
+    const a = angle !== null ? angle : Math.random() * Math.PI * 2;
+    const spd = fast
+      ? FAST_SPEED * (0.9 + Math.random() * 0.22)
+      : THERMAL_SPEED * (0.88 + Math.random() * 0.24);
+    neutrons.push({
+      x,
+      y,
+      vx: Math.cos(a) * spd,
+      vy: Math.sin(a) * spd,
+      energy: fast ? 1.0 : 0.08, // 1.0 = fast, <= 0.28 = thermal
+      age: 0,
+      trail: [{ x, y }],
+      lastNucId: -1,
+      skipTimer: 0.035
+    });
+  }
+
+  function spawnNeutronBurst(wx, wy, count = 8, thermalRatio = 0.55) {
+    const cx = Math.max(26, Math.min(WORLD_W - 26, wx));
+    const cy = Math.max(26, Math.min(WORLD_H - 26, wy));
+    for (let i = 0; i < count; i++) {
+      const a = (i / count) * Math.PI * 2 + (Math.random() - 0.5) * 0.45;
+      const fast = Math.random() >= thermalRatio;
+      spawnNeutron(cx, cy, fast, a);
+    }
+    if (params.showFlashes) {
+      flashes.push({
+        x: cx,
+        y: cy,
+        r: 6,
+        maxR: 46,
+        life: 0,
+        maxLife: 0.36,
+        color: '#58dcff',
+        isGamma: false
+      });
+    }
+    playGeigerClick(0.65, false);
+  }
+
+  function spawnSpark(x, y, color, count = 4, speed = 85) {
+    for (let i = 0; i < count; i++) {
+      if (sparks.length >= MAX_SPARKS) sparks.shift();
+      const a = Math.random() * Math.PI * 2;
+      const s = speed * (0.4 + Math.random() * 0.85);
+      sparks.push({
+        x,
+        y,
+        vx: Math.cos(a) * s,
+        vy: Math.sin(a) * s,
+        life: 0,
+        maxLife: 0.22 + Math.random() * 0.26,
+        color,
+        r: 1.4 + Math.random() * 1.8
+      });
+    }
+  }
+
+  function triggerFissionSplit(nuc) {
+    totalFissions++;
+    fissionWindow.push(simTime);
+    nuc.heat = 1.0;
+
+    // 2 or 3 fast neutrons: avg ~2.43 for U-235, ~2.88 for Pu-239
+    const isPu = nuc.isPuExcited;
+    const nCount = Math.random() < (isPu ? 0.86 : 0.44) ? 3 : 2;
+    let promptBorn = nCount;
+
+    // Delayed neutron precursor (~8% of fissions when delayed toggle is on)
+    const emitDelayed = params.delayed && Math.random() < 0.085;
+    if (emitDelayed) {
+      delayedQueue.push({
+        x: nuc.x,
+        y: nuc.y,
+        timer: 0.75 + Math.random() * 1.35
+      });
+    }
+
+    const baseAngle = Math.random() * Math.PI * 2;
+    for (let i = 0; i < promptBorn; i++) {
+      const a = baseAngle + (i * (Math.PI * 2) / promptBorn) + (Math.random() - 0.5) * 0.75;
+      spawnNeutron(nuc.x, nuc.y, true, a);
+    }
+
+    kWindow.push({ t: simTime, born: promptBorn + (emitDelayed ? 1 : 0), died: 0 });
+
+    // Gamma flash & shockwave
+    if (params.showFlashes) {
+      if (flashes.length >= MAX_FLASHES) flashes.shift();
+      flashes.push({
+        x: nuc.x,
+        y: nuc.y,
+        r: 7,
+        maxR: isPu ? 66 : 56,
+        life: 0,
+        maxLife: 0.42,
+        color: isPu ? '#4af2b2' : '#ffdf88',
+        isGamma: true
+      });
+    }
+
+    // Two recoiling daughter fragments: Ba-141 & Kr-92
+    if (params.showDaughters) {
+      const dAng = Math.random() * Math.PI * 2;
+      const spd1 = 115 + Math.random() * 45;
+      const spd2 = 148 + Math.random() * 55;
+      if (daughters.length + 2 > MAX_DAUGHTERS) daughters.splice(0, 2);
+      daughters.push({
+        x: nuc.x,
+        y: nuc.y,
+        vx: Math.cos(dAng) * spd1,
+        vy: Math.sin(dAng) * spd1,
+        r: 5.4,
+        label: 'Ba',
+        color: '#ff9642',
+        glow: 'rgba(255, 140, 50, 0.85)',
+        life: 0,
+        maxLife: 1.05 + Math.random() * 0.35
+      });
+      daughters.push({
+        x: nuc.x,
+        y: nuc.y,
+        vx: -Math.cos(dAng) * spd2,
+        vy: -Math.sin(dAng) * spd2,
+        r: 4.3,
+        label: 'Kr',
+        color: '#ff5c8a',
+        glow: 'rgba(255, 92, 138, 0.85)',
+        life: 0,
+        maxLife: 0.95 + Math.random() * 0.35
+      });
+    }
+
+    spawnSpark(nuc.x, nuc.y, '#fff3c4', 6, 130);
+    playGeigerClick(0.9, true);
+
+    // Post-fission lattice slot state: I-135 (decaying to Xe-135) or Depleted
+    if (params.xenon && Math.random() < 0.48) {
+      nuc.type = TYPE_I135;
+      nuc.timer = 1.6 + Math.random() * 2.4; // decays into Xe-135
+    } else {
+      nuc.type = TYPE_DEPLETED;
+      nuc.refuelTimer = 3.2 + Math.random() * 3.5;
+    }
+    nuc.isPuExcited = false;
+  }
+
+  // =========================================================================
+  // ANALYTICAL k_eff ESTIMATE & STATUS
+  // =========================================================================
+  function computeAnalyticKeff(effMod) {
+    let fissile = 0;
+    let fertile = 0;
+    let xe = 0;
+    for (const n of nuclei) {
+      if (n.type === TYPE_U235 || n.type === TYPE_PU239 || n.type === TYPE_EXCITED) fissile++;
+      else if (n.type === TYPE_U238 || n.type === TYPE_U239) fertile++;
+      else if (n.type === TYPE_XE135) xe++;
+    }
+    const total = Math.max(1, nuclei.length);
+    const fFrac = fissile / total;
+    const xeFrac = xe / total;
+    const rodFrac = params.rodDepth / 100;
+    const refFrac = params.reflect / 100;
+
+    // Thermal + fast spectrum blend matching our 2D collision cross-sections
+    const thermalWeight = Math.min(1, effMod * 1.15);
+    const fastTerm = (1 - thermalWeight) * (fFrac * 1.72);
+    const thermalTerm = thermalWeight * (fFrac * 3.65);
+    const poisonPenalty = 1 / (1 + xeFrac * 7.8 * (0.25 + thermalWeight));
+    const rodPenalty = 1 - rodFrac * (0.56 + 0.16 * thermalWeight);
+    const leakageFactor = 0.72 + refFrac * 0.38;
+
+    return Math.max(0.05, (thermalTerm + fastTerm) * poisonPenalty * rodPenalty * leakageFactor);
+  }
+
+  function showBanner(msg, isInfo = false) {
+    const el = document.getElementById('event-banner');
+    const txt = document.getElementById('event-text');
+    txt.textContent = msg;
+    el.classList.toggle('info', isInfo);
+    el.classList.add('visible');
+  }
+
+  function hideBanner() {
+    document.getElementById('event-banner').classList.remove('visible');
+  }
+
+  // =========================================================================
+  // PRESET LOADER & SCRAM
+  // =========================================================================
+  function loadPreset(key, silentBanner = true) {
+    const p = PRESETS[key] || PRESETS.critical;
+    params.preset = key;
+    params.rodTarget = p.rods;
+    params.rodDepth = p.rods;
+    params.enrich = p.enrich;
+    params.mod = p.mod;
+    params.cool = p.cool;
+    params.reflect = p.reflect;
+    params.autoSource = p.autoSource;
+    params.voidCoeff = p.voidCoeff;
+    params.xenon = p.xenon;
+    params.autoRefuel = p.autoRefuel;
+    params.delayed = p.delayed;
+
+    scramActive = false;
+    meltdown = false;
+    meltdownTimer = 0;
+    coreTemp = p.initialTemp;
+    thermalPowerMW = 0;
+    voidFraction = 0;
+    cherenkovLevel = 0.18;
+    totalFissions = 0;
+    totalBredPu = 0;
+    overflowFluxBonus = 0;
+    screenShake = 0;
+
+    neutrons.length = 0;
+    delayedQueue.length = 0;
+    daughters.length = 0;
+    flashes.length = 0;
+    sparks.length = 0;
+    ripples.length = 0;
+    kWindow.length = 0;
+    fissionWindow.length = 0;
+    fluxHist.fill(0);
+    powerHist.fill(0);
+
+    buildCoreLattice(p.initialXe);
+    document.getElementById('core-mode-badge').textContent = p.badge;
+
+    syncControlsFromParams();
+    updatePresetButtons();
+    updateScramButton();
+    if (silentBanner) hideBanner();
+
+    // Seed an initial distributed burst so the core springs to life immediately
+    const burstSpots = [
+      { x: WORLD_W * 0.36, y: WORLD_H * 0.48 },
+      { x: WORLD_W * 0.64, y: WORLD_H * 0.52 },
+      { x: WORLD_W * 0.5, y: WORLD_H * 0.5 }
+    ];
+    const perSpot = Math.max(2, Math.round(p.initialBurst / burstSpots.length));
+    for (const s of burstSpots) {
+      spawnNeutronBurst(s.x, s.y, perSpot, p.mod > 40 ? 0.65 : 0.15);
+    }
+    keffDisplay = computeAnalyticKeff(params.mod / 100);
+  }
+
+  function triggerScram() {
+    scramActive = true;
+    params.rodTarget = 100;
+    document.getElementById('sl-rods').value = 100;
+    document.getElementById('val-rods').textContent = '100%';
+    updateScramButton();
+    playScramClunk();
+    screenShake = Math.max(screenShake, 7);
+    if (!meltdown) {
+      showBanner('SCRAM INITIATED — All B₄C control rod banks dropping to 100% insertion.', true);
+      setTimeout(() => {
+        if (!meltdown && scramActive) hideBanner();
+      }, 3200);
+    }
+  }
+
+  function updateScramButton() {
+    const btn = document.getElementById('btn-scram');
+    const lbl = document.getElementById('scram-label');
+    const tag = document.getElementById('rod-status-tag');
+    if (scramActive && params.rodTarget >= 99) {
+      btn.classList.add('scrammed');
+      lbl.textContent = 'SCRAM ENGAGED (PULL RODS TO RESET)';
+      tag.textContent = 'SCRAM LOCK';
+      tag.style.color = 'var(--accent-rose)';
+    } else {
+      scramActive = false;
+      btn.classList.remove('scrammed');
+      lbl.textContent = 'SCRAM — EMERGENCY DROP';
+      tag.textContent = params.rodDepth < 3 ? 'WITHDRAWN' : 'B₄C ACTIVE';
+      tag.style.color = params.rodDepth < 3 ? 'var(--accent-rose)' : 'var(--accent-amber)';
+    }
+  }
+
+  // =========================================================================
+  // MAIN PHYSICS UPDATE LOOP
+  // =========================================================================
+  function stepPhysics(dt) {
+    simTime += dt;
+
+    // Keyboard control rod adjustments
+    if (keysHeld.up || keysHeld.down) {
+      const rate = 42 * dt;
+      if (keysHeld.up) params.rodTarget = Math.max(0, params.rodTarget - rate);
+      if (keysHeld.down) params.rodTarget = Math.min(100, params.rodTarget + rate);
+      if (params.rodTarget < 98) scramActive = false;
+      document.getElementById('sl-rods').value = Math.round(params.rodTarget);
+      document.getElementById('val-rods').textContent = Math.round(params.rodTarget) + '%';
+      updateScramButton();
+    }
+
+    // Smooth rod actuation (ultra-fast drop during SCRAM)
+    const rodSpeed = scramActive ? 290 : 120;
+    const rodDiff = params.rodTarget - params.rodDepth;
+    if (Math.abs(rodDiff) < rodSpeed * dt) {
+      params.rodDepth = params.rodTarget;
+    } else {
+      params.rodDepth += Math.sign(rodDiff) * rodSpeed * dt;
+    }
+
+    // Pointer hold inside core streams neutrons
+    if (pointer.down && !pointer.draggingRod && !meltdown) {
+      pointer.holdAccum += dt;
+      if (pointer.holdAccum >= 0.11) {
+        pointer.holdAccum = 0;
+        if (pointer.wx > 18 && pointer.wx < WORLD_W - 18 && pointer.wy > 18 && pointer.wy < WORLD_H - 18) {
+          spawnNeutronBurst(pointer.wx, pointer.wy, 3, params.mod > 30 ? 0.55 : 0.15);
+        }
+      }
+    }
+
+    // Boiling void fraction & effective moderator density
+    if (params.voidCoeff && coreTemp > BOIL_START_TEMP) {
+      const boilTarget = Math.min(0.82, ((coreTemp - BOIL_START_TEMP) / 480));
+      voidFraction += (boilTarget - voidFraction) * Math.min(1, dt * 3.0);
+    } else {
+      voidFraction += (0 - voidFraction) * Math.min(1, dt * 3.5);
+    }
+    const baseMod = params.mod / 100;
+    const effMod = Math.max(0.02, baseMod * (1 - voidFraction * 0.80));
+
+    // Auto-source startup neutrons (Cf-252)
+    if (params.autoSource && !meltdown) {
+      sourceAccum += dt;
+      const interval = neutrons.length < 14 ? 0.34 : 0.85;
+      if (sourceAccum >= interval) {
+        sourceAccum = 0;
+        const sx = WORLD_W * (0.25 + Math.random() * 0.5);
+        const sy = WORLD_H * (0.25 + Math.random() * 0.5);
+        spawnNeutron(sx, sy, Math.random() < 0.35);
+      }
+    }
+
+    // Update delayed neutron precursors
+    for (let i = delayedQueue.length - 1; i >= 0; i--) {
+      const dq = delayedQueue[i];
+      dq.timer -= dt;
+      if (dq.timer <= 0) {
+        if (!meltdown) {
+          spawnNeutron(dq.x, dq.y, false); // emitted at lower energy, quickly thermalizes
+          spawnSpark(dq.x, dq.y, '#4af2b2', 3, 60);
+        }
+        delayedQueue.splice(i, 1);
+      }
+    }
+
+    // Update nuclei states (excited fission, U-239->Pu-239, I-135->Xe-135, Xe decay, refuel, meltdown slump)
+    const enrichProb = params.enrich / 100;
+    for (const nuc of nuclei) {
+      nuc.heat = Math.max(0, nuc.heat - dt * 0.85);
+
+      if (meltdown) {
+        // Slump downward into molten corium pool
+        nuc.vy += 120 * dt;
+        nuc.y += nuc.vy * dt;
+        nuc.x += nuc.vx * dt;
+        const floorY = WORLD_H - 22 - (nuc.col % 3) * 8 - Math.sin(nuc.id) * 6;
+        if (nuc.y > floorY) {
+          nuc.y = floorY;
+          nuc.vy *= -0.15;
+          nuc.vx *= 0.85;
+        }
+        continue;
+      }
+
+      if (nuc.type === TYPE_EXCITED) {
+        nuc.timer -= dt;
+        if (nuc.timer <= 0) {
+          triggerFissionSplit(nuc);
+        }
+      } else if (nuc.type === TYPE_U239) {
+        nuc.timer -= dt;
+        if (nuc.timer <= 0) {
+          nuc.type = TYPE_PU239;
+          totalBredPu++;
+          spawnSpark(nuc.x, nuc.y, '#4af2b2', 5, 75);
+        }
+      } else if (nuc.type === TYPE_I135) {
+        nuc.timer -= dt;
+        if (nuc.timer <= 0) {
+          if (params.xenon) {
+            nuc.type = TYPE_XE135;
+            nuc.timer = 20 + Math.random() * 18; // natural beta decay half-life scaled
+            spawnSpark(nuc.x, nuc.y, '#b78bfa', 4, 55);
+          } else {
+            nuc.type = TYPE_DEPLETED;
+            nuc.refuelTimer = 3.0;
+          }
+        }
+      } else if (nuc.type === TYPE_XE135) {
+        nuc.timer -= dt;
+        if (nuc.timer <= 0 || !params.xenon) {
+          nuc.type = TYPE_DEPLETED;
+          nuc.refuelTimer = 2.5 + Math.random() * 2.0;
+        }
+      } else if (nuc.type === TYPE_DEPLETED && params.autoRefuel) {
+        nuc.refuelTimer -= dt;
+        if (nuc.refuelTimer <= 0) {
+          nuc.type = Math.random() < enrichProb ? TYPE_U235 : TYPE_U238;
+          nuc.originFissile = nuc.type === TYPE_U235;
+        }
+      }
+    }
+
+    // Control rod vertical extent
+    const rodBottomY = rodTopY + (params.rodDepth / 100) * rodMaxLen;
+    const reflectProb = params.reflect / 100;
+
+    // Update Neutrons
+    for (let i = neutrons.length - 1; i >= 0; i--) {
+      const p = neutrons[i];
+      p.age += dt;
+      if (p.skipTimer > 0) p.skipTimer -= dt;
+
+      // Moderator elastic scattering & thermalization
+      if (p.energy > 0.12 && baseMod > 0.01) {
+        const prevFast = p.energy > 0.28;
+        p.energy = Math.max(0.08, p.energy - dt * effMod * 2.15);
+
+        // Occasional elastic collision deflection with water/graphite nuclei
+        if (Math.random() < dt * effMod * 3.6) {
+          const defl = (Math.random() - 0.5) * 1.45;
+          const curA = Math.atan2(p.vy, p.vx) + defl;
+          const targetSpd = THERMAL_SPEED + (FAST_SPEED - THERMAL_SPEED) * p.energy;
+          p.vx = Math.cos(curA) * targetSpd;
+          p.vy = Math.sin(curA) * targetSpd;
+          if (prevFast && params.showBubbles && ripples.length < 36) {
+            ripples.push({ x: p.x, y: p.y, r: 2, maxR: 15, life: 0, maxLife: 0.26 });
+          }
+        } else {
+          // Smoothly damp velocity toward energy-matched speed
+          const curSpd = Math.hypot(p.vx, p.vy) || 1;
+          const targetSpd = THERMAL_SPEED + (FAST_SPEED - THERMAL_SPEED) * p.energy;
+          const blend = targetSpd / curSpd;
+          p.vx *= 1 + (blend - 1) * Math.min(1, dt * 8);
+          p.vy *= 1 + (blend - 1) * Math.min(1, dt * 8);
+        }
+      }
+
+      // Advance position
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+
+      // Record trail
+      if (params.showTrails) {
+        const last = p.trail[p.trail.length - 1];
+        if (!last || (p.x - last.x) ** 2 + (p.y - last.y) ** 2 > 16) {
+          p.trail.push({ x: p.x, y: p.y });
+          if (p.trail.length > 9) p.trail.shift();
+        }
+      }
+
+      // Check Boron Control Rod absorption
+      if (params.rodDepth > 0.5 && p.y >= rodTopY && p.y <= rodBottomY) {
+        let absorbedByRod = false;
+        const halfW = rodWidth * 0.5 + 3.2;
+        for (let r = 0; r < rodXs.length; r++) {
+          if (Math.abs(p.x - rodXs[r]) <= halfW) {
+            // Thermal neutrons absorbed ~96%, fast neutrons ~62%
+            const absProb = p.energy <= 0.28 ? 0.96 : 0.62;
+            if (Math.random() < absProb) {
+              absorbedByRod = true;
+              spawnSpark(p.x, p.y, '#ff6083', 4, 70);
+              kWindow.push({ t: simTime, born: 0, died: 1 });
+              break;
+            }
+          }
+        }
+        if (absorbedByRod) {
+          neutrons.splice(i, 1);
+          continue;
+        }
+      }
+
+      // Check Reactor Vessel Wall (Reflector vs Leakage)
+      let escaped = false;
+      if (p.x < 18 || p.x > WORLD_W - 18 || p.y < 18 || p.y > WORLD_H - 18) {
+        if (p.age < 7.0 && Math.random() < reflectProb) {
+          if (p.x < 18) { p.x = 18; p.vx = Math.abs(p.vx); }
+          if (p.x > WORLD_W - 18) { p.x = WORLD_W - 18; p.vx = -Math.abs(p.vx); }
+          if (p.y < 18) { p.y = 18; p.vy = Math.abs(p.vy); }
+          if (p.y > WORLD_H - 18) { p.y = WORLD_H - 18; p.vy = -Math.abs(p.vy); }
+          spawnSpark(p.x, p.y, '#58dcff', 2, 45);
+        } else {
+          escaped = true;
+        }
+      }
+      if (escaped || p.age > 9.5) {
+        kWindow.push({ t: simTime, born: 0, died: 1 });
+        neutrons.splice(i, 1);
+        continue;
+      }
+
+      // Check collisions with fuel lattice nuclei (fast spatial check)
+      if (!meltdown) {
+        const isThermal = p.energy <= 0.28;
+        const hitR = isThermal ? HIT_R_THERMAL : HIT_R_FAST;
+        const hitR2 = hitR * hitR;
+        let consumed = false;
+
+        for (let j = 0; j < nuclei.length; j++) {
+          const nuc = nuclei[j];
+          if (nuc.type === TYPE_DEPLETED || nuc.type === TYPE_EXCITED || nuc.type === TYPE_I135) continue;
+          if (p.skipTimer > 0 && p.lastNucId === nuc.id) continue;
+
+          const dx = p.x - nuc.x;
+          if (dx > hitR || dx < -hitR) continue;
+          const dy = p.y - nuc.y;
+          if (dy > hitR || dy < -hitR) continue;
+          if (dx * dx + dy * dy > hitR2) continue;
+
+          p.lastNucId = nuc.id;
+          p.skipTimer = 0.06;
+
+          if (nuc.type === TYPE_U235 || nuc.type === TYPE_PU239) {
+            // Thermal neutron -> high fission cross-section!
+            // Fast neutron -> much lower cross-section (still allows HEU fast criticality)
+            const fisProb = isThermal
+              ? (nuc.type === TYPE_PU239 ? 0.90 : 0.84)
+              : (nuc.type === TYPE_PU239 ? 0.22 : 0.16);
+
+            if (Math.random() < fisProb) {
+              nuc.isPuExcited = (nuc.type === TYPE_PU239);
+              nuc.type = TYPE_EXCITED;
+              nuc.timer = 0.08 + Math.random() * 0.065;
+              nuc.heat = 1.0;
+              kWindow.push({ t: simTime, born: 0, died: 1 });
+              consumed = true;
+              break;
+            }
+          } else if (nuc.type === TYPE_U238) {
+            // Resonance capture of fast/epithermal neutrons -> breeds U-239 -> Pu-239!
+            if (!isThermal && Math.random() < 0.14) {
+              nuc.type = TYPE_U239;
+              nuc.timer = 1.15 + Math.random() * 0.9;
+              nuc.heat = 0.7;
+              spawnSpark(nuc.x, nuc.y, '#7b9cff', 4, 65);
+              kWindow.push({ t: simTime, born: 0, died: 1 });
+              consumed = true;
+              break;
+            } else if (Math.random() < 0.28) {
+              // Elastic scatter off heavy U-238 nucleus
+              const a = Math.random() * Math.PI * 2;
+              const spd = Math.hypot(p.vx, p.vy) * 0.96;
+              p.vx = Math.cos(a) * spd;
+              p.vy = Math.sin(a) * spd;
+              p.energy = Math.max(0.08, p.energy * 0.92);
+              spawnSpark(p.x, p.y, '#8cb4ff', 2, 40);
+            }
+          } else if (nuc.type === TYPE_XE135) {
+            // Massive thermal neutron absorption cross-section! Burns out Xe-135 -> Xe-136
+            if (isThermal && Math.random() < 0.94) {
+              nuc.type = TYPE_DEPLETED;
+              nuc.refuelTimer = 2.8 + Math.random() * 2.5;
+              spawnSpark(nuc.x, nuc.y, '#c79dff', 6, 85);
+              kWindow.push({ t: simTime, born: 0, died: 1 });
+              consumed = true;
+              break;
+            }
+          }
+        }
+
+        if (consumed) {
+          neutrons.splice(i, 1);
+        }
+      }
+    }
+
+    // Update Daughter Fragments (Ba-141 & Kr-92)
+    for (let i = daughters.length - 1; i >= 0; i--) {
+      const d = daughters[i];
+      d.life += dt;
+      if (d.life >= d.maxLife) {
+        daughters.splice(i, 1);
+        continue;
+      }
+      const drag = Math.exp(-dt * 3.4);
+      d.vx *= drag;
+      d.vy *= drag;
+      d.x += d.vx * dt;
+      d.y += d.vy * dt;
+    }
+
+    // Update Flashes, Sparks, Ripples
+    for (let i = flashes.length - 1; i >= 0; i--) {
+      const f = flashes[i];
+      f.life += dt;
+      f.r = f.maxR * Math.pow(f.life / f.maxLife, 0.55);
+      if (f.life >= f.maxLife) flashes.splice(i, 1);
+    }
+
+    for (let i = sparks.length - 1; i >= 0; i--) {
+      const s = sparks[i];
+      s.life += dt;
+      s.x += s.vx * dt;
+      s.y += s.vy * dt;
+      s.vx *= Math.exp(-dt * 4.5);
+      s.vy *= Math.exp(-dt * 4.5);
+      if (s.life >= s.maxLife) sparks.splice(i, 1);
+    }
+
+    for (let i = ripples.length - 1; i >= 0; i--) {
+      const rp = ripples[i];
+      rp.life += dt;
+      rp.r = rp.maxR * (rp.life / rp.maxLife);
+      if (rp.life >= rp.maxLife) ripples.splice(i, 1);
+    }
+
+    // Update Moderator Steam Void Bubbles
+    if (params.showBubbles && baseMod > 0.08) {
+      const desiredBubbles = Math.floor(14 + voidFraction * 95 + Math.max(0, (coreTemp - 300) / 14));
+      if (bubbles.length < Math.min(MAX_BUBBLES, desiredBubbles) && Math.random() < dt * (25 + voidFraction * 120)) {
+        bubbles.push({
+          x: 24 + Math.random() * (WORLD_W - 48),
+          y: WORLD_H - 18 - Math.random() * 140,
+          vy: -(38 + Math.random() * 68 + voidFraction * 85),
+          r: 1.6 + Math.random() * (2.5 + voidFraction * 4.2),
+          wobble: Math.random() * Math.PI * 2,
+          alpha: 0.16 + Math.random() * 0.34
+        });
+      }
+      for (let i = bubbles.length - 1; i >= 0; i--) {
+        const b = bubbles[i];
+        b.y += b.vy * dt;
+        b.x += Math.sin(simTime * 4.5 + b.wobble) * 14 * dt;
+        if (b.y < 18) bubbles.splice(i, 1);
+      }
+    } else if (bubbles.length > 0) {
+      bubbles.length = 0;
+    }
+
+    // Prune sliding telemetry windows
+    while (fissionWindow.length > 0 && simTime - fissionWindow[0] > 1.25) {
+      fissionWindow.shift();
+    }
+    while (kWindow.length > 0 && simTime - kWindow[0].t > 2.6) {
+      kWindow.shift();
+    }
+
+    // Thermal Power (MWth) from fission rate + overflow bonus
+    const fissionsPerSec = fissionWindow.length / 1.25;
+    const rawPowerMW = (fissionsPerSec * 22.5) + overflowFluxBonus * 38;
+    overflowFluxBonus *= Math.exp(-dt * 2.2);
+    thermalPowerMW += (rawPowerMW - thermalPowerMW) * Math.min(1, dt * 4.2);
+
+    // Core Temperature thermodynamics
+    const heatIn = thermalPowerMW * 0.24;
+    const coolCoeff = 0.08 + (params.cool / 100) * 0.42;
+    const heatOut = Math.max(0, coreTemp - AMBIENT_TEMP) * coolCoeff;
+    coreTemp += (heatIn - heatOut) * dt;
+    if (coreTemp < AMBIENT_TEMP) coreTemp = AMBIENT_TEMP;
+    if (coreTemp > 1650) coreTemp = 1650;
+
+    // Trigger Meltdown if Core Temp exceeds limit
+    if (!meltdown && coreTemp >= MELTDOWN_TEMP) {
+      meltdown = true;
+      meltdownTimer = 0;
+      screenShake = 16;
+      for (const nuc of nuclei) {
+        nuc.vx = (Math.random() - 0.5) * 45;
+        nuc.vy = -15 + Math.random() * 20;
+      }
+      showBanner('CORE MELTDOWN — Thermal limit (1,100 °C) breached! Fuel lattice collapsed into corium.', false);
+      playScramClunk();
+    }
+    if (meltdown) meltdownTimer += dt;
+
+    // Cherenkov glow intensity scales with neutron flux & moderator presence
+    const fluxIntensity = Math.min(1.6, (neutrons.length + overflowFluxBonus * 4) / 85);
+    const targetCherenkov = fluxIntensity * (0.28 + baseMod * 0.72);
+    cherenkovLevel += (targetCherenkov - cherenkovLevel) * Math.min(1, dt * 4.5);
+
+    // Compute smoothed k_eff (blending empirical branching ratio with analytical core state)
+    let bornSum = 0;
+    let diedSum = 0;
+    for (const ev of kWindow) {
+      bornSum += ev.born;
+      diedSum += ev.died;
+    }
+    const kAnalytic = computeAnalyticKeff(effMod);
+    let kInstant = kAnalytic;
+    if (diedSum >= 6) {
+      const kEmp = bornSum / diedSum;
+      const empWeight = Math.min(0.76, diedSum / 28);
+      kInstant = kEmp * empWeight + kAnalytic * (1 - empWeight);
+    }
+    if (meltdown) kInstant = 0.0;
+    keffDisplay += (kInstant - keffDisplay) * Math.min(1, dt * 2.8);
+
+    // Screen shake decay
+    screenShake *= Math.exp(-dt * 7.5);
+    if (screenShake < 0.05) screenShake = 0;
+
+    // Sparkline sample push (~8 Hz)
+    sparkAccum += dt;
+    if (sparkAccum >= 0.12) {
+      sparkAccum = 0;
+      fluxHist.push(neutrons.length + overflowFluxBonus * 3);
+      if (fluxHist.length > SPARK_LEN) fluxHist.shift();
+      powerHist.push(thermalPowerMW);
+      if (powerHist.length > SPARK_LEN) powerHist.shift();
+    }
+
+    updateAudioHum();
+  }
+
+  // =========================================================================
+  // RENDERING
+  // =========================================================================
+  function render() {
+    // Smoothly interpolate viewport when drawer toggles
+    view.x += (view.targetX - view.x) * 0.14;
+    view.y += (view.targetY - view.y) * 0.14;
+    view.scale += (view.targetScale - view.scale) * 0.14;
+
+    // Background deep navy
+    ctx.fillStyle = '#040711';
+    ctx.fillRect(0, 0, W, H);
+
+    // Subtle ambient laboratory radial backdrop
+    const cxScreen = view.x + WORLD_W * 0.5 * view.scale;
+    const cyScreen = view.y + WORLD_H * 0.5 * view.scale;
+    const bgGrad = ctx.createRadialGradient(cxScreen, cyScreen, 40, cxScreen, cyScreen, Math.max(W, H) * 0.72);
+    const overheatNorm = Math.max(0, Math.min(1, (coreTemp - 650) / 480));
+    if (overheatNorm > 0.02) {
+      bgGrad.addColorStop(0, `rgba(${Math.round(28 + overheatNorm * 115)}, ${Math.round(32 - overheatNorm * 14)}, ${Math.round(58 - overheatNorm * 28)}, 0.42)`);
+    } else {
+      bgGrad.addColorStop(0, `rgba(14, ${Math.round(34 + cherenkovLevel * 38)}, ${Math.round(78 + cherenkovLevel * 95)}, ${0.24 + Math.min(0.28, cherenkovLevel * 0.2)})`);
+    }
+    bgGrad.addColorStop(0.6, 'rgba(6, 11, 24, 0.35)');
+    bgGrad.addColorStop(1, 'rgba(2, 4, 10, 0)');
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, W, H);
+
+    // Apply world transform + subtle shake
+    const sxOff = screenShake > 0 ? (Math.random() - 0.5) * screenShake : 0;
+    const syOff = screenShake > 0 ? (Math.random() - 0.5) * screenShake : 0;
+
+    ctx.save();
+    ctx.translate(view.x + sxOff, view.y + syOff);
+    ctx.scale(view.scale, view.scale);
+
+    drawVesselAndModerator(overheatNorm);
+    drawFuelAssemblyGuides();
+    drawControlRods();
+    drawNuclei();
+    drawDaughters();
+    drawNeutrons();
+    drawEffects();
+    drawVesselRimAndGantry(overheatNorm);
+
+    ctx.restore();
+
+    // Red thermal vignette overlay when overheating
+    if (overheatNorm > 0.15) {
+      const pulse = 0.55 + 0.45 * Math.sin(simTime * (meltdown ? 9 : 5));
+      const vig = ctx.createRadialGradient(W * 0.5, H * 0.5, Math.min(W, H) * 0.25, W * 0.5, H * 0.5, Math.max(W, H) * 0.72);
+      vig.addColorStop(0, 'rgba(255, 30, 60, 0)');
+      vig.addColorStop(1, `rgba(255, 28, 66, ${(overheatNorm * 0.28 * pulse).toFixed(3)})`);
+      ctx.fillStyle = vig;
+      ctx.fillRect(0, 0, W, H);
+    }
+
+    drawSparkline();
+  }
+
+  function roundedRectPath(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+  }
+
+  function drawVesselAndModerator(overheatNorm) {
+    // Outer heavy reactor pressure vessel shadow/housing
+    roundedRectPath(-14, -14, WORLD_W + 28, WORLD_H + 28, 28);
+    ctx.fillStyle = '#090e1c';
+    ctx.fill();
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = 'rgba(130, 165, 235, 0.22)';
+    ctx.stroke();
+
+    // Inner core cavity clipped
+    ctx.save();
+    roundedRectPath(6, 6, WORLD_W - 12, WORLD_H - 12, 18);
+    ctx.clip();
+
+    // Base dark interior
+    ctx.fillStyle = '#050a16';
+    ctx.fillRect(6, 6, WORLD_W - 12, WORLD_H - 12);
+
+    // Moderator water/graphite medium fill
+    const modFrac = params.mod / 100;
+    if (modFrac > 0.01) {
+      const mGrad = ctx.createLinearGradient(0, 6, 0, WORLD_H - 6);
+      const rTop = Math.round(10 + overheatNorm * 72);
+      const gTop = Math.round(28 + modFrac * 30 - overheatNorm * 14);
+      const bTop = Math.round(62 + modFrac * 78 - overheatNorm * 40);
+      mGrad.addColorStop(0, `rgba(${rTop}, ${gTop}, ${bTop}, ${(0.18 + modFrac * 0.36).toFixed(3)})`);
+      mGrad.addColorStop(1, `rgba(${Math.round(rTop * 0.6)}, ${Math.round(gTop * 0.85)}, ${Math.round(bTop * 1.1)}, ${(0.24 + modFrac * 0.42).toFixed(3)})`);
+      ctx.fillStyle = mGrad;
+      ctx.fillRect(6, 6, WORLD_W - 12, WORLD_H - 12);
+    }
+
+    // Cherenkov blue radiation glow scaling with neutron flux
+    if (params.showCherenkov && cherenkovLevel > 0.015) {
+      const intensity = Math.min(1, cherenkovLevel * 0.78);
+      const cGrad = ctx.createRadialGradient(
+        WORLD_W * 0.5, WORLD_H * 0.5, 16,
+        WORLD_W * 0.5, WORLD_H * 0.5, WORLD_W * 0.56
+      );
+      cGrad.addColorStop(0, `rgba(42, 198, 255, ${(0.34 * intensity).toFixed(3)})`);
+      cGrad.addColorStop(0.45, `rgba(24, 128, 255, ${(0.22 * intensity).toFixed(3)})`);
+      cGrad.addColorStop(1, 'rgba(10, 45, 160, 0)');
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.fillStyle = cGrad;
+      ctx.fillRect(6, 6, WORLD_W - 12, WORLD_H - 12);
+      ctx.globalCompositeOperation = 'source-over';
+    }
+
+    // Molten corium bottom pool glow during meltdown
+    if (meltdown) {
+      const mGlow = ctx.createLinearGradient(0, WORLD_H - 120, 0, WORLD_H);
+      mGlow.addColorStop(0, 'rgba(255, 70, 30, 0)');
+      mGlow.addColorStop(0.55, 'rgba(255, 80, 28, 0.32)');
+      mGlow.addColorStop(1, 'rgba(255, 185, 75, 0.65)');
+      ctx.fillStyle = mGlow;
+      ctx.fillRect(6, WORLD_H - 120, WORLD_W - 12, 114);
+    }
+
+    // Moderator shimmer lines & steam void bubbles
+    if (params.showBubbles && modFrac > 0.05) {
+      ctx.strokeStyle = `rgba(110, 210, 255, ${(0.045 * modFrac).toFixed(3)})`;
+      ctx.lineWidth = 1;
+      for (let i = 0; i < 9; i++) {
+        const y = ((i * 74 - simTime * (16 + voidFraction * 38)) % (WORLD_H + 40) + WORLD_H + 40) % (WORLD_H + 40) - 20;
+        ctx.beginPath();
+        ctx.moveTo(14, y);
+        ctx.bezierCurveTo(WORLD_W * 0.33, y - 6, WORLD_W * 0.66, y + 6, WORLD_W - 14, y);
+        ctx.stroke();
+      }
+
+      for (const b of bubbles) {
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(180, 236, 255, ${(b.alpha * (0.45 + voidFraction * 0.8)).toFixed(3)})`;
+        ctx.lineWidth = 1.1;
+        ctx.stroke();
+        ctx.fillStyle = `rgba(190, 240, 255, ${(b.alpha * 0.25).toFixed(3)})`;
+        ctx.fill();
+      }
+    }
+
+    // Moderation scatter ripples
+    for (const rp of ripples) {
+      const a = 1 - rp.life / rp.maxLife;
+      ctx.beginPath();
+      ctx.arc(rp.x, rp.y, rp.r, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(98, 224, 255, ${(a * 0.48).toFixed(3)})`;
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
+  function drawFuelAssemblyGuides() {
+    // Subtle vertical cladding rails behind the 6 fuel assemblies
+    ctx.save();
+    for (let b = 0; b < COLS / BUNDLE_SIZE; b++) {
+      const x1 = colXs[b * BUNDLE_SIZE] - 16;
+      const x2 = colXs[b * BUNDLE_SIZE + BUNDLE_SIZE - 1] + 16;
+      const y1 = rowYs[0] - 18;
+      const y2 = rowYs[ROWS - 1] + 18;
+
+      roundedRectPath(x1, y1, x2 - x1, y2 - y1, 9);
+      ctx.fillStyle = 'rgba(12, 20, 38, 0.34)';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(120, 165, 245, 0.11)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+
+    // Subtle guide channels for boron control rods
+    for (let r = 0; r < rodXs.length; r++) {
+      const rx = rodXs[r];
+      ctx.fillStyle = 'rgba(4, 7, 15, 0.42)';
+      ctx.fillRect(rx - rodWidth * 0.5 - 2, rodTopY - 4, rodWidth + 4, rodMaxLen + 8);
+      ctx.strokeStyle = 'rgba(148, 179, 255, 0.08)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(rx - rodWidth * 0.5 - 2, rodTopY - 4, rodWidth + 4, rodMaxLen + 8);
+    }
+    ctx.restore();
+  }
+
+  function drawControlRods() {
+    const rodLen = (params.rodDepth / 100) * rodMaxLen;
+    const isInteractive = pointer.hoverRod || pointer.draggingRod;
+
+    ctx.save();
+    for (let r = 0; r < rodXs.length; r++) {
+      const rx = rodXs[r];
+      const x = rx - rodWidth * 0.5;
+      const y = rodTopY;
+      const h = Math.max(10, rodLen);
+
+      // Drive shaft extending from top vessel flange
+      ctx.strokeStyle = isInteractive ? 'rgba(255, 190, 92, 0.72)' : 'rgba(155, 176, 214, 0.36)';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(rx, -18);
+      ctx.lineTo(rx, y + 4);
+      ctx.stroke();
+
+      // Main Boron-Carbide absorber body
+      const grad = ctx.createLinearGradient(x, y, x + rodWidth, y);
+      grad.addColorStop(0, '#2a3142');
+      grad.addColorStop(0.45, '#596582');
+      grad.addColorStop(0.85, '#353d52');
+      grad.addColorStop(1, '#1e2432');
+
+      roundedRectPath(x, y, rodWidth, h, 4);
+      ctx.fillStyle = grad;
+      ctx.fill();
+
+      // Striped absorber bands
+      ctx.save();
+      roundedRectPath(x, y, rodWidth, h, 4);
+      ctx.clip();
+      ctx.fillStyle = 'rgba(15, 18, 28, 0.42)';
+      for (let sy = y + 12; sy < y + h - 10; sy += 22) {
+        ctx.fillRect(x, sy, rodWidth, 6);
+      }
+      ctx.restore();
+
+      // Glowing crimson absorber tip & outline
+      ctx.lineWidth = isInteractive ? 1.8 : 1.1;
+      ctx.strokeStyle = scramActive
+        ? 'rgba(255, 76, 108, 0.92)'
+        : (isInteractive ? 'rgba(255, 196, 104, 0.85)' : 'rgba(180, 200, 240, 0.32)');
+      roundedRectPath(x, y, rodWidth, h, 4);
+      ctx.stroke();
+
+      // Tip cap
+      ctx.fillStyle = scramActive ? '#ff466a' : (isInteractive ? '#ffbe5c' : '#e05375');
+      ctx.fillRect(x + 1.5, y + h - 7, rodWidth - 3, 5.5);
+    }
+
+    // Overhead rod bank gantry bar (clickable/draggable handle!)
+    const gLeft = rodXs[0] - 24;
+    const gRight = rodXs[rodXs.length - 1] + 24;
+    const gantryY = -28;
+    roundedRectPath(gLeft, gantryY, gRight - gLeft, 13, 6);
+    ctx.fillStyle = isInteractive ? 'rgba(255, 190, 92, 0.34)' : 'rgba(22, 32, 56, 0.9)';
+    ctx.fill();
+    ctx.strokeStyle = isInteractive ? '#ffbe5c' : 'rgba(148, 179, 255, 0.32)';
+    ctx.lineWidth = 1.4;
+    ctx.stroke();
+
+    ctx.fillStyle = isInteractive ? '#fff4dd' : '#9aa9cc';
+    ctx.font = '700 9.5px ui-monospace, Consolas, monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`B₄C CONTROL ROD BANK · ${Math.round(params.rodDepth)}% INSERTED (DRAG)`, WORLD_W * 0.5, gantryY + 6.5);
+
+    ctx.restore();
+  }
+
+  function drawNuclei() {
+    ctx.save();
+    for (const nuc of nuclei) {
+      let x = nuc.x;
+      let y = nuc.y;
+      let r = NUCLEUS_R;
+
+      if (nuc.type === TYPE_DEPLETED) {
+        ctx.beginPath();
+        ctx.arc(x, y, 4.4, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(42, 54, 80, 0.42)';
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(110, 135, 185, 0.16)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        continue;
+      }
+
+      if (nuc.type === TYPE_EXCITED) {
+        // Vibrating unstable U-236* / Pu-240* compound nucleus!
+        const vib = 3.2;
+        x += (Math.random() - 0.5) * vib * 2;
+        y += (Math.random() - 0.5) * vib * 2;
+        r = NUCLEUS_R * 1.28;
+
+        ctx.beginPath();
+        ctx.arc(x, y, r * 2.1, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255, 224, 128, 0.34)';
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fillStyle = '#fff9e0';
+        ctx.fill();
+        ctx.strokeStyle = '#ffbe5c';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        continue;
+      }
+
+      let fill = '#4c5f85';
+      let rim = 'rgba(148, 179, 255, 0.35)';
+      let glow = null;
+      let lbl = '';
+
+      if (nuc.type === TYPE_U235) {
+        const pulse = 0.5 + 0.5 * Math.sin(simTime * 2.4 + nuc.phase);
+        fill = '#2eb8f5';
+        rim = `rgba(140, 232, 255, ${(0.58 + pulse * 0.28).toFixed(2)})`;
+        glow = `rgba(56, 200, 255, ${(0.18 + cherenkovLevel * 0.14).toFixed(2)})`;
+        lbl = '235';
+      } else if (nuc.type === TYPE_U238) {
+        fill = '#374666';
+        rim = 'rgba(130, 156, 205, 0.32)';
+        lbl = '238';
+      } else if (nuc.type === TYPE_PU239) {
+        const pulse = 0.5 + 0.5 * Math.sin(simTime * 3.1 + nuc.phase);
+        fill = '#2ee6a0';
+        rim = `rgba(155, 255, 215, ${(0.65 + pulse * 0.28).toFixed(2)})`;
+        glow = 'rgba(64, 242, 178, 0.28)';
+        lbl = 'Pu';
+      } else if (nuc.type === TYPE_U239) {
+        fill = '#7c94ff';
+        rim = '#c4d2ff';
+        glow = 'rgba(124, 148, 255, 0.34)';
+        r = NUCLEUS_R * 1.05;
+        lbl = '239';
+      } else if (nuc.type === TYPE_I135) {
+        fill = '#8d64c2';
+        rim = 'rgba(210, 175, 255, 0.55)';
+        r = NUCLEUS_R * 0.78;
+        lbl = 'I';
+      } else if (nuc.type === TYPE_XE135) {
+        const pulse = 0.5 + 0.5 * Math.sin(simTime * 4.0 + nuc.phase);
+        fill = '#9a64f2';
+        rim = `rgba(225, 195, 255, ${(0.72 + pulse * 0.25).toFixed(2)})`;
+        glow = 'rgba(180, 120, 255, 0.34)';
+        r = NUCLEUS_R * 1.06;
+        lbl = 'Xe';
+      }
+
+      if (meltdown) {
+        fill = nuc.type === TYPE_U235 || nuc.type === TYPE_PU239 ? '#ff7c3a' : '#a8342a';
+        rim = '#ffd27a';
+        glow = 'rgba(255, 92, 36, 0.35)';
+      }
+
+      if (glow) {
+        ctx.beginPath();
+        ctx.arc(x, y, r * 1.75, 0, Math.PI * 2);
+        ctx.fillStyle = glow;
+        ctx.fill();
+      }
+
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fillStyle = fill;
+      ctx.fill();
+
+      // Specular highlight dot for 3D glass sphere feel
+      ctx.beginPath();
+      ctx.arc(x - r * 0.3, y - r * 0.32, r * 0.28, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.38)';
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.strokeStyle = rim;
+      ctx.lineWidth = 1.25;
+      ctx.stroke();
+
+      if (params.showLabels && lbl) {
+        ctx.fillStyle = 'rgba(245, 250, 255, 0.92)';
+        ctx.font = '700 7.5px ui-monospace, Consolas, monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(lbl, x, y + 0.5);
+      }
+    }
+    ctx.restore();
+  }
+
+  function drawDaughters() {
+    if (!params.showDaughters || daughters.length === 0) return;
+    ctx.save();
+    for (const d of daughters) {
+      const a = Math.max(0, 1 - d.life / d.maxLife);
+      ctx.beginPath();
+      ctx.arc(d.x, d.y, d.r * 2.2, 0, Math.PI * 2);
+      ctx.fillStyle = d.glow.replace(/[\d.]+\)$/, (a * 0.42).toFixed(3) + ')');
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.arc(d.x, d.y, d.r * (0.65 + 0.35 * a), 0, Math.PI * 2);
+      ctx.fillStyle = d.color;
+      ctx.globalAlpha = a;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+    ctx.restore();
+  }
+
+  function drawNeutrons() {
+    ctx.save();
+    ctx.lineCap = 'round';
+    for (const p of neutrons) {
+      const isFast = p.energy > 0.28;
+
+      // Kinetic trail
+      if (params.showTrails && p.trail.length > 1) {
+        ctx.beginPath();
+        ctx.moveTo(p.trail[0].x, p.trail[0].y);
+        for (let k = 1; k < p.trail.length; k++) {
+          ctx.lineTo(p.trail[k].x, p.trail[k].y);
+        }
+        ctx.lineTo(p.x, p.y);
+        ctx.strokeStyle = isFast ? 'rgba(105, 232, 255, 0.48)' : 'rgba(255, 206, 98, 0.44)';
+        ctx.lineWidth = isFast ? 2.1 : 2.5;
+        ctx.stroke();
+      }
+
+      // Outer luminous halo
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, isFast ? 7.2 : 8.4, 0, Math.PI * 2);
+      ctx.fillStyle = isFast ? 'rgba(88, 224, 255, 0.26)' : 'rgba(255, 204, 88, 0.3)';
+      ctx.fill();
+
+      // Core particle
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, isFast ? 3.1 : 3.7, 0, Math.PI * 2);
+      ctx.fillStyle = isFast ? '#eefcff' : '#ffe285';
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function drawEffects() {
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+
+    // Gamma flashes & shockwave rings
+    if (params.showFlashes) {
+      for (const f of flashes) {
+        const t = f.life / f.maxLife;
+        const a = 1 - t;
+
+        if (f.isGamma && t < 0.35) {
+          const fa = (1 - t / 0.35) * 0.72;
+          const g = ctx.createRadialGradient(f.x, f.y, 1, f.x, f.y, f.maxR * 0.65);
+          g.addColorStop(0, `rgba(255, 253, 235, ${fa.toFixed(3)})`);
+          g.addColorStop(0.5, `rgba(255, 210, 110, ${(fa * 0.45).toFixed(3)})`);
+          g.addColorStop(1, 'rgba(255, 180, 70, 0)');
+          ctx.fillStyle = g;
+          ctx.beginPath();
+          ctx.arc(f.x, f.y, f.maxR * 0.65, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        ctx.beginPath();
+        ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2);
+        ctx.strokeStyle = f.color;
+        ctx.globalAlpha = a * 0.75;
+        ctx.lineWidth = Math.max(0.8, 2.8 * a);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    // Sparks
+    for (const s of sparks) {
+      const a = 1 - s.life / s.maxLife;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.r * a, 0, Math.PI * 2);
+      ctx.fillStyle = s.color;
+      ctx.globalAlpha = a * 0.9;
+      ctx.fill();
+    }
+
+    ctx.restore();
+  }
+
+  function drawVesselRimAndGantry(overheatNorm) {
+    ctx.save();
+    // Reflector liner inner rim
+    roundedRectPath(6, 6, WORLD_W - 12, WORLD_H - 12, 18);
+    ctx.lineWidth = 2.6;
+    if (overheatNorm > 0.1) {
+      ctx.strokeStyle = `rgba(255, ${Math.round(165 - overheatNorm * 110)}, ${Math.round(120 - overheatNorm * 70)}, ${(0.45 + overheatNorm * 0.48).toFixed(2)})`;
+    } else {
+      ctx.strokeStyle = `rgba(88, 210, 255, ${(0.28 + Math.min(0.45, cherenkovLevel * 0.35)).toFixed(2)})`;
+    }
+    ctx.stroke();
+
+    // Corner pressure bolts
+    const bolts = [
+      [-4, -4], [WORLD_W + 4, -4], [-4, WORLD_H + 4], [WORLD_W + 4, WORLD_H + 4]
+    ];
+    for (const [bx, by] of bolts) {
+      ctx.beginPath();
+      ctx.arc(bx, by, 4.5, 0, Math.PI * 2);
+      ctx.fillStyle = '#25324d';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(160, 190, 255, 0.32)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+
+    // Reflector efficiency label at bottom rim
+    ctx.fillStyle = 'rgba(130, 158, 210, 0.55)';
+    ctx.font = '600 9.5px ui-monospace, Consolas, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(
+      `GRAPHITE/Be REFLECTOR (${params.reflect}%) · PRESSURIZED CORE VESSEL · 234 FUEL LATTICE`,
+      WORLD_W * 0.5,
+      WORLD_H + 26
+    );
+    ctx.restore();
+  }
+
+  function drawSparkline() {
+    const sw = sparkCanvas.width;
+    const sh = sparkCanvas.height;
+    sparkCtx.clearRect(0, 0, sw, sh);
+
+    // Subtle horizontal grid lines
+    sparkCtx.strokeStyle = 'rgba(148, 179, 255, 0.09)';
+    sparkCtx.lineWidth = 1 * DPR;
+    for (let i = 1; i <= 2; i++) {
+      const y = Math.round((sh * i) / 3) + 0.5;
+      sparkCtx.beginPath();
+      sparkCtx.moveTo(0, y);
+      sparkCtx.lineTo(sw, y);
+      sparkCtx.stroke();
+    }
+
+    let maxFlux = 35;
+    let maxPower = 300;
+    for (let i = 0; i < SPARK_LEN; i++) {
+      if (fluxHist[i] > maxFlux) maxFlux = fluxHist[i];
+      if (powerHist[i] > maxPower) maxPower = powerHist[i];
+    }
+
+    // Helper to draw filled + stroked sparkline
+    function plotSeries(arr, maxVal, strokeCol, fillTop) {
+      sparkCtx.beginPath();
+      for (let i = 0; i < SPARK_LEN; i++) {
+        const px = (i / (SPARK_LEN - 1)) * sw;
+        const norm = Math.min(1, arr[i] / maxVal);
+        const py = sh - 3 * DPR - norm * (sh - 8 * DPR);
+        if (i === 0) sparkCtx.moveTo(px, py);
+        else sparkCtx.lineTo(px, py);
+      }
+      sparkCtx.strokeStyle = strokeCol;
+      sparkCtx.lineWidth = 1.6 * DPR;
+      sparkCtx.stroke();
+
+      sparkCtx.lineTo(sw, sh);
+      sparkCtx.lineTo(0, sh);
+      sparkCtx.closePath();
+      const grad = sparkCtx.createLinearGradient(0, 0, 0, sh);
+      grad.addColorStop(0, fillTop);
+      grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      sparkCtx.fillStyle = grad;
+      sparkCtx.fill();
+    }
+
+    plotSeries(powerHist, maxPower * 1.08, '#ffbe5c', 'rgba(255, 190, 92, 0.22)');
+    plotSeries(fluxHist, maxFlux * 1.08, '#58dcff', 'rgba(88, 220, 255, 0.22)');
+  }
+
+  // =========================================================================
+  // TELEMETRY DOM UPDATE
+  // =========================================================================
+  let uiAccum = 0;
+  function updateTelemetryUI(dt) {
+    uiAccum += dt;
+    if (uiAccum < 0.08) return;
+    uiAccum = 0;
+
+    let fastN = 0;
+    let thermalN = 0;
+    for (const p of neutrons) {
+      if (p.energy > 0.28) fastN++;
+      else thermalN++;
+    }
+
+    let cU235 = 0, cU238 = 0, cPu = 0, cXe = 0, cExc = 0, cDep = 0;
+    for (const n of nuclei) {
+      if (n.type === TYPE_U235) cU235++;
+      else if (n.type === TYPE_U238 || n.type === TYPE_U239) cU238++;
+      else if (n.type === TYPE_PU239) cPu++;
+      else if (n.type === TYPE_XE135 || n.type === TYPE_I135) {
+        if (n.type === TYPE_XE135) cXe++;
+      } else if (n.type === TYPE_EXCITED) cExc++;
+      else if (n.type === TYPE_DEPLETED) cDep++;
+    }
+
+    // k_eff card
+    const keffEl = document.getElementById('tel-keff');
+    keffEl.textContent = keffDisplay.toFixed(2);
+    keffEl.className = 'tele-val ' + (
+      meltdown ? 'rose' :
+      keffDisplay > 1.18 ? 'rose' :
+      keffDisplay > 1.05 ? 'amber' :
+      keffDisplay >= 0.94 ? 'mint' : 'cyan'
+    );
+
+    // Neutrons
+    document.getElementById('tel-neutrons').textContent = `${neutrons.length} (${fastN}/${thermalN})`;
+
+    // Power
+    const pwrEl = document.getElementById('tel-power');
+    pwrEl.textContent = thermalPowerMW >= 1000
+      ? `${(thermalPowerMW / 1000).toFixed(2)} GW`
+      : `${Math.round(thermalPowerMW)} MW`;
+    pwrEl.className = 'tele-val ' + (thermalPowerMW > 1400 ? 'rose' : 'amber');
+
+    // Temperature
+    const tempEl = document.getElementById('tel-temp');
+    tempEl.textContent = `${Math.round(coreTemp)} °C`;
+    tempEl.className = 'tele-val ' + (
+      coreTemp >= WARN_TEMP ? 'rose' :
+      coreTemp >= 520 ? 'amber' : 'mint'
+    );
+
+    // Fissile fuel %
+    const fissilePct = Math.round(((cU235 + cPu) / nuclei.length) * 100);
+    document.getElementById('tel-fissile').textContent = `${fissilePct}%`;
+
+    // Xe-135 poison count
+    document.getElementById('tel-xe').textContent = `${cXe}`;
+
+    // Thermal load bar & void fraction
+    const tempPct = Math.max(4, Math.min(100, ((coreTemp - 240) / (MELTDOWN_TEMP - 240)) * 100));
+    document.getElementById('temp-fill').style.width = `${tempPct.toFixed(1)}%`;
+    document.getElementById('tel-void').textContent = `Void ${Math.round(voidFraction * 100)}%`;
+
+    // Footer counters
+    document.getElementById('tel-fissions').textContent = totalFissions.toLocaleString();
+    document.getElementById('tel-rods').textContent = `${Math.round(params.rodDepth)}%`;
+    document.getElementById('tel-pu').textContent = `${cPu} (+${totalBredPu})`;
+
+    // Inventory tab
+    document.getElementById('inv-u235').textContent = cU235;
+    document.getElementById('inv-u238').textContent = cU238;
+    document.getElementById('inv-pu239').textContent = cPu;
+    document.getElementById('inv-xe135').textContent = cXe;
+    document.getElementById('inv-excited').textContent = cExc;
+    document.getElementById('inv-depleted').textContent = cDep;
+
+    // Reactor Status Pill
+    const pill = document.getElementById('reactor-status');
+    if (meltdown) {
+      pill.textContent = 'Meltdown';
+      pill.className = 'status-pill danger';
+    } else if (scramActive && params.rodDepth > 95) {
+      pill.textContent = 'SCRAMMED';
+      pill.className = 'status-pill danger';
+    } else if (coreTemp >= WARN_TEMP) {
+      pill.textContent = 'Overheating';
+      pill.className = 'status-pill danger';
+    } else if (keffDisplay > 1.18) {
+      pill.textContent = 'Prompt Critical';
+      pill.className = 'status-pill danger';
+    } else if (keffDisplay > 1.05) {
+      pill.textContent = 'Supercritical';
+      pill.className = 'status-pill warn';
+    } else if (keffDisplay >= 0.94 && neutrons.length > 0) {
+      pill.textContent = 'Critical';
+      pill.className = 'status-pill';
+    } else {
+      pill.textContent = 'Subcritical';
+      pill.className = 'status-pill sub';
+    }
+  }
+
+  // =========================================================================
+  // INTERACTIVE CANVAS CONTROLS (Click to Inject / Drag Control Rods)
+  // =========================================================================
+  function isPointNearControlRod(wx, wy) {
+    // Check top gantry bar
+    if (wy >= -36 && wy <= -4 && wx >= rodXs[0] - 28 && wx <= rodXs[rodXs.length - 1] + 28) {
+      return true;
+    }
+    // Check along any control rod channel
+    const rodBottomY = rodTopY + Math.max(18, (params.rodDepth / 100) * rodMaxLen);
+    if (wy >= rodTopY - 14 && wy <= rodBottomY + 18) {
+      for (const rx of rodXs) {
+        if (Math.abs(wx - rx) <= rodWidth * 0.5 + 9) return true;
+      }
+    }
+    return false;
+  }
+
+  function updateRodFromPointerY(wy) {
+    const depth = Math.max(0, Math.min(100, ((wy - rodTopY) / rodMaxLen) * 100));
+    params.rodTarget = depth;
+    params.rodDepth = depth;
+    if (depth < 98) scramActive = false;
+    document.getElementById('sl-rods').value = Math.round(depth);
+    document.getElementById('val-rods').textContent = Math.round(depth) + '%';
+    updateScramButton();
+  }
+
+  canvas.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    canvas.setPointerCapture(e.pointerId);
+    const pt = screenToWorld(e.clientX, e.clientY);
+    pointer.wx = pt.x;
+    pointer.wy = pt.y;
+    pointer.down = true;
+    pointer.holdAccum = 0;
+
+    if (isPointNearControlRod(pt.x, pt.y)) {
+      pointer.draggingRod = true;
+      canvas.classList.add('rod-drag');
+      updateRodFromPointerY(pt.y);
+      return;
+    }
+
+    // Click inside core -> fire neutron burst!
+    if (!meltdown && pt.x > 10 && pt.x < WORLD_W - 10 && pt.y > 10 && pt.y < WORLD_H - 10) {
+      spawnNeutronBurst(pt.x, pt.y, 8, params.mod > 30 ? 0.6 : 0.15);
+    }
+  });
+
+  canvas.addEventListener('pointermove', (e) => {
+    const pt = screenToWorld(e.clientX, e.clientY);
+    pointer.wx = pt.x;
+    pointer.wy = pt.y;
+
+    if (pointer.draggingRod) {
+      updateRodFromPointerY(pt.y);
+      return;
+    }
+
+    const near = isPointNearControlRod(pt.x, pt.y);
+    pointer.hoverRod = near;
+    canvas.classList.toggle('rod-hover', near);
+  });
+
+  function endPointer() {
+    pointer.down = false;
+    pointer.draggingRod = false;
+    canvas.classList.remove('rod-drag');
+  }
+  canvas.addEventListener('pointerup', endPointer);
+  canvas.addEventListener('pointercancel', endPointer);
+
+  // =========================================================================
+  // UI BINDINGS & KEYBOARD SHORTCUTS
+  // =========================================================================
+  function syncControlsFromParams() {
+    document.getElementById('sl-rods').value = Math.round(params.rodTarget);
+    document.getElementById('val-rods').textContent = Math.round(params.rodTarget) + '%';
+
+    document.getElementById('sl-enrich').value = params.enrich;
+    document.getElementById('val-enrich').textContent = params.enrich + '%';
+
+    document.getElementById('sl-mod').value = params.mod;
+    document.getElementById('val-mod').textContent = params.mod + '%';
+
+    document.getElementById('sl-cool').value = params.cool;
+    document.getElementById('val-cool').textContent = params.cool + '%';
+
+    document.getElementById('sl-reflect').value = params.reflect;
+    document.getElementById('val-reflect').textContent = params.reflect + '%';
+
+    document.getElementById('chk-autosource').checked = params.autoSource;
+    document.getElementById('chk-void').checked = params.voidCoeff;
+    document.getElementById('chk-xenon').checked = params.xenon;
+    document.getElementById('chk-refuel-auto').checked = params.autoRefuel;
+    document.getElementById('chk-delayed').checked = params.delayed;
+  }
+
+  function updatePresetButtons() {
+    document.querySelectorAll('.preset-btn').forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.preset === params.preset);
+    });
+  }
+
+  // Drawer tabs
+  document.querySelectorAll('.tab-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const target = btn.dataset.tab;
+      document.querySelectorAll('.tab-btn').forEach((b) => b.classList.toggle('active', b === btn));
+      document.querySelectorAll('.tab-pane').forEach((p) => p.classList.toggle('active', p.id === 'tab-' + target));
+    });
+  });
+
+  // Preset buttons
+  document.querySelectorAll('.preset-btn').forEach((btn) => {
+    btn.addEventListener('click', () => loadPreset(btn.dataset.preset));
+  });
+
+  // Sliders
+  document.getElementById('sl-rods').addEventListener('input', (e) => {
+    params.rodTarget = Number(e.target.value);
+    if (params.rodTarget < 98) scramActive = false;
+    document.getElementById('val-rods').textContent = params.rodTarget + '%';
+    updateScramButton();
+  });
+
+  document.getElementById('sl-enrich').addEventListener('input', (e) => {
+    params.enrich = Number(e.target.value);
+    document.getElementById('val-enrich').textContent = params.enrich + '%';
+    reapplyEnrichmentLive();
+  });
+
+  document.getElementById('sl-mod').addEventListener('input', (e) => {
+    params.mod = Number(e.target.value);
+    document.getElementById('val-mod').textContent = params.mod + '%';
+  });
+
+  document.getElementById('sl-cool').addEventListener('input', (e) => {
+    params.cool = Number(e.target.value);
+    document.getElementById('val-cool').textContent = params.cool + '%';
+  });
+
+  document.getElementById('sl-reflect').addEventListener('input', (e) => {
+    params.reflect = Number(e.target.value);
+    document.getElementById('val-reflect').textContent = params.reflect + '%';
+  });
+
+  // Toggles
+  document.getElementById('chk-autosource').addEventListener('change', (e) => { params.autoSource = e.target.checked; });
+  document.getElementById('chk-void').addEventListener('change', (e) => { params.voidCoeff = e.target.checked; });
+  document.getElementById('chk-xenon').addEventListener('change', (e) => { params.xenon = e.target.checked; });
+  document.getElementById('chk-refuel-auto').addEventListener('change', (e) => { params.autoRefuel = e.target.checked; });
+  document.getElementById('chk-delayed').addEventListener('change', (e) => { params.delayed = e.target.checked; });
+
+  document.getElementById('chk-cherenkov').addEventListener('change', (e) => { params.showCherenkov = e.target.checked; });
+  document.getElementById('chk-trails').addEventListener('change', (e) => { params.showTrails = e.target.checked; });
+  document.getElementById('chk-flashes').addEventListener('change', (e) => { params.showFlashes = e.target.checked; });
+  document.getElementById('chk-daughters').addEventListener('change', (e) => { params.showDaughters = e.target.checked; });
+  document.getElementById('chk-bubbles').addEventListener('change', (e) => { params.showBubbles = e.target.checked; });
+  document.getElementById('chk-labels').addEventListener('change', (e) => { params.showLabels = e.target.checked; });
+
+  // Action buttons
+  document.getElementById('btn-scram').addEventListener('click', triggerScram);
+  document.getElementById('btn-bar-scram').addEventListener('click', triggerScram);
+
+  document.getElementById('btn-burst').addEventListener('click', () => {
+    if (meltdown) return;
+    spawnNeutronBurst(
+      WORLD_W * (0.35 + Math.random() * 0.3),
+      WORLD_H * (0.35 + Math.random() * 0.3),
+      14,
+      params.mod > 30 ? 0.65 : 0.15
+    );
+  });
+
+  document.getElementById('btn-refuel').addEventListener('click', () => {
+    loadPreset(params.preset);
+  });
+
+  document.getElementById('btn-inject-xe').addEventListener('click', () => {
+    params.xenon = true;
+    document.getElementById('chk-xenon').checked = true;
+    let added = 0;
+    for (let k = 0; k < 220 && added < 22; k++) {
+      const n = nuclei[Math.floor(Math.random() * nuclei.length)];
+      if (n.type === TYPE_U238 || n.type === TYPE_DEPLETED || (n.type === TYPE_U235 && Math.random() < 0.25)) {
+        n.type = TYPE_XE135;
+        n.timer = 22 + Math.random() * 18;
+        spawnSpark(n.x, n.y, '#b78bfa', 3, 55);
+        added++;
+      }
+    }
+  });
+
+  document.getElementById('btn-flush-xe').addEventListener('click', () => {
+    for (const n of nuclei) {
+      if (n.type === TYPE_XE135 || n.type === TYPE_I135) {
+        n.type = Math.random() < params.enrich / 100 ? TYPE_U235 : TYPE_U238;
+        spawnSpark(n.x, n.y, '#58dcff', 2, 40);
+      }
+    }
+  });
+
+  // Transport Bar
+  function togglePause() {
+    paused = !paused;
+    const btn = document.getElementById('btn-play');
+    btn.textContent = paused ? '▶ Play' : '⏸ Pause';
+    btn.classList.toggle('active', !paused);
+  }
+  document.getElementById('btn-play').addEventListener('click', togglePause);
+
+  document.getElementById('btn-reset').addEventListener('click', () => loadPreset(params.preset));
+  document.getElementById('btn-banner-reset').addEventListener('click', () => loadPreset(params.preset));
+
+  document.querySelectorAll('.speed-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      simSpeed = Number(btn.dataset.speed);
+      document.querySelectorAll('.speed-btn').forEach((b) => b.classList.toggle('active', b === btn));
+    });
+  });
+
+  document.getElementById('btn-sound').addEventListener('click', () => {
+    setAudioEnabled(!audio.enabled);
+  });
+
+  function toggleDrawer() {
+    drawerOpen = !drawerOpen;
+    document.getElementById('drawer').classList.toggle('collapsed', !drawerOpen);
+    document.getElementById('btn-toggle-drawer').classList.toggle('active', drawerOpen);
+    computeTargetView(false);
+  }
+  document.getElementById('btn-toggle-drawer').addEventListener('click', toggleDrawer);
+
+  function toggleZen() {
+    zenMode = !zenMode;
+    document.body.classList.toggle('zen-mode', zenMode);
+    document.getElementById('btn-zen').classList.toggle('active', zenMode);
+    computeTargetView(false);
+  }
+  document.getElementById('btn-zen').addEventListener('click', toggleZen);
+  document.getElementById('btn-zen-restore').addEventListener('click', toggleZen);
+
+  // Keyboard shortcuts
+  window.addEventListener('keydown', (e) => {
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+    if (e.code === 'Space') {
+      e.preventDefault();
+      togglePause();
+    } else if (e.key === 'h' || e.key === 'H') {
+      toggleZen();
+    } else if (e.key === 'x' || e.key === 'X') {
+      triggerScram();
+    } else if (e.key === 'r' || e.key === 'R') {
+      loadPreset(params.preset);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      keysHeld.up = true;
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      keysHeld.down = true;
+    }
+  });
+
+  window.addEventListener('keyup', (e) => {
+    if (e.key === 'ArrowUp') keysHeld.up = false;
+    if (e.key === 'ArrowDown') keysHeld.down = false;
+  });
+
+  window.addEventListener('resize', resize);
+
+  // =========================================================================
+  // ANIMATION LOOP
+  // =========================================================================
+  let lastFrame = performance.now();
+
+  function frame(now) {
+    const rawDt = Math.min(0.05, (now - lastFrame) / 1000);
+    lastFrame = now;
+
+    if (!paused) {
+      const scaledDt = rawDt * simSpeed;
+      const steps = scaledDt > 0.025 ? 2 : 1;
+      const subDt = scaledDt / steps;
+      for (let s = 0; s < steps; s++) {
+        stepPhysics(subDt);
+      }
+    }
+
+    render();
+    updateTelemetryUI(rawDt);
+    requestAnimationFrame(frame);
+  }
+
+  // Boot
+  initGeometry();
+  resize();
+  loadPreset('critical');
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
