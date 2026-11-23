@@ -1,0 +1,4025 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Automata — Game of Life, Wireworld &amp; Continuous Lenia Zoo</title>
+<style>
+  :root {
+    --bg-deep: #040711;
+    --panel-bg: rgba(9, 13, 24, 0.78);
+    --panel-bg-strong: rgba(8, 12, 22, 0.92);
+    --panel-border: rgba(148, 179, 255, 0.16);
+    --panel-border-hi: rgba(148, 179, 255, 0.36);
+    --text-main: #eef3ff;
+    --text-dim: #9aa9cc;
+    --text-muted: #68789c;
+    --accent-amber: #ffbe5c;
+    --accent-cyan: #58dcff;
+    --accent-mint: #4af2b2;
+    --accent-rose: #ff6083;
+    --accent-violet: #a78bfa;
+    --radius-lg: 14px;
+    --radius-md: 10px;
+    --radius-sm: 7px;
+    --mono: ui-monospace, "Cascadia Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Inter, Helvetica, Arial, sans-serif;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg-deep);
+    color: var(--text-main);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    touch-action: none;
+  }
+
+  #sim-canvas {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    cursor: crosshair;
+  }
+  #sim-canvas.panning {
+    cursor: grabbing;
+  }
+
+  /* HUD Layer */
+  .hud {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 10;
+  }
+  body.zen-mode .hud > :not(.zen-restore) {
+    opacity: 0;
+    pointer-events: none !important;
+  }
+
+  .panel {
+    pointer-events: auto;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-lg);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    transition: opacity 0.25s ease, transform 0.25s ease;
+  }
+
+  /* Top-Left Brand + Telemetry */
+  .top-left {
+    position: fixed;
+    top: 14px;
+    left: 14px;
+    width: min(392px, calc(100vw - 360px));
+    min-width: 280px;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .brand-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .brand-title-wrap {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .brand-title {
+    font-size: 16px;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    background: linear-gradient(120deg, #e8fbff 0%, #58dcff 48%, #4af2b2 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .mode-badge {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 999px;
+    border: 1px solid rgba(88, 220, 255, 0.42);
+    background: rgba(88, 220, 255, 0.12);
+    color: var(--accent-cyan);
+    white-space: nowrap;
+  }
+  .mode-badge.life {
+    border-color: rgba(74, 242, 178, 0.42);
+    background: rgba(74, 242, 178, 0.12);
+    color: var(--accent-mint);
+  }
+  .mode-badge.brain {
+    border-color: rgba(167, 139, 250, 0.45);
+    background: rgba(167, 139, 250, 0.14);
+    color: var(--accent-violet);
+  }
+  .mode-badge.wire {
+    border-color: rgba(255, 190, 92, 0.45);
+    background: rgba(255, 190, 92, 0.14);
+    color: var(--accent-amber);
+  }
+
+  .status-pill {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: rgba(74, 242, 178, 0.14);
+    color: var(--accent-mint);
+    border: 1px solid rgba(74, 242, 178, 0.35);
+    white-space: nowrap;
+  }
+  .status-pill.paused {
+    background: rgba(255, 190, 92, 0.15);
+    color: var(--accent-amber);
+    border-color: rgba(255, 190, 92, 0.4);
+  }
+  .status-pill.extinct {
+    background: rgba(255, 96, 131, 0.16);
+    color: var(--accent-rose);
+    border-color: rgba(255, 96, 131, 0.42);
+  }
+
+  .telemetry-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+  }
+
+  .tele-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(148, 179, 255, 0.1);
+    border-radius: var(--radius-sm);
+    padding: 6px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .tele-label {
+    font-size: 9.5px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .tele-val {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-main);
+  }
+  .tele-val.amber { color: var(--accent-amber); }
+  .tele-val.cyan { color: var(--accent-cyan); }
+  .tele-val.mint { color: var(--accent-mint); }
+  .tele-val.violet { color: var(--accent-violet); }
+
+  /* Sparkline */
+  .spark-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(148, 179, 255, 0.1);
+    border-radius: var(--radius-sm);
+    padding: 6px 8px 5px;
+  }
+  .spark-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 9.5px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .spark-head .mono {
+    font-family: var(--mono);
+    color: var(--text-dim);
+    text-transform: none;
+    letter-spacing: 0;
+  }
+  #sparkline-canvas {
+    width: 100%;
+    height: 36px;
+    display: block;
+    border-radius: 4px;
+  }
+
+  .clock-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding-top: 4px;
+    border-top: 1px solid rgba(148, 179, 255, 0.1);
+    font-size: 10.5px;
+    color: var(--text-dim);
+    font-family: var(--mono);
+  }
+  .clock-row span strong {
+    color: var(--text-main);
+    font-weight: 600;
+  }
+
+  /* Right Control Drawer */
+  .drawer {
+    position: fixed;
+    top: 14px;
+    right: 14px;
+    bottom: 14px;
+    width: 330px;
+    max-width: calc(100vw - 28px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: transform 0.25s ease, opacity 0.25s ease;
+  }
+  .drawer.collapsed {
+    transform: translateX(calc(100% + 24px));
+    pointer-events: none;
+  }
+
+  .drawer-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+    padding: 8px 8px 6px;
+    border-bottom: 1px solid var(--panel-border);
+    background: rgba(4, 7, 15, 0.45);
+  }
+
+  .tab-btn {
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 11.5px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    padding: 7px 6px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .tab-btn:hover {
+    color: var(--text-main);
+    background: rgba(255, 255, 255, 0.04);
+  }
+  .tab-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.16);
+    border-color: rgba(88, 220, 255, 0.4);
+  }
+
+  .drawer-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 13px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .drawer-body::-webkit-scrollbar {
+    width: 5px;
+  }
+  .drawer-body::-webkit-scrollbar-thumb {
+    background: rgba(148, 179, 255, 0.22);
+    border-radius: 999px;
+  }
+
+  .tab-pane {
+    display: none;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .tab-pane.active {
+    display: flex;
+  }
+
+  .section {
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(148, 179, 255, 0.11);
+    border-radius: var(--radius-md);
+    padding: 10px 11px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .section-title {
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .section-title .tag {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--accent-cyan);
+    letter-spacing: 0.02em;
+    text-transform: none;
+  }
+
+  /* Engine 2x2 selector */
+  .engine-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .engine-btn {
+    text-align: left;
+    padding: 8px 9px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(148, 179, 255, 0.15);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-main);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .engine-btn:hover {
+    border-color: rgba(88, 220, 255, 0.42);
+    background: rgba(88, 220, 255, 0.07);
+  }
+  .engine-btn.active {
+    border-color: var(--accent-cyan);
+    background: rgba(88, 220, 255, 0.16);
+    box-shadow: 0 0 14px rgba(88, 220, 255, 0.14);
+  }
+  .engine-btn.active[data-engine="life"] {
+    border-color: var(--accent-mint);
+    background: rgba(74, 242, 178, 0.14);
+    box-shadow: 0 0 14px rgba(74, 242, 178, 0.14);
+  }
+  .engine-btn.active[data-engine="brain"] {
+    border-color: var(--accent-violet);
+    background: rgba(167, 139, 250, 0.15);
+    box-shadow: 0 0 14px rgba(167, 139, 250, 0.14);
+  }
+  .engine-btn.active[data-engine="wire"] {
+    border-color: var(--accent-amber);
+    background: rgba(255, 190, 92, 0.15);
+    box-shadow: 0 0 14px rgba(255, 190, 92, 0.14);
+  }
+
+  /* Presets & Stamps grid */
+  .preset-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .preset-btn {
+    text-align: left;
+    padding: 7px 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(148, 179, 255, 0.14);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-main);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .preset-btn:hover {
+    border-color: rgba(88, 220, 255, 0.45);
+    background: rgba(88, 220, 255, 0.08);
+  }
+  .preset-btn.active {
+    border-color: var(--accent-cyan);
+    background: rgba(88, 220, 255, 0.15);
+  }
+  .preset-btn.amber-active.active {
+    border-color: var(--accent-amber);
+    background: rgba(255, 190, 92, 0.15);
+  }
+  .preset-name {
+    font-size: 11.5px;
+    font-weight: 700;
+  }
+  .preset-sub {
+    font-size: 9.5px;
+    color: var(--text-muted);
+    line-height: 1.25;
+  }
+
+  /* Sliders */
+  .control-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .control-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11.5px;
+    color: var(--text-dim);
+  }
+  .control-head .val {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--text-main);
+    font-weight: 600;
+  }
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 5px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.18);
+    outline: none;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent-cyan);
+    border: 2px solid #08101f;
+    box-shadow: 0 0 10px rgba(88, 220, 255, 0.65);
+    cursor: pointer;
+  }
+  input[type="range"].amber::-webkit-slider-thumb {
+    background: var(--accent-amber);
+    box-shadow: 0 0 10px rgba(255, 190, 92, 0.65);
+  }
+  input[type="range"].mint::-webkit-slider-thumb {
+    background: var(--accent-mint);
+    box-shadow: 0 0 10px rgba(74, 242, 178, 0.65);
+  }
+
+  /* Segmented pills */
+  .seg-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(54px, 1fr));
+    gap: 4px;
+  }
+  .seg-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-dim);
+    font-size: 11px;
+    font-weight: 650;
+    padding: 6px 5px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-align: center;
+  }
+  .seg-btn:hover {
+    color: #fff;
+    border-color: rgba(148, 179, 255, 0.35);
+  }
+  .seg-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.18);
+    border-color: var(--accent-cyan);
+  }
+  .seg-btn.active.amber {
+    background: rgba(255, 190, 92, 0.18);
+    border-color: var(--accent-amber);
+    color: #ffdfaa;
+  }
+  .seg-btn.active.mint {
+    background: rgba(74, 242, 178, 0.18);
+    border-color: var(--accent-mint);
+    color: #d6fff0;
+  }
+
+  /* B/S rule bit pills */
+  .rule-bits {
+    display: grid;
+    grid-template-columns: repeat(9, 1fr);
+    gap: 3px;
+  }
+  .bit-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-muted);
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 700;
+    padding: 5px 0;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: all 0.12s ease;
+    text-align: center;
+  }
+  .bit-btn:hover {
+    color: #fff;
+    border-color: rgba(148, 179, 255, 0.4);
+  }
+  .bit-btn.active {
+    background: rgba(74, 242, 178, 0.22);
+    border-color: var(--accent-mint);
+    color: #fff;
+  }
+  .bit-btn.survive.active {
+    background: rgba(88, 220, 255, 0.22);
+    border-color: var(--accent-cyan);
+    color: #fff;
+  }
+
+  /* Palette Swatches */
+  .palette-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .pal-btn {
+    padding: 7px 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-main);
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    text-align: left;
+    transition: all 0.15s ease;
+  }
+  .pal-btn:hover {
+    border-color: rgba(148, 179, 255, 0.42);
+  }
+  .pal-btn.active {
+    border-color: var(--accent-cyan);
+    background: rgba(88, 220, 255, 0.14);
+  }
+  .pal-strip {
+    height: 7px;
+    width: 100%;
+    border-radius: 999px;
+  }
+  .pal-name {
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  /* Kernel Preview Canvas */
+  #kernel-canvas {
+    width: 100%;
+    height: 92px;
+    display: block;
+    border-radius: var(--radius-sm);
+    background: rgba(4, 7, 17, 0.72);
+    border: 1px solid rgba(148, 179, 255, 0.14);
+  }
+
+  /* Action Buttons */
+  .btn-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .btn {
+    border: 1px solid rgba(148, 179, 255, 0.22);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-main);
+    font-size: 11.5px;
+    font-weight: 700;
+    padding: 7px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+  .btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 179, 255, 0.45);
+  }
+  .btn:active {
+    transform: scale(0.98);
+  }
+  .btn.primary {
+    background: linear-gradient(135deg, rgba(88, 220, 255, 0.26), rgba(56, 140, 255, 0.22));
+    border-color: rgba(88, 220, 255, 0.55);
+    color: #e6f9ff;
+  }
+  .btn.danger {
+    background: rgba(255, 96, 131, 0.14);
+    border-color: rgba(255, 96, 131, 0.4);
+    color: #ffc2d0;
+  }
+
+  /* Toggle switches */
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11.5px;
+    color: var(--text-dim);
+    cursor: pointer;
+  }
+  .toggle-row input {
+    display: none;
+  }
+  .switch {
+    width: 34px;
+    height: 18px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.2);
+    border: 1px solid rgba(148, 179, 255, 0.25);
+    position: relative;
+    transition: all 0.18s ease;
+    flex-shrink: 0;
+  }
+  .switch::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #c8d7f5;
+    transition: transform 0.18s ease, background 0.18s ease;
+  }
+  .toggle-row input:checked + .switch {
+    background: rgba(88, 220, 255, 0.32);
+    border-color: var(--accent-cyan);
+  }
+  .toggle-row input:checked + .switch::after {
+    transform: translateX(16px);
+    background: #fff;
+  }
+
+  /* Bottom Transport Bar */
+  .bottom-bar {
+    position: fixed;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 7px 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: nowrap;
+  }
+
+  .bar-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-main);
+    font-size: 11.5px;
+    font-weight: 650;
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    white-space: nowrap;
+  }
+  .bar-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 179, 255, 0.4);
+  }
+  .bar-btn.active {
+    background: rgba(88, 220, 255, 0.2);
+    border-color: var(--accent-cyan);
+    color: #fff;
+  }
+
+  .bar-divider {
+    width: 1px;
+    height: 20px;
+    background: rgba(148, 179, 255, 0.16);
+    margin: 0 2px;
+  }
+
+  /* Bottom-left interaction hint */
+  .hint-pill {
+    position: fixed;
+    bottom: 14px;
+    left: 14px;
+    padding: 7px 11px;
+    font-size: 11px;
+    color: var(--text-dim);
+    max-width: 325px;
+    line-height: 1.42;
+  }
+  .hint-pill kbd {
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #fff;
+  }
+
+  /* Toast Banner */
+  .toast-banner {
+    position: fixed;
+    top: 18px;
+    left: 50%;
+    transform: translateX(-50%) translateY(-10px);
+    padding: 8px 14px;
+    border-radius: var(--radius-md);
+    background: rgba(8, 16, 28, 0.88);
+    border: 1px solid rgba(88, 220, 255, 0.48);
+    color: #d6f4ff;
+    font-size: 12px;
+    font-weight: 650;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.22s ease, transform 0.22s ease;
+    z-index: 20;
+    backdrop-filter: blur(12px);
+    white-space: nowrap;
+  }
+  .toast-banner.visible {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+
+  .zen-restore {
+    position: fixed;
+    bottom: 14px;
+    right: 14px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+  }
+  body.zen-mode .zen-restore {
+    opacity: 0.88;
+    pointer-events: auto;
+  }
+
+  .note-small {
+    font-size: 10.5px;
+    color: var(--text-muted);
+    line-height: 1.38;
+  }
+
+  .hidden {
+    display: none !important;
+  }
+
+  @media (max-width: 900px) {
+    .top-left {
+      width: calc(100vw - 28px);
+      max-width: none;
+    }
+    .drawer {
+      top: auto;
+      bottom: 62px;
+      height: 50vh;
+      width: calc(100vw - 28px);
+    }
+    .hint-pill {
+      display: none;
+    }
+  }
+</style>
+</head>
+<body>
+<canvas id="sim-canvas"></canvas>
+
+<div class="hud">
+  <!-- Top-Left Telemetry -->
+  <div class="panel top-left">
+    <div class="brand-row">
+      <div class="brand-title-wrap">
+        <div class="brand-title">Automata</div>
+        <span id="engine-badge" class="mode-badge">Continuous Lenia</span>
+      </div>
+      <span id="status-pill" class="status-pill">Running</span>
+    </div>
+
+    <div class="telemetry-grid">
+      <div class="tele-card">
+        <span id="lbl-gen" class="tele-label">Generation</span>
+        <span id="tel-gen" class="tele-val cyan">0</span>
+      </div>
+      <div class="tele-card">
+        <span id="lbl-pop" class="tele-label">Biomass</span>
+        <span id="tel-pop" class="tele-val mint">0.0</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Activity</span>
+        <span id="tel-act" class="tele-val amber">0.0%</span>
+      </div>
+    </div>
+
+    <div class="spark-wrap">
+      <div class="spark-head">
+        <span id="spark-title">Biomass History</span>
+        <span id="spark-range" class="mono">min 0 · max 0</span>
+      </div>
+      <canvas id="sparkline-canvas" width="340" height="36"></canvas>
+    </div>
+
+    <div class="clock-row">
+      <span>Grid <strong id="meta-grid">256×256</strong></span>
+      <span>Tool <strong id="meta-tool">Paint</strong></span>
+      <span><strong id="meta-fps">60</strong> FPS</span>
+    </div>
+  </div>
+
+  <!-- Toast Banner -->
+  <div id="toast-banner" class="toast-banner">Loaded Preset</div>
+
+  <!-- Right Collapsible Control Drawer -->
+  <div id="drawer" class="panel drawer">
+    <div class="drawer-tabs">
+      <button class="tab-btn active" data-tab="zoo">Zoo &amp; Stamps</button>
+      <button class="tab-btn" data-tab="rules">Engine &amp; Rules</button>
+      <button class="tab-btn" data-tab="look">Brush &amp; Look</button>
+    </div>
+
+    <div class="drawer-body">
+      <!-- TAB 1: ZOO & STAMPS -->
+      <div id="tab-zoo" class="tab-pane active">
+        <div class="section">
+          <div class="section-title">
+            <span>Automaton Engine</span>
+            <span class="tag">4 Engines</span>
+          </div>
+          <div class="engine-grid" id="engine-grid">
+            <button class="engine-btn active" data-engine="lenia">
+              <span class="preset-name">Continuous Lenia</span>
+              <span class="preset-sub">Smooth FFT gliders</span>
+            </button>
+            <button class="engine-btn" data-engine="life">
+              <span class="preset-name">Game of Life</span>
+              <span class="preset-sub">B3/S23 &amp; B/S rules</span>
+            </button>
+            <button class="engine-btn" data-engine="brain">
+              <span class="preset-name">Brian’s Brain</span>
+              <span class="preset-sub">3-state excitable sparks</span>
+            </button>
+            <button class="engine-btn" data-engine="wire">
+              <span class="preset-name">Wireworld</span>
+              <span class="preset-sub">Digital logic circuits</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">
+            <span>Zoo Presets</span>
+            <span id="preset-count-tag" class="tag">Lenia</span>
+          </div>
+          <div class="preset-grid" id="preset-grid"></div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">
+            <span>Pattern Stamps</span>
+            <span id="stamp-rot-tag" class="tag">0° · R to rotate</span>
+          </div>
+          <div class="seg-row" id="tool-mode-row">
+            <button class="seg-btn active" data-tool="paint">Paint</button>
+            <button class="seg-btn" data-tool="stamp">Stamp</button>
+            <button class="seg-btn" data-tool="erase">Erase</button>
+          </div>
+          <div class="preset-grid" id="stamp-grid"></div>
+          <div class="btn-row">
+            <button id="btn-rotate-stamp" class="btn">↻ Rotate Stamp (R)</button>
+            <button id="btn-fit-view" class="btn">⌖ Fit View (0)</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 2: ENGINE & RULES -->
+      <div id="tab-rules" class="tab-pane">
+        <!-- Lenia Section -->
+        <div id="sec-lenia" class="section">
+          <div class="section-title">
+            <span>Lenia Kernel &amp; Growth</span>
+            <span id="lenia-eq-tag" class="tag">A + dt·G(K*A)</span>
+          </div>
+          <canvas id="kernel-canvas" width="286" height="92"></canvas>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Growth Center (μ)</span>
+              <span id="val-mu" class="val">0.150</span>
+            </div>
+            <input id="sl-mu" type="range" min="0.06" max="0.38" step="0.002" value="0.150" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Growth Width (σ)</span>
+              <span id="val-sigma" class="val">0.017</span>
+            </div>
+            <input id="sl-sigma" type="range" min="0.008" max="0.065" step="0.001" value="0.017" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Kernel Radius (R)</span>
+              <span id="val-radius" class="val">13</span>
+            </div>
+            <input id="sl-radius" class="amber" type="range" min="8" max="18" step="1" value="13" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Time Step (dt = 1/T)</span>
+              <span id="val-dt" class="val">0.10</span>
+            </div>
+            <input id="sl-dt" class="mint" type="range" min="0.04" max="0.22" step="0.01" value="0.10" />
+          </div>
+
+          <div class="note-small">
+            2D Radix-2 FFT computes exact periodic convolution <code>K * A</code> at 60fps. Ring kernel peaks drive swimming gliders &amp; pulsing solitons.
+          </div>
+        </div>
+
+        <!-- Life Rules Section -->
+        <div id="sec-life" class="section hidden">
+          <div class="section-title">
+            <span>B/S Rule Family</span>
+            <span id="life-rule-tag" class="tag">B3/S23</span>
+          </div>
+          <div class="preset-grid" id="life-rule-presets">
+            <button class="preset-btn active" data-rule="B3/S23">
+              <span class="preset-name">Conway Life</span>
+              <span class="preset-sub">B3/S23 classic</span>
+            </button>
+            <button class="preset-btn" data-rule="B36/S23">
+              <span class="preset-name">HighLife</span>
+              <span class="preset-sub">B36/S23 replicators</span>
+            </button>
+            <button class="preset-btn" data-rule="B2/S">
+              <span class="preset-name">Seeds</span>
+              <span class="preset-sub">B2/S explosive sparks</span>
+            </button>
+            <button class="preset-btn" data-rule="B3678/S34678">
+              <span class="preset-name">Day &amp; Night</span>
+              <span class="preset-sub">B3678/S34678 symmetric</span>
+            </button>
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Birth Neighbors (B)</span>
+              <span class="val" id="val-b-str">3</span>
+            </div>
+            <div class="rule-bits" id="birth-bits"></div>
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Survive Neighbors (S)</span>
+              <span class="val" id="val-s-str">23</span>
+            </div>
+            <div class="rule-bits" id="survive-bits"></div>
+          </div>
+        </div>
+
+        <!-- Brian's Brain Section -->
+        <div id="sec-brain" class="section hidden">
+          <div class="section-title">
+            <span>Excitable 3-State Physics</span>
+            <span class="tag">Off → On → Dying</span>
+          </div>
+          <div class="note-small">
+            Resting cells fire when <strong>exactly 2</strong> Moore neighbors are firing. Firing heads immediately enter a 1-step indigo refractory state before resting, creating unstoppable fireworks of gliders and rakes.
+          </div>
+        </div>
+
+        <!-- Wireworld Section -->
+        <div id="sec-wire" class="section hidden">
+          <div class="section-title">
+            <span>Wireworld Brush State</span>
+            <span class="tag">4-State Logic</span>
+          </div>
+          <div class="seg-row" id="wire-brush-row">
+            <button class="seg-btn active amber" data-wstate="3">Copper Wire</button>
+            <button class="seg-btn" data-wstate="1">Electron Head</button>
+            <button class="seg-btn" data-wstate="2">Tail</button>
+          </div>
+          <div class="note-small">
+            Copper conductors fire into an Electron Head when <strong>1 or 2</strong> neighbors are Electron Heads. Right-drag erases cells back to empty space.
+          </div>
+        </div>
+
+        <!-- World Controls -->
+        <div class="section">
+          <div class="section-title">
+            <span>Arena Operations</span>
+            <span class="tag">Topology</span>
+          </div>
+          <label class="toggle-row">
+            <span>Toroidal Wrap Edges</span>
+            <input id="chk-wrap" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <div class="btn-row">
+            <button id="btn-seed-random" class="btn primary">✦ Seed Soup</button>
+            <button id="btn-clear-grid" class="btn danger">✕ Clear Arena</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 3: BRUSH & LOOK -->
+      <div id="tab-look" class="tab-pane">
+        <div class="section">
+          <div class="section-title">
+            <span>Brush Controls</span>
+            <span class="tag">[ / ] resize</span>
+          </div>
+          <div class="control-row">
+            <div class="control-head">
+              <span>Brush Radius</span>
+              <span id="val-brush" class="val">6 px</span>
+            </div>
+            <input id="sl-brush" type="range" min="1" max="20" step="1" value="6" />
+          </div>
+          <div class="control-row">
+            <div class="control-head">
+              <span>Brush Density / Flow</span>
+              <span id="val-strength" class="val">85%</span>
+            </div>
+            <input id="sl-strength" class="mint" type="range" min="20" max="100" step="5" value="85" />
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">
+            <span>Color Palette</span>
+            <span class="tag">LUT Shader</span>
+          </div>
+          <div class="palette-grid" id="palette-grid">
+            <button class="pal-btn active" data-palette="biolum">
+              <div class="pal-strip" style="background:linear-gradient(90deg,#040711,#163880,#00d4ff,#7efce0,#ffffff)"></div>
+              <span class="pal-name">Biolum Cyan</span>
+            </button>
+            <button class="pal-btn" data-palette="plasma">
+              <div class="pal-strip" style="background:linear-gradient(90deg,#040711,#4e1463,#e0485e,#ffae38,#fff7cf)"></div>
+              <span class="pal-name">Plasma Gold</span>
+            </button>
+            <button class="pal-btn" data-palette="thermal">
+              <div class="pal-strip" style="background:linear-gradient(90deg,#040711,#25135e,#c724b1,#ff4d6d,#ffe66d)"></div>
+              <span class="pal-name">Thermal Neon</span>
+            </button>
+            <button class="pal-btn" data-palette="emerald">
+              <div class="pal-strip" style="background:linear-gradient(90deg,#040711,#073b27,#12b86a,#5effb0,#e8fff4)"></div>
+              <span class="pal-name">Emerald CRT</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">
+            <span>Visual Effects</span>
+            <span class="tag">Canvas</span>
+          </div>
+          <label class="toggle-row">
+            <span>Phosphor Decay Trails</span>
+            <input id="chk-trails" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Bioluminescent Bloom Glow</span>
+            <input id="chk-bloom" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Crisp Cell Gridlines (Zoom)</span>
+            <input id="chk-grid" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Stamp Ghost Preview</span>
+            <input id="chk-ghost" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+        </div>
+
+        <div class="section">
+          <div class="section-title">
+            <span>Generative Ambient Audio</span>
+            <span id="audio-state-tag" class="tag">Muted</span>
+          </div>
+          <label class="toggle-row">
+            <span>Activity Chimes (Web Audio)</span>
+            <input id="chk-audio" type="checkbox" />
+            <span class="switch"></span>
+          </label>
+          <div class="control-row">
+            <div class="control-head">
+              <span>Master Volume</span>
+              <span id="val-vol" class="val">35%</span>
+            </div>
+            <input id="sl-vol" class="amber" type="range" min="5" max="100" step="5" value="35" />
+          </div>
+          <div class="note-small">
+            Muted by default. Modulates subtle pentatonic harmonic chimes from real-time birth/death activity flux.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom-Left Interaction Hints -->
+  <div class="panel hint-pill">
+    Left-drag <strong>Paint / Stamp</strong> · Right-drag <strong>Erase</strong> · <kbd>R</kbd> Rotate · Wheel <strong>Zoom</strong> · Mid/Alt-drag <strong>Pan</strong> · <kbd>Space</kbd> Play · <kbd>H</kbd> Cinema
+  </div>
+
+  <!-- Bottom-Center Transport Bar -->
+  <div class="panel bottom-bar">
+    <button id="btn-play" class="bar-btn active">⏸ Pause</button>
+    <button id="btn-step" class="bar-btn">⏭ Step</button>
+    <button id="btn-reset" class="bar-btn">↺ Reset</button>
+    <div class="bar-divider"></div>
+    <button id="btn-speed" class="bar-btn">1× Speed</button>
+    <div class="bar-divider"></div>
+    <button id="btn-audio" class="bar-btn">🔇 Audio</button>
+    <button id="btn-drawer" class="bar-btn active">⚙ Controls</button>
+    <button id="btn-cinema" class="bar-btn">Cinema (H)</button>
+  </div>
+
+  <!-- Zen Restore Button -->
+  <button id="btn-zen-restore" class="panel bar-btn zen-restore">Show HUD (H)</button>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // =========================================================================
+  // 1. COLOR PALETTES (256-entry RGB LUTs)
+  // =========================================================================
+  const PALETTE_STOPS = {
+    biolum: [
+      [0.00,   4,   7,  17],
+      [0.14,  10,  26,  66],
+      [0.34,  16,  92, 168],
+      [0.58,  20, 206, 245],
+      [0.80, 120, 252, 220],
+      [1.00, 244, 255, 255]
+    ],
+    plasma: [
+      [0.00,   4,   7,  17],
+      [0.16,  48,  13,  72],
+      [0.38, 158,  34,  98],
+      [0.62, 238, 102,  64],
+      [0.84, 255, 198,  86],
+      [1.00, 255, 251, 224]
+    ],
+    thermal: [
+      [0.00,   4,   7,  17],
+      [0.18,  34,  16,  94],
+      [0.42, 184,  34, 174],
+      [0.66, 255,  72, 114],
+      [0.86, 255, 188,  72],
+      [1.00, 255, 252, 198]
+    ],
+    emerald: [
+      [0.00,   4,   7,  17],
+      [0.16,   6,  42,  34],
+      [0.40,  14, 126,  82],
+      [0.66,  38, 224, 146],
+      [0.86, 148, 255, 202],
+      [1.00, 238, 255, 247]
+    ]
+  };
+
+  function buildPaletteLUT(stops) {
+    const r = new Uint8Array(256);
+    const g = new Uint8Array(256);
+    const b = new Uint8Array(256);
+    for (let i = 0; i < 256; i++) {
+      const t = i / 255;
+      let s0 = stops[0], s1 = stops[stops.length - 1];
+      for (let j = 0; j < stops.length - 1; j++) {
+        if (t >= stops[j][0] && t <= stops[j + 1][0]) {
+          s0 = stops[j];
+          s1 = stops[j + 1];
+          break;
+        }
+      }
+      const span = Math.max(1e-6, s1[0] - s0[0]);
+      const f = (t - s0[0]) / span;
+      r[i] = Math.round(s0[1] + (s1[1] - s0[1]) * f);
+      g[i] = Math.round(s0[2] + (s1[2] - s0[2]) * f);
+      b[i] = Math.round(s0[3] + (s1[3] - s0[3]) * f);
+    }
+    return { r, g, b };
+  }
+
+  const PALETTES = {
+    biolum: buildPaletteLUT(PALETTE_STOPS.biolum),
+    plasma: buildPaletteLUT(PALETTE_STOPS.plasma),
+    thermal: buildPaletteLUT(PALETTE_STOPS.thermal),
+    emerald: buildPaletteLUT(PALETTE_STOPS.emerald)
+  };
+
+  // =========================================================================
+  // 2. BLAZING 2D RADIX-2 FFT FOR CONTINUOUS LENIA (256x256)
+  // =========================================================================
+  class FFT2D {
+    constructor(n) {
+      this.n = n;
+      this.bits = Math.round(Math.log2(n));
+      this.bitRev = new Uint16Array(n);
+      for (let i = 0; i < n; i++) {
+        let rev = 0, x = i;
+        for (let b = 0; b < this.bits; b++) {
+          rev = (rev << 1) | (x & 1);
+          x >>= 1;
+        }
+        this.bitRev[i] = rev;
+      }
+      this.cosTable = new Float32Array(n >> 1);
+      this.sinTable = new Float32Array(n >> 1);
+      for (let i = 0; i < (n >> 1); i++) {
+        const ang = -2 * Math.PI * i / n;
+        this.cosTable[i] = Math.cos(ang);
+        this.sinTable[i] = Math.sin(ang);
+      }
+      this.tmpRe = new Float32Array(n);
+      this.tmpIm = new Float32Array(n);
+    }
+
+    fft1d(re, im, inverse) {
+      const n = this.n;
+      const rev = this.bitRev;
+      for (let i = 0; i < n; i++) {
+        const j = rev[i];
+        if (j > i) {
+          const tr = re[i]; re[i] = re[j]; re[j] = tr;
+          const ti = im[i]; im[i] = im[j]; im[j] = ti;
+        }
+      }
+      const cosT = this.cosTable;
+      const sinT = this.sinTable;
+      const sign = inverse ? -1 : 1;
+      for (let size = 2; size <= n; size <<= 1) {
+        const half = size >> 1;
+        const step = n / size;
+        for (let i = 0; i < n; i += size) {
+          let k = 0;
+          for (let j = i; j < i + half; j++) {
+            const wr = cosT[k];
+            const wi = sign * sinT[k];
+            const jp = j + half;
+            const tr = re[jp] * wr - im[jp] * wi;
+            const ti = re[jp] * wi + im[jp] * wr;
+            re[jp] = re[j] - tr;
+            im[jp] = im[j] - ti;
+            re[j] += tr;
+            im[j] += ti;
+            k += step;
+          }
+        }
+      }
+      if (inverse) {
+        const invN = 1 / n;
+        for (let i = 0; i < n; i++) {
+          re[i] *= invN;
+          im[i] *= invN;
+        }
+      }
+    }
+
+    transform2d(re, im, inverse) {
+      const n = this.n;
+      const tmpRe = this.tmpRe;
+      const tmpIm = this.tmpIm;
+      // Rows
+      for (let y = 0; y < n; y++) {
+        const off = y * n;
+        for (let x = 0; x < n; x++) {
+          tmpRe[x] = re[off + x];
+          tmpIm[x] = im[off + x];
+        }
+        this.fft1d(tmpRe, tmpIm, inverse);
+        for (let x = 0; x < n; x++) {
+          re[off + x] = tmpRe[x];
+          im[off + x] = tmpIm[x];
+        }
+      }
+      // Columns
+      for (let x = 0; x < n; x++) {
+        for (let y = 0; y < n; y++) {
+          const idx = y * n + x;
+          tmpRe[y] = re[idx];
+          tmpIm[y] = im[idx];
+        }
+        this.fft1d(tmpRe, tmpIm, inverse);
+        for (let y = 0; y < n; y++) {
+          const idx = y * n + x;
+          re[idx] = tmpRe[y];
+          im[idx] = tmpIm[y];
+        }
+      }
+    }
+  }
+
+  // =========================================================================
+  // 3. CONTINUOUS LENIA ORGANISM PATTERNS (Canonical Bert Chan Orbium & Kin)
+  // =========================================================================
+  // Authentic Orbium unicaudatus 20x20 state matrix (R=13, T=10, mu=0.15, sigma=0.015)
+  const ORBIUM_MATRIX = [
+    [0,0,0,0,0,0,0.1,0.14,0.1,0,0,0.03,0.03,0,0,0.3,0,0,0,0],
+    [0,0,0,0,0,0.08,0.24,0.3,0.3,0.18,0.14,0.15,0.16,0.15,0.09,0.2,0,0,0,0],
+    [0,0,0,0,0,0.15,0.34,0.44,0.46,0.38,0.18,0.14,0.11,0.13,0.19,0.18,0.45,0,0,0],
+    [0,0,0,0,0.06,0.13,0.39,0.5,0.5,0.37,0.06,0,0,0,0.02,0.16,0.68,0,0,0],
+    [0,0,0,0.11,0.17,0.17,0.33,0.4,0.38,0.28,0.14,0,0,0,0,0,0.18,0.42,0,0],
+    [0,0,0.09,0.18,0.13,0.06,0.08,0.26,0.32,0.32,0.27,0,0,0,0,0,0,0.82,0,0],
+    [0.27,0,0.16,0.12,0,0,0,0.25,0.38,0.44,0.45,0.34,0,0,0,0,0,0.22,0.17,0],
+    [0,0.07,0.2,0.02,0,0,0,0.31,0.48,0.57,0.6,0.57,0,0,0,0,0,0,0.49,0],
+    [0,0.59,0.19,0,0,0,0,0.2,0.57,0.69,0.76,0.76,0.49,0,0,0,0,0,0.36,0],
+    [0,0.58,0.19,0,0,0,0,0,0.67,0.83,0.9,0.92,0.87,0.12,0,0,0,0,0.22,0.07],
+    [0,0,0.46,0,0,0,0,0,0.7,0.93,1,1,1,0.61,0,0,0,0,0,0],
+    [0,0,0.47,0,0,0,0,0,0.65,0.94,1,1,1,0.87,0.25,0,0,0,0,0],
+    [0,0,0.24,0.15,0,0,0,0,0.39,0.82,1,1,1,0.97,0.56,0,0,0,0,0],
+    [0,0,0,0.27,0.17,0,0,0,0.14,0.62,0.94,1,1,0.99,0.74,0.12,0,0,0,0],
+    [0,0,0,0,0.31,0.21,0,0,0,0.38,0.74,0.92,0.97,0.93,0.75,0.25,0,0,0,0],
+    [0,0,0,0,0,0.26,0.27,0.12,0.03,0.16,0.47,0.71,0.81,0.78,0.59,0.16,0,0,0,0],
+    [0,0,0,0,0,0,0.17,0.26,0.21,0.19,0.29,0.44,0.54,0.52,0.34,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0.05,0.18,0.24,0.27,0.28,0.29,0.23,0.06,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0.09,0.15,0.15,0.1,0.03,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+  ];
+
+  // Smooth procedural Hydrogeminium / Geminium-style multi-lobe continuous glider seed
+  function buildRingCreature(size, asym, peakScale) {
+    const m = [];
+    const half = (size - 1) * 0.5;
+    for (let y = 0; y < size; y++) {
+      const row = [];
+      for (let x = 0; x < size; x++) {
+        const dx = (x - half) / half;
+        const dy = (y - half) / half;
+        const r = Math.hypot(dx, dy);
+        // Core + offset head lobe for directional swimming
+        const rHead = Math.hypot(dx - asym, dy * 1.05);
+        const rTail = Math.hypot(dx + asym * 0.9, dy * 0.95);
+        let v = Math.exp(-rHead * rHead * 3.1) * peakScale
+              + Math.exp(-Math.pow(rTail - 0.52, 2) * 18.0) * 0.58 * Math.exp(-r * r * 0.6);
+        if (r > 1.02) v = 0;
+        row.push(Math.min(1, Math.max(0, v)));
+      }
+      m.push(row);
+    }
+    return m;
+  }
+
+  function buildTwinCreature(size) {
+    const m = [];
+    const half = (size - 1) * 0.5;
+    for (let y = 0; y < size; y++) {
+      const row = [];
+      for (let x = 0; x < size; x++) {
+        const dx = (x - half) / half;
+        const dy = (y - half) / half;
+        const r1 = Math.hypot(dx - 0.34, dy - 0.10);
+        const r2 = Math.hypot(dx + 0.34, dy + 0.10);
+        const bridge = Math.exp(-(dx * dx * 3.5 + dy * dy * 12.0)) * 0.45;
+        let v = Math.exp(-r1 * r1 * 5.2) * 0.96 + Math.exp(-r2 * r2 * 5.2) * 0.88 + bridge;
+        if (Math.hypot(dx, dy) > 1.05) v = 0;
+        row.push(Math.min(1, Math.max(0, v)));
+      }
+      m.push(row);
+    }
+    return m;
+  }
+
+  function buildSolitonRing(size) {
+    const m = [];
+    const half = (size - 1) * 0.5;
+    for (let y = 0; y < size; y++) {
+      const row = [];
+      for (let x = 0; x < size; x++) {
+        const dx = (x - half) / half;
+        const dy = (y - half) / half;
+        const r = Math.hypot(dx, dy);
+        let v = Math.exp(-Math.pow(r - 0.42, 2) * 14.0) * 0.95 + Math.exp(-r * r * 6.5) * 0.5;
+        if (r > 1.0) v = 0;
+        row.push(Math.min(1, Math.max(0, v)));
+      }
+      m.push(row);
+    }
+    return m;
+  }
+
+  function rotateMatrixFloat(mat, turns) {
+    let cur = mat;
+    const t = ((turns % 4) + 4) % 4;
+    for (let k = 0; k < t; k++) {
+      const h = cur.length, w = cur[0].length;
+      const next = Array.from({ length: w }, () => new Array(h));
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          next[x][h - 1 - y] = cur[y][x];
+        }
+      }
+      cur = next;
+    }
+    return cur;
+  }
+
+  // =========================================================================
+  // 4. DISCRETE PATTERNS (GAME OF LIFE, BRIAN'S BRAIN, WIREWORLD)
+  // =========================================================================
+  function parseAsciiPattern(lines, mapFn) {
+    const h = lines.length;
+    const w = Math.max(...lines.map(l => l.length));
+    const grid = [];
+    for (let y = 0; y < h; y++) {
+      const row = new Uint8Array(w);
+      const line = lines[y];
+      for (let x = 0; x < line.length; x++) {
+        row[x] = mapFn(line[x]);
+      }
+      grid.push(row);
+    }
+    return { w, h, grid };
+  }
+
+  function rotateDiscretePattern(pat, turns) {
+    let { w, h, grid } = pat;
+    const t = ((turns % 4) + 4) % 4;
+    for (let k = 0; k < t; k++) {
+      const next = Array.from({ length: w }, () => new Uint8Array(h));
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          next[x][h - 1 - y] = grid[y][x];
+        }
+      }
+      grid = next;
+      const tmp = w; w = h; h = tmp;
+    }
+    return { w, h, grid };
+  }
+
+  const lifeMap = c => (c === 'O' || c === '#') ? 1 : 0;
+  const brainMap = c => c === 'O' ? 2 : (c === 'd' ? 1 : 0);
+  const wireMap = c => c === '#' ? 3 : (c === 'H' ? 1 : (c === 't' ? 2 : 0));
+
+  const LIFE_STAMPS = {
+    gosper: {
+      name: 'Gosper Glider Gun',
+      sub: 'Period-30 emitter',
+      pat: parseAsciiPattern([
+        '........................O...........',
+        '......................O.O...........',
+        '............OO......OO............OO',
+        '...........O...O....OO............OO',
+        'OO........O.....O...OO..............',
+        'OO........O...O.OO....O.O...........',
+        '..........O.....O.......O...........',
+        '...........O...O....................',
+        '............OO......................'
+      ], lifeMap)
+    },
+    pulsar: {
+      name: 'Pulsar',
+      sub: 'Period-3 starburst',
+      pat: parseAsciiPattern([
+        '..OOO...OOO..',
+        '.............',
+        'O....O.O....O',
+        'O....O.O....O',
+        'O....O.O....O',
+        '..OOO...OOO..',
+        '.............',
+        '..OOO...OOO..',
+        'O....O.O....O',
+        'O....O.O....O',
+        'O....O.O....O',
+        '.............',
+        '..OOO...OOO..'
+      ], lifeMap)
+    },
+    pentadecathlon: {
+      name: 'Pentadecathlon',
+      sub: 'Period-15 oscillator',
+      pat: parseAsciiPattern([
+        '..O....O..',
+        'OO.OOOO.OO',
+        '..O....O..'
+      ], lifeMap)
+    },
+    rpentomino: {
+      name: 'R-Pentomino',
+      sub: '1103-gen methuselah',
+      pat: parseAsciiPattern([
+        '.OO',
+        'OO.',
+        '.O.'
+      ], lifeMap)
+    },
+    acorn: {
+      name: 'Acorn',
+      sub: '5206-gen oak tree',
+      pat: parseAsciiPattern([
+        '.O.....',
+        '...O...',
+        'OO..OOO'
+      ], lifeMap)
+    },
+    lwss: {
+      name: 'LWSS Fleet',
+      sub: '3 spaceships',
+      pat: parseAsciiPattern([
+        '.O..O......',
+        'O..........',
+        'O...O......',
+        'OOOO.......',
+        '...........',
+        '......O..O.',
+        '.....O.....',
+        '.....O...O.',
+        '.....OOOO..',
+        '...........',
+        '.O..O......',
+        'O..........',
+        'O...O......',
+        'OOOO.......'
+      ], lifeMap)
+    }
+  };
+
+  const BRAIN_STAMPS = {
+    diamond: {
+      name: 'Diamond Rake',
+      sub: '4-way spark emitter',
+      pat: parseAsciiPattern([
+        '...OO...',
+        '..O..O..',
+        '.O.dd.O.',
+        'O.d..d.O',
+        'O.d..d.O',
+        '.O.dd.O.',
+        '..O..O..',
+        '...OO...'
+      ], brainMap)
+    },
+    glider: {
+      name: 'Brain Glider',
+      sub: 'c/2 diagonal ship',
+      pat: parseAsciiPattern([
+        '.OO.',
+        'OddO',
+        '.dd.'
+      ], brainMap)
+    },
+    cross: {
+      name: 'Spark Cross',
+      sub: 'Firework bloom',
+      pat: parseAsciiPattern([
+        '...OO...',
+        '...dd...',
+        '........',
+        'Od....dO',
+        'Od....dO',
+        '........',
+        '...dd...',
+        '...OO...'
+      ], brainMap)
+    },
+    ring: {
+      name: 'Crystal Seed',
+      sub: 'Expanding mandala',
+      pat: parseAsciiPattern([
+        '..OOO..',
+        '.O...O.',
+        'O.d.d.O',
+        'O.....O',
+        'O.d.d.O',
+        '.O...O.',
+        '..OOO..'
+      ], brainMap)
+    }
+  };
+
+  const WIRE_STAMPS = {
+    clock: {
+      name: 'Clock Loop',
+      sub: 'Period-12 pulse',
+      pat: parseAsciiPattern([
+        '.#Ht#.',
+        '#....#',
+        '.####.'
+      ], wireMap)
+    },
+    diode: {
+      name: 'Forward Diode',
+      sub: 'One-way valve L→R',
+      pat: parseAsciiPattern([
+        '..##..',
+        '###.##',
+        '..##..'
+      ], wireMap)
+    },
+    xor: {
+      name: 'XOR Gate',
+      sub: '2-input digital XOR',
+      pat: parseAsciiPattern([
+        '###.....',
+        '...#....',
+        '..####..',
+        '..#..###',
+        '..####..',
+        '...#....',
+        '###.....'
+      ], wireMap)
+    },
+    pulse: {
+      name: 'Pulse Segment',
+      sub: 'Head + tail wire',
+      pat: parseAsciiPattern([
+        '##tH##'
+      ], wireMap)
+    }
+  };
+
+  const LENIA_STAMPS = {
+    orbium: {
+      name: 'Orbium Glider',
+      sub: 'Canonical swimmer',
+      mat: ORBIUM_MATRIX
+    },
+    twin: {
+      name: 'Geminium Twin',
+      sub: 'Dual-core cell',
+      mat: buildTwinCreature(24)
+    },
+    hydro: {
+      name: 'Hydro Swimmer',
+      sub: 'Asymmetric crescent',
+      mat: buildRingCreature(22, 0.28, 0.96)
+    },
+    soliton: {
+      name: 'Ring Soliton',
+      sub: 'Pulsing membrane',
+      mat: buildSolitonRing(22)
+    }
+  };
+
+  // =========================================================================
+  // 5. CONTINUOUS LENIA ENGINE (FFT-ACCELERATED 256×256)
+  // =========================================================================
+  class LeniaEngine {
+    constructor(n = 256) {
+      this.w = n;
+      this.h = n;
+      this.n = n;
+      this.size = n * n;
+      this.fft = new FFT2D(n);
+      this.grid = new Float32Array(this.size);
+      this.re = new Float32Array(this.size);
+      this.im = new Float32Array(this.size);
+      this.kernelRe = new Float32Array(this.size);
+      this.kernelIm = new Float32Array(this.size);
+
+      this.R = 13;
+      this.mu = 0.150;
+      this.sigma = 0.017;
+      this.dt = 0.10;
+      this.peaks = [1];
+
+      this.gen = 0;
+      this.time = 0;
+      this.biomass = 0;
+      this.activity = 0;
+
+      this.offscreen = document.createElement('canvas');
+      this.offscreen.width = n;
+      this.offscreen.height = n;
+      this.octx = this.offscreen.getContext('2d');
+      this.imgData = this.octx.createImageData(n, n);
+
+      this.buildKernel();
+    }
+
+    kernelCore(r) {
+      if (r <= 0 || r >= 1) return 0;
+      return Math.exp(4.0 - 1.0 / (r * (1.0 - r)));
+    }
+
+    kernelShell(rNorm) {
+      if (rNorm <= 0 || rNorm >= 1) return 0;
+      const k = this.peaks.length;
+      const br = k * rNorm;
+      const idx = Math.min(k - 1, Math.floor(br));
+      const frac = br - idx;
+      return this.peaks[idx] * this.kernelCore(frac);
+    }
+
+    buildKernel() {
+      const n = this.n;
+      const R = this.R;
+      const kr = this.kernelRe;
+      const ki = this.kernelIm;
+      kr.fill(0);
+      ki.fill(0);
+
+      let sum = 0;
+      for (let dy = -R; dy <= R; dy++) {
+        for (let dx = -R; dx <= R; dx++) {
+          const dist = Math.hypot(dx, dy);
+          if (dist < R) {
+            const val = this.kernelShell(dist / R);
+            if (val > 0) {
+              const x = (dx + n) & (n - 1);
+              const y = (dy + n) & (n - 1);
+              kr[y * n + x] = val;
+              sum += val;
+            }
+          }
+        }
+      }
+      if (sum > 0) {
+        const inv = 1 / sum;
+        for (let i = 0; i < this.size; i++) kr[i] *= inv;
+      }
+      this.fft.transform2d(kr, ki, false);
+    }
+
+    clear() {
+      this.grid.fill(0);
+      this.gen = 0;
+      this.time = 0;
+      this.recomputeStats(0);
+    }
+
+    stampMatrix(mat, cx, cy, turns = 0, scale = 1.0) {
+      const m = rotateMatrixFloat(mat, turns);
+      const mh = m.length;
+      const mw = m[0].length;
+      const n = this.n;
+      const x0 = Math.round(cx - mw * 0.5);
+      const y0 = Math.round(cy - mh * 0.5);
+      for (let y = 0; y < mh; y++) {
+        const gy = ((y0 + y) % n + n) % n;
+        const row = m[y];
+        for (let x = 0; x < mw; x++) {
+          const v = row[x] * scale;
+          if (v > 0.001) {
+            const gx = ((x0 + x) % n + n) % n;
+            const idx = gy * n + gx;
+            this.grid[idx] = Math.min(1, Math.max(this.grid[idx], v));
+          }
+        }
+      }
+      this.recomputeStats(0);
+    }
+
+    paint(cx, cy, radius, erase, strength = 0.85) {
+      const n = this.n;
+      const r = Math.max(2, radius * 1.15);
+      const rInt = Math.ceil(r);
+      const x0 = Math.round(cx);
+      const y0 = Math.round(cy);
+      for (let dy = -rInt; dy <= rInt; dy++) {
+        for (let dx = -rInt; dx <= rInt; dx++) {
+          const d = Math.hypot(dx, dy) / r;
+          if (d >= 1) continue;
+          const falloff = Math.exp(-d * d * 2.8);
+          const gx = ((x0 + dx) % n + n) % n;
+          const gy = ((y0 + dy) % n + n) % n;
+          const idx = gy * n + gx;
+          if (erase) {
+            this.grid[idx] = Math.max(0, this.grid[idx] - falloff * 0.65);
+          } else {
+            this.grid[idx] = Math.min(1, this.grid[idx] + falloff * strength * 0.36);
+          }
+        }
+      }
+      this.recomputeStats(0);
+    }
+
+    seedSoup(density = 0.28) {
+      this.clear();
+      const n = this.n;
+      const blobs = Math.round(65 + density * 90);
+      for (let i = 0; i < blobs; i++) {
+        const bx = Math.random() * n;
+        const by = Math.random() * n;
+        const br = 5 + Math.random() * 9;
+        const amp = 0.55 + Math.random() * 0.45;
+        const rInt = Math.ceil(br);
+        for (let dy = -rInt; dy <= rInt; dy++) {
+          for (let dx = -rInt; dx <= rInt; dx++) {
+            const d = Math.hypot(dx, dy) / br;
+            if (d >= 1) continue;
+            const gx = ((Math.round(bx) + dx) % n + n) % n;
+            const gy = ((Math.round(by) + dy) % n + n) % n;
+            const idx = gy * n + gx;
+            const v = amp * Math.exp(-d * d * 2.4);
+            this.grid[idx] = Math.min(1, Math.max(this.grid[idx], v));
+          }
+        }
+      }
+      this.recomputeStats(0);
+    }
+
+    loadPreset(key) {
+      this.clear();
+      if (key === 'orbium') {
+        this.R = 13; this.mu = 0.150; this.sigma = 0.017; this.dt = 0.10; this.peaks = [1];
+        this.buildKernel();
+        // A graceful fleet of 6 canonical Orbium gliders gliding at 4 distinct orientations!
+        this.stampMatrix(ORBIUM_MATRIX, 78, 84, 0, 1.0);
+        this.stampMatrix(ORBIUM_MATRIX, 178, 76, 1, 1.0);
+        this.stampMatrix(ORBIUM_MATRIX, 182, 182, 2, 1.0);
+        this.stampMatrix(ORBIUM_MATRIX, 76, 180, 3, 1.0);
+        this.stampMatrix(ORBIUM_MATRIX, 128, 128, 0, 1.0);
+        this.stampMatrix(ORBIUM_MATRIX, 128, 42, 2, 1.0);
+      } else if (key === 'geminium') {
+        this.R = 13; this.mu = 0.146; this.sigma = 0.017; this.dt = 0.10; this.peaks = [1];
+        this.buildKernel();
+        // Twin colonies & interacting Orbium pairs that split, orbit, and pulse
+        const twin = LENIA_STAMPS.twin.mat;
+        this.stampMatrix(twin, 96, 108, 0, 1.0);
+        this.stampMatrix(twin, 162, 148, 2, 1.0);
+        this.stampMatrix(ORBIUM_MATRIX, 64, 178, 1, 1.0);
+        this.stampMatrix(ORBIUM_MATRIX, 192, 74, 3, 1.0);
+        this.stampMatrix(ORBIUM_MATRIX, 128, 128, 0, 1.0);
+      } else if (key === 'hydro') {
+        // Multi-shell continuous organism ecosystem (dual concentric kernel rings)
+        this.R = 15; this.mu = 0.255; this.sigma = 0.036; this.dt = 0.10; this.peaks = [1, 0.5];
+        this.buildKernel();
+        const hydro = LENIA_STAMPS.hydro.mat;
+        const sol = LENIA_STAMPS.soliton.mat;
+        this.stampMatrix(hydro, 88, 96, 0, 1.0);
+        this.stampMatrix(hydro, 168, 98, 2, 1.0);
+        this.stampMatrix(hydro, 128, 166, 1, 1.0);
+        this.stampMatrix(sol, 128, 112, 0, 1.0);
+        this.stampMatrix(sol, 72, 170, 0, 0.95);
+        this.stampMatrix(sol, 184, 168, 0, 0.95);
+      } else {
+        // Primordial Soup tuned so dense gliders, rings, and colonies self-organize!
+        this.R = 13; this.mu = 0.156; this.sigma = 0.022; this.dt = 0.10; this.peaks = [1];
+        this.buildKernel();
+        this.seedSoup(0.32);
+      }
+      this.recomputeStats(0);
+    }
+
+    recomputeStats(deltaSum) {
+      let mass = 0;
+      const g = this.grid;
+      for (let i = 0; i < this.size; i++) mass += g[i];
+      this.biomass = mass;
+      this.activity = mass > 1 ? Math.min(100, (deltaSum / Math.max(1, mass)) * 220) : 0;
+    }
+
+    step() {
+      const size = this.size;
+      const g = this.grid;
+      const re = this.re;
+      const im = this.im;
+      const kr = this.kernelRe;
+      const ki = this.kernelIm;
+
+      // Copy real field into complex buffer
+      for (let i = 0; i < size; i++) {
+        re[i] = g[i];
+        im[i] = 0;
+      }
+
+      // Forward 2D FFT
+      this.fft.transform2d(re, im, false);
+
+      // Pointwise complex multiply: F(A) * F(K)
+      for (let i = 0; i < size; i++) {
+        const ar = re[i], ai = im[i];
+        const br = kr[i], bi = ki[i];
+        re[i] = ar * br - ai * bi;
+        im[i] = ar * bi + ai * br;
+      }
+
+      // Inverse 2D FFT -> re holds potential U = K * A
+      this.fft.transform2d(re, im, true);
+
+      // Growth function & Euler update
+      const mu = this.mu;
+      const inv2s2 = 1.0 / (2.0 * this.sigma * this.sigma);
+      const dt = this.dt;
+      let mass = 0;
+      let deltaSum = 0;
+
+      for (let i = 0; i < size; i++) {
+        const d = re[i] - mu;
+        const growth = 2.0 * Math.exp(-(d * d) * inv2s2) - 1.0;
+        const prev = g[i];
+        let next = prev + dt * growth;
+        if (next < 0) next = 0;
+        else if (next > 1) next = 1;
+        g[i] = next;
+        mass += next;
+        deltaSum += Math.abs(next - prev);
+      }
+
+      this.gen++;
+      this.time += dt;
+      this.biomass = mass;
+      this.activity = mass > 1 ? Math.min(100, (deltaSum / Math.max(1, mass)) * 240) : 0;
+    }
+
+    renderToOffscreen(lut) {
+      const data = this.imgData.data;
+      const g = this.grid;
+      const lr = lut.r, lg = lut.g, lb = lut.b;
+      for (let i = 0, p = 0; i < this.size; i++, p += 4) {
+        const v = g[i];
+        // Slight gamma lift makes translucent Lenia membranes glow richly
+        const idx = v <= 0.002 ? 0 : Math.min(255, (Math.pow(v, 0.78) * 255) | 0);
+        data[p]     = lr[idx];
+        data[p + 1] = lg[idx];
+        data[p + 2] = lb[idx];
+        data[p + 3] = 255;
+      }
+      this.octx.putImageData(this.imgData, 0, 0);
+    }
+  }
+
+  // =========================================================================
+  // 6. CONWAY'S GAME OF LIFE + CUSTOM B/S ENGINE (256×160)
+  // =========================================================================
+  class LifeEngine {
+    constructor(w = 256, h = 160) {
+      this.w = w;
+      this.h = h;
+      this.size = w * h;
+      this.cur = new Uint8Array(this.size);
+      this.nxt = new Uint8Array(this.size);
+      this.age = new Uint16Array(this.size);
+      this.trail = new Float32Array(this.size);
+
+      this.birth = new Uint8Array(9);
+      this.survive = new Uint8Array(9);
+      this.setRule('B3/S23');
+      this.wrap = true;
+
+      this.gen = 0;
+      this.population = 0;
+      this.activity = 0;
+
+      this.offscreen = document.createElement('canvas');
+      this.offscreen.width = w;
+      this.offscreen.height = h;
+      this.octx = this.offscreen.getContext('2d');
+      this.imgData = this.octx.createImageData(w, h);
+    }
+
+    setRule(ruleStr) {
+      this.birth.fill(0);
+      this.survive.fill(0);
+      const m = ruleStr.match(/B([0-8]*)\/S([0-8]*)/i);
+      if (m) {
+        for (const ch of m[1]) this.birth[+ch] = 1;
+        for (const ch of m[2]) this.survive[+ch] = 1;
+      }
+    }
+
+    getRuleString() {
+      let b = '', s = '';
+      for (let i = 0; i <= 8; i++) {
+        if (this.birth[i]) b += i;
+        if (this.survive[i]) s += i;
+      }
+      return `B${b}/S${s}`;
+    }
+
+    clear() {
+      this.cur.fill(0);
+      this.nxt.fill(0);
+      this.age.fill(0);
+      this.trail.fill(0);
+      this.gen = 0;
+      this.population = 0;
+      this.activity = 0;
+    }
+
+    stampPattern(pat, cx, cy, turns = 0) {
+      const p = rotateDiscretePattern(pat, turns);
+      const x0 = Math.round(cx - p.w * 0.5);
+      const y0 = Math.round(cy - p.h * 0.5);
+      for (let y = 0; y < p.h; y++) {
+        for (let x = 0; x < p.w; x++) {
+          if (!p.grid[y][x]) continue;
+          let gx = x0 + x, gy = y0 + y;
+          if (this.wrap) {
+            gx = ((gx % this.w) + this.w) % this.w;
+            gy = ((gy % this.h) + this.h) % this.h;
+          } else if (gx < 0 || gx >= this.w || gy < 0 || gy >= this.h) {
+            continue;
+          }
+          const idx = gy * this.w + gx;
+          this.cur[idx] = 1;
+          this.age[idx] = 1;
+          this.trail[idx] = 1.0;
+        }
+      }
+      this.recount();
+    }
+
+    paint(cx, cy, radius, erase, density = 0.85) {
+      const r = Math.max(0.6, radius * 0.65);
+      const rInt = Math.ceil(r);
+      const x0 = Math.round(cx);
+      const y0 = Math.round(cy);
+      for (let dy = -rInt; dy <= rInt; dy++) {
+        for (let dx = -rInt; dx <= rInt; dx++) {
+          if (dx * dx + dy * dy > r * r) continue;
+          let gx = x0 + dx, gy = y0 + dy;
+          if (this.wrap) {
+            gx = ((gx % this.w) + this.w) % this.w;
+            gy = ((gy % this.h) + this.h) % this.h;
+          } else if (gx < 0 || gx >= this.w || gy < 0 || gy >= this.h) {
+            continue;
+          }
+          const idx = gy * this.w + gx;
+          if (erase) {
+            this.cur[idx] = 0;
+            this.age[idx] = 0;
+            this.trail[idx] = 0;
+          } else if (rInt <= 1 || Math.random() < density * 0.85) {
+            this.cur[idx] = 1;
+            this.age[idx] = 1;
+            this.trail[idx] = 1.0;
+          }
+        }
+      }
+      this.recount();
+    }
+
+    seedSoup(density = 0.28) {
+      this.clear();
+      const padX = Math.floor(this.w * 0.14);
+      const padY = Math.floor(this.h * 0.14);
+      for (let y = padY; y < this.h - padY; y++) {
+        for (let x = padX; x < this.w - padX; x++) {
+          if (Math.random() < density) {
+            const idx = y * this.w + x;
+            this.cur[idx] = 1;
+            this.age[idx] = 1;
+            this.trail[idx] = 1.0;
+          }
+        }
+      }
+      this.recount();
+    }
+
+    loadPreset(key) {
+      this.clear();
+      if (key === 'gosper') {
+        this.setRule('B3/S23');
+        this.stampPattern(LIFE_STAMPS.gosper.pat, 54, 46, 0);
+        this.stampPattern(LIFE_STAMPS.gosper.pat, 198, 46, 0);
+        this.stampPattern(LIFE_STAMPS.pulsar.pat, 128, 118, 0);
+      } else if (key === 'armada') {
+        this.setRule('B3/S23');
+        this.stampPattern(LIFE_STAMPS.lwss.pat, 78, 52, 0);
+        this.stampPattern(LIFE_STAMPS.lwss.pat, 174, 108, 2);
+        this.stampPattern(LIFE_STAMPS.pentadecathlon.pat, 128, 80, 0);
+      } else if (key === 'methuselah') {
+        this.setRule('B3/S23');
+        this.stampPattern(LIFE_STAMPS.rpentomino.pat, 96, 80, 0);
+        this.stampPattern(LIFE_STAMPS.acorn.pat, 166, 82, 0);
+      } else if (key === 'oscillators') {
+        this.setRule('B3/S23');
+        this.stampPattern(LIFE_STAMPS.pulsar.pat, 80, 80, 0);
+        this.stampPattern(LIFE_STAMPS.pulsar.pat, 176, 80, 0);
+        this.stampPattern(LIFE_STAMPS.pentadecathlon.pat, 128, 48, 0);
+        this.stampPattern(LIFE_STAMPS.pentadecathlon.pat, 128, 112, 0);
+      } else {
+        this.seedSoup(0.28);
+      }
+      this.recount();
+    }
+
+    recount() {
+      let pop = 0;
+      for (let i = 0; i < this.size; i++) pop += this.cur[i];
+      this.population = pop;
+    }
+
+    step(useTrails) {
+      const w = this.w, h = this.h;
+      const cur = this.cur, nxt = this.nxt;
+      const age = this.age, trail = this.trail;
+      const birth = this.birth, survive = this.survive;
+      const wrap = this.wrap;
+
+      let pop = 0;
+      let changed = 0;
+
+      for (let y = 0; y < h; y++) {
+        const ym = y === 0 ? (wrap ? h - 1 : -1) : y - 1;
+        const yp = y === h - 1 ? (wrap ? 0 : -1) : y + 1;
+        const rowOff = y * w;
+        const rUp = ym >= 0 ? ym * w : -1;
+        const rDn = yp >= 0 ? yp * w : -1;
+
+        for (let x = 0; x < w; x++) {
+          const xm = x === 0 ? (wrap ? w - 1 : -1) : x - 1;
+          const xp = x === w - 1 ? (wrap ? 0 : -1) : x + 1;
+
+          let n = 0;
+          if (rUp >= 0) {
+            if (xm >= 0) n += cur[rUp + xm];
+            n += cur[rUp + x];
+            if (xp >= 0) n += cur[rUp + xp];
+          }
+          if (xm >= 0) n += cur[rowOff + xm];
+          if (xp >= 0) n += cur[rowOff + xp];
+          if (rDn >= 0) {
+            if (xm >= 0) n += cur[rDn + xm];
+            n += cur[rDn + x];
+            if (xp >= 0) n += cur[rDn + xp];
+          }
+
+          const idx = rowOff + x;
+          const alive = cur[idx];
+          const nextAlive = alive ? survive[n] : birth[n];
+          nxt[idx] = nextAlive;
+          if (nextAlive !== alive) changed++;
+          if (nextAlive) {
+            pop++;
+            age[idx] = alive ? Math.min(600, age[idx] + 1) : 1;
+            trail[idx] = 1.0;
+          } else {
+            age[idx] = 0;
+            trail[idx] = useTrails ? trail[idx] * 0.87 : 0;
+            if (trail[idx] < 0.015) trail[idx] = 0;
+          }
+        }
+      }
+
+      this.cur = nxt;
+      this.nxt = cur;
+      this.gen++;
+      this.population = pop;
+      this.activity = (changed / this.size) * 100;
+    }
+
+    renderToOffscreen(lut, useTrails) {
+      const data = this.imgData.data;
+      const cur = this.cur, age = this.age, trail = this.trail;
+      const lr = lut.r, lg = lut.g, lb = lut.b;
+      for (let i = 0, p = 0; i < this.size; i++, p += 4) {
+        let idx = 0;
+        if (cur[i]) {
+          // Young newly-born cells blaze brightest (255), mature steady cells settle to warm luminous glow (185)
+          const a = age[i];
+          idx = a < 20 ? 255 - a * 3 : 195;
+        } else if (useTrails && trail[i] > 0.015) {
+          idx = Math.min(145, (trail[i] * 145) | 0);
+        }
+        data[p]     = lr[idx];
+        data[p + 1] = lg[idx];
+        data[p + 2] = lb[idx];
+        data[p + 3] = 255;
+      }
+      this.octx.putImageData(this.imgData, 0, 0);
+    }
+  }
+
+  // =========================================================================
+  // 7. BRIAN'S BRAIN 3-STATE EXCITABLE AUTOMATON (256×160)
+  // =========================================================================
+  class BrainEngine {
+    constructor(w = 256, h = 160) {
+      this.w = w;
+      this.h = h;
+      this.size = w * h;
+      this.cur = new Uint8Array(this.size); // 0=Off, 1=Dying, 2=Firing
+      this.nxt = new Uint8Array(this.size);
+      this.trail = new Float32Array(this.size);
+      this.wrap = true;
+
+      this.gen = 0;
+      this.population = 0;
+      this.activity = 0;
+
+      this.offscreen = document.createElement('canvas');
+      this.offscreen.width = w;
+      this.offscreen.height = h;
+      this.octx = this.offscreen.getContext('2d');
+      this.imgData = this.octx.createImageData(w, h);
+    }
+
+    clear() {
+      this.cur.fill(0);
+      this.nxt.fill(0);
+      this.trail.fill(0);
+      this.gen = 0;
+      this.population = 0;
+      this.activity = 0;
+    }
+
+    stampPattern(pat, cx, cy, turns = 0) {
+      const p = rotateDiscretePattern(pat, turns);
+      const x0 = Math.round(cx - p.w * 0.5);
+      const y0 = Math.round(cy - p.h * 0.5);
+      for (let y = 0; y < p.h; y++) {
+        for (let x = 0; x < p.w; x++) {
+          const v = p.grid[y][x];
+          if (!v) continue;
+          let gx = x0 + x, gy = y0 + y;
+          if (this.wrap) {
+            gx = ((gx % this.w) + this.w) % this.w;
+            gy = ((gy % this.h) + this.h) % this.h;
+          } else if (gx < 0 || gx >= this.w || gy < 0 || gy >= this.h) continue;
+          const idx = gy * this.w + gx;
+          this.cur[idx] = v;
+          this.trail[idx] = v === 2 ? 1.0 : 0.5;
+        }
+      }
+      this.recount();
+    }
+
+    paint(cx, cy, radius, erase, density = 0.85) {
+      const r = Math.max(0.8, radius * 0.65);
+      const rInt = Math.ceil(r);
+      const x0 = Math.round(cx);
+      const y0 = Math.round(cy);
+      for (let dy = -rInt; dy <= rInt; dy++) {
+        for (let dx = -rInt; dx <= rInt; dx++) {
+          if (dx * dx + dy * dy > r * r) continue;
+          let gx = x0 + dx, gy = y0 + dy;
+          if (this.wrap) {
+            gx = ((gx % this.w) + this.w) % this.w;
+            gy = ((gy % this.h) + this.h) % this.h;
+          } else if (gx < 0 || gx >= this.w || gy < 0 || gy >= this.h) continue;
+          const idx = gy * this.w + gx;
+          if (erase) {
+            this.cur[idx] = 0;
+            this.trail[idx] = 0;
+          } else if (Math.random() < density * 0.55) {
+            this.cur[idx] = 2;
+            this.trail[idx] = 1.0;
+          }
+        }
+      }
+      this.recount();
+    }
+
+    seedSoup(density = 0.16) {
+      this.clear();
+      const cx = this.w >> 1, cy = this.h >> 1;
+      for (let y = cy - 36; y <= cy + 36; y++) {
+        for (let x = cx - 54; x <= cx + 54; x++) {
+          if (Math.random() < density) {
+            const idx = y * this.w + x;
+            this.cur[idx] = 2;
+            this.trail[idx] = 1.0;
+          }
+        }
+      }
+      this.recount();
+    }
+
+    loadPreset(key) {
+      this.clear();
+      const cx = this.w >> 1, cy = this.h >> 1;
+      if (key === 'fireworks') {
+        this.stampPattern(BRAIN_STAMPS.diamond.pat, cx, cy, 0);
+        this.stampPattern(BRAIN_STAMPS.cross.pat, cx - 38, cy, 0);
+        this.stampPattern(BRAIN_STAMPS.cross.pat, cx + 38, cy, 0);
+      } else if (key === 'highway') {
+        for (let k = -2; k <= 2; k++) {
+          this.stampPattern(BRAIN_STAMPS.glider.pat, cx + k * 24, cy - 28, 0);
+          this.stampPattern(BRAIN_STAMPS.glider.pat, cx + k * 24, cy + 28, 2);
+        }
+        this.stampPattern(BRAIN_STAMPS.diamond.pat, cx, cy, 0);
+      } else if (key === 'mandala') {
+        this.stampPattern(BRAIN_STAMPS.ring.pat, cx, cy, 0);
+        this.stampPattern(BRAIN_STAMPS.ring.pat, cx - 22, cy - 22, 0);
+        this.stampPattern(BRAIN_STAMPS.ring.pat, cx + 22, cy - 22, 0);
+        this.stampPattern(BRAIN_STAMPS.ring.pat, cx - 22, cy + 22, 0);
+        this.stampPattern(BRAIN_STAMPS.ring.pat, cx + 22, cy + 22, 0);
+      } else {
+        this.seedSoup(0.18);
+      }
+      this.recount();
+    }
+
+    recount() {
+      let pop = 0;
+      for (let i = 0; i < this.size; i++) {
+        if (this.cur[i] === 2) pop++;
+      }
+      this.population = pop;
+    }
+
+    step(useTrails) {
+      const w = this.w, h = this.h;
+      const cur = this.cur, nxt = this.nxt, trail = this.trail;
+      const wrap = this.wrap;
+      let pop = 0;
+      let changed = 0;
+
+      for (let y = 0; y < h; y++) {
+        const ym = y === 0 ? (wrap ? h - 1 : -1) : y - 1;
+        const yp = y === h - 1 ? (wrap ? 0 : -1) : y + 1;
+        const rowOff = y * w;
+        const rUp = ym >= 0 ? ym * w : -1;
+        const rDn = yp >= 0 ? yp * w : -1;
+
+        for (let x = 0; x < w; x++) {
+          const idx = rowOff + x;
+          const st = cur[idx];
+          let ns = 0;
+          if (st === 2) {
+            ns = 1;
+          } else if (st === 1) {
+            ns = 0;
+          } else {
+            const xm = x === 0 ? (wrap ? w - 1 : -1) : x - 1;
+            const xp = x === w - 1 ? (wrap ? 0 : -1) : x + 1;
+            let on = 0;
+            if (rUp >= 0) {
+              if (xm >= 0 && cur[rUp + xm] === 2) on++;
+              if (cur[rUp + x] === 2) on++;
+              if (xp >= 0 && cur[rUp + xp] === 2) on++;
+            }
+            if (xm >= 0 && cur[rowOff + xm] === 2) on++;
+            if (xp >= 0 && cur[rowOff + xp] === 2) on++;
+            if (rDn >= 0) {
+              if (xm >= 0 && cur[rDn + xm] === 2) on++;
+              if (cur[rDn + x] === 2) on++;
+              if (xp >= 0 && cur[rDn + xp] === 2) on++;
+            }
+            if (on === 2) ns = 2;
+          }
+          nxt[idx] = ns;
+          if (ns !== st) changed++;
+          if (ns === 2) {
+            pop++;
+            trail[idx] = 1.0;
+          } else if (ns === 1) {
+            trail[idx] = 0.65;
+          } else {
+            trail[idx] = useTrails ? trail[idx] * 0.78 : 0;
+            if (trail[idx] < 0.02) trail[idx] = 0;
+          }
+        }
+      }
+
+      this.cur = nxt;
+      this.nxt = cur;
+      this.gen++;
+      this.population = pop;
+      this.activity = (changed / this.size) * 100;
+    }
+
+    renderToOffscreen(lut, useTrails) {
+      const data = this.imgData.data;
+      const cur = this.cur, trail = this.trail;
+      const lr = lut.r, lg = lut.g, lb = lut.b;
+      for (let i = 0, p = 0; i < this.size; i++, p += 4) {
+        const st = cur[i];
+        if (st === 2) {
+          // Electric firing head
+          data[p]     = lr[250];
+          data[p + 1] = lg[250];
+          data[p + 2] = lb[250];
+        } else if (st === 1) {
+          // Refractory indigo tail
+          data[p]     = Math.min(255, (lr[115] * 0.8 + 48) | 0);
+          data[p + 1] = Math.min(255, (lg[115] * 0.65 + 24) | 0);
+          data[p + 2] = Math.min(255, (lb[115] * 0.95 + 88) | 0);
+        } else if (useTrails && trail[i] > 0.02) {
+          const idx = (trail[i] * 78) | 0;
+          data[p]     = lr[idx];
+          data[p + 1] = lg[idx];
+          data[p + 2] = lb[idx];
+        } else {
+          data[p]     = 4;
+          data[p + 1] = 7;
+          data[p + 2] = 17;
+        }
+        data[p + 3] = 255;
+      }
+      this.octx.putImageData(this.imgData, 0, 0);
+    }
+  }
+
+  // =========================================================================
+  // 8. WIREWORLD DIGITAL LOGIC ENGINE (120×76)
+  // =========================================================================
+  class WireworldEngine {
+    constructor(w = 120, h = 76) {
+      this.w = w;
+      this.h = h;
+      this.size = w * h;
+      this.cur = new Uint8Array(this.size); // 0=Empty, 1=Head, 2=Tail, 3=Copper
+      this.nxt = new Uint8Array(this.size);
+      this.glow = new Float32Array(this.size);
+      this.wrap = true;
+      this.paintState = 3;
+
+      this.gen = 0;
+      this.population = 0; // Active Electron Heads
+      this.conductors = 0;
+      this.activity = 0;
+
+      this.offscreen = document.createElement('canvas');
+      this.offscreen.width = w;
+      this.offscreen.height = h;
+      this.octx = this.offscreen.getContext('2d');
+      this.imgData = this.octx.createImageData(w, h);
+    }
+
+    clear() {
+      this.cur.fill(0);
+      this.nxt.fill(0);
+      this.glow.fill(0);
+      this.gen = 0;
+      this.population = 0;
+      this.conductors = 0;
+      this.activity = 0;
+    }
+
+    setCell(x, y, val) {
+      if (x < 0 || x >= this.w || y < 0 || y >= this.h) return;
+      this.cur[y * this.w + x] = val;
+    }
+
+    drawHLine(x1, x2, y, val = 3) {
+      const a = Math.min(x1, x2), b = Math.max(x1, x2);
+      for (let x = a; x <= b; x++) this.setCell(x, y, val);
+    }
+
+    drawVLine(x, y1, y2, val = 3) {
+      const a = Math.min(y1, y2), b = Math.max(y1, y2);
+      for (let y = a; y <= b; y++) this.setCell(x, y, val);
+    }
+
+    drawClock(x, y, len, dir = 1) {
+      // Closed oval clock loop of width len+2, height 3, period = 2*len + 2
+      for (let i = 0; i < len; i++) {
+        this.setCell(x + 1 + i, y, 3);
+        this.setCell(x + 1 + i, y + 2, 3);
+      }
+      this.setCell(x, y + 1, 3);
+      this.setCell(x + len + 1, y + 1, 3);
+      if (dir >= 0) {
+        this.setCell(x + 2, y, 1);
+        this.setCell(x + 1, y, 2);
+      } else {
+        this.setCell(x + 1, y, 1);
+        this.setCell(x + 2, y, 2);
+      }
+    }
+
+    drawDiode(x, y, forward = true) {
+      // 4x3 diode centered on row y, columns x..x+3
+      if (forward) {
+        // Passes L -> R, blocks R -> L
+        this.setCell(x, y, 3);
+        this.setCell(x + 1, y - 1, 3);
+        this.setCell(x + 1, y, 3);
+        this.setCell(x + 1, y + 1, 3);
+        this.setCell(x + 2, y - 1, 3);
+        this.setCell(x + 2, y, 0);
+        this.setCell(x + 2, y + 1, 3);
+        this.setCell(x + 3, y, 3);
+      } else {
+        // Passes R -> L, blocks L -> R
+        this.setCell(x, y, 3);
+        this.setCell(x + 1, y - 1, 3);
+        this.setCell(x + 1, y, 0);
+        this.setCell(x + 1, y + 1, 3);
+        this.setCell(x + 2, y - 1, 3);
+        this.setCell(x + 2, y, 3);
+        this.setCell(x + 2, y + 1, 3);
+        this.setCell(x + 3, y, 3);
+      }
+    }
+
+    drawXOR(x, y) {
+      // Canonical 8x7 XOR gate: inputs at (x, y) and (x, y+6), output at (x+7, y+3)
+      const lines = [
+        '###.....',
+        '...#....',
+        '..####..',
+        '..#..###',
+        '..####..',
+        '...#....',
+        '###.....'
+      ];
+      for (let dy = 0; dy < 7; dy++) {
+        for (let dx = 0; dx < 8; dx++) {
+          this.setCell(x + dx, y + dy, lines[dy][dx] === '#' ? 3 : 0);
+        }
+      }
+    }
+
+    drawOR(x, y) {
+      // Clean 5x5 OR gate: inputs at (x, y) and (x, y+4), output at (x+4, y+2)
+      const lines = [
+        '##...',
+        '..#..',
+        '.####',
+        '..#..',
+        '##...'
+      ];
+      for (let dy = 0; dy < 5; dy++) {
+        for (let dx = 0; dx < 5; dx++) {
+          this.setCell(x + dx, y + dy, lines[dy][dx] === '#' ? 3 : 0);
+        }
+      }
+    }
+
+    stampPattern(pat, cx, cy, turns = 0) {
+      const p = rotateDiscretePattern(pat, turns);
+      const x0 = Math.round(cx - p.w * 0.5);
+      const y0 = Math.round(cy - p.h * 0.5);
+      for (let y = 0; y < p.h; y++) {
+        for (let x = 0; x < p.w; x++) {
+          const v = p.grid[y][x];
+          if (!v) continue;
+          const gx = x0 + x, gy = y0 + y;
+          if (gx >= 0 && gx < this.w && gy >= 0 && gy < this.h) {
+            this.cur[gy * this.w + gx] = v;
+          }
+        }
+      }
+      this.recount();
+    }
+
+    paint(cx, cy, radius, erase) {
+      const r = erase ? Math.max(0.8, radius * 0.45) : (radius <= 6 ? 0.55 : radius * 0.22);
+      const rInt = Math.floor(r);
+      const x0 = Math.round(cx);
+      const y0 = Math.round(cy);
+      for (let dy = -rInt; dy <= rInt; dy++) {
+        for (let dx = -rInt; dx <= rInt; dx++) {
+          if (dx * dx + dy * dy > r * r + 0.1) continue;
+          const gx = x0 + dx, gy = y0 + dy;
+          if (gx < 0 || gx >= this.w || gy < 0 || gy >= this.h) continue;
+          const idx = gy * this.w + gx;
+          if (erase) {
+            this.cur[idx] = 0;
+            this.glow[idx] = 0;
+          } else {
+            this.cur[idx] = this.paintState;
+            if (this.paintState === 1) this.glow[idx] = 1.0;
+          }
+        }
+      }
+      this.recount();
+    }
+
+    seedSoup() {
+      // Build a fun procedural multi-clock circuit grid
+      this.loadPreset('xor_lab');
+    }
+
+    loadPreset(key) {
+      this.clear();
+      if (key === 'xor_lab') {
+        // Dual asynchronous clock generators (periods 14 and 20) feeding a working XOR gate
+        // plus a parallel diode-protected OR bus and feedback visualizer rings!
+        // Top Clock A (period 14: len=6)
+        this.drawClock(14, 21, 6, 1);
+        this.drawHLine(22, 46, 22, 3);
+        this.drawDiode(28, 22, true);
+        // Bottom Clock B (period 20: len=9)
+        this.drawClock(11, 27, 9, 1);
+        this.drawHLine(22, 46, 28, 3);
+        this.drawDiode(28, 28, true);
+
+        // XOR Gate 1 (inputs y=22, y=28 -> output y=25)
+        this.drawXOR(46, 22);
+        this.drawHLine(54, 72, 25, 3);
+        this.drawDiode(60, 25, true);
+
+        // Second Stage: Clock C (period 16) XORed with Stage 1 output!
+        this.drawClock(52, 30, 7, 1);
+        this.drawHLine(61, 72, 31, 3);
+        this.drawXOR(72, 25);
+        this.drawHLine(80, 100, 28, 3);
+
+        // Output Indicator Ring (shows pulse bursts circulating cleanly)
+        this.drawHLine(100, 106, 28, 3);
+        this.drawVLine(106, 28, 36, 3);
+        this.drawHLine(96, 106, 36, 3);
+        this.drawVLine(96, 31, 36, 3);
+        this.drawHLine(96, 99, 31, 3);
+        this.setCell(99, 30, 3);
+        this.setCell(99, 29, 0);
+
+        // Lower showcase: Forward vs Reverse Diode Demonstration
+        this.drawClock(14, 48, 7, 1);
+        this.drawHLine(23, 36, 49, 3);
+        // Splitter up & down
+        this.drawVLine(36, 45, 53, 3);
+        // Top branch: Forward Diode (PASSES electrons to glowing loop!)
+        this.drawHLine(37, 86, 45, 3);
+        this.drawDiode(48, 45, true);
+        this.drawVLine(86, 45, 49, 3);
+        this.drawHLine(86, 102, 49, 3);
+        this.drawVLine(102, 45, 49, 3);
+        this.drawHLine(94, 102, 45, 3);
+        // Bottom branch: Reverse Diode (BLOCKS electrons!)
+        this.drawHLine(37, 74, 53, 3);
+        this.drawDiode(48, 53, false);
+
+      } else if (key === 'adder') {
+        // Working Digital Logic Bank: 2 Clocks feeding BOTH an XOR (Sum) and OR (Bus) + Cascaded XOR Chain
+        // Input Clock A (period 12)
+        this.drawClock(12, 18, 5, 1);
+        this.drawHLine(19, 30, 19, 3);
+        this.drawVLine(30, 19, 39, 3);
+
+        // Input Clock B (period 18)
+        this.drawClock(10, 24, 8, 1);
+        this.drawHLine(20, 26, 25, 3);
+        this.drawVLine(26, 25, 43, 3);
+
+        // Top XOR Gate (Sum Bit = A XOR B)
+        this.drawHLine(30, 42, 19, 3);
+        this.drawHLine(26, 42, 25, 3);
+        this.setCell(30, 25, 3);
+        // Keep vertical tap isolated by routing cleanly around x=30
+        this.clear();
+        // Clean non-crossing layout!
+        // Clock A (top, period 14) -> splits to Top XOR and Mid-Top OR
+        this.drawClock(12, 17, 6, 1);
+        this.drawHLine(20, 32, 18, 3);
+        this.drawVLine(32, 18, 22, 3);
+        this.drawHLine(32, 44, 18, 3); // -> XOR A
+        this.drawDiode(35, 18, true);
+
+        // Clock B (middle, period 20) -> splits to Top XOR and Bottom XOR
+        this.drawClock(9, 27, 9, 1);
+        this.drawHLine(20, 32, 28, 3);
+        this.drawVLine(32, 24, 34, 3);
+        this.drawHLine(32, 44, 24, 3); // -> XOR B
+        this.drawDiode(35, 24, true);
+
+        // Top XOR Gate (A XOR B)
+        this.drawXOR(44, 18);
+        this.drawHLine(52, 82, 21, 3);
+        this.drawDiode(62, 21, true);
+
+        // Clock C (bottom, period 16) -> feeds Bottom XOR with Clock B
+        this.drawClock(11, 39, 7, 1);
+        this.drawHLine(20, 44, 40, 3);
+        this.drawHLine(32, 44, 34, 3);
+        this.drawDiode(35, 34, true);
+        this.drawDiode(35, 40, true);
+        this.drawXOR(44, 34);
+        this.drawHLine(52, 82, 37, 3);
+        this.drawDiode(62, 37, true);
+
+        // Combine Stage 1 outputs into Final Stage XOR Gate (3-bit Parity / Adder Sum!)
+        this.drawVLine(82, 21, 26, 3);
+        this.drawVLine(82, 32, 37, 3);
+        this.drawHLine(82, 88, 26, 3);
+        this.drawHLine(82, 88, 32, 3);
+        this.drawXOR(88, 26);
+        this.drawHLine(96, 108, 29, 3);
+
+        // Decorative bottom Pulse Synthesizer Ring (4-phase oscillator)
+        this.drawHLine(24, 96, 54, 3);
+        this.drawHLine(24, 96, 60, 3);
+        this.drawVLine(24, 54, 60, 3);
+        this.drawVLine(96, 54, 60, 3);
+        for (let px = 30; px <= 90; px += 15) {
+          this.setCell(px, 54, 1);
+          this.setCell(px - 1, 54, 2);
+          this.setCell(px, 60, 1);
+          this.setCell(px + 1, 60, 2);
+        }
+      } else if (key === 'diode_ring') {
+        // High-speed Synchrotron Ring with Splitters, Diodes, and Isolated XOR Probe
+        // Outer racetrack loop
+        this.drawHLine(20, 100, 18, 3);
+        this.drawHLine(20, 100, 58, 3);
+        this.drawVLine(20, 18, 58, 3);
+        this.drawVLine(100, 18, 58, 3);
+        // Inject 6 evenly spaced electrons circling clockwise
+        this.setCell(35, 18, 1); this.setCell(34, 18, 2);
+        this.setCell(68, 18, 1); this.setCell(67, 18, 2);
+        this.setCell(100, 36, 1); this.setCell(100, 35, 2);
+        this.setCell(82, 58, 1); this.setCell(83, 58, 2);
+        this.setCell(46, 58, 1); this.setCell(47, 58, 2);
+        this.setCell(20, 38, 1); this.setCell(20, 39, 2);
+
+        // Inner Diode Bus tapped cleanly from Left Rail -> XOR -> Insulated Output Probe
+        this.drawHLine(21, 52, 32, 3);
+        this.drawDiode(34, 32, true);
+        this.drawHLine(21, 52, 38, 3);
+        this.drawDiode(34, 38, true);
+        this.drawXOR(52, 32);
+        this.drawHLine(60, 88, 35, 3);
+        this.drawDiode(72, 35, true);
+
+        // Bottom inner reverse-diode trap (demonstrates clean blocking)
+        this.drawHLine(21, 68, 46, 3);
+        this.drawDiode(42, 46, false);
+      } else {
+        // Logic Sandbox: one clean starter clock on the left
+        this.drawClock(16, 36, 6, 1);
+        this.drawHLine(24, 48, 37, 3);
+      }
+      this.recount();
+    }
+
+    recount() {
+      let heads = 0, cond = 0;
+      for (let i = 0; i < this.size; i++) {
+        const s = this.cur[i];
+        if (s === 1) heads++;
+        if (s > 0) cond++;
+      }
+      this.population = heads;
+      this.conductors = cond;
+    }
+
+    step(useTrails) {
+      const w = this.w, h = this.h;
+      const cur = this.cur, nxt = this.nxt, glow = this.glow;
+      const wrap = this.wrap;
+      let heads = 0, cond = 0, changed = 0;
+
+      for (let y = 0; y < h; y++) {
+        const ym = y === 0 ? (wrap ? h - 1 : -1) : y - 1;
+        const yp = y === h - 1 ? (wrap ? 0 : -1) : y + 1;
+        const rowOff = y * w;
+        const rUp = ym >= 0 ? ym * w : -1;
+        const rDn = yp >= 0 ? yp * w : -1;
+
+        for (let x = 0; x < w; x++) {
+          const idx = rowOff + x;
+          const st = cur[idx];
+          let ns = 0;
+          if (st === 0) {
+            ns = 0;
+          } else if (st === 1) {
+            ns = 2;
+          } else if (st === 2) {
+            ns = 3;
+          } else {
+            // Conductor -> Head iff 1 or 2 neighbors are Head
+            const xm = x === 0 ? (wrap ? w - 1 : -1) : x - 1;
+            const xp = x === w - 1 ? (wrap ? 0 : -1) : x + 1;
+            let hn = 0;
+            if (rUp >= 0) {
+              if (xm >= 0 && cur[rUp + xm] === 1) hn++;
+              if (cur[rUp + x] === 1) hn++;
+              if (xp >= 0 && cur[rUp + xp] === 1) hn++;
+            }
+            if (xm >= 0 && cur[rowOff + xm] === 1) hn++;
+            if (xp >= 0 && cur[rowOff + xp] === 1) hn++;
+            if (rDn >= 0) {
+              if (xm >= 0 && cur[rDn + xm] === 1) hn++;
+              if (cur[rDn + x] === 1) hn++;
+              if (xp >= 0 && cur[rDn + xp] === 1) hn++;
+            }
+            ns = (hn === 1 || hn === 2) ? 1 : 3;
+          }
+          nxt[idx] = ns;
+          if (ns !== st) changed++;
+          if (ns === 1) {
+            heads++;
+            glow[idx] = 1.0;
+          } else if (ns === 2) {
+            glow[idx] = 0.72;
+          } else if (ns === 3) {
+            glow[idx] = useTrails ? glow[idx] * 0.84 : 0;
+          } else {
+            glow[idx] = 0;
+          }
+          if (ns > 0) cond++;
+        }
+      }
+
+      this.cur = nxt;
+      this.nxt = cur;
+      this.gen++;
+      this.population = heads;
+      this.conductors = cond;
+      this.activity = cond > 0 ? Math.min(100, (changed / cond) * 100) : 0;
+    }
+
+    renderToOffscreen(lut, useTrails) {
+      const data = this.imgData.data;
+      const cur = this.cur, glow = this.glow;
+      const lr = lut.r, lg = lut.g, lb = lut.b;
+      for (let i = 0, p = 0; i < this.size; i++, p += 4) {
+        const st = cur[i];
+        if (st === 0) {
+          data[p] = 4; data[p + 1] = 7; data[p + 2] = 17;
+        } else if (st === 1) {
+          // Blazing electric electron head
+          data[p] = lr[248];
+          data[p + 1] = lg[248];
+          data[p + 2] = lb[248];
+        } else if (st === 2) {
+          // Hot plasma electron tail (coral-amber)
+          data[p] = 255;
+          data[p + 1] = 104;
+          data[p + 2] = 72;
+        } else {
+          // Burnished copper wire with subtle phosphor wake when electrons pass
+          const g = useTrails ? glow[i] : 0;
+          data[p]     = Math.min(255, (164 + g * 68) | 0);
+          data[p + 1] = Math.min(255, (112 + g * 58) | 0);
+          data[p + 2] = Math.min(255, (48  + g * 34) | 0);
+        }
+        data[p + 3] = 255;
+      }
+      this.octx.putImageData(this.imgData, 0, 0);
+    }
+  }
+
+  // =========================================================================
+  // 9. SUBTLE GENERATIVE WEB AUDIO ENGINE (MUTED BY DEFAULT)
+  // =========================================================================
+  class GenerativeAudio {
+    constructor() {
+      this.ctx = null;
+      this.master = null;
+      this.enabled = false;
+      this.volume = 0.35;
+      this.lastNoteTime = 0;
+      // Warm Pentatonic C-minor/major-9 frequencies
+      this.scale = [261.63, 293.66, 329.63, 392.00, 440.00, 523.25, 587.33, 659.25, 783.99, 880.00];
+    }
+
+    ensureContext() {
+      if (!this.ctx) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) return false;
+        this.ctx = new AC();
+        this.master = this.ctx.createGain();
+        this.master.gain.value = 0;
+        const filter = this.ctx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.value = 1800;
+        this.master.connect(filter);
+        filter.connect(this.ctx.destination);
+      }
+      if (this.ctx.state === 'suspended') {
+        this.ctx.resume().catch(() => {});
+      }
+      return true;
+    }
+
+    setEnabled(on) {
+      this.enabled = !!on;
+      if (this.enabled && this.ensureContext()) {
+        this.master.gain.setTargetAtTime(this.volume * 0.22, this.ctx.currentTime, 0.08);
+      } else if (this.master && this.ctx) {
+        this.master.gain.setTargetAtTime(0, this.ctx.currentTime, 0.06);
+      }
+    }
+
+    setVolume(v) {
+      this.volume = v;
+      if (this.enabled && this.master && this.ctx) {
+        this.master.gain.setTargetAtTime(this.volume * 0.22, this.ctx.currentTime, 0.06);
+      }
+    }
+
+    modulate(activityPct, engineName) {
+      if (!this.enabled || !this.ctx || !this.master) return;
+      const now = this.ctx.currentTime;
+      const minGap = Math.max(0.14, 0.52 - activityPct * 0.008);
+      if (now - this.lastNoteTime < minGap || activityPct < 0.05) return;
+      this.lastNoteTime = now;
+
+      const osc = this.ctx.createOscillator();
+      const env = this.ctx.createGain();
+      const norm = Math.min(1, activityPct / 35);
+      const idx = Math.min(this.scale.length - 1, Math.floor((norm * 0.65 + Math.random() * 0.35) * this.scale.length));
+      const baseFreq = this.scale[idx];
+      const oct = engineName === 'lenia' ? 0.5 : (engineName === 'wire' ? 1.0 : 1.0);
+      osc.type = engineName === 'lenia' ? 'sine' : 'triangle';
+      osc.frequency.setValueAtTime(baseFreq * oct, now);
+
+      const dur = engineName === 'lenia' ? 1.1 : 0.42;
+      env.gain.setValueAtTime(0.0001, now);
+      env.gain.exponentialRampToValueAtTime(0.18 + norm * 0.14, now + 0.03);
+      env.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+
+      osc.connect(env);
+      env.connect(this.master);
+      osc.start(now);
+      osc.stop(now + dur + 0.02);
+    }
+  }
+
+  // =========================================================================
+  // 10. PRESET CATALOGS & APPLICATION STATE
+  // =========================================================================
+  const PRESETS = {
+    lenia: [
+      { id: 'orbium',   name: 'Orbium Fleet',    sub: 'Canonical swimming gliders' },
+      { id: 'geminium', name: 'Geminium Twin',   sub: 'Orbiting & dividing colonies' },
+      { id: 'hydro',    name: 'Hydrogeminium',   sub: 'Dual-ring continuous life' },
+      { id: 'soup',     name: 'Primordial Soup', sub: 'Self-organizing solitons' }
+    ],
+    life: [
+      { id: 'gosper',      name: 'Gosper Gun',    sub: 'Twin glider guns + pulsar' },
+      { id: 'armada',      name: 'LWSS Armada',   sub: 'Spaceship fleet + p15' },
+      { id: 'methuselah',  name: 'Methuselahs',   sub: 'R-Pentomino & Acorn' },
+      { id: 'oscillators', name: 'Oscillators',   sub: 'Pulsars & Pentadecathlons' },
+      { id: 'soup',        name: 'Random Soup',   sub: '28% primordial colony' }
+    ],
+    brain: [
+      { id: 'fireworks', name: 'Fireworks',       sub: '4-way diamond spark burst' },
+      { id: 'highway',   name: 'Glider Highway',  sub: 'Colliding brain ships' },
+      { id: 'mandala',   name: 'Crystal Mandala', sub: 'Symmetric resonant waves' },
+      { id: 'soup',      name: 'Excitable Chaos', sub: 'Sparking wave turbulence' }
+    ],
+    wire: [
+      { id: 'xor_lab',    name: 'XOR & Diodes',   sub: 'Dual clocks + XOR + diodes' },
+      { id: 'adder',      name: '3-Bit Parity',   sub: 'Cascaded XOR logic circuit' },
+      { id: 'diode_ring', name: 'Synchrotron',    sub: 'Racetrack + diode gate' },
+      { id: 'sandbox',    name: 'Logic Sandbox',  sub: 'Starter clock + open board' }
+    ]
+  };
+
+  const ENGINE_META = {
+    lenia: { label: 'Continuous Lenia', badgeClass: '', popLabel: 'Biomass', genLabel: 'Time (t)', sparkTitle: 'Biomass History', defaultStamp: 'orbium', defaultPreset: 'orbium' },
+    life:  { label: 'Game of Life',     badgeClass: 'life', popLabel: 'Population', genLabel: 'Generation', sparkTitle: 'Population History', defaultStamp: 'gosper', defaultPreset: 'gosper' },
+    brain: { label: "Brian's Brain",    badgeClass: 'brain', popLabel: 'Firing Cells', genLabel: 'Generation', sparkTitle: 'Firing Spark History', defaultStamp: 'diamond', defaultPreset: 'fireworks' },
+    wire:  { label: 'Wireworld',        badgeClass: 'wire', popLabel: 'Electrons', genLabel: 'Clock Cycle', sparkTitle: 'Electron Flux History', defaultStamp: 'xor', defaultPreset: 'xor_lab' }
+  };
+
+  const SPEEDS = [0.5, 1, 2, 4];
+
+  const engines = {
+    lenia: new LeniaEngine(256),
+    life:  new LifeEngine(256, 160),
+    brain: new BrainEngine(256, 160),
+    wire:  new WireworldEngine(120, 76)
+  };
+
+  const audio = new GenerativeAudio();
+
+  const state = {
+    engineKey: 'lenia',
+    presetKey: 'orbium',
+    running: true,
+    speedIdx: 1, // 1x
+    paletteKey: 'biolum',
+    tool: 'paint', // 'paint' | 'stamp' | 'erase'
+    stampKey: 'orbium',
+    stampRot: 0,
+    brushRadius: 6,
+    brushStrength: 0.85,
+    showTrails: true,
+    showBloom: true,
+    showGrid: true,
+    showGhost: true,
+    drawerOpen: true,
+    zenMode: false,
+
+    // Camera (world grid units -> screen CSS pixels)
+    camX: 0,
+    camY: 0,
+    camZoom: 2.5,
+
+    // Pointer state
+    mouseX: -999,
+    mouseY: -999,
+    hoverCellX: -1,
+    hoverCellY: -1,
+    isDrawing: false,
+    drawButton: 0,
+    lastDrawX: -1,
+    lastDrawY: -1,
+    isPanning: false,
+    panStartX: 0,
+    panStartY: 0,
+    panCamStartX: 0,
+    panCamStartY: 0,
+
+    // Sparkline & FPS
+    history: [],
+    stepAccum: 0,
+    fpsFrames: 0,
+    fpsLast: performance.now(),
+    fpsVal: 60
+  };
+
+  // =========================================================================
+  // 11. DOM REFERENCES
+  // =========================================================================
+  const $ = id => document.getElementById(id);
+  const canvas = $('sim-canvas');
+  const ctx = canvas.getContext('2d', { alpha: false });
+  const sparkCanvas = $('sparkline-canvas');
+  const sparkCtx = sparkCanvas.getContext('2d');
+  const kernelCanvas = $('kernel-canvas');
+  const kernelCtx = kernelCanvas.getContext('2d');
+
+  const els = {
+    engineBadge: $('engine-badge'),
+    statusPill: $('status-pill'),
+    lblGen: $('lbl-gen'),
+    telGen: $('tel-gen'),
+    lblPop: $('lbl-pop'),
+    telPop: $('tel-pop'),
+    telAct: $('tel-act'),
+    sparkTitle: $('spark-title'),
+    sparkRange: $('spark-range'),
+    metaGrid: $('meta-grid'),
+    metaTool: $('meta-tool'),
+    metaFps: $('meta-fps'),
+    toast: $('toast-banner'),
+    drawer: $('drawer'),
+    engineGrid: $('engine-grid'),
+    presetGrid: $('preset-grid'),
+    presetCountTag: $('preset-count-tag'),
+    stampGrid: $('stamp-grid'),
+    stampRotTag: $('stamp-rot-tag'),
+    toolModeRow: $('tool-mode-row'),
+    btnRotateStamp: $('btn-rotate-stamp'),
+    btnFitView: $('btn-fit-view'),
+
+    secLenia: $('sec-lenia'),
+    secLife: $('sec-life'),
+    secBrain: $('sec-brain'),
+    secWire: $('sec-wire'),
+    leniaEqTag: $('lenia-eq-tag'),
+    slMu: $('sl-mu'), valMu: $('val-mu'),
+    slSigma: $('sl-sigma'), valSigma: $('val-sigma'),
+    slRadius: $('sl-radius'), valRadius: $('val-radius'),
+    slDt: $('sl-dt'), valDt: $('val-dt'),
+
+    lifeRuleTag: $('life-rule-tag'),
+    lifeRulePresets: $('life-rule-presets'),
+    birthBits: $('birth-bits'), valBStr: $('val-b-str'),
+    surviveBits: $('survive-bits'), valSStr: $('val-s-str'),
+
+    wireBrushRow: $('wire-brush-row'),
+    chkWrap: $('chk-wrap'),
+    btnSeedRandom: $('btn-seed-random'),
+    btnClearGrid: $('btn-clear-grid'),
+
+    slBrush: $('sl-brush'), valBrush: $('val-brush'),
+    slStrength: $('sl-strength'), valStrength: $('val-strength'),
+    paletteGrid: $('palette-grid'),
+    chkTrails: $('chk-trails'),
+    chkBloom: $('chk-bloom'),
+    chkGrid: $('chk-grid'),
+    chkGhost: $('chk-ghost'),
+
+    chkAudio: $('chk-audio'),
+    audioStateTag: $('audio-state-tag'),
+    slVol: $('sl-vol'), valVol: $('val-vol'),
+
+    btnPlay: $('btn-play'),
+    btnStep: $('btn-step'),
+    btnReset: $('btn-reset'),
+    btnSpeed: $('btn-speed'),
+    btnAudio: $('btn-audio'),
+    btnDrawer: $('btn-drawer'),
+    btnCinema: $('btn-cinema'),
+    btnZenRestore: $('btn-zen-restore')
+  };
+
+  let toastTimer = null;
+  function showToast(msg) {
+    els.toast.textContent = msg;
+    els.toast.classList.add('visible');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => els.toast.classList.remove('visible'), 1700);
+  }
+
+  function activeEngine() {
+    return engines[state.engineKey];
+  }
+
+  // =========================================================================
+  // 12. CAMERA & COORDINATE TRANSFORMS
+  // =========================================================================
+  let viewW = window.innerWidth;
+  let viewH = window.innerHeight;
+  let dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+  function resizeCanvas() {
+    viewW = window.innerWidth;
+    viewH = window.innerHeight;
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.round(viewW * dpr);
+    canvas.height = Math.round(viewH * dpr);
+    fitView();
+  }
+
+  function fitView() {
+    const eng = activeEngine();
+    const padX = state.drawerOpen && !state.zenMode && viewW > 900 ? 350 : 40;
+    const availW = Math.max(240, viewW - padX);
+    const availH = Math.max(240, viewH - 110);
+    const zoom = Math.min(availW / eng.w, availH / eng.h) * 0.94;
+    state.camZoom = Math.max(0.8, Math.min(28, zoom));
+    const centerScreenX = state.drawerOpen && !state.zenMode && viewW > 900
+      ? (viewW - 330) * 0.5
+      : viewW * 0.5;
+    const centerScreenY = viewH * 0.5;
+    state.camX = centerScreenX - (eng.w * state.camZoom) * 0.5;
+    state.camY = centerScreenY - (eng.h * state.camZoom) * 0.5;
+  }
+
+  function screenToCell(sx, sy) {
+    const cx = (sx - state.camX) / state.camZoom;
+    const cy = (sy - state.camY) / state.camZoom;
+    return [Math.floor(cx), Math.floor(cy), cx, cy];
+  }
+
+  // =========================================================================
+  // 13. UI SYNC & DYNAMIC BUILDERS
+  // =========================================================================
+  function getStampCatalog(engineKey) {
+    if (engineKey === 'lenia') return LENIA_STAMPS;
+    if (engineKey === 'life') return LIFE_STAMPS;
+    if (engineKey === 'brain') return BRAIN_STAMPS;
+    return WIRE_STAMPS;
+  }
+
+  function rebuildPresetsAndStamps() {
+    const key = state.engineKey;
+    const meta = ENGINE_META[key];
+    els.presetCountTag.textContent = meta.label;
+
+    // Presets
+    els.presetGrid.innerHTML = '';
+    for (const p of PRESETS[key]) {
+      const btn = document.createElement('button');
+      btn.className = 'preset-btn' + (p.id === state.presetKey ? ' active' : '');
+      btn.innerHTML = `<span class="preset-name">${p.name}</span><span class="preset-sub">${p.sub}</span>`;
+      btn.addEventListener('click', () => {
+        state.presetKey = p.id;
+        activeEngine().loadPreset(p.id);
+        state.history = [];
+        syncLeniaSliders();
+        syncLifeRuleUI();
+        rebuildPresetsAndStamps();
+        showToast(`${meta.label}: ${p.name}`);
+      });
+      els.presetGrid.appendChild(btn);
+    }
+
+    // Stamps
+    const cat = getStampCatalog(key);
+    if (!cat[state.stampKey]) state.stampKey = meta.defaultStamp;
+    els.stampGrid.innerHTML = '';
+    for (const [sid, s] of Object.entries(cat)) {
+      const btn = document.createElement('button');
+      btn.className = 'preset-btn amber-active' + (sid === state.stampKey && state.tool === 'stamp' ? ' active' : '');
+      btn.innerHTML = `<span class="preset-name">${s.name}</span><span class="preset-sub">${s.sub}</span>`;
+      btn.addEventListener('click', () => {
+        state.stampKey = sid;
+        setTool('stamp');
+        showToast(`Stamp: ${s.name} (click to place, R to rotate)`);
+      });
+      els.stampGrid.appendChild(btn);
+    }
+  }
+
+  function setTool(tool) {
+    state.tool = tool;
+    els.toolModeRow.querySelectorAll('.seg-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.tool === tool);
+    });
+    const cat = getStampCatalog(state.engineKey);
+    const stampLabel = cat[state.stampKey] ? cat[state.stampKey].name : 'Stamp';
+    els.metaTool.textContent = tool === 'stamp' ? stampLabel : (tool === 'erase' ? 'Erase' : 'Paint');
+    rebuildPresetsAndStamps();
+  }
+
+  function syncLeniaSliders() {
+    const L = engines.lenia;
+    els.slMu.value = L.mu.toFixed(3);
+    els.valMu.textContent = L.mu.toFixed(3);
+    els.slSigma.value = L.sigma.toFixed(3);
+    els.valSigma.textContent = L.sigma.toFixed(3);
+    els.slRadius.value = L.R;
+    els.valRadius.textContent = String(L.R);
+    els.slDt.value = L.dt.toFixed(2);
+    els.valDt.textContent = L.dt.toFixed(2);
+    drawKernelPreview();
+  }
+
+  function buildLifeRuleBits() {
+    els.birthBits.innerHTML = '';
+    els.surviveBits.innerHTML = '';
+    for (let i = 0; i <= 8; i++) {
+      const bBtn = document.createElement('button');
+      bBtn.className = 'bit-btn';
+      bBtn.textContent = String(i);
+      bBtn.dataset.bit = String(i);
+      bBtn.addEventListener('click', () => {
+        engines.life.birth[i] = engines.life.birth[i] ? 0 : 1;
+        syncLifeRuleUI();
+      });
+      els.birthBits.appendChild(bBtn);
+
+      const sBtn = document.createElement('button');
+      sBtn.className = 'bit-btn survive';
+      sBtn.textContent = String(i);
+      sBtn.dataset.bit = String(i);
+      sBtn.addEventListener('click', () => {
+        engines.life.survive[i] = engines.life.survive[i] ? 0 : 1;
+        syncLifeRuleUI();
+      });
+      els.surviveBits.appendChild(sBtn);
+    }
+  }
+
+  function syncLifeRuleUI() {
+    const life = engines.life;
+    const rStr = life.getRuleString();
+    els.lifeRuleTag.textContent = rStr;
+    const parts = rStr.split('/');
+    els.valBStr.textContent = parts[0].slice(1) || '—';
+    els.valSStr.textContent = parts[1].slice(1) || '—';
+
+    els.birthBits.querySelectorAll('.bit-btn').forEach(b => {
+      b.classList.toggle('active', !!life.birth[+b.dataset.bit]);
+    });
+    els.surviveBits.querySelectorAll('.bit-btn').forEach(b => {
+      b.classList.toggle('active', !!life.survive[+b.dataset.bit]);
+    });
+    els.lifeRulePresets.querySelectorAll('.preset-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.rule === rStr);
+    });
+  }
+
+  function switchEngine(key) {
+    state.engineKey = key;
+    const meta = ENGINE_META[key];
+    state.presetKey = meta.defaultPreset;
+    state.stampKey = meta.defaultStamp;
+    state.stampRot = 0;
+    els.stampRotTag.textContent = '0° · R to rotate';
+
+    // Update top-left labels & badges
+    els.engineBadge.textContent = meta.label;
+    els.engineBadge.className = 'mode-badge' + (meta.badgeClass ? ' ' + meta.badgeClass : '');
+    els.lblGen.textContent = meta.genLabel;
+    els.lblPop.textContent = meta.popLabel;
+    els.sparkTitle.textContent = meta.sparkTitle;
+
+    // Update engine buttons
+    els.engineGrid.querySelectorAll('.engine-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.engine === key);
+    });
+
+    // Show relevant rules section
+    els.secLenia.classList.toggle('hidden', key !== 'lenia');
+    els.secLife.classList.toggle('hidden', key !== 'life');
+    els.secBrain.classList.toggle('hidden', key !== 'brain');
+    els.secWire.classList.toggle('hidden', key !== 'wire');
+
+    const eng = activeEngine();
+    els.metaGrid.textContent = `${eng.w}×${eng.h}`;
+    els.chkWrap.checked = eng.wrap !== undefined ? eng.wrap : true;
+    els.chkWrap.disabled = (key === 'lenia');
+
+    eng.loadPreset(state.presetKey);
+    state.history = [];
+    syncLeniaSliders();
+    syncLifeRuleUI();
+    rebuildPresetsAndStamps();
+    setTool('paint');
+    fitView();
+    showToast(`Switched to ${meta.label}`);
+  }
+
+  // =========================================================================
+  // 14. KERNEL + GROWTH CURVE MINI-CANVAS (LENIA)
+  // =========================================================================
+  function drawKernelPreview() {
+    const w = kernelCanvas.width;
+    const h = kernelCanvas.height;
+    const kctx = kernelCtx;
+    kctx.clearRect(0, 0, w, h);
+
+    const L = engines.lenia;
+    const lut = PALETTES[state.paletteKey];
+
+    // Left panel: 2D Ring Kernel Heatmap (80x80)
+    const box = 76;
+    const ox = 8, oy = 8;
+    const img = kctx.createImageData(box, box);
+    const d = img.data;
+    const half = box * 0.5;
+    for (let y = 0; y < box; y++) {
+      for (let x = 0; x < box; x++) {
+        const rNorm = Math.hypot(x - half + 0.5, y - half + 0.5) / (half - 2);
+        const kv = rNorm < 1 ? L.kernelShell(rNorm) : 0;
+        const idx = Math.min(255, (kv * 240) | 0);
+        const p = (y * box + x) * 4;
+        d[p] = lut.r[idx];
+        d[p + 1] = lut.g[idx];
+        d[p + 2] = lut.b[idx];
+        d[p + 3] = 255;
+      }
+    }
+    kctx.putImageData(img, ox, oy);
+    kctx.strokeStyle = 'rgba(148,179,255,0.22)';
+    kctx.strokeRect(ox + 0.5, oy + 0.5, box - 1, box - 1);
+
+    // Right panel: Growth function G(u) in [-1, 1] for u in [0, 0.5]
+    const gx = ox + box + 12;
+    const gw = w - gx - 10;
+    const gy = 10;
+    const gh = h - 20;
+    const zeroY = gy + gh * 0.5;
+
+    // Zero baseline
+    kctx.strokeStyle = 'rgba(148,179,255,0.22)';
+    kctx.beginPath();
+    kctx.moveTo(gx, zeroY);
+    kctx.lineTo(gx + gw, zeroY);
+    kctx.stroke();
+
+    // Growth curve
+    const uMax = 0.5;
+    const inv2s2 = 1 / (2 * L.sigma * L.sigma);
+    kctx.beginPath();
+    for (let i = 0; i <= gw; i++) {
+      const u = (i / gw) * uMax;
+      const diff = u - L.mu;
+      const g = 2 * Math.exp(-(diff * diff) * inv2s2) - 1;
+      const py = zeroY - g * (gh * 0.44);
+      if (i === 0) kctx.moveTo(gx + i, py);
+      else kctx.lineTo(gx + i, py);
+    }
+    kctx.strokeStyle = '#58dcff';
+    kctx.lineWidth = 2;
+    kctx.stroke();
+
+    // Vertical mu marker
+    const muX = gx + (L.mu / uMax) * gw;
+    kctx.strokeStyle = 'rgba(74, 242, 178, 0.6)';
+    kctx.lineWidth = 1;
+    kctx.setLineDash([2, 2]);
+    kctx.beginPath();
+    kctx.moveTo(muX, gy);
+    kctx.lineTo(muX, gy + gh);
+    kctx.stroke();
+    kctx.setLineDash([]);
+
+    kctx.fillStyle = '#9aa9cc';
+    kctx.font = '10px ui-monospace, monospace';
+    kctx.fillText('K(r)', ox + 4, oy + 12);
+    kctx.fillText('G(u)', gx + 2, gy + 10);
+    kctx.fillStyle = '#4af2b2';
+    kctx.fillText(`μ=${L.mu.toFixed(3)}`, Math.min(gx + gw - 52, Math.max(gx + 2, muX - 22)), gy + gh - 2);
+  }
+
+  // =========================================================================
+  // 15. SPARKLINE TELEMETRY RENDERER
+  // =========================================================================
+  function drawSparkline() {
+    const hist = state.history;
+    const w = sparkCanvas.width;
+    const h = sparkCanvas.height;
+    sparkCtx.clearRect(0, 0, w, h);
+
+    if (hist.length < 2) {
+      els.sparkRange.textContent = 'collecting…';
+      return;
+    }
+
+    let minV = Infinity, maxV = -Infinity;
+    for (let i = 0; i < hist.length; i++) {
+      if (hist[i] < minV) minV = hist[i];
+      if (hist[i] > maxV) maxV = hist[i];
+    }
+    const span = Math.max(1e-3, maxV - minV);
+    const fmt = v => v >= 1000 ? (v / 1000).toFixed(1) + 'k' : (state.engineKey === 'lenia' ? v.toFixed(0) : String(Math.round(v)));
+    els.sparkRange.textContent = `min ${fmt(minV)} · max ${fmt(maxV)}`;
+
+    const accent = state.engineKey === 'life' ? '#4af2b2'
+      : state.engineKey === 'brain' ? '#a78bfa'
+      : state.engineKey === 'wire' ? '#ffbe5c' : '#58dcff';
+
+    const grad = sparkCtx.createLinearGradient(0, 0, 0, h);
+    grad.addColorStop(0, accent + '55');
+    grad.addColorStop(1, accent + '02');
+
+    sparkCtx.beginPath();
+    for (let i = 0; i < hist.length; i++) {
+      const x = (i / (hist.length - 1)) * w;
+      const y = h - 3 - ((hist[i] - minV) / span) * (h - 7);
+      if (i === 0) sparkCtx.moveTo(x, y);
+      else sparkCtx.lineTo(x, y);
+    }
+    sparkCtx.strokeStyle = accent;
+    sparkCtx.lineWidth = 1.6;
+    sparkCtx.stroke();
+
+    sparkCtx.lineTo(w, h);
+    sparkCtx.lineTo(0, h);
+    sparkCtx.closePath();
+    sparkCtx.fillStyle = grad;
+    sparkCtx.fill();
+  }
+
+  // =========================================================================
+  // 16. MAIN HIGH-DPI CANVAS RENDERER
+  // =========================================================================
+  function renderScene() {
+    const eng = activeEngine();
+    const lut = PALETTES[state.paletteKey];
+
+    // 1. Render simulation field to its offscreen ImageData canvas
+    if (state.engineKey === 'lenia') {
+      eng.renderToOffscreen(lut);
+    } else {
+      eng.renderToOffscreen(lut, state.showTrails);
+    }
+
+    ctx.save();
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    // 2. Deep cosmic backdrop (#040711)
+    ctx.fillStyle = '#040711';
+    ctx.fillRect(0, 0, viewW, viewH);
+
+    // Subtle radial ambient vignette around arena
+    const ax = state.camX;
+    const ay = state.camY;
+    const aw = eng.w * state.camZoom;
+    const ah = eng.h * state.camZoom;
+
+    // Arena frame glow
+    ctx.fillStyle = '#040711';
+    ctx.fillRect(ax, ay, aw, ah);
+
+    // 3. Draw engine canvas (smooth bilinear for Lenia, crisp nearest for discrete CA)
+    ctx.imageSmoothingEnabled = (state.engineKey === 'lenia');
+    ctx.drawImage(eng.offscreen, ax, ay, aw, ah);
+
+    // 4. Optional Bioluminescent Bloom Pass
+    if (state.showBloom) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = state.engineKey === 'lenia' ? 0.36 : 0.24;
+      ctx.filter = state.engineKey === 'lenia' ? 'blur(10px)' : 'blur(6px)';
+      ctx.imageSmoothingEnabled = true;
+      ctx.drawImage(eng.offscreen, ax, ay, aw, ah);
+      ctx.restore();
+    }
+
+    // 5. Crisp Cell Gridlines (for discrete engines at high zoom)
+    if (state.showGrid && state.engineKey !== 'lenia' && state.camZoom >= 5.5) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(148, 179, 255, 0.08)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      const startX = Math.max(0, Math.floor(-ax / state.camZoom));
+      const endX = Math.min(eng.w, Math.ceil((viewW - ax) / state.camZoom));
+      const startY = Math.max(0, Math.floor(-ay / state.camZoom));
+      const endY = Math.min(eng.h, Math.ceil((viewH - ay) / state.camZoom));
+      for (let x = startX; x <= endX; x++) {
+        const px = Math.round(ax + x * state.camZoom) + 0.5;
+        ctx.moveTo(px, Math.max(ay, 0));
+        ctx.lineTo(px, Math.min(ay + ah, viewH));
+      }
+      for (let y = startY; y <= endY; y++) {
+        const py = Math.round(ay + y * state.camZoom) + 0.5;
+        ctx.moveTo(Math.max(ax, 0), py);
+        ctx.lineTo(Math.min(ax + aw, viewW), py);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Arena subtle glass border
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.20)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(ax - 0.5, ay - 0.5, aw + 1, ah + 1);
+
+    // 6. Cursor Brush / Stamp Ghost Preview
+    if (state.mouseX >= 0 && state.hoverCellX >= 0 && state.hoverCellX < eng.w && state.hoverCellY >= 0 && state.hoverCellY < eng.h) {
+      if (state.tool === 'stamp' && state.showGhost) {
+        drawStampGhost(eng);
+      } else {
+        const br = state.engineKey === 'lenia'
+          ? Math.max(2, state.brushRadius * 1.15) * state.camZoom
+          : state.engineKey === 'wire'
+            ? Math.max(0.6, state.brushRadius <= 6 ? 0.55 : state.brushRadius * 0.22) * state.camZoom
+            : Math.max(0.6, state.brushRadius * 0.65) * state.camZoom;
+        const sx = ax + (state.hoverCellX + 0.5) * state.camZoom;
+        const sy = ay + (state.hoverCellY + 0.5) * state.camZoom;
+        ctx.save();
+        ctx.strokeStyle = state.tool === 'erase' ? 'rgba(255, 96, 131, 0.85)' : 'rgba(88, 220, 255, 0.82)';
+        ctx.lineWidth = 1.4;
+        ctx.setLineDash([4, 3]);
+        ctx.beginPath();
+        ctx.arc(sx, sy, Math.max(4, br), 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    ctx.restore();
+  }
+
+  function drawStampGhost(eng) {
+    const cat = getStampCatalog(state.engineKey);
+    const entry = cat[state.stampKey];
+    if (!entry) return;
+    const z = state.camZoom;
+    const ax = state.camX, ay = state.camY;
+
+    ctx.save();
+    if (state.engineKey === 'lenia') {
+      const mat = rotateMatrixFloat(entry.mat, state.stampRot);
+      const mh = mat.length, mw = mat[0].length;
+      const x0 = Math.round(state.hoverCellX - mw * 0.5);
+      const y0 = Math.round(state.hoverCellY - mh * 0.5);
+      for (let y = 0; y < mh; y++) {
+        for (let x = 0; x < mw; x++) {
+          const v = mat[y][x];
+          if (v < 0.08) continue;
+          ctx.fillStyle = `rgba(88, 220, 255, ${(v * 0.52).toFixed(2)})`;
+          ctx.fillRect(ax + (x0 + x) * z, ay + (y0 + y) * z, z + 0.5, z + 0.5);
+        }
+      }
+      ctx.strokeStyle = 'rgba(88, 220, 255, 0.5)';
+      ctx.setLineDash([4, 3]);
+      ctx.strokeRect(ax + x0 * z, ay + y0 * z, mw * z, mh * z);
+    } else {
+      const p = rotateDiscretePattern(entry.pat, state.stampRot);
+      const x0 = Math.round(state.hoverCellX - p.w * 0.5);
+      const y0 = Math.round(state.hoverCellY - p.h * 0.5);
+      for (let y = 0; y < p.h; y++) {
+        for (let x = 0; x < p.w; x++) {
+          const v = p.grid[y][x];
+          if (!v) continue;
+          if (state.engineKey === 'wire') {
+            ctx.fillStyle = v === 1 ? 'rgba(88,220,255,0.75)' : v === 2 ? 'rgba(255,104,72,0.7)' : 'rgba(255,190,92,0.58)';
+          } else if (state.engineKey === 'brain') {
+            ctx.fillStyle = v === 2 ? 'rgba(88,220,255,0.72)' : 'rgba(167,139,250,0.55)';
+          } else {
+            ctx.fillStyle = 'rgba(74,242,178,0.65)';
+          }
+          ctx.fillRect(ax + (x0 + x) * z, ay + (y0 + y) * z, Math.max(1, z), Math.max(1, z));
+        }
+      }
+      ctx.strokeStyle = 'rgba(255, 190, 92, 0.5)';
+      ctx.setLineDash([4, 3]);
+      ctx.strokeRect(ax + x0 * z, ay + y0 * z, p.w * z, p.h * z);
+    }
+    ctx.restore();
+  }
+
+  // =========================================================================
+  // 17. INTERACTION: PAINT, ERASE, STAMP, PAN, ZOOM
+  // =========================================================================
+  function applyBrushLine(x0, y0, x1, y1, erase) {
+    const eng = activeEngine();
+    const dx = x1 - x0;
+    const dy = y1 - y0;
+    const steps = Math.max(1, Math.ceil(Math.hypot(dx, dy)));
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      const cx = x0 + dx * t;
+      const cy = y0 + dy * t;
+      eng.paint(cx, cy, state.brushRadius, erase, state.brushStrength);
+    }
+  }
+
+  function applyStampAt(cx, cy) {
+    const eng = activeEngine();
+    const cat = getStampCatalog(state.engineKey);
+    const entry = cat[state.stampKey];
+    if (!entry) return;
+    if (state.engineKey === 'lenia') {
+      eng.stampMatrix(entry.mat, cx, cy, state.stampRot, 1.0);
+    } else {
+      eng.stampPattern(entry.pat, cx, cy, state.stampRot);
+    }
+  }
+
+  canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+  canvas.addEventListener('pointerdown', e => {
+    canvas.setPointerCapture(e.pointerId);
+    state.mouseX = e.clientX;
+    state.mouseY = e.clientY;
+
+    // Middle-click or Alt+Left-click -> Pan
+    if (e.button === 1 || (e.button === 0 && e.altKey)) {
+      state.isPanning = true;
+      state.panStartX = e.clientX;
+      state.panStartY = e.clientY;
+      state.panCamStartX = state.camX;
+      state.panCamStartY = state.camY;
+      canvas.classList.add('panning');
+      return;
+    }
+
+    const [cx, cy] = screenToCell(e.clientX, e.clientY);
+    state.hoverCellX = cx;
+    state.hoverCellY = cy;
+
+    // Right-click always Erases
+    if (e.button === 2) {
+      state.isDrawing = true;
+      state.drawButton = 2;
+      state.lastDrawX = cx;
+      state.lastDrawY = cy;
+      applyBrushLine(cx, cy, cx, cy, true);
+      return;
+    }
+
+    // Left-click: Stamp, Paint, or Erase
+    if (e.button === 0) {
+      if (state.tool === 'stamp') {
+        applyStampAt(cx, cy);
+      } else {
+        state.isDrawing = true;
+        state.drawButton = 0;
+        state.lastDrawX = cx;
+        state.lastDrawY = cy;
+        applyBrushLine(cx, cy, cx, cy, state.tool === 'erase');
+      }
+    }
+  });
+
+  canvas.addEventListener('pointermove', e => {
+    state.mouseX = e.clientX;
+    state.mouseY = e.clientY;
+    if (state.isPanning) {
+      state.camX = state.panCamStartX + (e.clientX - state.panStartX);
+      state.camY = state.panCamStartY + (e.clientY - state.panStartY);
+      return;
+    }
+    const [cx, cy] = screenToCell(e.clientX, e.clientY);
+    state.hoverCellX = cx;
+    state.hoverCellY = cy;
+    if (state.isDrawing) {
+      const erase = state.drawButton === 2 || state.tool === 'erase';
+      applyBrushLine(state.lastDrawX, state.lastDrawY, cx, cy, erase);
+      state.lastDrawX = cx;
+      state.lastDrawY = cy;
+    }
+  });
+
+  function stopPointer() {
+    state.isDrawing = false;
+    state.isPanning = false;
+    canvas.classList.remove('panning');
+  }
+  canvas.addEventListener('pointerup', stopPointer);
+  canvas.addEventListener('pointercancel', stopPointer);
+  canvas.addEventListener('pointerleave', () => {
+    state.mouseX = -999;
+    state.mouseY = -999;
+  });
+
+  canvas.addEventListener('wheel', e => {
+    e.preventDefault();
+    const factor = e.deltaY < 0 ? 1.14 : 1 / 1.14;
+    const newZoom = Math.max(0.7, Math.min(34, state.camZoom * factor));
+    const ratio = newZoom / state.camZoom;
+    state.camX = e.clientX - (e.clientX - state.camX) * ratio;
+    state.camY = e.clientY - (e.clientY - state.camY) * ratio;
+    state.camZoom = newZoom;
+  }, { passive: false });
+
+  // =========================================================================
+  // 18. WIRE UP ALL UI CONTROLS & KEYBOARD SHORTCUTS
+  // =========================================================================
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      $(`tab-${btn.dataset.tab}`).classList.add('active');
+    });
+  });
+
+  els.engineGrid.querySelectorAll('.engine-btn').forEach(btn => {
+    btn.addEventListener('click', () => switchEngine(btn.dataset.engine));
+  });
+
+  els.toolModeRow.querySelectorAll('.seg-btn').forEach(btn => {
+    btn.addEventListener('click', () => setTool(btn.dataset.tool));
+  });
+
+  function rotateStamp() {
+    state.stampRot = (state.stampRot + 1) % 4;
+    els.stampRotTag.textContent = `${state.stampRot * 90}° · R to rotate`;
+    showToast(`Stamp rotated to ${state.stampRot * 90}°`);
+  }
+  els.btnRotateStamp.addEventListener('click', rotateStamp);
+  els.btnFitView.addEventListener('click', fitView);
+
+  // Lenia sliders
+  els.slMu.addEventListener('input', () => {
+    engines.lenia.mu = parseFloat(els.slMu.value);
+    els.valMu.textContent = engines.lenia.mu.toFixed(3);
+    drawKernelPreview();
+  });
+  els.slSigma.addEventListener('input', () => {
+    engines.lenia.sigma = parseFloat(els.slSigma.value);
+    els.valSigma.textContent = engines.lenia.sigma.toFixed(3);
+    drawKernelPreview();
+  });
+  els.slRadius.addEventListener('input', () => {
+    engines.lenia.R = parseInt(els.slRadius.value, 10);
+    els.valRadius.textContent = String(engines.lenia.R);
+    engines.lenia.buildKernel();
+    drawKernelPreview();
+  });
+  els.slDt.addEventListener('input', () => {
+    engines.lenia.dt = parseFloat(els.slDt.value);
+    els.valDt.textContent = engines.lenia.dt.toFixed(2);
+  });
+
+  // Life quick rule presets
+  els.lifeRulePresets.querySelectorAll('.preset-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      engines.life.setRule(btn.dataset.rule);
+      syncLifeRuleUI();
+      showToast(`Rule set to ${btn.dataset.rule}`);
+    });
+  });
+
+  // Wireworld brush state
+  els.wireBrushRow.querySelectorAll('.seg-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      engines.wire.paintState = parseInt(btn.dataset.wstate, 10);
+      els.wireBrushRow.querySelectorAll('.seg-btn').forEach(b => b.classList.remove('active', 'amber'));
+      btn.classList.add('active', 'amber');
+      setTool('paint');
+    });
+  });
+
+  // Arena controls
+  els.chkWrap.addEventListener('change', () => {
+    const eng = activeEngine();
+    if (eng.wrap !== undefined) eng.wrap = els.chkWrap.checked;
+  });
+  els.btnSeedRandom.addEventListener('click', () => {
+    activeEngine().seedSoup();
+    state.history = [];
+    showToast('Seeded fresh primordial soup');
+  });
+  els.btnClearGrid.addEventListener('click', () => {
+    activeEngine().clear();
+    state.history = [];
+    showToast('Arena cleared');
+  });
+
+  // Brush & Look controls
+  els.slBrush.addEventListener('input', () => {
+    state.brushRadius = parseInt(els.slBrush.value, 10);
+    els.valBrush.textContent = `${state.brushRadius} px`;
+  });
+  els.slStrength.addEventListener('input', () => {
+    state.brushStrength = parseInt(els.slStrength.value, 10) / 100;
+    els.valStrength.textContent = `${els.slStrength.value}%`;
+  });
+  els.paletteGrid.querySelectorAll('.pal-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.paletteKey = btn.dataset.palette;
+      els.paletteGrid.querySelectorAll('.pal-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      drawKernelPreview();
+    });
+  });
+  els.chkTrails.addEventListener('change', () => { state.showTrails = els.chkTrails.checked; });
+  els.chkBloom.addEventListener('change', () => { state.showBloom = els.chkBloom.checked; });
+  els.chkGrid.addEventListener('change', () => { state.showGrid = els.chkGrid.checked; });
+  els.chkGhost.addEventListener('change', () => { state.showGhost = els.chkGhost.checked; });
+
+  // Audio controls
+  function setAudioUI(on) {
+    audio.setEnabled(on);
+    els.chkAudio.checked = on;
+    els.audioStateTag.textContent = on ? 'Active' : 'Muted';
+    els.btnAudio.textContent = on ? '🔊 Audio' : '🔇 Audio';
+    els.btnAudio.classList.toggle('active', on);
+  }
+  els.chkAudio.addEventListener('change', () => setAudioUI(els.chkAudio.checked));
+  els.slVol.addEventListener('input', () => {
+    const v = parseInt(els.slVol.value, 10) / 100;
+    audio.setVolume(v);
+    els.valVol.textContent = `${els.slVol.value}%`;
+  });
+
+  // Transport Bar controls
+  function setRunning(run) {
+    state.running = run;
+    els.btnPlay.textContent = run ? '⏸ Pause' : '▶ Play';
+    els.btnPlay.classList.toggle('active', run);
+  }
+  els.btnPlay.addEventListener('click', () => setRunning(!state.running));
+  els.btnStep.addEventListener('click', () => {
+    setRunning(false);
+    stepActiveEngine();
+  });
+  els.btnReset.addEventListener('click', () => {
+    activeEngine().loadPreset(state.presetKey);
+    state.history = [];
+    syncLeniaSliders();
+    showToast('Reset preset');
+  });
+  els.btnSpeed.addEventListener('click', () => {
+    state.speedIdx = (state.speedIdx + 1) % SPEEDS.length;
+    els.btnSpeed.textContent = `${SPEEDS[state.speedIdx]}× Speed`;
+  });
+  els.btnAudio.addEventListener('click', () => setAudioUI(!audio.enabled));
+
+  function setDrawerOpen(open) {
+    state.drawerOpen = open;
+    els.drawer.classList.toggle('collapsed', !open);
+    els.btnDrawer.classList.toggle('active', open);
+  }
+  els.btnDrawer.addEventListener('click', () => setDrawerOpen(!state.drawerOpen));
+
+  function setZenMode(zen) {
+    state.zenMode = zen;
+    document.body.classList.toggle('zen-mode', zen);
+    els.btnCinema.classList.toggle('active', zen);
+  }
+  els.btnCinema.addEventListener('click', () => setZenMode(!state.zenMode));
+  els.btnZenRestore.addEventListener('click', () => setZenMode(false));
+
+  // Keyboard shortcuts
+  window.addEventListener('keydown', e => {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+    if (e.code === 'Space') {
+      e.preventDefault();
+      setRunning(!state.running);
+    } else if (e.key === 'h' || e.key === 'H') {
+      setZenMode(!state.zenMode);
+    } else if (e.key === 'r' || e.key === 'R') {
+      rotateStamp();
+    } else if (e.key === 'c' || e.key === 'C') {
+      setDrawerOpen(!state.drawerOpen);
+    } else if (e.key === 'm' || e.key === 'M') {
+      setAudioUI(!audio.enabled);
+    } else if (e.key === '.') {
+      setRunning(false);
+      stepActiveEngine();
+    } else if (e.key === '0') {
+      fitView();
+    } else if (e.key === '[') {
+      state.brushRadius = Math.max(1, state.brushRadius - 1);
+      els.slBrush.value = state.brushRadius;
+      els.valBrush.textContent = `${state.brushRadius} px`;
+    } else if (e.key === ']') {
+      state.brushRadius = Math.min(20, state.brushRadius + 1);
+      els.slBrush.value = state.brushRadius;
+      els.valBrush.textContent = `${state.brushRadius} px`;
+    } else if (e.key === '1') {
+      switchEngine('lenia');
+    } else if (e.key === '2') {
+      switchEngine('life');
+    } else if (e.key === '3') {
+      switchEngine('brain');
+    } else if (e.key === '4') {
+      switchEngine('wire');
+    }
+  });
+
+  // =========================================================================
+  // 19. SIMULATION LOOP & TELEMETRY UPDATE
+  // =========================================================================
+  function stepActiveEngine() {
+    const eng = activeEngine();
+    if (state.engineKey === 'lenia') {
+      eng.step();
+    } else {
+      eng.step(state.showTrails);
+    }
+    const metric = state.engineKey === 'lenia' ? eng.biomass : eng.population;
+    state.history.push(metric);
+    if (state.history.length > 120) state.history.shift();
+    audio.modulate(eng.activity, state.engineKey);
+  }
+
+  function updateTelemetry() {
+    const eng = activeEngine();
+    if (state.engineKey === 'lenia') {
+      els.telGen.textContent = eng.time.toFixed(1);
+      els.telPop.textContent = eng.biomass.toFixed(1);
+    } else {
+      els.telGen.textContent = eng.gen.toLocaleString();
+      els.telPop.textContent = eng.population.toLocaleString();
+    }
+    els.telAct.textContent = `${eng.activity.toFixed(1)}%`;
+
+    const metric = state.engineKey === 'lenia' ? eng.biomass : eng.population;
+    if (!state.running) {
+      els.statusPill.textContent = 'Paused';
+      els.statusPill.className = 'status-pill paused';
+    } else if (metric < 0.01 && eng.gen > 2) {
+      els.statusPill.textContent = 'Extinct';
+      els.statusPill.className = 'status-pill extinct';
+    } else {
+      els.statusPill.textContent = 'Running';
+      els.statusPill.className = 'status-pill';
+    }
+  }
+
+  // Natural simulation cadence per engine at 1x speed
+  function stepsPerFrameForEngine(key) {
+    if (key === 'lenia') return 1.0;  // 60 continuous FFT steps/sec
+    if (key === 'life')  return 0.35; // ~21 gens/sec (cinematic, crisp gliders)
+    if (key === 'brain') return 0.35; // ~21 gens/sec (electric fireworks)
+    return 0.25;                      // ~15 clock cycles/sec (clear electron pulses)
+  }
+
+  let frameCounter = 0;
+  function tick(now) {
+    requestAnimationFrame(tick);
+
+    // FPS measurement
+    state.fpsFrames++;
+    if (now - state.fpsLast >= 500) {
+      state.fpsVal = Math.round((state.fpsFrames * 1000) / (now - state.fpsLast));
+      els.metaFps.textContent = String(state.fpsVal);
+      state.fpsFrames = 0;
+      state.fpsLast = now;
+    }
+
+    if (state.running) {
+      const speedMult = SPEEDS[state.speedIdx];
+      const baseRate = stepsPerFrameForEngine(state.engineKey);
+      // Cap Lenia max steps/frame at 2 to keep 60fps silky even on 4x
+      const maxSteps = state.engineKey === 'lenia' ? 2 : 6;
+      state.stepAccum += baseRate * speedMult;
+      let steps = Math.min(maxSteps, Math.floor(state.stepAccum));
+      state.stepAccum -= Math.floor(state.stepAccum);
+      for (let i = 0; i < steps; i++) {
+        stepActiveEngine();
+      }
+    }
+
+    renderScene();
+    frameCounter++;
+    if ((frameCounter & 1) === 0) {
+      updateTelemetry();
+      drawSparkline();
+    }
+  }
+
+  // =========================================================================
+  // 20. BOOTSTRAP
+  // =========================================================================
+  buildLifeRuleBits();
+  syncLifeRuleUI();
+  window.addEventListener('resize', resizeCanvas);
+  resizeCanvas();
+  switchEngine('lenia');
+  requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>

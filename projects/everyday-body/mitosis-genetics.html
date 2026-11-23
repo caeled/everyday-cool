@@ -1,0 +1,3842 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Cytokinesis — Mitosis, Meiosis Crossing-Over &amp; Genetics Lab</title>
+<style>
+  :root {
+    --bg-deep: #040711;
+    --panel-bg: rgba(9, 13, 24, 0.78);
+    --panel-bg-strong: rgba(8, 12, 22, 0.92);
+    --panel-border: rgba(148, 179, 255, 0.16);
+    --panel-border-hi: rgba(148, 179, 255, 0.36);
+    --text-main: #eef3ff;
+    --text-dim: #9aa9cc;
+    --text-muted: #68789c;
+    --accent-amber: #ffbe5c;
+    --accent-cyan: #58dcff;
+    --accent-mint: #4af2b2;
+    --accent-rose: #ff6083;
+    --accent-violet: #a78bfa;
+    --radius-lg: 14px;
+    --radius-md: 10px;
+    --radius-sm: 7px;
+    --mono: ui-monospace, "Cascadia Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Inter, Helvetica, Arial, sans-serif;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg-deep);
+    color: var(--text-main);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    touch-action: none;
+  }
+
+  #sim-canvas {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    display: block;
+    cursor: grab;
+  }
+  #sim-canvas.panning {
+    cursor: grabbing;
+  }
+
+  /* HUD Layer */
+  .hud {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 10;
+  }
+  body.cinema-mode .hud > :not(.cinema-restore) {
+    opacity: 0;
+    pointer-events: none !important;
+  }
+
+  .panel {
+    pointer-events: auto;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-lg);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    transition: opacity 0.25s ease, transform 0.25s ease;
+  }
+
+  /* Top-Left Telemetry Card */
+  .top-left {
+    position: fixed;
+    top: 14px;
+    left: 14px;
+    width: min(420px, calc(100vw - 366px));
+    min-width: 286px;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .brand-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .brand-title-wrap {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .brand-title {
+    font-size: 16px;
+    font-weight: 800;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+    background: linear-gradient(120deg, #ffe2eb 0%, #ff6083 38%, #58dcff 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .mode-badge {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 999px;
+    border: 1px solid rgba(88, 220, 255, 0.42);
+    background: rgba(88, 220, 255, 0.12);
+    color: var(--accent-cyan);
+  }
+  .mode-badge.meiosis {
+    border-color: rgba(255, 96, 131, 0.45);
+    background: rgba(255, 96, 131, 0.14);
+    color: #ff9cb3;
+  }
+  .mode-badge.genetics {
+    border-color: rgba(167, 139, 250, 0.45);
+    background: rgba(167, 139, 250, 0.15);
+    color: #c7b5ff;
+  }
+
+  .status-pill {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: rgba(74, 242, 178, 0.14);
+    color: var(--accent-mint);
+    border: 1px solid rgba(74, 242, 178, 0.35);
+    white-space: nowrap;
+  }
+  .status-pill.warn {
+    background: rgba(255, 190, 92, 0.16);
+    color: var(--accent-amber);
+    border-color: rgba(255, 190, 92, 0.4);
+  }
+  .status-pill.danger {
+    background: rgba(255, 96, 131, 0.18);
+    color: var(--accent-rose);
+    border-color: rgba(255, 96, 131, 0.48);
+  }
+  .status-pill.violet {
+    background: rgba(167, 139, 250, 0.18);
+    color: #c7b5ff;
+    border-color: rgba(167, 139, 250, 0.44);
+  }
+
+  .telemetry-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+  }
+
+  .tele-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(148, 179, 255, 0.1);
+    border-radius: var(--radius-sm);
+    padding: 6px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .tele-label {
+    font-size: 9px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .tele-val {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--text-main);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .tele-val.amber { color: var(--accent-amber); }
+  .tele-val.cyan { color: var(--accent-cyan); }
+  .tele-val.mint { color: var(--accent-mint); }
+  .tele-val.rose { color: var(--accent-rose); }
+  .tele-val.violet { color: var(--accent-violet); }
+
+  .stage-bar-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding-top: 5px;
+    border-top: 1px solid rgba(148, 179, 255, 0.1);
+  }
+  .stage-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+  .stage-row strong {
+    color: var(--text-main);
+    font-weight: 700;
+  }
+  .stage-desc {
+    font-size: 10.5px;
+    color: var(--text-muted);
+    line-height: 1.35;
+  }
+  .progress-track {
+    width: 100%;
+    height: 5px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    width: 0%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #ff6083, #a78bfa 50%, #58dcff 100%);
+    transition: width 0.05s linear;
+  }
+
+  /* Right Control Drawer (330px) */
+  .drawer {
+    position: fixed;
+    top: 14px;
+    right: 14px;
+    bottom: 14px;
+    width: 330px;
+    max-width: calc(100vw - 28px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: transform 0.25s ease, opacity 0.25s ease;
+  }
+  .drawer.collapsed {
+    transform: translateX(calc(100% + 24px));
+    pointer-events: none;
+  }
+
+  .drawer-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+    padding: 8px 8px 6px;
+    border-bottom: 1px solid var(--panel-border);
+    background: rgba(4, 7, 17, 0.45);
+  }
+
+  .tab-btn {
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 11.5px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    padding: 7px 6px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .tab-btn:hover {
+    color: var(--text-main);
+    background: rgba(255, 255, 255, 0.04);
+  }
+  .tab-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.16);
+    border-color: rgba(88, 220, 255, 0.4);
+  }
+
+  .drawer-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 11px 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .drawer-body::-webkit-scrollbar {
+    width: 5px;
+  }
+  .drawer-body::-webkit-scrollbar-thumb {
+    background: rgba(148, 179, 255, 0.22);
+    border-radius: 999px;
+  }
+
+  .tab-pane {
+    display: none;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .tab-pane.active {
+    display: flex;
+  }
+
+  .section {
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(148, 179, 255, 0.11);
+    border-radius: var(--radius-md);
+    padding: 10px 11px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .section-title {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  /* Presets Grid */
+  .preset-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .preset-btn {
+    text-align: left;
+    padding: 7px 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(148, 179, 255, 0.14);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-main);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .preset-btn:hover {
+    border-color: rgba(88, 220, 255, 0.45);
+    background: rgba(88, 220, 255, 0.08);
+  }
+  .preset-btn.active {
+    border-color: var(--accent-cyan);
+    background: rgba(88, 220, 255, 0.14);
+  }
+  .preset-btn.rose.active,
+  .preset-btn.rose:hover {
+    border-color: rgba(255, 96, 131, 0.65);
+    background: rgba(255, 96, 131, 0.12);
+  }
+  .preset-name {
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+  .preset-sub {
+    font-size: 9.5px;
+    color: var(--text-muted);
+    line-height: 1.25;
+  }
+
+  /* Phase buttons */
+  .phase-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+  }
+  .phase-btn {
+    border: 1px solid rgba(148, 179, 255, 0.15);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-dim);
+    font-size: 10px;
+    font-weight: 650;
+    padding: 5px 4px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.14s ease;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .phase-btn:hover {
+    color: #fff;
+    border-color: rgba(148, 179, 255, 0.36);
+  }
+  .phase-btn.active {
+    color: #fff;
+    background: rgba(167, 139, 250, 0.24);
+    border-color: var(--accent-violet);
+    box-shadow: 0 0 10px rgba(167, 139, 250, 0.25);
+  }
+
+  /* Sliders */
+  .control-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .control-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+  .control-head .val {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-main);
+    font-weight: 650;
+  }
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 5px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.18);
+    outline: none;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent-cyan);
+    border: 2px solid #08101f;
+    box-shadow: 0 0 10px rgba(88, 220, 255, 0.65);
+    cursor: pointer;
+  }
+  input[type="range"].rose::-webkit-slider-thumb {
+    background: var(--accent-rose);
+    box-shadow: 0 0 10px rgba(255, 96, 131, 0.65);
+  }
+  input[type="range"].violet::-webkit-slider-thumb {
+    background: var(--accent-violet);
+    box-shadow: 0 0 10px rgba(167, 139, 250, 0.65);
+  }
+  input[type="range"].amber::-webkit-slider-thumb {
+    background: var(--accent-amber);
+    box-shadow: 0 0 10px rgba(255, 190, 92, 0.65);
+  }
+
+  /* Segmented pills */
+  .seg-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(56px, 1fr));
+    gap: 4px;
+  }
+  .seg-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-dim);
+    font-size: 11px;
+    font-weight: 650;
+    padding: 6px 5px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-align: center;
+  }
+  .seg-btn:hover {
+    color: #fff;
+    border-color: rgba(148, 179, 255, 0.35);
+  }
+  .seg-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.18);
+    border-color: var(--accent-cyan);
+  }
+  .seg-btn.active.rose {
+    background: rgba(255, 96, 131, 0.18);
+    border-color: var(--accent-rose);
+    color: #ffd0dc;
+  }
+  .seg-btn.active.violet {
+    background: rgba(167, 139, 250, 0.2);
+    border-color: var(--accent-violet);
+    color: #e4dcff;
+  }
+
+  /* Buttons */
+  .btn-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .btn {
+    border: 1px solid rgba(148, 179, 255, 0.22);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-main);
+    font-size: 11px;
+    font-weight: 700;
+    padding: 7px 9px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+  }
+  .btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 179, 255, 0.45);
+  }
+  .btn:active {
+    transform: scale(0.98);
+  }
+  .btn.primary {
+    background: linear-gradient(135deg, rgba(88, 220, 255, 0.28), rgba(56, 140, 255, 0.24));
+    border-color: rgba(88, 220, 255, 0.55);
+    color: #e6f9ff;
+  }
+  .btn.rose {
+    background: linear-gradient(135deg, rgba(255, 96, 131, 0.25), rgba(167, 139, 250, 0.2));
+    border-color: rgba(255, 96, 131, 0.55);
+    color: #ffe3ea;
+  }
+  .btn.mint {
+    background: linear-gradient(135deg, rgba(74, 242, 178, 0.22), rgba(88, 220, 255, 0.18));
+    border-color: rgba(74, 242, 178, 0.5);
+    color: #e0fff3;
+  }
+
+  /* Toggle switches */
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11.5px;
+    color: var(--text-dim);
+    cursor: pointer;
+    gap: 8px;
+  }
+  .toggle-row input {
+    display: none;
+  }
+  .switch {
+    width: 34px;
+    height: 18px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.2);
+    border: 1px solid rgba(148, 179, 255, 0.25);
+    position: relative;
+    transition: all 0.18s ease;
+    flex-shrink: 0;
+  }
+  .switch::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #c8d7f5;
+    transition: transform 0.18s ease, background 0.18s ease;
+  }
+  .toggle-row input:checked + .switch {
+    background: rgba(88, 220, 255, 0.32);
+    border-color: var(--accent-cyan);
+  }
+  .toggle-row.danger input:checked + .switch {
+    background: rgba(255, 96, 131, 0.38);
+    border-color: var(--accent-rose);
+  }
+  .toggle-row input:checked + .switch::after {
+    transform: translateX(16px);
+    background: #fff;
+  }
+
+  /* Select dropdown */
+  select.select-input {
+    width: 100%;
+    background: rgba(10, 16, 32, 0.9);
+    border: 1px solid rgba(148, 179, 255, 0.24);
+    color: var(--text-main);
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 5px 8px;
+    border-radius: 6px;
+    outline: none;
+    cursor: pointer;
+  }
+  select.select-input:focus {
+    border-color: var(--accent-cyan);
+  }
+
+  /* Gamete & Daughter Cell Inspector Cards */
+  .gamete-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .gamete-card {
+    padding: 7px 9px;
+    border-radius: var(--radius-sm);
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(148, 179, 255, 0.12);
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+  .gamete-card.aneuploid {
+    border-color: rgba(255, 96, 131, 0.5);
+    background: rgba(255, 96, 131, 0.08);
+  }
+  .gamete-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11px;
+  }
+  .gamete-hap {
+    font-family: var(--mono);
+    font-weight: 700;
+    color: var(--text-main);
+    font-size: 11.5px;
+  }
+  .gamete-tag {
+    font-size: 9.5px;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: rgba(74, 242, 178, 0.14);
+    color: var(--accent-mint);
+    border: 1px solid rgba(74, 242, 178, 0.3);
+  }
+  .gamete-tag.recomb {
+    background: rgba(167, 139, 250, 0.18);
+    color: #d2c2ff;
+    border-color: rgba(167, 139, 250, 0.4);
+  }
+  .gamete-tag.error {
+    background: rgba(255, 96, 131, 0.22);
+    color: #ff9cb3;
+    border-color: rgba(255, 96, 131, 0.5);
+  }
+  .chrom-strip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .mini-chrom {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 2px 6px;
+    border-radius: 5px;
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 700;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(148, 179, 255, 0.14);
+  }
+  .mini-bar {
+    width: 14px;
+    height: 6px;
+    border-radius: 3px;
+    display: inline-block;
+  }
+
+  /* Legend row */
+  .legend-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+  .legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .legend-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  /* Embedded Genetics Lab Stage Overlay */
+  .genetics-overlay {
+    position: fixed;
+    top: 158px;
+    left: 14px;
+    right: 358px;
+    bottom: 66px;
+    display: none;
+    grid-template-columns: minmax(280px, 1.05fr) minmax(280px, 1.15fr);
+    gap: 12px;
+    pointer-events: none;
+    z-index: 9;
+    transition: right 0.25s ease, opacity 0.25s ease;
+  }
+  .genetics-overlay.visible {
+    display: grid;
+  }
+  body.drawer-collapsed .genetics-overlay {
+    right: 14px;
+  }
+  body.cinema-mode .genetics-overlay {
+    top: 14px;
+    right: 14px;
+    bottom: 14px;
+    opacity: 1 !important;
+    pointer-events: auto !important;
+  }
+
+  .lab-card {
+    pointer-events: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 13px 15px;
+    overflow: hidden;
+    min-height: 0;
+  }
+  .lab-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .lab-title {
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #fff;
+  }
+  .lab-sub {
+    font-size: 10.5px;
+    color: var(--text-dim);
+  }
+
+  /* Punnett Table */
+  .punnett-wrap {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-height: 0;
+    overflow: auto;
+  }
+  .punnett-grid {
+    display: grid;
+    gap: 4px;
+    width: 100%;
+    margin: auto;
+  }
+  .p-cell {
+    border-radius: 7px;
+    padding: 6px 4px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    text-align: center;
+    border: 1px solid rgba(148, 179, 255, 0.14);
+    background: rgba(255, 255, 255, 0.03);
+    transition: all 0.15s ease;
+    cursor: pointer;
+    min-height: 44px;
+  }
+  .p-cell.hdr {
+    background: rgba(88, 220, 255, 0.1);
+    border-color: rgba(88, 220, 255, 0.3);
+    font-family: var(--mono);
+    font-weight: 800;
+    font-size: 11.5px;
+    color: var(--accent-cyan);
+    cursor: default;
+    min-height: 30px;
+  }
+  .p-cell.hdr.mat {
+    background: rgba(255, 96, 131, 0.12);
+    border-color: rgba(255, 96, 131, 0.32);
+    color: #ff9bb2;
+  }
+  .p-cell.corner {
+    background: rgba(167, 139, 250, 0.12);
+    border-color: rgba(167, 139, 250, 0.28);
+    font-size: 10px;
+    color: var(--text-dim);
+    font-weight: 700;
+    cursor: default;
+    min-height: 30px;
+  }
+  .p-cell.offspring:hover,
+  .p-cell.offspring.selected {
+    transform: translateY(-1px);
+    border-color: #fff;
+    box-shadow: 0 0 14px rgba(88, 220, 255, 0.35);
+    z-index: 2;
+  }
+  .p-geno {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    font-weight: 750;
+    color: #fff;
+  }
+  .p-pheno {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 9.5px;
+    color: var(--text-dim);
+  }
+  .p-swatch {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+  .punnett-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding-top: 8px;
+    border-top: 1px solid rgba(148, 179, 255, 0.12);
+    font-size: 10.5px;
+    color: var(--text-dim);
+  }
+  .ratio-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text-main);
+  }
+
+  /* Hardy-Weinberg Canvas Container */
+  .hw-chart-box {
+    flex: 1;
+    position: relative;
+    min-height: 170px;
+    border-radius: var(--radius-md);
+    background: rgba(4, 7, 17, 0.65);
+    border: 1px solid rgba(148, 179, 255, 0.14);
+    overflow: hidden;
+  }
+  #hw-canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+  .hw-bars {
+    display: flex;
+    height: 14px;
+    border-radius: 999px;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(148, 179, 255, 0.18);
+  }
+  .hw-bar-aa-dom { background: linear-gradient(90deg, #ff4775, #ff7499); transition: width 0.12s linear; }
+  .hw-bar-het { background: linear-gradient(90deg, #8b5cf6, #b794ff); transition: width 0.12s linear; }
+  .hw-bar-rec { background: linear-gradient(90deg, #25b8f2, #58dcff); transition: width 0.12s linear; }
+
+  .hw-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+  }
+  .hw-stat {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(148, 179, 255, 0.12);
+    border-radius: 7px;
+    padding: 5px 7px;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+
+  /* Compact mini H-W preview in drawer */
+  .mini-hw-box {
+    height: 82px;
+    border-radius: 8px;
+    background: rgba(4, 7, 17, 0.72);
+    border: 1px solid rgba(148, 179, 255, 0.14);
+    overflow: hidden;
+  }
+  #mini-hw-canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  /* Bottom Transport Bar */
+  .bottom-bar {
+    position: fixed;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 7px 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: nowrap;
+  }
+
+  .bar-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-main);
+    font-size: 11.5px;
+    font-weight: 650;
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    white-space: nowrap;
+  }
+  .bar-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 179, 255, 0.4);
+  }
+  .bar-btn.active {
+    background: rgba(88, 220, 255, 0.2);
+    border-color: var(--accent-cyan);
+    color: #fff;
+  }
+  .bar-btn.active.violet {
+    background: rgba(167, 139, 250, 0.24);
+    border-color: var(--accent-violet);
+    color: #fff;
+  }
+
+  .bar-divider {
+    width: 1px;
+    height: 20px;
+    background: rgba(148, 179, 255, 0.16);
+    margin: 0 2px;
+  }
+
+  /* Bottom-left hints */
+  .hint-pill {
+    position: fixed;
+    bottom: 14px;
+    left: 14px;
+    padding: 7px 11px;
+    font-size: 10.5px;
+    color: var(--text-dim);
+    max-width: 315px;
+    line-height: 1.45;
+  }
+  .hint-pill kbd {
+    font-family: var(--mono);
+    font-size: 9.5px;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #fff;
+  }
+
+  /* Event Banner */
+  .event-banner {
+    position: fixed;
+    top: 14px;
+    left: 50%;
+    transform: translateX(-50%) translateY(-10px);
+    padding: 8px 15px;
+    border-radius: var(--radius-md);
+    background: rgba(16, 10, 28, 0.9);
+    border: 1px solid rgba(167, 139, 250, 0.55);
+    color: #e9e0ff;
+    font-size: 12px;
+    font-weight: 650;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease, transform 0.25s ease;
+    z-index: 20;
+    white-space: nowrap;
+  }
+  .event-banner.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+  .event-banner.danger {
+    background: rgba(24, 8, 16, 0.92);
+    border-color: rgba(255, 96, 131, 0.65);
+    color: #ffdbe4;
+  }
+
+  /* Cinema Restore Pill */
+  .cinema-restore {
+    position: fixed;
+    bottom: 16px;
+    right: 16px;
+    padding: 7px 12px;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-main);
+    opacity: 0;
+    pointer-events: none;
+    cursor: pointer;
+    z-index: 30;
+  }
+  body.cinema-mode .cinema-restore {
+    opacity: 0.9;
+    pointer-events: auto;
+  }
+
+  /* Bio note box */
+  .bio-note {
+    font-size: 11px;
+    line-height: 1.5;
+    color: var(--text-dim);
+  }
+  .bio-note strong {
+    color: var(--text-main);
+  }
+
+  @media (max-width: 1080px) {
+    .genetics-overlay {
+      grid-template-columns: 1fr;
+      overflow-y: auto;
+    }
+    .hint-pill {
+      display: none;
+    }
+  }
+  @media (max-width: 780px) {
+    .top-left {
+      width: calc(100vw - 28px);
+    }
+    .genetics-overlay {
+      right: 14px;
+    }
+    .bottom-bar {
+      max-width: calc(100vw - 20px);
+      overflow-x: auto;
+    }
+  }
+</style>
+</head>
+<body>
+
+<canvas id="sim-canvas"></canvas>
+
+<div class="hud">
+  <!-- Top-Left Telemetry Card -->
+  <div class="panel top-left">
+    <div class="brand-row">
+      <div class="brand-title-wrap">
+        <span class="brand-title">Cytokinesis</span>
+        <span class="mode-badge meiosis" id="mode-badge">Meiosis I &amp; II</span>
+      </div>
+      <span class="status-pill" id="status-pill">Prophase I</span>
+    </div>
+
+    <div class="telemetry-grid">
+      <div class="tele-card">
+        <span class="tele-label">Ploidy</span>
+        <span class="tele-val cyan" id="tele-ploidy">2n = 6</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Chromosomes</span>
+        <span class="tele-val rose" id="tele-chroms">6 / cell</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Chromatids</span>
+        <span class="tele-val amber" id="tele-chromatids">12 / cell</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Crossovers</span>
+        <span class="tele-val violet" id="tele-crossovers">3 chiasmata</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Gametes (2ⁿ)</span>
+        <span class="tele-val mint" id="tele-combos">2³ = 8 (+XO)</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Cell Count</span>
+        <span class="tele-val" id="tele-cells">1 Cell</span>
+      </div>
+    </div>
+
+    <div class="stage-bar-wrap">
+      <div class="stage-row">
+        <strong id="stage-name">Prophase I — Synapsis &amp; Crossing-Over</strong>
+        <span id="stage-pct" style="font-family:var(--mono);font-size:10.5px;">0%</span>
+      </div>
+      <div class="progress-track">
+        <div class="progress-fill" id="stage-progress"></div>
+      </div>
+      <div class="stage-desc" id="stage-desc">Homologous pairs synapse into tetrads and swap glowing maternal/paternal DNA arms at chiasmata.</div>
+    </div>
+  </div>
+
+  <!-- Event Banner -->
+  <div class="event-banner" id="event-banner">
+    <span id="event-banner-text">Chiasma Recombination — Genetic segments swapped!</span>
+  </div>
+
+  <!-- Embedded Punnett Square & Hardy-Weinberg Overlay Stage -->
+  <div class="genetics-overlay" id="genetics-overlay">
+    <!-- Left Card: Live Punnett Square -->
+    <div class="panel lab-card">
+      <div class="lab-header">
+        <div>
+          <div class="lab-title">Punnett Cross Studio</div>
+          <div class="lab-sub" id="punnett-cross-label">Dihybrid Cross: AaBb × AaBb (16 offspring)</div>
+        </div>
+        <div style="display:flex;gap:5px;">
+          <button class="bar-btn active" id="btn-mono-mode" style="padding:4px 8px;font-size:10.5px;">Monohybrid</button>
+          <button class="bar-btn" id="btn-di-mode" style="padding:4px 8px;font-size:10.5px;">Dihybrid</button>
+        </div>
+      </div>
+
+      <div class="punnett-wrap">
+        <div class="punnett-grid" id="punnett-grid"></div>
+      </div>
+
+      <div class="punnett-summary" id="punnett-summary"></div>
+      <div style="font-size:10.5px;color:var(--text-dim);display:flex;justify-content:space-between;align-items:center;gap:8px;">
+        <span id="punnett-detail">Click any offspring cell to inspect genotype, phenotype &amp; probability.</span>
+        <button class="btn primary" id="btn-seed-meiosis" style="padding:5px 9px;font-size:10px;white-space:nowrap;">Seed from Meiosis</button>
+      </div>
+    </div>
+
+    <!-- Right Card: Real-Time Hardy-Weinberg Lab -->
+    <div class="panel lab-card">
+      <div class="lab-header">
+        <div>
+          <div class="lab-title">Hardy–Weinberg Population Lab</div>
+          <div class="lab-sub">p² + 2pq + q² = 1 · Selection, Drift &amp; Mutation</div>
+        </div>
+        <span class="status-pill" id="hw-eq-pill">Equilibrium</span>
+      </div>
+
+      <div class="hw-stats-grid">
+        <div class="hw-stat">
+          <span class="tele-label">p (Dom A)</span>
+          <span class="tele-val rose" id="hw-p-val">0.600</span>
+        </div>
+        <div class="hw-stat">
+          <span class="tele-label">q (Rec a)</span>
+          <span class="tele-val cyan" id="hw-q-val">0.400</span>
+        </div>
+        <div class="hw-stat">
+          <span class="tele-label">Generation</span>
+          <span class="tele-val amber" id="hw-gen-val">0</span>
+        </div>
+        <div class="hw-stat">
+          <span class="tele-label">Heterozyg 2pq</span>
+          <span class="tele-val violet" id="hw-het-val">48.0%</span>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:4px;">
+        <div style="display:flex;justify-content:space-between;font-size:10px;font-family:var(--mono);color:var(--text-dim);">
+          <span style="color:#ff8ea8;" id="hw-aa-dom-lbl">p² (AA): 36.0%</span>
+          <span style="color:#c7b5ff;" id="hw-het-lbl">2pq (Aa): 48.0%</span>
+          <span style="color:#7ae4ff;" id="hw-rec-lbl">q² (aa): 16.0%</span>
+        </div>
+        <div class="hw-bars">
+          <div class="hw-bar-aa-dom" id="hw-bar-dom" style="width:36%;"></div>
+          <div class="hw-bar-het" id="hw-bar-het" style="width:48%;"></div>
+          <div class="hw-bar-rec" id="hw-bar-rec" style="width:16%;"></div>
+        </div>
+      </div>
+
+      <div class="hw-chart-box">
+        <canvas id="hw-canvas"></canvas>
+      </div>
+
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <button class="btn primary" id="btn-hw-play" style="flex:1;">Pause Sim</button>
+        <button class="btn" id="btn-hw-step" style="flex:1;">+10 Gen</button>
+        <button class="btn rose" id="btn-hw-drift" style="flex:1;">New Drift Run</button>
+        <button class="btn" id="btn-hw-reset">Reset</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Collapsible 330px Right Drawer -->
+  <aside class="panel drawer" id="drawer">
+    <div class="drawer-tabs">
+      <button class="tab-btn active" data-tab="division" id="tab-btn-division">Division</button>
+      <button class="tab-btn" data-tab="genetics" id="tab-btn-genetics">Genetics</button>
+      <button class="tab-btn" data-tab="inspect" id="tab-btn-inspect">Inspect</button>
+    </div>
+
+    <div class="drawer-body">
+      <!-- TAB 1: DIVISION -->
+      <div class="tab-pane active" id="pane-division">
+        <div class="section">
+          <div class="section-title"><span>Division Pathway</span></div>
+          <div class="seg-row">
+            <button class="seg-btn" id="btn-mode-mitosis">Mitosis (2n→2n)</button>
+            <button class="seg-btn active rose" id="btn-mode-meiosis">Meiosis (2n→4n)</button>
+          </div>
+          <div class="seg-row">
+            <button class="seg-btn" id="btn-pairs-2">2n = 4 (2 pairs)</button>
+            <button class="seg-btn active" id="btn-pairs-3">2n = 6 (3 pairs)</button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">
+            <span>Phase Timeline Scrubber</span>
+            <span id="scrubber-phase-short" style="font-family:var(--mono);color:var(--accent-cyan);">P-I</span>
+          </div>
+          <div class="control-row">
+            <input type="range" id="phase-scrubber" class="violet" min="0" max="1000" value="0" />
+          </div>
+          <div class="phase-grid" id="phase-buttons"></div>
+          <div class="control-row" style="margin-top:2px;">
+            <div class="control-head">
+              <span>Playback Speed</span>
+              <span class="val" id="speed-val">1.0×</span>
+            </div>
+            <input type="range" id="speed-slider" min="0.2" max="2.5" step="0.1" value="1.0" />
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Genetic Variation &amp; Errors</span></div>
+          <label class="toggle-row">
+            <span>Crossing-Over (Chiasmata)</span>
+            <input type="checkbox" id="chk-crossover" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row danger">
+            <span>Nondisjunction Error (Aneuploidy)</span>
+            <input type="checkbox" id="chk-nondisjunction" />
+            <span class="switch"></span>
+          </label>
+          <div class="btn-row">
+            <button class="btn rose" id="btn-shuffle-assort">Shuffle Assortment</button>
+            <button class="btn" id="btn-randomize-xo">New Chiasmata</button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Lab Presets</span></div>
+          <div class="preset-grid">
+            <button class="preset-btn" data-preset="mitosis" id="preset-mitosis">
+              <span class="preset-name">Mitosis Clonal</span>
+              <span class="preset-sub">2n=6 → 2 identical clones</span>
+            </button>
+            <button class="preset-btn rose active" data-preset="meiosis-xo" id="preset-meiosis-xo">
+              <span class="preset-name">Meiosis Crossing-Over</span>
+              <span class="preset-sub">2n=6 → 4 unique gametes</span>
+            </button>
+            <button class="preset-btn" data-preset="assortment" id="preset-assortment">
+              <span class="preset-name">Assortment Shuffle</span>
+              <span class="preset-sub">Metaphase I random flip</span>
+            </button>
+            <button class="preset-btn rose" data-preset="nondisjunction" id="preset-nondisjunction">
+              <span class="preset-name">Spindle Nondisjunction</span>
+              <span class="preset-sub">Jammed fiber → Trisomy</span>
+            </button>
+            <button class="preset-btn" data-preset="hw-eq" id="preset-hw-eq">
+              <span class="preset-name">Hardy–Weinberg Eq.</span>
+              <span class="preset-sub">Ideal p²+2pq+q²=1</span>
+            </button>
+            <button class="preset-btn" data-preset="selection-sweep" id="preset-selection-sweep">
+              <span class="preset-name">Recessive Selection</span>
+              <span class="preset-sub">Natural selection sweep</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Microscopy Overlays</span></div>
+          <label class="toggle-row">
+            <span>Gene Locus Bands (A/a, B/b, C/c)</span>
+            <input type="checkbox" id="chk-loci" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Microtubule Spindle Tension</span>
+            <input type="checkbox" id="chk-spindle" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Cytoplasmic Organelles</span>
+            <input type="checkbox" id="chk-organelles" checked />
+            <span class="switch"></span>
+          </label>
+        </div>
+      </div>
+
+      <!-- TAB 2: GENETICS -->
+      <div class="tab-pane" id="pane-genetics">
+        <div class="section">
+          <div class="section-title">
+            <span>Genetics Lab View</span>
+          </div>
+          <button class="btn primary" id="btn-toggle-lab-stage">Open Full Punnett &amp; H-W Stage</button>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Punnett Parental Genotypes</span></div>
+          <div class="seg-row">
+            <button class="seg-btn" id="drawer-mono-btn">Monohybrid (2×2)</button>
+            <button class="seg-btn active violet" id="drawer-di-btn">Dihybrid (4×4)</button>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+            <div class="control-row">
+              <div class="control-head"><span>Parent 1 (♀)</span></div>
+              <select class="select-input" id="sel-parent1"></select>
+            </div>
+            <div class="control-row">
+              <div class="control-head"><span>Parent 2 (♂)</span></div>
+              <select class="select-input" id="sel-parent2"></select>
+            </div>
+          </div>
+          <button class="btn mint" id="btn-drawer-seed">Sync Cross with Live Meiosis</button>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Hardy–Weinberg Parameters</span></div>
+          <div class="mini-hw-box">
+            <canvas id="mini-hw-canvas"></canvas>
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Initial Frequency p (A)</span>
+              <span class="val" id="val-hw-p0">0.60</span>
+            </div>
+            <input type="range" id="slider-hw-p0" class="rose" min="0.05" max="0.95" step="0.01" value="0.60" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Recessive Selection (s on aa)</span>
+              <span class="val" id="val-hw-s">0.00</span>
+            </div>
+            <input type="range" id="slider-hw-s" class="amber" min="0" max="0.95" step="0.01" value="0.00" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Pop. Size N (Genetic Drift)</span>
+              <span class="val" id="val-hw-n">∞ (Ideal)</span>
+            </div>
+            <input type="range" id="slider-hw-n" class="violet" min="1" max="6" step="1" value="6" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Mutation Rate μ (A → a)</span>
+              <span class="val" id="val-hw-mu">0.000</span>
+            </div>
+            <input type="range" id="slider-hw-mu" min="0" max="0.03" step="0.001" value="0" />
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 3: INSPECT -->
+      <div class="tab-pane" id="pane-inspect">
+        <div class="section">
+          <div class="section-title"><span>Chromosome Legend</span></div>
+          <div class="legend-row">
+            <span class="legend-item"><span class="legend-dot" style="background:#ff5e86;box-shadow:0 0 6px #ff5e86;"></span>Maternal (A, B, C)</span>
+            <span class="legend-item"><span class="legend-dot" style="background:#46d9ff;box-shadow:0 0 6px #46d9ff;"></span>Paternal (a, b, c)</span>
+            <span class="legend-item"><span class="legend-dot" style="background:#ffbe5c;box-shadow:0 0 6px #ffbe5c;"></span>Centrosomes / Spindle</span>
+            <span class="legend-item"><span class="legend-dot" style="background:#a78bfa;box-shadow:0 0 6px #a78bfa;"></span>Chiasma / Nuclear Lamina</span>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">
+            <span id="inspect-cells-title">Resulting Gamete Haplotypes</span>
+            <span id="inspect-ploidy-badge" style="font-family:var(--mono);color:var(--accent-mint);">4 × n</span>
+          </div>
+          <div class="gamete-list" id="gamete-list"></div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Molecular Biology Notes</span></div>
+          <div class="bio-note" id="bio-note-text"></div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Bottom-Center Transport Bar -->
+  <div class="panel bottom-bar">
+    <button class="bar-btn active" id="btn-play">Pause</button>
+    <button class="bar-btn" id="btn-prev-phase" title="Previous Phase">◀</button>
+    <button class="bar-btn" id="btn-next-phase" title="Next Phase">▶</button>
+    <button class="bar-btn" id="btn-reset">Reset</button>
+    <div class="bar-divider"></div>
+    <button class="bar-btn active" id="btn-view-cell">Cell Studio</button>
+    <button class="bar-btn" id="btn-view-genetics">Genetics Lab</button>
+    <div class="bar-divider"></div>
+    <button class="bar-btn" id="btn-audio">Audio: Off</button>
+    <button class="bar-btn active" id="btn-controls">Controls</button>
+    <button class="bar-btn" id="btn-cinema" title="Cinema Mode (H)">Cinema</button>
+  </div>
+
+  <!-- Bottom-Left Interaction Hints -->
+  <div class="panel hint-pill">
+    <kbd>Space</kbd> Play/Pause · <kbd>←</kbd><kbd>→</kbd> Scrub · <kbd>M</kbd> Mitosis/Meiosis · <kbd>X</kbd> Shuffle · <kbd>H</kbd> Cinema · Drag pan / Scroll zoom
+  </div>
+
+  <!-- Cinema Restore Pill -->
+  <button class="panel cinema-restore" id="btn-cinema-restore">Exit Cinema (H)</button>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // =========================================================================
+  // 1. CONSTANTS, PHASE DEFINITIONS & COLOR PALETTE
+  // =========================================================================
+  const COLORS = {
+    bg: '#040711',
+    mat: '#ff5d87',
+    matHi: '#ffa6be',
+    matGlow: 'rgba(255, 93, 135, 0.55)',
+    pat: '#42d8ff',
+    patHi: '#b0f0ff',
+    patGlow: 'rgba(66, 216, 255, 0.55)',
+    amber: '#ffbe5c',
+    violet: '#a78bfa',
+    mint: '#4af2b2',
+    danger: '#ff436b',
+    membrane: '#60b8ff',
+    nucleus: '#9b82ff'
+  };
+
+  const MITOSIS_PHASES = [
+    { id: 'G2', short: 'G2', name: 'Interphase (G₂)', start: 0.00, end: 0.14,
+      desc: 'DNA has replicated; each chromosome consists of two identical sister chromatids inside the intact nuclear envelope.',
+      note: '<strong>G₂ Checkpoint:</strong> The cell verifies complete DNA replication (2n chromosomes, 4C DNA content). Twin centrosomes sit adjacent to the intact nuclear lamina before mitotic entry.' },
+    { id: 'PRO', short: 'Pro', name: 'Prophase & Prometaphase', start: 0.14, end: 0.34,
+      desc: 'Chromatin condenses into distinct X-shaped sister chromatids, nuclear envelope fragments, and spindle microtubules capture kinetochores.',
+      note: '<strong>Condensin &amp; Spindle Assembly:</strong> CDK1-Cyclin B triggers nuclear envelope breakdown (NEBD). Centrosomes migrate to opposite poles, radiating kinetochore microtubules that seek centromeres.' },
+    { id: 'META', short: 'Meta', name: 'Metaphase Alignment', start: 0.34, end: 0.50,
+      desc: 'All 2n chromosomes align single-file on the equatorial Metaphase Plate under balanced bipolar spindle tension.',
+      note: '<strong>Spindle Assembly Checkpoint:</strong> Every sister kinetochore pair achieves amphitelic attachment to opposite poles. Tension silences Mad2, activating APC/C to trigger Anaphase.' },
+    { id: 'ANA', short: 'Ana', name: 'Anaphase Separation', start: 0.50, end: 0.70,
+      desc: 'Separase cleaves cohesin rings; sister chromatids separate and are pulled centromere-first toward opposite poles.',
+      note: '<strong>Anaphase A &amp; B:</strong> Kinetochore fibers depolymerize to reel daughter chromosomes poleward (Anaphase A), while interpolar microtubules push poles further apart (Anaphase B).' },
+    { id: 'TELO', short: 'Telo', name: 'Telophase Reassembly', start: 0.70, end: 0.85,
+      desc: 'Daughter chromosomes arrive at both poles; nuclear envelopes re-form around two genetically identical diploid nuclei.',
+      note: '<strong>Nuclear Re-formation:</strong> Phosphatases dephosphorylate lamins so twin nuclear envelopes enclose each complete 2n chromosome set while the central spindle compacts.' },
+    { id: 'CYTO', short: 'Cyto', name: 'Cytokinesis Cleavage', start: 0.85, end: 1.00,
+      desc: 'An actin-myosin contractile ring pinches the cleavage furrow, yielding 2 genetically identical diploid (2n) daughter clones.',
+      note: '<strong>Clonal Fidelity:</strong> Cytokinesis completes abscission. Unless a spindle nondisjunction error occurred, both daughter cells inherit exact identical diploid genomes (2n).' }
+  ];
+
+  const MEIOSIS_PHASES = [
+    { id: 'P1', short: 'Pro I', name: 'Prophase I — Synapsis & Crossing-Over', start: 0.00, end: 0.16,
+      desc: 'Homologous chromosomes synapse into tetrads and visibly exchange glowing maternal/paternal DNA segments at chiasmata.',
+      note: '<strong>Homologous Recombination:</strong> Spo11 initiates double-strand breaks repaired across non-sister chromatids, forging physical chiasmata that shuffle alleles between maternal and paternal homologs.' },
+    { id: 'M1', short: 'Meta I', name: 'Metaphase I — Independent Assortment', start: 0.16, end: 0.27,
+      desc: 'Homologous bivalents align straddling the equator; each pair independently flips maternal/paternal orientation (2ⁿ combinations).',
+      note: '<strong>Mendel’s Second Law:</strong> Each homologous bivalent orients randomly toward left or right poles independently of other pairs, generating 2ⁿ chromosomal combinations before recombination!' },
+    { id: 'A1', short: 'Ana I', name: 'Anaphase I — Homolog Disjunction', start: 0.27, end: 0.39,
+      desc: 'Homologous chromosomes separate to opposite poles while sister chromatids remain joined at their centromeres.',
+      note: '<strong>Reductional Division:</strong> Arm cohesin is cleaved while Shugoshin protects centromeric cohesin, so whole recombinant dyads (X-shapes) separate, halving ploidy from 2n to n.' },
+    { id: 'T1', short: 'Cyto I', name: 'Telophase I & Cytokinesis I', start: 0.39, end: 0.50,
+      desc: 'Cleavage furrow pinches the cell into 2 haploid (n) secondary daughter cells carrying recombinant replicated chromosomes.',
+      note: '<strong>First Cleavage:</strong> Two haploid cells form. Each chromosome still has two non-identical sister chromatids because of Prophase I crossing-over.' },
+    { id: 'P2', short: 'Pro II', name: 'Prophase II — Secondary Spindles', start: 0.50, end: 0.60,
+      desc: 'Centrosomes duplicate and migrate to perpendicular poles inside both haploid cells as nuclear envelopes dissolve.',
+      note: '<strong>Interkinesis (No S-phase):</strong> Cells proceed directly into Meiosis II without DNA replication. New spindles form along an orthogonal axis inside each daughter cell.' },
+    { id: 'M2', short: 'Meta II', name: 'Metaphase II Alignment', start: 0.60, end: 0.72,
+      desc: 'Recombinant chromosomes align along each daughter cell’s equatorial plate, orienting sister chromatids toward opposite poles.',
+      note: '<strong>Equational Alignment:</strong> Because crossing-over made sister chromatids genetically distinct, their random orientation on the Metaphase II plate adds a second layer of assortment.' },
+    { id: 'A2', short: 'Ana II', name: 'Anaphase II — Chromatid Split', start: 0.72, end: 0.85,
+      desc: 'Centromeric cohesin is cleaved; sister chromatids finally split apart and race toward all four poles.',
+      note: '<strong>Sister Separation:</strong> Individual recombinant chromatids become independent single-chromatid chromosomes migrating into four emerging haploid nuclei.' },
+    { id: 'T2', short: 'Cyto II', name: 'Telophase II & 4 Haploid Gametes', start: 0.85, end: 1.00,
+      desc: 'Cleavage furrows complete Meiosis II, yielding 4 genetically unique haploid (n) gametes with recombinant haplotypes.',
+      note: '<strong>Four Unique Gametes:</strong> Crossing-over plus independent assortment ensure every gamete carries a distinct combination of maternal and paternal alleles.' }
+  ];
+
+  const PAIR_META = [
+    { idx: 0, len: 50, locus: 'A', rec: 'a', locusPos: 0.68, name: 'Chr 1' },
+    { idx: 1, len: 41, locus: 'B', rec: 'b', locusPos: 0.64, name: 'Chr 2' },
+    { idx: 2, len: 33, locus: 'C', rec: 'c', locusPos: 0.60, name: 'Chr 3' }
+  ];
+
+  // =========================================================================
+  // 2. SIMULATION STATE
+  // =========================================================================
+  const state = {
+    mode: 'meiosis',          // 'mitosis' | 'meiosis'
+    view: 'cell',             // 'cell' | 'genetics'
+    pairs: 3,                 // 2 or 3 (2n=4 or 2n=6)
+    t: 0.0,                   // 0..1 normalized cycle timeline
+    playing: true,
+    speed: 1.0,
+    crossingOver: true,
+    nondisjunction: false,
+    showLoci: true,
+    showSpindle: true,
+    showOrganelles: true,
+    audioOn: false,
+    drawerOpen: true,
+    cinema: false,
+    activePreset: 'meiosis-xo',
+
+    // Per-pair independent assortment & crossing-over parameters
+    // assortment[i]: 0 = Maternal Left / Paternal Right; 1 = Paternal Left / Maternal Right
+    assortment: [0, 1, 0],
+    // m2Flip[i][cellIdx]: 0 or 1 flipping sister chromatids in Meiosis II
+    m2Flip: [[0, 0], [0, 1], [1, 0]],
+    // crossoverActive[i]: whether pair i swaps arms during Prophase I
+    crossoverActive: [true, true, true],
+    // chiasmaFraction[i]: position along lower arm (0.42..0.62)
+    chiasmaPos: [0.46, 0.50, 0.44],
+
+    // Camera pan/zoom for main canvas
+    cam: { x: 0, y: 0, zoom: 1, dragging: false, lastX: 0, lastY: 0 },
+
+    // Organelle particles (cytoplasmic vesicles/mitochondria)
+    organelles: [],
+
+    // Audio / banner trigger tracking
+    lastPhaseId: null,
+    crossoverChimed: false,
+    bannerTimer: null,
+
+    // Punnett Square state
+    punnett: {
+      type: 'dihybrid',       // 'monohybrid' | 'dihybrid'
+      p1: 'AaBb',
+      p2: 'AaBb',
+      selectedCell: null
+    },
+
+    // Hardy-Weinberg population state
+    hw: {
+      p0: 0.60,
+      p: 0.60,
+      s: 0.00,                // selection against aa
+      nIndex: 6,              // 1..6 mapped to POP_SIZES
+      mu: 0.000,              // mutation A -> a
+      gen: 0,
+      playing: true,
+      accum: 0,
+      historyP: [0.60],
+      historyHet: [0.48],
+      ghostRuns: []           // previous drift runs for visual comparison
+    }
+  };
+
+  const POP_SIZES = [20, 50, 150, 500, 2000, Infinity];
+  const POP_LABELS = ['N = 20 (Extreme Drift)', 'N = 50 (Strong Drift)', 'N = 150 (Moderate)', 'N = 500 (Mild)', 'N = 2,000 (Weak)', '∞ (Ideal H-W)'];
+
+  // Initialize cytoplasmic organelle particles
+  for (let i = 0; i < 68; i++) {
+    const ang = Math.random() * Math.PI * 2;
+    const rad = 0.25 + Math.random() * 0.66;
+    state.organelles.push({
+      ang,
+      rad,
+      speed: (Math.random() - 0.5) * 0.22,
+      size: 1.6 + Math.random() * 2.8,
+      kind: i % 5 === 0 ? 'mito' : 'vesicle',
+      phase: Math.random() * Math.PI * 2
+    });
+  }
+
+  // =========================================================================
+  // 3. WEB AUDIO SYNTHESIZER (Muted by Default)
+  // =========================================================================
+  let audioCtx = null;
+  function ensureAudio() {
+    if (!audioCtx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) audioCtx = new AC();
+    }
+    if (audioCtx && audioCtx.state === 'suspended') {
+      audioCtx.resume().catch(() => {});
+    }
+  }
+
+  function playHarpNote(freq, delay = 0, dur = 1.1, gainPeak = 0.08, type = 'triangle') {
+    if (!state.audioOn) return;
+    ensureAudio();
+    if (!audioCtx) return;
+    const now = audioCtx.currentTime + delay;
+    const osc = audioCtx.createOscillator();
+    const osc2 = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    osc.type = type;
+    osc2.type = 'sine';
+    osc.frequency.setValueAtTime(freq, now);
+    osc2.frequency.setValueAtTime(freq * 2, now);
+
+    g.gain.setValueAtTime(0.0001, now);
+    g.gain.exponentialRampToValueAtTime(gainPeak, now + 0.018);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+
+    const g2 = audioCtx.createGain();
+    g2.gain.value = 0.28;
+
+    osc.connect(g);
+    osc2.connect(g2);
+    g2.connect(g);
+    g.connect(audioCtx.destination);
+
+    osc.start(now);
+    osc2.start(now);
+    osc.stop(now + dur + 0.05);
+    osc2.stop(now + dur + 0.05);
+  }
+
+  function playSoundCue(cue) {
+    if (!state.audioOn) return;
+    if (cue === 'crossover') {
+      playHarpNote(659.25, 0.00, 0.9, 0.07);
+      playHarpNote(987.77, 0.09, 1.0, 0.065);
+      playHarpNote(1318.5, 0.18, 1.2, 0.05);
+    } else if (cue === 'metaphase') {
+      playHarpNote(523.25, 0.00, 0.95, 0.065);
+      playHarpNote(783.99, 0.07, 1.0, 0.06);
+    } else if (cue === 'anaphase') {
+      playHarpNote(587.33, 0.00, 0.8, 0.06);
+      playHarpNote(880.00, 0.08, 0.9, 0.055);
+    } else if (cue === 'nondisjunction') {
+      playHarpNote(220.00, 0.00, 0.85, 0.09, 'sawtooth');
+      playHarpNote(207.65, 0.10, 0.95, 0.07, 'triangle');
+    } else if (cue === 'cytokinesis') {
+      playHarpNote(523.25, 0.00, 1.2, 0.06);
+      playHarpNote(659.25, 0.08, 1.2, 0.055);
+      playHarpNote(783.99, 0.16, 1.3, 0.055);
+      playHarpNote(1174.66, 0.25, 1.5, 0.05);
+    }
+  }
+
+  // =========================================================================
+  // 4. GENETICS MODEL & HAPLOTYPE COMPUTATION
+  // =========================================================================
+  function getPhases() {
+    return state.mode === 'mitosis' ? MITOSIS_PHASES : MEIOSIS_PHASES;
+  }
+
+  function getCurrentPhase(t = state.t) {
+    const phases = getPhases();
+    for (let i = 0; i < phases.length; i++) {
+      if (t <= phases[i].end || i === phases.length - 1) return phases[i];
+    }
+    return phases[0];
+  }
+
+  // Build exact chromatid definitions for each homologous pair
+  // Each chromatid: { topOrigin: 'mat'|'pat', botOrigin: 'mat'|'pat', allele: 'A'|'a', recombinant: bool, pairIdx }
+  function buildPairChromatids(pairIdx, hasCrossed) {
+    const meta = PAIR_META[pairIdx];
+    const xo = hasCrossed && state.mode === 'meiosis' && state.crossingOver && state.crossoverActive[pairIdx];
+    // Maternal homolog: outer (left) stays pure mat; inner (right) swaps lower arm if xo
+    const matOuter = { pairIdx, topOrigin: 'mat', botOrigin: 'mat', allele: meta.locus, recombinant: false };
+    const matInner = { pairIdx, topOrigin: 'mat', botOrigin: xo ? 'pat' : 'mat', allele: xo ? meta.rec : meta.locus, recombinant: xo };
+    // Paternal homolog: inner (left) swaps lower arm if xo; outer (right) stays pure pat
+    const patInner = { pairIdx, topOrigin: 'pat', botOrigin: xo ? 'mat' : 'pat', allele: xo ? meta.locus : meta.rec, recombinant: xo };
+    const patOuter = { pairIdx, topOrigin: 'pat', botOrigin: 'pat', allele: meta.rec, recombinant: false };
+    return {
+      mat: [matOuter, matInner],
+      pat: [patInner, patOuter]
+    };
+  }
+
+  // Compute the final daughter cells / gametes given current settings
+  function computeOutcomeCells() {
+    const n = state.pairs;
+    if (state.mode === 'mitosis') {
+      const cells = [
+        { label: 'Clone Cell 1', ploidy: 2 * n, chromatids: [], error: null },
+        { label: 'Clone Cell 2', ploidy: 2 * n, chromatids: [], error: null }
+      ];
+      for (let i = 0; i < n; i++) {
+        const meta = PAIR_META[i];
+        // Maternal sister chromatids
+        const matC1 = { pairIdx: i, topOrigin: 'mat', botOrigin: 'mat', allele: meta.locus, recombinant: false };
+        const matC2 = { pairIdx: i, topOrigin: 'mat', botOrigin: 'mat', allele: meta.locus, recombinant: false };
+        // Paternal sister chromatids
+        const patC1 = { pairIdx: i, topOrigin: 'pat', botOrigin: 'pat', allele: meta.rec, recombinant: false };
+        const patC2 = { pairIdx: i, topOrigin: 'pat', botOrigin: 'pat', allele: meta.rec, recombinant: false };
+
+        if (state.nondisjunction && i === 0) {
+          // Maternal Pair 1 sister chromatids fail to separate -> both go to Cell 1
+          cells[0].chromatids.push(matC1, matC2, patC1);
+          cells[1].chromatids.push(patC2);
+          cells[0].error = `Trisomy (2n+1 = ${2 * n + 1})`;
+          cells[1].error = `Monosomy (2n−1 = ${2 * n - 1})`;
+        } else {
+          cells[0].chromatids.push(matC1, patC1);
+          cells[1].chromatids.push(matC2, patC2);
+        }
+      }
+      return cells;
+    } else {
+      // Meiosis: 4 gametes: [TL (cell0 top), BL (cell0 bot), TR (cell1 top), BR (cell1 bot)]
+      const gametes = [
+        { label: 'Gamete 1 (NW)', chromatids: [], error: null },
+        { label: 'Gamete 2 (SW)', chromatids: [], error: null },
+        { label: 'Gamete 3 (NE)', chromatids: [], error: null },
+        { label: 'Gamete 4 (SE)', chromatids: [], error: null }
+      ];
+      for (let i = 0; i < n; i++) {
+        const pair = buildPairChromatids(i, true);
+        const flip1 = state.assortment[i]; // 0: mat->Left(0), pat->Right(1); 1: pat->Left(0), mat->Right(1)
+        const leftDyad = flip1 === 0 ? pair.mat : pair.pat;
+        const rightDyad = flip1 === 0 ? pair.pat : pair.mat;
+
+        if (state.nondisjunction && i === 0) {
+          // Nondisjunction in Meiosis I: BOTH homologs go to Left daughter cell (cells 0 & 1), Right gets 0 copies!
+          const l1 = state.m2Flip[i][0] ? [leftDyad[1], leftDyad[0]] : [leftDyad[0], leftDyad[1]];
+          const l2 = state.m2Flip[i][1] ? [rightDyad[1], rightDyad[0]] : [rightDyad[0], rightDyad[1]];
+          gametes[0].chromatids.push(l1[0], l2[0]);
+          gametes[1].chromatids.push(l1[1], l2[1]);
+          // gametes[2] and gametes[3] receive NO chromosome 1!
+          gametes[0].error = `Trisomy (n+1 = ${n + 1})`;
+          gametes[1].error = `Trisomy (n+1 = ${n + 1})`;
+          gametes[2].error = `Monosomy (n−1 = ${n - 1})`;
+          gametes[3].error = `Monosomy (n−1 = ${n - 1})`;
+        } else {
+          const lSplit = state.m2Flip[i][0] ? [leftDyad[1], leftDyad[0]] : [leftDyad[0], leftDyad[1]];
+          const rSplit = state.m2Flip[i][1] ? [rightDyad[1], rightDyad[0]] : [rightDyad[0], rightDyad[1]];
+          gametes[0].chromatids.push(lSplit[0]);
+          gametes[1].chromatids.push(lSplit[1]);
+          gametes[2].chromatids.push(rSplit[0]);
+          gametes[3].chromatids.push(rSplit[1]);
+        }
+      }
+      return gametes;
+    }
+  }
+
+  function formatHaplotype(cell) {
+    if (!cell.chromatids.length) return '∅';
+    const sorted = [...cell.chromatids].sort((a, b) => a.pairIdx - b.pairIdx);
+    return sorted.map(c => c.allele + (c.recombinant ? '★' : '')).join(' ');
+  }
+
+  // =========================================================================
+  // 5. MATH & EASING HELPERS
+  // =========================================================================
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const smoothstep = (e0, e1, x) => {
+    const u = clamp((x - e0) / (e1 - e0), 0, 1);
+    return u * u * (3 - 2 * u);
+  };
+  const easeInOut = (u) => u < 0.5 ? 2 * u * u : 1 - Math.pow(-2 * u + 2, 2) / 2;
+
+  // =========================================================================
+  // 6. HIGH-DPI CANVAS & BIOLOGICAL RENDERING ENGINE
+  // =========================================================================
+  const canvas = document.getElementById('sim-canvas');
+  const ctx = canvas.getContext('2d');
+  let W = window.innerWidth;
+  let H = window.innerHeight;
+  let DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+  function resizeCanvas() {
+    W = window.innerWidth;
+    H = window.innerHeight;
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.floor(W * DPR);
+    canvas.height = Math.floor(H * DPR);
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    resizeHWCanvases();
+  }
+
+  // Draw glowing membrane blob with optional cleavage pinch along axis ('x' = horizontal separation / vertical furrow, 'y' = vertical separation / horizontal furrow)
+  function drawCellMembrane(cx, cy, rx, ry, pinch, axis, timeSec, isAneuploid = false) {
+    const steps = 110;
+    ctx.save();
+    ctx.translate(cx, cy);
+
+    const pts = [];
+    for (let i = 0; i <= steps; i++) {
+      const a = (i / steps) * Math.PI * 2;
+      let px = Math.cos(a) * rx;
+      let py = Math.sin(a) * ry;
+
+      // Subtle living membrane undulation
+      const wobble = 1 + 0.012 * Math.sin(a * 5 + timeSec * 1.4) + 0.008 * Math.cos(a * 3 - timeSec * 1.1);
+      px *= wobble;
+      py *= wobble;
+
+      if (pinch > 0.001) {
+        if (axis === 'x') {
+          // Vertical cleavage furrow pinching py near cos(a)=0
+          const centerBand = Math.exp(-Math.pow(Math.cos(a) * 3.2, 2));
+          py *= (1 - pinch * 0.90 * centerBand);
+        } else {
+          // Horizontal cleavage furrow pinching px near sin(a)=0
+          const centerBand = Math.exp(-Math.pow(Math.sin(a) * 3.2, 2));
+          px *= (1 - pinch * 0.90 * centerBand);
+        }
+      }
+      pts.push([px, py]);
+    }
+
+    const tracePath = () => {
+      ctx.beginPath();
+      ctx.moveTo(pts[0][0], pts[0][1]);
+      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+      ctx.closePath();
+    };
+
+    // Cytoplasmic interior glow
+    tracePath();
+    const grad = ctx.createRadialGradient(0, 0, Math.min(rx, ry) * 0.1, 0, 0, Math.max(rx, ry) * 1.05);
+    if (isAneuploid) {
+      grad.addColorStop(0, 'rgba(62, 24, 48, 0.34)');
+      grad.addColorStop(0.7, 'rgba(24, 18, 44, 0.30)');
+      grad.addColorStop(1, 'rgba(255, 86, 128, 0.16)');
+    } else {
+      grad.addColorStop(0, 'rgba(32, 68, 128, 0.28)');
+      grad.addColorStop(0.68, 'rgba(14, 28, 62, 0.32)');
+      grad.addColorStop(1, 'rgba(84, 188, 255, 0.16)');
+    }
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    // Organelles clipped inside cell membrane
+    if (state.showOrganelles) {
+      ctx.save();
+      tracePath();
+      ctx.clip();
+      for (let i = 0; i < state.organelles.length; i++) {
+        const o = state.organelles[i];
+        const ang = o.ang + timeSec * o.speed;
+        const ox = Math.cos(ang) * rx * o.rad * 0.85;
+        const oy = Math.sin(ang) * ry * o.rad * 0.85;
+        if (o.kind === 'mito') {
+          ctx.save();
+          ctx.translate(ox, oy);
+          ctx.rotate(ang + o.phase);
+          ctx.beginPath();
+          ctx.ellipse(0, 0, o.size * 2.2, o.size * 0.9, 0, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(74, 242, 178, 0.12)';
+          ctx.strokeStyle = 'rgba(74, 242, 178, 0.24)';
+          ctx.lineWidth = 0.9;
+          ctx.fill();
+          ctx.stroke();
+          ctx.restore();
+        } else {
+          ctx.beginPath();
+          ctx.arc(ox, oy, o.size, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(130, 195, 255, 0.14)';
+          ctx.fill();
+        }
+      }
+      ctx.restore();
+    }
+
+    // Outer plasma membrane double-bilayer glow
+    tracePath();
+    ctx.lineWidth = 5.5;
+    ctx.strokeStyle = isAneuploid ? 'rgba(255, 96, 131, 0.16)' : 'rgba(88, 220, 255, 0.14)';
+    ctx.stroke();
+
+    tracePath();
+    ctx.lineWidth = 2.0;
+    ctx.strokeStyle = isAneuploid ? 'rgba(255, 128, 158, 0.72)' : 'rgba(122, 214, 255, 0.68)';
+    ctx.stroke();
+
+    // Actin-myosin contractile ring glowing band during cytokinesis pinch
+    if (pinch > 0.08 && pinch < 0.96) {
+      const ringAlpha = Math.sin(clamp(pinch, 0, 1) * Math.PI) * 0.85;
+      ctx.save();
+      ctx.strokeStyle = `rgba(74, 242, 178, ${ringAlpha.toFixed(3)})`;
+      ctx.shadowColor = '#4af2b2';
+      ctx.shadowBlur = 14;
+      ctx.lineWidth = 3;
+      ctx.setLineDash([5, 4]);
+      ctx.beginPath();
+      if (axis === 'x') {
+        const halfH = ry * (1 - pinch * 0.88);
+        ctx.moveTo(0, -halfH);
+        ctx.lineTo(0, halfH);
+      } else {
+        const halfW = rx * (1 - pinch * 0.88);
+        ctx.moveTo(-halfW, 0);
+        ctx.lineTo(halfW, 0);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    ctx.restore();
+  }
+
+  // Draw fragmenting/reassembling nuclear envelope
+  function drawNuclearEnvelope(cx, cy, radius, integrity, timeSec) {
+    if (integrity <= 0.02) return;
+    ctx.save();
+    ctx.translate(cx, cy);
+
+    // Subtle nucleoplasm tint
+    const grad = ctx.createRadialGradient(0, 0, radius * 0.1, 0, 0, radius);
+    grad.addColorStop(0, `rgba(145, 118, 255, ${(0.12 * integrity).toFixed(3)})`);
+    grad.addColorStop(1, `rgba(110, 92, 235, ${(0.04 * integrity).toFixed(3)})`);
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(0, 0, radius, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Dashed nuclear lamina ring (gaps widen as integrity drops!)
+    const segments = 14;
+    const arcStep = (Math.PI * 2) / segments;
+    const arcFill = arcStep * (0.25 + 0.62 * integrity);
+    ctx.strokeStyle = `rgba(176, 152, 255, ${(0.72 * integrity).toFixed(3)})`;
+    ctx.lineWidth = 2.0;
+    ctx.shadowColor = 'rgba(167, 139, 250, 0.6)';
+    ctx.shadowBlur = 10 * integrity;
+
+    for (let i = 0; i < segments; i++) {
+      const a0 = i * arcStep + timeSec * 0.06;
+      const radialDrift = (1 - integrity) * (10 + (i % 3) * 6);
+      ctx.beginPath();
+      ctx.arc(0, 0, radius + radialDrift, a0, a0 + arcFill);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // Draw glowing twin centriole centrosome + astral rays
+  function drawCentrosome(x, y, alpha, timeSec, astralScale = 1) {
+    if (alpha <= 0.02) return;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.globalAlpha = alpha;
+
+    // PCM halo
+    const halo = ctx.createRadialGradient(0, 0, 2, 0, 0, 22 * astralScale);
+    halo.addColorStop(0, 'rgba(255, 210, 120, 0.65)');
+    halo.addColorStop(0.5, 'rgba(255, 174, 72, 0.22)');
+    halo.addColorStop(1, 'rgba(255, 174, 72, 0)');
+    ctx.fillStyle = halo;
+    ctx.beginPath();
+    ctx.arc(0, 0, 22 * astralScale, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Radiating astral microtubules
+    ctx.strokeStyle = 'rgba(255, 204, 118, 0.36)';
+    ctx.lineWidth = 1.0;
+    const rays = 12;
+    for (let i = 0; i < rays; i++) {
+      const a = (i / rays) * Math.PI * 2 + timeSec * 0.15;
+      const r1 = 6;
+      const r2 = (14 + (i % 3) * 5) * astralScale;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a) * r1, Math.sin(a) * r1);
+      ctx.lineTo(Math.cos(a) * r2, Math.sin(a) * r2);
+      ctx.stroke();
+    }
+
+    // Twin orthogonal centriole barrels
+    ctx.fillStyle = '#ffe5a8';
+    ctx.strokeStyle = '#ffae42';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.roundRect(-5, -2.2, 8, 4.4, 2);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.roundRect(-1.5, -5.5, 4.4, 8, 2);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  // Draw curved kinetochore spindle fiber from pole (px, py) to kinetochore (kx, ky)
+  function drawSpindleFiber(px, py, kx, ky, tension, alpha, jammed = false, timeSec = 0) {
+    if (!state.showSpindle || alpha <= 0.02) return;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+
+    const mx = (px + kx) * 0.5;
+    const my = (py + ky) * 0.5;
+    const dx = kx - px;
+    const dy = ky - py;
+    // Slight outward bow perpendicular to axis
+    const bow = (dy === 0 ? 0.08 : 0.06) * (tension > 0.5 ? 0.45 : 1.0);
+    const cpx = mx - dy * bow;
+    const cpy = my + dx * bow;
+
+    if (jammed) {
+      // Snapped / jammed crimson spindle fiber!
+      const breakT = 0.58;
+      const bx = (1 - breakT) * (1 - breakT) * px + 2 * (1 - breakT) * breakT * cpx + breakT * breakT * kx;
+      const by = (1 - breakT) * (1 - breakT) * py + 2 * (1 - breakT) * breakT * cpy + breakT * breakT * ky;
+      const jitter = Math.sin(timeSec * 28) * 3.5;
+
+      ctx.strokeStyle = 'rgba(255, 67, 107, 0.85)';
+      ctx.lineWidth = 2.0;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(px, py);
+      ctx.quadraticCurveTo(cpx, cpy, bx + jitter, by - jitter);
+      ctx.stroke();
+
+      // Warning spark at snapped end
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#ff436b';
+      ctx.shadowColor = '#ff436b';
+      ctx.shadowBlur = 12;
+      ctx.beginPath();
+      ctx.arc(bx + jitter, by - jitter, 3.8, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      const grad = ctx.createLinearGradient(px, py, kx, ky);
+      grad.addColorStop(0, `rgba(255, 198, 108, ${(0.55 + 0.3 * tension).toFixed(2)})`);
+      grad.addColorStop(0.55, `rgba(120, 212, 255, ${(0.28 + 0.35 * tension).toFixed(2)})`);
+      grad.addColorStop(1, `rgba(255, 255, 255, ${(0.45 + 0.4 * tension).toFixed(2)})`);
+      ctx.strokeStyle = grad;
+      ctx.lineWidth = 1.2 + tension * 0.8;
+      ctx.beginPath();
+      ctx.moveTo(px, py);
+      ctx.quadraticCurveTo(cpx, cpy, kx, ky);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // Draw a single glowing chromatid arm (supports two-color recombinant swap along lower arm!)
+  // x, y = centromere center; angle = base orientation; len = half-length; side = -1 (left) or +1 (right) or 0 (single);
+  // bend = anaphase V-bend pulling arms back; xoSwap = 0..1 visual blend of swapped tip!
+  function drawChromatid(cx, cy, angle, halfLen, chromatid, opts = {}) {
+    const {
+      side = 0,          // -1 left sister, +1 right sister, 0 lone chromatid
+      spread = 0.22,     // X-shape splay angle
+      bend = 0,          // anaphase V-bend radians (positive bends arms trailing opposite pullDir)
+      pullAngle = 0,     // direction of centromere travel when bending
+      xoSwapProgress = 1,// 0 = pre-crossover original color, 1 = post-crossover swapped color
+      chiasmaFrac = 0.48,// where on bottom arm swap occurs
+      chiasmaBend = 0,   // inward crossing-over bend of lower arm toward partner
+      scale = 1
+    } = opts;
+
+    const L = halfLen * scale;
+    const thickness = 7.4 * scale;
+    const matCol = COLORS.mat;
+    const patCol = COLORS.pat;
+    const topCol = chromatid.topOrigin === 'mat' ? matCol : patCol;
+    const topHi = chromatid.topOrigin === 'mat' ? COLORS.matHi : COLORS.patHi;
+    const isSwapped = chromatid.recombinant && xoSwapProgress > 0.05;
+    const botCol = (isSwapped ? chromatid.botOrigin : chromatid.topOrigin) === 'mat' ? matCol : patCol;
+    const botHi = (isSwapped ? chromatid.botOrigin : chromatid.topOrigin) === 'mat' ? COLORS.matHi : COLORS.patHi;
+
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(angle);
+
+    // Offset slightly from centromere for sister chromatids
+    const sx = side * 3.8 * scale;
+
+    // Top arm (p-arm): goes from (sx, 0) upward to (tx, -L * 0.82)
+    // Bottom arm (q-arm): goes from (sx, 0) downward to (bx, +L)
+    let pEndX = sx + side * L * Math.sin(spread);
+    let pEndY = -L * 0.82 * Math.cos(spread);
+    let qEndX = sx + side * L * Math.sin(spread) + chiasmaBend * scale;
+    let qEndY = L * 1.0 * Math.cos(spread);
+
+    // During Anaphase single-chromatid migration, bend both arms backward in a V-shape!
+    if (Math.abs(bend) > 0.01) {
+      // pullAngle in local coords:
+      const localPull = pullAngle - angle;
+      const trailX = -Math.cos(localPull);
+      const trailY = -Math.sin(localPull);
+      const bAmt = L * 0.62 * bend;
+      pEndX += trailX * bAmt;
+      pEndY += trailY * bAmt * 0.55;
+      qEndX += trailX * bAmt;
+      qEndY += trailY * bAmt * 0.55;
+    }
+
+    const drawArmSegment = (x0, y0, cpx, cpy, x1, y1, col, hiCol) => {
+      // Soft outer glow
+      ctx.save();
+      ctx.lineCap = 'round';
+      ctx.lineWidth = thickness + 5.5 * scale;
+      ctx.strokeStyle = col === matCol ? 'rgba(255, 93, 135, 0.22)' : 'rgba(66, 216, 255, 0.22)';
+      ctx.beginPath();
+      ctx.moveTo(x0, y0);
+      ctx.quadraticCurveTo(cpx, cpy, x1, y1);
+      ctx.stroke();
+
+      // Core chromatid body
+      ctx.lineWidth = thickness;
+      ctx.strokeStyle = col;
+      ctx.beginPath();
+      ctx.moveTo(x0, y0);
+      ctx.quadraticCurveTo(cpx, cpy, x1, y1);
+      ctx.stroke();
+
+      // Specular inner ridge
+      ctx.lineWidth = thickness * 0.34;
+      ctx.strokeStyle = hiCol;
+      ctx.globalAlpha = 0.72;
+      ctx.beginPath();
+      ctx.moveTo(x0, y0);
+      ctx.quadraticCurveTo(cpx, cpy, x1, y1);
+      ctx.stroke();
+      ctx.restore();
+    };
+
+    // Draw top arm (p-arm)
+    const pCpX = (sx + pEndX) * 0.5 + side * 2 * scale;
+    const pCpY = pEndY * 0.45;
+    drawArmSegment(sx, -2 * scale, pCpX, pCpY, pEndX, pEndY, topCol, topHi);
+
+    // Draw bottom arm (q-arm), split cleanly at chiasmaFrac if recombinant!
+    if (isSwapped) {
+      const f = chiasmaFrac;
+      const midX = lerp(sx, qEndX, f);
+      const midY = lerp(2 * scale, qEndY, f);
+      // Proximal (original color)
+      drawArmSegment(sx, 2 * scale, lerp(sx, midX, 0.5), lerp(2 * scale, midY, 0.5), midX, midY, topCol, topHi);
+      // Distal (swapped recombinant color!)
+      drawArmSegment(midX, midY, lerp(midX, qEndX, 0.55), lerp(midY, qEndY, 0.55), qEndX, qEndY, botCol, botHi);
+
+      // Luminous recombination junction band
+      ctx.save();
+      ctx.fillStyle = '#fff3b8';
+      ctx.shadowColor = '#a78bfa';
+      ctx.shadowBlur = 8;
+      ctx.beginPath();
+      ctx.arc(midX, midY, 2.5 * scale, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    } else {
+      const qCpX = (sx + qEndX) * 0.5 + side * 2 * scale + chiasmaBend * 0.4 * scale;
+      const qCpY = qEndY * 0.52;
+      drawArmSegment(sx, 2 * scale, qCpX, qCpY, qEndX, qEndY, topCol, topHi);
+    }
+
+    // Gene locus glowing band & allele label on distal q-arm!
+    if (state.showLoci) {
+      const meta = PAIR_META[chromatid.pairIdx];
+      const lf = meta.locusPos;
+      const lx = lerp(sx, qEndX, lf);
+      const ly = lerp(2 * scale, qEndY, lf);
+
+      // Dark contrast band + glowing gene ring
+      ctx.save();
+      ctx.fillStyle = '#060a18';
+      ctx.beginPath();
+      ctx.arc(lx, ly, 4.2 * scale, 0, Math.PI * 2);
+      ctx.fill();
+
+      const activeAllele = isSwapped ? chromatid.allele : (chromatid.topOrigin === 'mat' ? meta.locus : meta.rec);
+      const isDom = activeAllele === meta.locus;
+      ctx.strokeStyle = isDom ? '#ffd3df' : '#b7f2ff';
+      ctx.lineWidth = 1.3 * scale;
+      ctx.stroke();
+
+      // Un-rotate text so allele letter is always crisp & upright!
+      ctx.translate(lx, ly);
+      ctx.rotate(-angle);
+      ctx.fillStyle = isDom ? '#ffdae5' : '#ccf6ff';
+      ctx.font = `800 ${Math.max(8, Math.round(9.5 * scale))}px ${getComputedStyle(document.documentElement).getPropertyValue('--mono') || 'monospace'}`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(activeAllele, 0, 0.5);
+      ctx.restore();
+    }
+
+    ctx.restore();
+  }
+
+  // Draw an X-shaped replicated chromosome (2 sister chromatids + glowing centromere/kinetochore)
+  function drawDyad(cx, cy, angle, halfLen, chromatids, opts = {}) {
+    const scale = opts.scale || 1;
+    const chiasmaBendLeft = opts.chiasmaBendLeft || 0;
+    const chiasmaBendRight = opts.chiasmaBendRight || 0;
+    drawChromatid(cx, cy, angle, halfLen, chromatids[0], {
+      ...opts, side: -1, chiasmaBend: chiasmaBendLeft
+    });
+    drawChromatid(cx, cy, angle, halfLen, chromatids[1], {
+      ...opts, side: 1, chiasmaBend: chiasmaBendRight
+    });
+
+    // Glowing centromere / kinetochore clasp
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(angle);
+    ctx.fillStyle = '#fff5d6';
+    ctx.shadowColor = opts.jammed ? '#ff436b' : '#ffbe5c';
+    ctx.shadowBlur = opts.jammed ? 16 : 9;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 5.8 * scale, 3.6 * scale, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = opts.jammed ? '#ff436b' : '#ffbe5c';
+    ctx.lineWidth = 1.4 * scale;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Draw glowing chiasma recombination spark between two synapsed homologs
+  function drawChiasmaSpark(x, y, intensity, timeSec) {
+    if (intensity <= 0.02) return;
+    ctx.save();
+    ctx.translate(x, y);
+    const pulse = 0.85 + 0.25 * Math.sin(timeSec * 14);
+    const r = (15 + 12 * intensity) * pulse;
+    const grad = ctx.createRadialGradient(0, 0, 1, 0, 0, r);
+    grad.addColorStop(0, `rgba(255, 250, 220, ${(0.95 * intensity).toFixed(3)})`);
+    grad.addColorStop(0.35, `rgba(182, 146, 255, ${(0.7 * intensity).toFixed(3)})`);
+    grad.addColorStop(1, 'rgba(167, 139, 250, 0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Starburst cross
+    ctx.strokeStyle = `rgba(255, 245, 200, ${(0.85 * intensity).toFixed(3)})`;
+    ctx.lineWidth = 1.6;
+    for (let k = 0; k < 4; k++) {
+      const a = k * (Math.PI / 4) + timeSec * 1.8;
+      const rr = r * 0.72;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a) * -rr, Math.sin(a) * -rr);
+      ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // Draw floating pill label on canvas (e.g., Haplotype badge or Metaphase Plate)
+  function drawCanvasPill(x, y, text, borderCol = 'rgba(88,220,255,0.5)', textCol = '#eef3ff', bgCol = 'rgba(8,12,24,0.84)') {
+    ctx.save();
+    ctx.font = '700 11px ui-monospace, Menlo, Consolas, monospace';
+    const tw = ctx.measureText(text).width;
+    const pw = tw + 16;
+    const ph = 22;
+    ctx.fillStyle = bgCol;
+    ctx.strokeStyle = borderCol;
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.roundRect(x - pw / 2, y - ph / 2, pw, ph, 11);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = textCol;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, x, y + 0.5);
+    ctx.restore();
+  }
+
+  // =========================================================================
+  // 7. MITOSIS SCENE RENDERER (t in 0..1)
+  // =========================================================================
+  function renderMitosis(timeSec) {
+    const t = state.t;
+    const n = state.pairs;
+    const totalChroms = n * 2;
+
+    // Phase sub-progress curves
+    const proP = smoothstep(0.14, 0.34, t);
+    const metaP = smoothstep(0.32, 0.44, t);
+    const anaP = smoothstep(0.50, 0.70, t);
+    const teloP = smoothstep(0.70, 0.85, t);
+    const cytoP = smoothstep(0.84, 1.00, t);
+
+    // Cell elongation & separation
+    const baseR = 178;
+    const elong = 1 + 0.38 * anaP + 0.14 * teloP;
+    const sepX = 165 * smoothstep(0.92, 1.0, t);
+    const pinch = smoothstep(0.80, 0.96, t);
+
+    if (t < 0.94) {
+      drawCellMembrane(0, 0, baseR * elong, baseR * (1 - 0.11 * anaP), pinch, 'x', timeSec, false);
+    } else {
+      // Two cleanly separated diploid clones
+      const rClone = 136;
+      const err = state.nondisjunction;
+      drawCellMembrane(-sepX, 0, rClone, rClone, 0, 'x', timeSec, err);
+      drawCellMembrane(sepX, 0, rClone, rClone, 0, 'x', timeSec, err);
+    }
+
+    // Metaphase plate subtle guide line
+    const plateAlpha = smoothstep(0.32, 0.40, t) * (1 - smoothstep(0.49, 0.56, t));
+    if (plateAlpha > 0.02) {
+      ctx.save();
+      ctx.strokeStyle = `rgba(88, 220, 255, ${(0.28 * plateAlpha).toFixed(3)})`;
+      ctx.lineWidth = 1.3;
+      ctx.setLineDash([6, 6]);
+      ctx.beginPath();
+      ctx.moveTo(0, -155);
+      ctx.lineTo(0, 155);
+      ctx.stroke();
+      ctx.restore();
+      if (plateAlpha > 0.4) {
+        drawCanvasPill(0, -172, 'METAPHASE PLATE', 'rgba(88,220,255,0.4)', '#9ceaff');
+      }
+    }
+
+    // Nuclear envelopes: break down in Prophase, re-form in Telophase
+    const nucInit = 1 - smoothstep(0.14, 0.28, t);
+    drawNuclearEnvelope(0, 0, 108, nucInit, timeSec);
+
+    const poleBaseX = lerp(0, 170, proP) + 25 * anaP;
+    const nucTargetX = t < 0.94 ? poleBaseX * 0.72 : sepX;
+    if (teloP > 0.02) {
+      drawNuclearEnvelope(-nucTargetX, 0, 82, teloP, timeSec);
+      drawNuclearEnvelope(nucTargetX, 0, 82, teloP, timeSec);
+    }
+
+    // Centrosomes migrating from top (0, -118) to left (-poleX, 0) & right (+poleX, 0)
+    const centAng = lerp(-Math.PI / 2, 0, proP);
+    const leftPoleX = t < 0.94 ? -Math.cos(centAng) * (145 + 52 * anaP) : -sepX - 75;
+    const leftPoleY = t < 0.94 ? Math.sin(centAng) * 118 * (1 - proP) : -40;
+    const rightPoleX = t < 0.94 ? Math.cos(centAng) * (145 + 52 * anaP) : sepX + 75;
+    const rightPoleY = leftPoleY;
+
+    const spindleAlpha = smoothstep(0.18, 0.32, t) * (1 - smoothstep(0.76, 0.90, t));
+    const tension = smoothstep(0.36, 0.48, t) * (1 - smoothstep(0.68, 0.78, t));
+
+    // Build all 2n individual chromosomes (each pair has Maternal + Paternal)
+    const chromList = [];
+    for (let i = 0; i < n; i++) {
+      const meta = PAIR_META[i];
+      chromList.push({ pairIdx: i, origin: 'mat', len: meta.len, allele: meta.locus });
+      chromList.push({ pairIdx: i, origin: 'pat', len: meta.len, allele: meta.rec });
+    }
+
+    const spacing = totalChroms === 4 ? 54 : 42;
+    const yStart = -((totalChroms - 1) * spacing) / 2;
+
+    for (let idx = 0; idx < chromList.length; idx++) {
+      const ch = chromList[idx];
+      const metaY = yStart + idx * spacing;
+      // Resting random-looking G2 coordinates inside nucleus
+      const g2Ang = (idx / totalChroms) * Math.PI * 2 + 0.4;
+      const g2X = Math.cos(g2Ang) * 44;
+      const g2Y = Math.sin(g2Ang) * 52;
+      const g2Rot = g2Ang * 0.7;
+
+      const cObj = { pairIdx: ch.pairIdx, topOrigin: ch.origin, botOrigin: ch.origin, allele: ch.allele, recombinant: false };
+      const isJammed = state.nondisjunction && idx === 0;
+
+      if (t < 0.50) {
+        // Replicated X-shaped dyads condensing and lining up at Metaphase Plate
+        const cx = lerp(g2X, 0, metaP);
+        const cy = lerp(g2Y, metaY, metaP);
+        const rot = lerp(g2Rot, 0, metaP);
+
+        // Bipolar spindle fibers
+        drawSpindleFiber(leftPoleX, leftPoleY, cx - 4, cy, tension, spindleAlpha, false, timeSec);
+        drawSpindleFiber(rightPoleX, rightPoleY, cx + 4, cy, tension, spindleAlpha, isJammed && t > 0.42, timeSec);
+
+        drawDyad(cx, cy, rot, ch.len * 0.78, [cObj, cObj], {
+          scale: 0.92,
+          spread: 0.23,
+          jammed: isJammed && t > 0.42
+        });
+      } else {
+        // Anaphase → Telophase → Cytokinesis: sister chromatids separate!
+        const destLeftX = t < 0.94 ? -nucTargetX + (idx % 2 === 0 ? -16 : 16) : -sepX + (idx % 2 === 0 ? -18 : 18);
+        const destRightX = t < 0.94 ? nucTargetX + (idx % 2 === 0 ? -16 : 16) : sepX + (idx % 2 === 0 ? -18 : 18);
+        const destY = lerp(metaY, (idx - (totalChroms - 1) / 2) * (spacing * 0.56), teloP);
+
+        const lx = lerp(-5, destLeftX, easeInOut(anaP));
+        const rx = isJammed
+          ? lerp(5, destLeftX + 14, easeInOut(anaP)) // Nondisjunction! Both sisters dragged left!
+          : lerp(5, destRightX, easeInOut(anaP));
+
+        const bendAmt = Math.sin(clamp(anaP, 0, 1) * Math.PI) * 0.95;
+
+        // Draw spindle fibers pulling chromatids
+        drawSpindleFiber(leftPoleX, leftPoleY, lx, destY, 0.85, spindleAlpha, false, timeSec);
+        drawSpindleFiber(rightPoleX, rightPoleY, rx, destY, 0.85, spindleAlpha, isJammed, timeSec);
+
+        if (isJammed && anaP > 0.1 && anaP < 0.95) {
+          drawCanvasPill(rx + 46, destY - 22, 'JAMMED FIBER!', 'rgba(255,67,107,0.8)', '#ffb3c4', 'rgba(32,8,16,0.92)');
+        }
+
+        drawChromatid(lx, destY, 0, ch.len * 0.76, cObj, {
+          side: 0, spread: 0.08, bend: bendAmt, pullAngle: Math.PI, scale: 0.90
+        });
+        drawChromatid(rx, destY, 0, ch.len * 0.76, cObj, {
+          side: 0, spread: 0.08, bend: bendAmt, pullAngle: isJammed ? Math.PI : 0, scale: 0.90
+        });
+      }
+    }
+
+    // Centrosomes drawn on top of spindle ends
+    drawCentrosome(leftPoleX, leftPoleY, 0.95, timeSec);
+    drawCentrosome(rightPoleX, rightPoleY, 0.95, timeSec);
+
+    // Final Daughter Clone Genotype Badges
+    if (cytoP > 0.45) {
+      const cells = computeOutcomeCells();
+      const badgeY = t < 0.94 ? 172 : 164;
+      const bx = t < 0.94 ? nucTargetX : sepX;
+      cells.forEach((cell, ci) => {
+        const xPos = ci === 0 ? -bx : bx;
+        const label = cell.error ? `${cell.label}: ${cell.error}` : `${cell.label} (2n=${n * 2}): ${formatHaplotype(cell)}`;
+        drawCanvasPill(
+          xPos, badgeY, label,
+          cell.error ? 'rgba(255,67,107,0.8)' : 'rgba(74,242,178,0.55)',
+          cell.error ? '#ffc2d1' : '#d6fff0'
+        );
+      });
+    }
+  }
+
+  // =========================================================================
+  // 8. MEIOSIS I & II SCENE RENDERER (t in 0..1)
+  // =========================================================================
+  function renderMeiosis(timeSec) {
+    const t = state.t;
+    const n = state.pairs;
+    const spacing = n === 2 ? 78 : 64;
+    const yStart = -((n - 1) * spacing) / 2;
+
+    if (t < 0.50) {
+      // ================== MEIOSIS I (0.00 -> 0.50) ==================
+      const synP = smoothstep(0.02, 0.09, t);          // Homologs pair into tetrads
+      const xoPulse = smoothstep(0.07, 0.11, t) * (1 - smoothstep(0.13, 0.17, t)); // Chiasma flash
+      const xoSwapped = smoothstep(0.095, 0.125, t);   // Permanent DNA segment swap!
+      const m1P = smoothstep(0.14, 0.24, t);           // Align bivalents at Metaphase I
+      const a1P = smoothstep(0.27, 0.39, t);           // Homolog disjunction
+      const t1P = smoothstep(0.39, 0.48, t);           // Telophase I & Cytokinesis I
+
+      const baseR = 186;
+      const elong = 1 + 0.36 * a1P + 0.15 * t1P;
+      const pinch = smoothstep(0.41, 0.495, t);
+      const sep1X = 162 * smoothstep(0.47, 0.50, t);
+
+      if (t < 0.48) {
+        drawCellMembrane(0, 0, baseR * elong, baseR * (1 - 0.1 * a1P), pinch, 'x', timeSec, false);
+      } else {
+        drawCellMembrane(-sep1X, 0, 138, 138, 0, 'x', timeSec, state.nondisjunction);
+        drawCellMembrane(sep1X, 0, 138, 138, 0, 'x', timeSec, state.nondisjunction);
+      }
+
+      // Nuclear envelope dissolves in Prophase I, briefly reforms at Telophase I
+      const nucInit = 1 - smoothstep(0.04, 0.14, t);
+      drawNuclearEnvelope(0, 0, 118, nucInit, timeSec);
+      const pole1X = lerp(115, 198, smoothstep(0.08, 0.39, t));
+      const d1CenterX = t < 0.48 ? pole1X * 0.72 : sep1X;
+      if (t1P > 0.15) {
+        const t1Nuc = smoothstep(0.40, 0.47, t) * (1 - smoothstep(0.48, 0.50, t));
+        drawNuclearEnvelope(-d1CenterX, 0, 82, t1Nuc, timeSec);
+        drawNuclearEnvelope(d1CenterX, 0, 82, t1Nuc, timeSec);
+      }
+
+      // Metaphase I plate guide
+      const plateAlpha = smoothstep(0.16, 0.21, t) * (1 - smoothstep(0.27, 0.32, t));
+      if (plateAlpha > 0.02) {
+        ctx.save();
+        ctx.strokeStyle = `rgba(255, 96, 131, ${(0.32 * plateAlpha).toFixed(3)})`;
+        ctx.lineWidth = 1.4;
+        ctx.setLineDash([6, 6]);
+        ctx.beginPath();
+        ctx.moveTo(0, -162);
+        ctx.lineTo(0, 162);
+        ctx.stroke();
+        ctx.restore();
+        if (plateAlpha > 0.4) {
+          drawCanvasPill(0, -178, 'METAPHASE I — INDEPENDENT ASSORTMENT', 'rgba(255,96,131,0.5)', '#ffc0d0');
+        }
+      }
+
+      // Crossing-Over banner label on canvas
+      if (xoPulse > 0.25 && state.crossingOver) {
+        drawCanvasPill(0, -178, 'CHIASMATA — CROSSING-OVER DNA SWAP', 'rgba(167,139,250,0.75)', '#e4d8ff');
+      }
+
+      // Centrosomes
+      const cMig = smoothstep(0.02, 0.18, t);
+      const lPoleX = t < 0.48 ? -lerp(28, pole1X, cMig) : -sep1X;
+      const rPoleX = t < 0.48 ? lerp(28, pole1X, cMig) : sep1X;
+      const poleY = t < 0.48 ? -lerp(116, 0, cMig) : 0;
+
+      const spindleAlpha = smoothstep(0.11, 0.20, t) * (1 - smoothstep(0.42, 0.49, t));
+      const tension = smoothstep(0.19, 0.27, t) * (1 - smoothstep(0.38, 0.44, t));
+
+      for (let i = 0; i < n; i++) {
+        const meta = PAIR_META[i];
+        const pair = buildPairChromatids(i, true);
+        const flip = state.assortment[i]; // 0: mat left, pat right; 1: pat left, mat right
+        const leftDyad = flip === 0 ? pair.mat : pair.pat;
+        const rightDyad = flip === 0 ? pair.pat : pair.mat;
+        const py = yStart + i * spacing;
+
+        // Synapsis pulls homologs tightly together (gap = 18px), then Metaphase I sets bivalent width (24px), then Anaphase I separates!
+        const synGap = lerp(42, 16, synP);
+        const metaGap = lerp(synGap, 25, m1P);
+        const destLeftX = t < 0.48 ? -d1CenterX : -sep1X;
+        const destRightX = t < 0.48 ? d1CenterX : sep1X;
+
+        const isJammed = state.nondisjunction && i === 0;
+        const lx = lerp(-metaGap, destLeftX + (isJammed ? -16 : 0), easeInOut(a1P));
+        const rx = isJammed
+          ? lerp(metaGap, destLeftX + 18, easeInOut(a1P)) // Nondisjunction: BOTH homologs pulled left!
+          : lerp(metaGap, destRightX, easeInOut(a1P));
+
+        // Spindle fibers attach to outer kinetochore of each homolog
+        drawSpindleFiber(lPoleX, poleY, lx - 4, py, tension, spindleAlpha, false, timeSec);
+        drawSpindleFiber(rPoleX, poleY, rx + 4, py, tension, spindleAlpha, isJammed && t > 0.24, timeSec);
+
+        if (isJammed && a1P > 0.08 && a1P < 0.92) {
+          drawCanvasPill(rx + 56, py - 24, 'NONDISJUNCTION!', 'rgba(255,67,107,0.85)', '#ffbfd0', 'rgba(32,8,16,0.92)');
+        }
+
+        // Physical chiasma inward arm crossing bend during Prophase I!
+        const xoActive = state.crossingOver && state.crossoverActive[i];
+        const crossBend = xoActive ? 15 * xoPulse : 0;
+
+        // Left homolog: inner chromatid is index 1 (right side), bends right (+crossBend)
+        // Right homolog: inner chromatid is index 0 (left side), bends left (-crossBend)
+        // Wait: if flipped (pat on left, mat on right), mat inner is index 1 and pat inner is index 0.
+        // Let's order sister chromatids visually so the recombinant chromatid is ALWAYS the inner chromatid facing the chiasma!
+        const leftVis = flip === 0 ? [leftDyad[0], leftDyad[1]] : [leftDyad[1], leftDyad[0]];
+        const rightVis = flip === 0 ? [rightDyad[0], rightDyad[1]] : [rightDyad[1], rightDyad[0]];
+
+        drawDyad(lx, py, 0, meta.len * 0.78, leftVis, {
+          scale: 0.92,
+          spread: 0.22,
+          xoSwapProgress: xoSwapped,
+          chiasmaFrac: state.chiasmaPos[i],
+          chiasmaBendRight: crossBend,
+          jammed: false
+        });
+
+        drawDyad(rx, py, 0, meta.len * 0.78, rightVis, {
+          scale: 0.92,
+          spread: 0.22,
+          xoSwapProgress: xoSwapped,
+          chiasmaFrac: state.chiasmaPos[i],
+          chiasmaBendLeft: -crossBend,
+          jammed: isJammed && t > 0.24
+        });
+
+        // Draw luminous Chiasma spark right where inner lower arms cross!
+        if (xoActive && xoPulse > 0.03) {
+          const sparkY = py + meta.len * 0.78 * 0.92 * state.chiasmaPos[i];
+          drawChiasmaSpark((lx + rx) * 0.5, sparkY, xoPulse, timeSec);
+        }
+      }
+
+      drawCentrosome(lPoleX, poleY, 0.95, timeSec);
+      drawCentrosome(rPoleX, poleY, 0.95, timeSec);
+
+    } else {
+      // ================== MEIOSIS II (0.50 -> 1.00) ==================
+      // Two secondary cells (Left at -cellX, Right at +cellX) divide vertically into 4 haploid gametes!
+      const u = (t - 0.50) / 0.50; // 0..1 within Meiosis II
+      const p2P = smoothstep(0.00, 0.20, u);
+      const m2P = smoothstep(0.18, 0.42, u);
+      const a2P = smoothstep(0.44, 0.70, u);
+      const t2P = smoothstep(0.70, 0.88, u);
+      const c2P = smoothstep(0.84, 1.00, u);
+
+      const cellX = 166;
+      const baseR = 138;
+      const elongY = 1 + 0.34 * a2P + 0.14 * t2P;
+      const pinchY = smoothstep(0.76, 0.93, u);
+      const sepY = 114 * smoothstep(0.90, 1.0, u);
+
+      const gametes = computeOutcomeCells();
+
+      for (let sideIdx = 0; sideIdx < 2; sideIdx++) {
+        const cx = sideIdx === 0 ? -cellX : cellX;
+        const aneuploidSide = state.nondisjunction;
+
+        // Draw cell membrane(s) for this side
+        if (u < 0.91) {
+          drawCellMembrane(cx, 0, baseR * (1 - 0.09 * a2P), baseR * elongY, pinchY, 'y', timeSec, aneuploidSide);
+        } else {
+          // Two separated haploid gametes on this side (Top & Bottom)
+          drawCellMembrane(cx, -sepY, 118, 96, 0, 'y', timeSec, aneuploidSide);
+          drawCellMembrane(cx, sepY, 118, 96, 0, 'y', timeSec, aneuploidSide);
+        }
+
+        // Metaphase II horizontal equator line
+        const m2Plate = smoothstep(0.20, 0.30, u) * (1 - smoothstep(0.43, 0.52, u));
+        if (m2Plate > 0.02) {
+          ctx.save();
+          ctx.strokeStyle = `rgba(88, 220, 255, ${(0.28 * m2Plate).toFixed(3)})`;
+          ctx.lineWidth = 1.2;
+          ctx.setLineDash([5, 5]);
+          ctx.beginPath();
+          ctx.moveTo(cx - 110, 0);
+          ctx.lineTo(cx + 110, 0);
+          ctx.stroke();
+          ctx.restore();
+        }
+
+        // Centrosomes migrate vertically to Top (-poleY) and Bottom (+poleY) inside each secondary cell
+        const poleYDist = lerp(75, 134, p2P) + 26 * a2P;
+        const topPoleY = u < 0.91 ? -poleYDist : -sepY - 56;
+        const botPoleY = u < 0.91 ? poleYDist : sepY + 56;
+        const topPoleX = cx + lerp(sideIdx === 0 ? -40 : 40, 0, p2P);
+        const botPoleX = topPoleX;
+
+        // Re-forming haploid nuclear envelopes in Telophase II
+        const nucY = u < 0.91 ? poleYDist * 0.64 : sepY;
+        if (t2P > 0.05) {
+          drawNuclearEnvelope(cx, -nucY, 64, t2P, timeSec);
+          drawNuclearEnvelope(cx, nucY, 64, t2P, timeSec);
+        }
+
+        const spindleAlpha = smoothstep(0.08, 0.24, u) * (1 - smoothstep(0.75, 0.90, u));
+        const tension = smoothstep(0.25, 0.42, u) * (1 - smoothstep(0.68, 0.78, u));
+
+        // Gather dyads belonging to this secondary cell
+        const sideDyads = [];
+        for (let i = 0; i < n; i++) {
+          const pair = buildPairChromatids(i, true);
+          const flip1 = state.assortment[i];
+          const leftDyad = flip1 === 0 ? pair.mat : pair.pat;
+          const rightDyad = flip1 === 0 ? pair.pat : pair.mat;
+
+          if (state.nondisjunction && i === 0) {
+            if (sideIdx === 0) {
+              sideDyads.push({ pairIdx: i, len: PAIR_META[i].len, dyad: state.m2Flip[i][0] ? [leftDyad[1], leftDyad[0]] : leftDyad });
+              sideDyads.push({ pairIdx: i, len: PAIR_META[i].len, dyad: state.m2Flip[i][1] ? [rightDyad[1], rightDyad[0]] : rightDyad });
+            }
+            // sideIdx === 1 has NO chromosome 1!
+          } else {
+            const d = sideIdx === 0 ? leftDyad : rightDyad;
+            const oriented = state.m2Flip[i][sideIdx] ? [d[1], d[0]] : d;
+            sideDyads.push({ pairIdx: i, len: PAIR_META[i].len, dyad: oriented });
+          }
+        }
+
+        const count = sideDyads.length;
+        const xSpace = count >= 4 ? 44 : 52;
+        const xStart = cx - ((count - 1) * xSpace) / 2;
+
+        for (let k = 0; k < count; k++) {
+          const item = sideDyads[k];
+          const mx = xStart + k * xSpace;
+          const startY = (k - (count - 1) / 2) * 28;
+
+          if (u < 0.44) {
+            // Replicated dyads rotate 90° (horizontal X-shape) to align along horizontal Metaphase II plate
+            const cyPos = lerp(startY, 0, m2P);
+            const rot = lerp(0, Math.PI / 2, m2P);
+
+            drawSpindleFiber(topPoleX, topPoleY, mx, cyPos - 4, tension, spindleAlpha, false, timeSec);
+            drawSpindleFiber(botPoleX, botPoleY, mx, cyPos + 4, tension, spindleAlpha, false, timeSec);
+
+            drawDyad(mx, cyPos, rot, item.len * 0.66, item.dyad, {
+              scale: 0.80,
+              spread: 0.22,
+              xoSwapProgress: 1,
+              chiasmaFrac: state.chiasmaPos[item.pairIdx]
+            });
+          } else {
+            // Anaphase II → Telophase II → 4 Haploid Gametes!
+            const destTopY = u < 0.91 ? -nucY : -sepY;
+            const destBotY = u < 0.91 ? nucY : sepY;
+            const ty = lerp(-6, destTopY, easeInOut(a2P));
+            const by = lerp(6, destBotY, easeInOut(a2P));
+            const tx = lerp(mx, cx + (k - (count - 1) / 2) * 32, t2P);
+            const bendAmt = Math.sin(clamp(a2P, 0, 1) * Math.PI) * 0.95;
+
+            drawSpindleFiber(topPoleX, topPoleY, tx, ty, 0.85, spindleAlpha, false, timeSec);
+            drawSpindleFiber(botPoleX, botPoleY, tx, by, 0.85, spindleAlpha, false, timeSec);
+
+            drawChromatid(tx, ty, Math.PI / 2, item.len * 0.64, item.dyad[0], {
+              side: 0, spread: 0.08, bend: bendAmt, pullAngle: -Math.PI / 2,
+              xoSwapProgress: 1, chiasmaFrac: state.chiasmaPos[item.pairIdx], scale: 0.80
+            });
+            drawChromatid(tx, by, Math.PI / 2, item.len * 0.64, item.dyad[1], {
+              side: 0, spread: 0.08, bend: bendAmt, pullAngle: Math.PI / 2,
+              xoSwapProgress: 1, chiasmaFrac: state.chiasmaPos[item.pairIdx], scale: 0.80
+            });
+          }
+        }
+
+        drawCentrosome(topPoleX, topPoleY, 0.92, timeSec, 0.82);
+        drawCentrosome(botPoleX, botPoleY, 0.92, timeSec, 0.82);
+
+        // Draw exact recombinant haplotype pills for all 4 gametes!
+        if (c2P > 0.35) {
+          const gTop = gametes[sideIdx * 2];
+          const gBot = gametes[sideIdx * 2 + 1];
+          const topBadgeY = (u < 0.91 ? -nucY : -sepY) - 108;
+          const botBadgeY = (u < 0.91 ? nucY : sepY) + 108;
+
+          const fmtBadge = (g) => g.error
+            ? `${formatHaplotype(g)} · ${g.error}`
+            : `n=${n} [${formatHaplotype(g)}]`;
+
+          drawCanvasPill(
+            cx, topBadgeY, fmtBadge(gTop),
+            gTop.error ? 'rgba(255,67,107,0.85)' : 'rgba(167,139,250,0.65)',
+            gTop.error ? '#ffc2d1' : '#ece5ff'
+          );
+          drawCanvasPill(
+            cx, botBadgeY, fmtBadge(gBot),
+            gBot.error ? 'rgba(255,67,107,0.85)' : 'rgba(88,220,255,0.65)',
+            gBot.error ? '#ffc2d1' : '#d8f7ff'
+          );
+        }
+      }
+    }
+  }
+
+  // Main background microscopy field + active scene
+  function renderMainCanvas(timeSec) {
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+
+    // Deep dark-field microscopy backdrop (#040711)
+    ctx.fillStyle = COLORS.bg;
+    ctx.fillRect(0, 0, W, H);
+
+    // Subtle fluorescence microscope optical vignette & bioluminescent nebula
+    const cxView = state.drawerOpen && !state.cinema && W > 820 ? (W - 330) * 0.5 : W * 0.5;
+    const cyView = H * 0.51;
+
+    const bgGrad = ctx.createRadialGradient(cxView, cyView, 30, cxView, cyView, Math.max(W, H) * 0.65);
+    bgGrad.addColorStop(0, 'rgba(22, 38, 80, 0.32)');
+    bgGrad.addColorStop(0.45, 'rgba(10, 17, 38, 0.22)');
+    bgGrad.addColorStop(1, 'rgba(4, 7, 17, 0.98)');
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, W, H);
+
+    // Subtle calibrated microscope reticle grid
+    ctx.save();
+    ctx.strokeStyle = 'rgba(120, 165, 255, 0.04)';
+    ctx.lineWidth = 1;
+    const grid = 48;
+    for (let x = cxView % grid; x < W; x += grid) {
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+    }
+    for (let y = cyView % grid; y < H; y += grid) {
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+    }
+    ctx.restore();
+
+    // If Genetics Lab overlay is open, dim the background cell studio gently so the overlay pops
+    ctx.save();
+    if (state.view === 'genetics') {
+      ctx.globalAlpha = 0.26;
+    }
+
+    // Auto-scale nicely to fit viewport
+    const availW = (state.drawerOpen && !state.cinema && W > 820) ? W - 360 : W - 40;
+    const availH = H - 150;
+    const autoScale = clamp(Math.min(availW / 700, availH / 540), 0.52, 1.25);
+
+    ctx.translate(cxView + state.cam.x, cyView + state.cam.y);
+    ctx.scale(autoScale * state.cam.zoom, autoScale * state.cam.zoom);
+
+    if (state.mode === 'mitosis') {
+      renderMitosis(timeSec);
+    } else {
+      renderMeiosis(timeSec);
+    }
+
+    ctx.restore();
+  }
+
+  // =========================================================================
+  // 9. PUNNETT SQUARE ENGINE
+  // =========================================================================
+  const MONO_GENOTYPES = ['AA', 'Aa', 'aa'];
+  const DI_GENOTYPES = ['AABB', 'AABb', 'AAbb', 'AaBB', 'AaBb', 'Aabb', 'aaBB', 'aaBb', 'aabb'];
+
+  function populateParentSelects() {
+    const list = state.punnett.type === 'monohybrid' ? MONO_GENOTYPES : DI_GENOTYPES;
+    const sel1 = document.getElementById('sel-parent1');
+    const sel2 = document.getElementById('sel-parent2');
+    sel1.innerHTML = list.map(g => `<option value="${g}">${g}</option>`).join('');
+    sel2.innerHTML = list.map(g => `<option value="${g}">${g}</option>`).join('');
+    if (!list.includes(state.punnett.p1)) state.punnett.p1 = state.punnett.type === 'monohybrid' ? 'Aa' : 'AaBb';
+    if (!list.includes(state.punnett.p2)) state.punnett.p2 = state.punnett.type === 'monohybrid' ? 'Aa' : 'AaBb';
+    sel1.value = state.punnett.p1;
+    sel2.value = state.punnett.p2;
+  }
+
+  function gametesFromGenotype(geno) {
+    if (geno.length === 2) return [geno[0], geno[1]];
+    const a = [geno[0], geno[1]];
+    const b = [geno[2], geno[3]];
+    return [a[0] + b[0], a[0] + b[1], a[1] + b[0], a[1] + b[1]];
+  }
+
+  function combineGametes(g1, g2) {
+    const sortPair = (c1, c2) => (c1 === c1.toUpperCase() && c2 !== c2.toUpperCase()) ? c1 + c2 : (c2 === c2.toUpperCase() ? c2 + c1 : c1 + c2);
+    if (g1.length === 1) return sortPair(g1, g2);
+    return sortPair(g1[0], g2[0]) + sortPair(g1[1], g2[1]);
+  }
+
+  function phenotypeInfo(geno) {
+    if (geno.length === 2) {
+      const domA = geno.includes('A');
+      return domA
+        ? { key: 'A_', label: 'Dom (A_)', color: '#ff6083', bg: 'rgba(255, 96, 131, 0.14)' }
+        : { key: 'aa', label: 'Rec (aa)', color: '#58dcff', bg: 'rgba(88, 220, 255, 0.13)' };
+    }
+    const domA = geno.slice(0, 2).includes('A');
+    const domB = geno.slice(2, 4).includes('B');
+    if (domA && domB) return { key: 'A_B_', label: 'A_B_', color: '#ff6083', bg: 'rgba(255, 96, 131, 0.15)' };
+    if (domA && !domB) return { key: 'A_bb', label: 'A_bb', color: '#ffbe5c', bg: 'rgba(255, 190, 92, 0.14)' };
+    if (!domA && domB) return { key: 'aaB_', label: 'aaB_', color: '#a78bfa', bg: 'rgba(167, 139, 250, 0.15)' };
+    return { key: 'aabb', label: 'aabb', color: '#58dcff', bg: 'rgba(88, 220, 255, 0.14)' };
+  }
+
+  function renderPunnettSquare() {
+    const grid = document.getElementById('punnett-grid');
+    const g1List = gametesFromGenotype(state.punnett.p1);
+    const g2List = gametesFromGenotype(state.punnett.p2);
+    const dim = g1List.length;
+    const total = dim * dim;
+
+    grid.style.gridTemplateColumns = `minmax(42px, 0.7fr) repeat(${dim}, 1fr)`;
+    document.getElementById('punnett-cross-label').textContent =
+      `${state.punnett.type === 'monohybrid' ? 'Monohybrid' : 'Dihybrid'} Cross: ${state.punnett.p1} × ${state.punnett.p2} (${total} offspring)`;
+
+    let html = `<div class="p-cell corner">♀ \\ ♂</div>`;
+    for (let c = 0; c < dim; c++) {
+      html += `<div class="p-cell hdr">${g2List[c]}</div>`;
+    }
+
+    const phenoCounts = {};
+    const genoCounts = {};
+
+    for (let r = 0; r < dim; r++) {
+      html += `<div class="p-cell hdr mat">${g1List[r]}</div>`;
+      for (let c = 0; c < dim; c++) {
+        const geno = combineGametes(g1List[r], g2List[c]);
+        const ph = phenotypeInfo(geno);
+        phenoCounts[ph.key] = (phenoCounts[ph.key] || 0) + 1;
+        genoCounts[geno] = (genoCounts[geno] || 0) + 1;
+        const cellId = `${r}-${c}`;
+        const sel = state.punnett.selectedCell === cellId ? ' selected' : '';
+        html += `<div class="p-cell offspring${sel}" data-pcell="${cellId}" data-geno="${geno}" data-g1="${g1List[r]}" data-g2="${g2List[c]}" style="background:${ph.bg};border-color:${ph.color}55;">
+          <span class="p-geno">${geno}</span>
+          <span class="p-pheno"><span class="p-swatch" style="background:${ph.color};"></span>${ph.label}</span>
+        </div>`;
+      }
+    }
+    grid.innerHTML = html;
+
+    // Click handlers for Punnett offspring inspection
+    grid.querySelectorAll('.p-cell.offspring').forEach(el => {
+      el.addEventListener('click', () => {
+        state.punnett.selectedCell = el.dataset.pcell;
+        const geno = el.dataset.geno;
+        const cnt = genoCounts[geno];
+        const pct = ((cnt / total) * 100).toFixed(1);
+        document.getElementById('punnett-detail').textContent =
+          `Gametes ${el.dataset.g1} × ${el.dataset.g2} → ${geno} (${cnt}/${total} = ${pct}% of cross)`;
+        renderPunnettSquare();
+      });
+    });
+
+    // Phenotypic ratio summary chips
+    const summaryEl = document.getElementById('punnett-summary');
+    const keys = Object.keys(phenoCounts);
+    summaryEl.innerHTML = keys.map(k => {
+      const sample = k.replace(/_/g, k[0] === 'A' ? 'A' : 'B');
+      const ph = phenotypeInfo(sample.length === 2 ? sample : k.replace(/_/g, 'A').slice(0, 2) + (k.includes('B') ? 'BB' : 'bb'));
+      const pct = ((phenoCounts[k] / total) * 100).toFixed(1);
+      return `<span class="ratio-chip"><span class="p-swatch" style="background:${ph.color};"></span>${k}: ${phenoCounts[k]}/${total} (${pct}%)</span>`;
+    }).join('');
+  }
+
+  // Seed Punnett Square directly from gametes produced in the live Meiosis simulation
+  function seedPunnettFromMeiosis() {
+    const prevMode = state.mode;
+    state.mode = 'meiosis';
+    const gametes = computeOutcomeCells();
+    state.mode = prevMode;
+    // Construct parental diploid genotypes from pairs of resulting gametes!
+    const getAllele = (g, pIdx, fallback) => {
+      const found = g.chromatids.find(c => c.pairIdx === pIdx);
+      return found ? found.allele : fallback;
+    };
+    const sortP = (x, y) => (x === x.toUpperCase() ? x + y : y + x);
+    if (state.punnett.type === 'monohybrid') {
+      state.punnett.p1 = sortP(getAllele(gametes[0], 0, 'A'), getAllele(gametes[2], 0, 'a'));
+      state.punnett.p2 = sortP(getAllele(gametes[1], 0, 'A'), getAllele(gametes[3], 0, 'a'));
+    } else {
+      state.punnett.p1 =
+        sortP(getAllele(gametes[0], 0, 'A'), getAllele(gametes[2], 0, 'a')) +
+        sortP(getAllele(gametes[0], 1, 'B'), getAllele(gametes[2], 1, 'b'));
+      state.punnett.p2 =
+        sortP(getAllele(gametes[1], 0, 'A'), getAllele(gametes[3], 0, 'a')) +
+        sortP(getAllele(gametes[1], 1, 'B'), getAllele(gametes[3], 1, 'b'));
+    }
+    populateParentSelects();
+    renderPunnettSquare();
+    showBanner(`Seeded Punnett Cross (${state.punnett.p1} × ${state.punnett.p2}) from Meiosis gametes!`);
+  }
+
+  // =========================================================================
+  // 10. HARDY–WEINBERG POPULATION GENETICS SIMULATOR
+  // =========================================================================
+  const hwCanvas = document.getElementById('hw-canvas');
+  const hwCtx = hwCanvas.getContext('2d');
+  const miniHwCanvas = document.getElementById('mini-hw-canvas');
+  const miniHwCtx = miniHwCanvas.getContext('2d');
+
+  function resizeHWCanvases() {
+    [hwCanvas, miniHwCanvas].forEach(cv => {
+      const rect = cv.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) {
+        cv.width = Math.floor(rect.width * DPR);
+        cv.height = Math.floor(rect.height * DPR);
+      }
+    });
+    renderHWCharts();
+  }
+
+  // Binomial sampler for Wright-Fisher genetic drift
+  function sampleBinomial(trials, prob) {
+    if (prob <= 0) return 0;
+    if (prob >= 1) return trials;
+    if (trials <= 400) {
+      let count = 0;
+      for (let i = 0; i < trials; i++) if (Math.random() < prob) count++;
+      return count;
+    }
+    // Normal approximation for large 2N
+    const mean = trials * prob;
+    const sd = Math.sqrt(trials * prob * (1 - prob));
+    const u1 = Math.max(1e-9, Math.random());
+    const u2 = Math.random();
+    const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+    return clamp(Math.round(mean + sd * z), 0, trials);
+  }
+
+  function stepHWGeneration() {
+    const hw = state.hw;
+    if (hw.gen >= 180) return;
+
+    let p = hw.p;
+    let q = 1 - p;
+
+    // 1. Natural selection against recessive homozygote aa (fitness w_aa = 1 - s)
+    const wAA = 1;
+    const wAa = 1;
+    const waa = 1 - hw.s;
+    const wBar = p * p * wAA + 2 * p * q * wAa + q * q * waa;
+    if (wBar > 1e-9) {
+      p = (p * p * wAA + p * q * wAa) / wBar;
+    }
+
+    // 2. Mutation A -> a at rate mu
+    p = p * (1 - hw.mu);
+    p = clamp(p, 0, 1);
+
+    // 3. Genetic Drift (Wright-Fisher sampling of 2N alleles)
+    const N = POP_SIZES[hw.nIndex - 1];
+    if (Number.isFinite(N)) {
+      const drawn = sampleBinomial(2 * N, p);
+      p = drawn / (2 * N);
+    }
+
+    hw.p = p;
+    hw.gen++;
+    hw.historyP.push(p);
+    hw.historyHet.push(2 * p * (1 - p));
+  }
+
+  function resetHW(keepGhost = false) {
+    const hw = state.hw;
+    if (keepGhost && hw.historyP.length > 5) {
+      hw.ghostRuns.push([...hw.historyP]);
+      if (hw.ghostRuns.length > 4) hw.ghostRuns.shift();
+    } else if (!keepGhost) {
+      hw.ghostRuns = [];
+    }
+    hw.p = hw.p0;
+    hw.gen = 0;
+    hw.historyP = [hw.p0];
+    hw.historyHet = [2 * hw.p0 * (1 - hw.p0)];
+    updateHWUI();
+    renderHWCharts();
+  }
+
+  function updateHWUI() {
+    const hw = state.hw;
+    const p = hw.p;
+    const q = 1 - p;
+    const p2 = p * p;
+    const twoPQ = 2 * p * q;
+    const q2 = q * q;
+
+    document.getElementById('hw-p-val').textContent = p.toFixed(3);
+    document.getElementById('hw-q-val').textContent = q.toFixed(3);
+    document.getElementById('hw-gen-val').textContent = String(hw.gen);
+    document.getElementById('hw-het-val').textContent = (twoPQ * 100).toFixed(1) + '%';
+
+    document.getElementById('hw-aa-dom-lbl').textContent = `p² (AA): ${(p2 * 100).toFixed(1)}%`;
+    document.getElementById('hw-het-lbl').textContent = `2pq (Aa): ${(twoPQ * 100).toFixed(1)}%`;
+    document.getElementById('hw-rec-lbl').textContent = `q² (aa): ${(q2 * 100).toFixed(1)}%`;
+
+    document.getElementById('hw-bar-dom').style.width = (p2 * 100).toFixed(2) + '%';
+    document.getElementById('hw-bar-het').style.width = (twoPQ * 100).toFixed(2) + '%';
+    document.getElementById('hw-bar-rec').style.width = (q2 * 100).toFixed(2) + '%';
+
+    const pill = document.getElementById('hw-eq-pill');
+    const N = POP_SIZES[hw.nIndex - 1];
+    if (p <= 0.001 || p >= 0.999) {
+      pill.textContent = p >= 0.999 ? 'Allele A Fixed' : 'Allele a Fixed';
+      pill.className = 'status-pill warn';
+    } else if (hw.s === 0 && hw.mu === 0 && !Number.isFinite(N)) {
+      pill.textContent = 'H–W Equilibrium';
+      pill.className = 'status-pill';
+    } else if (hw.s > 0.15) {
+      pill.textContent = 'Selection Sweep';
+      pill.className = 'status-pill danger';
+    } else if (Number.isFinite(N) && N <= 150) {
+      pill.textContent = 'Genetic Drift';
+      pill.className = 'status-pill violet';
+    } else {
+      pill.textContent = 'Evolving';
+      pill.className = 'status-pill warn';
+    }
+  }
+
+  function drawHWChartOn(targetCtx, targetCanvas, isMini) {
+    const cw = targetCanvas.width / DPR;
+    const ch = targetCanvas.height / DPR;
+    if (cw <= 4 || ch <= 4) return;
+
+    targetCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    targetCtx.clearRect(0, 0, cw, ch);
+
+    const padL = isMini ? 8 : 34;
+    const padR = isMini ? 8 : 14;
+    const padT = isMini ? 8 : 16;
+    const padB = isMini ? 8 : 24;
+    const pw = cw - padL - padR;
+    const ph = ch - padT - padB;
+
+    // Gridlines
+    targetCtx.strokeStyle = 'rgba(148, 179, 255, 0.1)';
+    targetCtx.lineWidth = 1;
+    for (let k = 0; k <= 4; k++) {
+      const y = padT + (k / 4) * ph;
+      targetCtx.beginPath();
+      targetCtx.moveTo(padL, y);
+      targetCtx.lineTo(padL + pw, y);
+      targetCtx.stroke();
+      if (!isMini) {
+        targetCtx.fillStyle = '#68789c';
+        targetCtx.font = '10px ui-monospace, Menlo, monospace';
+        targetCtx.textAlign = 'right';
+        targetCtx.textBaseline = 'middle';
+        targetCtx.fillText((1 - k * 0.25).toFixed(2), padL - 6, y);
+      }
+    }
+
+    const hw = state.hw;
+    const maxGen = Math.max(60, hw.historyP.length - 1);
+    const xOf = (g) => padL + (g / maxGen) * pw;
+    const yOf = (val) => padT + (1 - val) * ph;
+
+    // Initial equilibrium reference dashed line
+    targetCtx.save();
+    targetCtx.strokeStyle = 'rgba(255, 255, 255, 0.16)';
+    targetCtx.setLineDash([4, 4]);
+    targetCtx.beginPath();
+    targetCtx.moveTo(padL, yOf(hw.p0));
+    targetCtx.lineTo(padL + pw, yOf(hw.p0));
+    targetCtx.stroke();
+    targetCtx.restore();
+
+    // Ghost drift replicate traces
+    hw.ghostRuns.forEach(run => {
+      targetCtx.beginPath();
+      for (let g = 0; g < run.length; g++) {
+        const x = xOf(g), y = yOf(run[g]);
+        if (g === 0) targetCtx.moveTo(x, y); else targetCtx.lineTo(x, y);
+      }
+      targetCtx.strokeStyle = 'rgba(255, 96, 131, 0.22)';
+      targetCtx.lineWidth = 1.1;
+      targetCtx.stroke();
+    });
+
+    // Draw q(t) cyan curve
+    targetCtx.beginPath();
+    for (let g = 0; g < hw.historyP.length; g++) {
+      const x = xOf(g), y = yOf(1 - hw.historyP[g]);
+      if (g === 0) targetCtx.moveTo(x, y); else targetCtx.lineTo(x, y);
+    }
+    targetCtx.strokeStyle = '#58dcff';
+    targetCtx.lineWidth = isMini ? 1.5 : 2.1;
+    targetCtx.stroke();
+
+    // Draw Heterozygosity 2pq(t) violet curve
+    targetCtx.beginPath();
+    for (let g = 0; g < hw.historyHet.length; g++) {
+      const x = xOf(g), y = yOf(hw.historyHet[g]);
+      if (g === 0) targetCtx.moveTo(x, y); else targetCtx.lineTo(x, y);
+    }
+    targetCtx.strokeStyle = 'rgba(167, 139, 250, 0.72)';
+    targetCtx.lineWidth = isMini ? 1.2 : 1.5;
+    targetCtx.stroke();
+
+    // Draw p(t) rose curve
+    targetCtx.beginPath();
+    for (let g = 0; g < hw.historyP.length; g++) {
+      const x = xOf(g), y = yOf(hw.historyP[g]);
+      if (g === 0) targetCtx.moveTo(x, y); else targetCtx.lineTo(x, y);
+    }
+    targetCtx.strokeStyle = '#ff6083';
+    targetCtx.lineWidth = isMini ? 1.8 : 2.4;
+    targetCtx.stroke();
+
+    // Leading point glows
+    const lastG = hw.historyP.length - 1;
+    const lx = xOf(lastG);
+    [
+      [yOf(hw.p), '#ff6083'],
+      [yOf(1 - hw.p), '#58dcff']
+    ].forEach(([ly, col]) => {
+      targetCtx.fillStyle = col;
+      targetCtx.beginPath();
+      targetCtx.arc(lx, ly, isMini ? 2.5 : 4, 0, Math.PI * 2);
+      targetCtx.fill();
+    });
+
+    if (!isMini) {
+      targetCtx.fillStyle = '#9aa9cc';
+      targetCtx.font = '10px ui-monospace, Menlo, monospace';
+      targetCtx.textAlign = 'left';
+      targetCtx.fillText('Gen 0', padL, ch - 8);
+      targetCtx.textAlign = 'right';
+      targetCtx.fillText(`Gen ${maxGen}`, padL + pw, ch - 8);
+
+      // Legend top-right
+      targetCtx.textAlign = 'right';
+      targetCtx.fillStyle = '#ff8ea8';
+      targetCtx.fillText('● p(A)', padL + pw - 115, padT + 7);
+      targetCtx.fillStyle = '#7ae4ff';
+      targetCtx.fillText('● q(a)', padL + pw - 62, padT + 7);
+      targetCtx.fillStyle = '#c4b0ff';
+      targetCtx.fillText('● 2pq', padL + pw - 6, padT + 7);
+    }
+  }
+
+  function renderHWCharts() {
+    drawHWChartOn(hwCtx, hwCanvas, false);
+    drawHWChartOn(miniHwCtx, miniHwCanvas, true);
+  }
+
+  // =========================================================================
+  // 11. UI SYNCHRONIZATION, TELEMETRY & INSPECTOR
+  // =========================================================================
+  function showBanner(text, isDanger = false) {
+    const el = document.getElementById('event-banner');
+    document.getElementById('event-banner-text').textContent = text;
+    el.className = 'event-banner show' + (isDanger ? ' danger' : '');
+    if (state.bannerTimer) clearTimeout(state.bannerTimer);
+    state.bannerTimer = setTimeout(() => {
+      el.classList.remove('show');
+    }, 2600);
+  }
+
+  function rebuildPhaseButtons() {
+    const container = document.getElementById('phase-buttons');
+    const phases = getPhases();
+    container.innerHTML = phases.map(p =>
+      `<button class="phase-btn" data-phase="${p.id}">${p.short}</button>`
+    ).join('');
+    container.querySelectorAll('.phase-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const ph = phases.find(x => x.id === btn.dataset.phase);
+        if (ph) {
+          state.t = clamp(ph.start + 0.015, 0, 0.999);
+          updateTelemetryAndUI(true);
+        }
+      });
+    });
+  }
+
+  function updateInspectorList() {
+    const cells = computeOutcomeCells();
+    const listEl = document.getElementById('gamete-list');
+    const n = state.pairs;
+
+    document.getElementById('inspect-cells-title').textContent =
+      state.mode === 'mitosis' ? 'Daughter Clone Genomes' : 'Resulting Gamete Haplotypes';
+    document.getElementById('inspect-ploidy-badge').textContent =
+      state.mode === 'mitosis' ? `2 × 2n (${2 * n})` : `4 × n (${n})`;
+
+    listEl.innerHTML = cells.map(cell => {
+      const hasRecomb = cell.chromatids.some(c => c.recombinant);
+      const tagClass = cell.error ? 'error' : (hasRecomb ? 'recomb' : '');
+      const tagText = cell.error ? cell.error : (hasRecomb ? 'Recombinant ★' : (state.mode === 'mitosis' ? 'Identical Clone' : 'Parental'));
+
+      const strips = cell.chromatids.map(c => {
+        const cTop = c.topOrigin === 'mat' ? COLORS.mat : COLORS.pat;
+        const cBot = c.botOrigin === 'mat' ? COLORS.mat : COLORS.pat;
+        const bg = cTop === cBot ? cTop : `linear-gradient(90deg, ${cTop} 50%, ${cBot} 50%)`;
+        return `<span class="mini-chrom"><span class="mini-bar" style="background:${bg};"></span>${c.allele}${c.recombinant ? '★' : ''}</span>`;
+      }).join('');
+
+      return `<div class="gamete-card${cell.error ? ' aneuploid' : ''}">
+        <div class="gamete-head">
+          <span class="gamete-hap">${cell.label}: ${formatHaplotype(cell)}</span>
+          <span class="gamete-tag ${tagClass}">${tagText}</span>
+        </div>
+        <div class="chrom-strip">${strips || '<span style="font-size:10px;color:#ff8ea8;">Missing Chr 1</span>'}</div>
+      </div>`;
+    }).join('');
+  }
+
+  function updateTelemetryAndUI(forceInspector = false) {
+    const ph = getCurrentPhase();
+    const n = state.pairs;
+    const t = state.t;
+
+    // Mode badge
+    const badge = document.getElementById('mode-badge');
+    if (state.view === 'genetics') {
+      badge.textContent = 'Genetics Lab';
+      badge.className = 'mode-badge genetics';
+    } else if (state.mode === 'mitosis') {
+      badge.textContent = 'Mitosis';
+      badge.className = 'mode-badge';
+    } else {
+      badge.textContent = 'Meiosis I & II';
+      badge.className = 'mode-badge meiosis';
+    }
+
+    // Status pill
+    const pill = document.getElementById('status-pill');
+    pill.textContent = ph.short;
+    if (state.nondisjunction && ((state.mode === 'mitosis' && t >= 0.50) || (state.mode === 'meiosis' && t >= 0.27))) {
+      pill.className = 'status-pill danger';
+      pill.textContent = 'Aneuploidy!';
+    } else if (state.mode === 'meiosis' && ph.id === 'P1' && state.crossingOver) {
+      pill.className = 'status-pill violet';
+    } else if (ph.id === 'CYTO' || ph.id === 'T2') {
+      pill.className = 'status-pill';
+    } else {
+      pill.className = 'status-pill warn';
+    }
+
+    // Exact biological telemetry counts per phase!
+    let ploidyStr, chromStr, chromatidStr, xoStr, comboStr, cellStr;
+    if (state.mode === 'mitosis') {
+      const splitDone = t >= 0.94;
+      const inAna = t >= 0.50 && !splitDone;
+      ploidyStr = (state.nondisjunction && splitDone) ? `2n±1` : `2n = ${2 * n}`;
+      chromStr = inAna ? `${4 * n} (sep)` : (state.nondisjunction && splitDone ? `${2 * n + 1} / ${2 * n - 1}` : `${2 * n} / cell`);
+      chromatidStr = splitDone ? `${2 * n} / cell` : `${4 * n} total`;
+      xoStr = '0 (Mitotic)';
+      comboStr = '1 (Clonal)';
+      cellStr = splitDone ? '2 Cells' : '1 Cell';
+    } else {
+      const afterM1 = t >= 0.48;
+      const afterM2 = t >= 0.955;
+      const activeXO = state.crossingOver ? state.crossoverActive.slice(0, n).filter(Boolean).length : 0;
+      const xoHappened = t >= 0.10 ? activeXO : 0;
+
+      if (!afterM1) {
+        ploidyStr = `2n = ${2 * n}`;
+        chromStr = `${2 * n} / cell`;
+        chromatidStr = `${4 * n} / cell`;
+        cellStr = '1 Cell';
+      } else if (!afterM2) {
+        ploidyStr = state.nondisjunction ? `n±1` : `n = ${n}`;
+        chromStr = state.nondisjunction ? `${n + 1} / ${n - 1}` : `${n} / cell`;
+        chromatidStr = state.nondisjunction ? `${2 * (n + 1)} / ${2 * (n - 1)}` : `${2 * n} / cell`;
+        cellStr = '2 Cells';
+      } else {
+        ploidyStr = state.nondisjunction ? `n+1 & n−1` : `n = ${n}`;
+        chromStr = state.nondisjunction ? `${n + 1} / ${n - 1}` : `${n} / gamete`;
+        chromatidStr = state.nondisjunction ? `${n + 1} / ${n - 1}` : `${n} / gamete`;
+        cellStr = '4 Gametes';
+      }
+      xoStr = state.crossingOver ? `${xoHappened} chiasmata` : 'Disabled';
+      comboStr = `2^${n} = ${Math.pow(2, n)}` + (state.crossingOver ? ' (+XO)' : '');
+    }
+
+    document.getElementById('tele-ploidy').textContent = ploidyStr;
+    document.getElementById('tele-chroms').textContent = chromStr;
+    document.getElementById('tele-chromatids').textContent = chromatidStr;
+    document.getElementById('tele-crossovers').textContent = xoStr;
+    document.getElementById('tele-combos').textContent = comboStr;
+    document.getElementById('tele-cells').textContent = cellStr;
+
+    document.getElementById('stage-name').textContent = ph.name;
+    document.getElementById('stage-pct').textContent = Math.round(t * 100) + '%';
+    document.getElementById('stage-progress').style.width = (t * 100).toFixed(1) + '%';
+    document.getElementById('stage-desc').textContent = ph.desc;
+    document.getElementById('bio-note-text').innerHTML = ph.note;
+
+    // Scrubber & active phase button
+    document.getElementById('phase-scrubber').value = String(Math.round(t * 1000));
+    document.getElementById('scrubber-phase-short').textContent = ph.short;
+    document.querySelectorAll('#phase-buttons .phase-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.phase === ph.id);
+    });
+
+    // Audio & Banner triggers on phase transition
+    if (state.lastPhaseId !== ph.id) {
+      if (state.lastPhaseId !== null && state.playing) {
+        if (ph.id === 'META' || ph.id === 'M1' || ph.id === 'M2') {
+          playSoundCue('metaphase');
+        } else if (ph.id === 'ANA' || ph.id === 'A1' || ph.id === 'A2') {
+          if (state.nondisjunction && (ph.id === 'ANA' || ph.id === 'A1')) {
+            playSoundCue('nondisjunction');
+            showBanner('Spindle Nondisjunction! Jammed kinetochore causing aneuploidy.', true);
+          } else {
+            playSoundCue('anaphase');
+          }
+        } else if (ph.id === 'CYTO' || ph.id === 'T1' || ph.id === 'T2') {
+          playSoundCue('cytokinesis');
+        }
+      }
+      state.lastPhaseId = ph.id;
+    }
+
+    // Crossing-over chime right as chiasma swaps
+    if (state.mode === 'meiosis' && state.crossingOver && t >= 0.095 && t <= 0.14) {
+      if (!state.crossoverChimed && state.playing) {
+        state.crossoverChimed = true;
+        playSoundCue('crossover');
+        showBanner('Chiasmata Formed — Maternal & Paternal arms swapped!');
+      }
+    } else if (t < 0.05) {
+      state.crossoverChimed = false;
+    }
+
+    if (forceInspector) updateInspectorList();
+  }
+
+  // =========================================================================
+  // 12. PRESETS & MODE SWITCHING
+  // =========================================================================
+  function setView(v) {
+    state.view = v;
+    document.getElementById('genetics-overlay').classList.toggle('visible', v === 'genetics');
+    document.getElementById('btn-view-cell').classList.toggle('active', v === 'cell');
+    document.getElementById('btn-view-genetics').classList.toggle('active', v === 'genetics');
+    document.getElementById('btn-view-genetics').classList.toggle('violet', v === 'genetics');
+    document.getElementById('btn-toggle-lab-stage').textContent =
+      v === 'genetics' ? 'Return to Live Cell Division' : 'Open Full Punnett & H-W Stage';
+    if (v === 'genetics') {
+      requestAnimationFrame(() => {
+        resizeHWCanvases();
+        renderPunnettSquare();
+      });
+    }
+    updateTelemetryAndUI(false);
+  }
+
+  function setDivisionMode(mode) {
+    state.mode = mode;
+    state.t = 0;
+    state.lastPhaseId = null;
+    state.crossoverChimed = false;
+    document.getElementById('btn-mode-mitosis').classList.toggle('active', mode === 'mitosis');
+    document.getElementById('btn-mode-meiosis').classList.toggle('active', mode === 'meiosis');
+    rebuildPhaseButtons();
+    updateTelemetryAndUI(true);
+  }
+
+  function setActivePresetUI(id) {
+    state.activePreset = id;
+    document.querySelectorAll('.preset-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.preset === id);
+    });
+  }
+
+  function applyPreset(presetId) {
+    setActivePresetUI(presetId);
+    if (presetId === 'mitosis') {
+      setView('cell');
+      state.pairs = 3;
+      state.nondisjunction = false;
+      state.playing = true;
+      setDivisionMode('mitosis');
+      state.t = 0.16;
+      syncControlsFromState();
+      showBanner('Mitosis Clonal Division (2n = 6 → 2 × 2n)');
+    } else if (presetId === 'meiosis-xo') {
+      setView('cell');
+      state.pairs = 3;
+      state.crossingOver = true;
+      state.crossoverActive = [true, true, true];
+      state.nondisjunction = false;
+      state.playing = true;
+      setDivisionMode('meiosis');
+      state.t = 0.02;
+      syncControlsFromState();
+      showBanner('Meiosis with Crossing-Over (2n = 6 → 4 unique gametes)');
+    } else if (presetId === 'assortment') {
+      setView('cell');
+      state.pairs = 3;
+      state.crossingOver = true;
+      state.nondisjunction = false;
+      state.assortment = [Math.random() < 0.5 ? 0 : 1, Math.random() < 0.5 ? 0 : 1, Math.random() < 0.5 ? 0 : 1];
+      state.m2Flip = [[Math.random() < 0.5 ? 0 : 1, Math.random() < 0.5 ? 0 : 1], [Math.random() < 0.5 ? 0 : 1, Math.random() < 0.5 ? 0 : 1], [Math.random() < 0.5 ? 0 : 1, Math.random() < 0.5 ? 0 : 1]];
+      setDivisionMode('meiosis');
+      state.t = 0.19;
+      state.playing = true;
+      syncControlsFromState();
+      showBanner('Independent Assortment Shuffled at Metaphase I!');
+    } else if (presetId === 'nondisjunction') {
+      setView('cell');
+      state.pairs = 3;
+      state.crossingOver = true;
+      state.nondisjunction = true;
+      setDivisionMode('meiosis');
+      state.t = 0.25;
+      state.playing = true;
+      syncControlsFromState();
+      showBanner('Spindle Nondisjunction Armed — Watch Anaphase I!', true);
+    } else if (presetId === 'hw-eq') {
+      state.hw.p0 = 0.60;
+      state.hw.s = 0.00;
+      state.hw.nIndex = 6;
+      state.hw.mu = 0.000;
+      state.hw.playing = true;
+      resetHW(false);
+      setView('genetics');
+      switchDrawerTab('genetics');
+      syncControlsFromState();
+      showBanner('Hardy–Weinberg Ideal Equilibrium: p² + 2pq + q² = 1');
+    } else if (presetId === 'selection-sweep') {
+      state.hw.p0 = 0.22;
+      state.hw.s = 0.65;
+      state.hw.nIndex = 5;
+      state.hw.mu = 0.001;
+      state.hw.playing = true;
+      resetHW(false);
+      setView('genetics');
+      switchDrawerTab('genetics');
+      syncControlsFromState();
+      showBanner('Recessive Selection Sweep — Strong selection against aa (s = 0.65)');
+    }
+  }
+
+  function syncControlsFromState() {
+    document.getElementById('btn-pairs-2').classList.toggle('active', state.pairs === 2);
+    document.getElementById('btn-pairs-3').classList.toggle('active', state.pairs === 3);
+    document.getElementById('chk-crossover').checked = state.crossingOver;
+    document.getElementById('chk-nondisjunction').checked = state.nondisjunction;
+    document.getElementById('chk-loci').checked = state.showLoci;
+    document.getElementById('chk-spindle').checked = state.showSpindle;
+    document.getElementById('chk-organelles').checked = state.showOrganelles;
+    document.getElementById('btn-play').textContent = state.playing ? 'Pause' : 'Play';
+    document.getElementById('btn-play').classList.toggle('active', state.playing);
+
+    document.getElementById('slider-hw-p0').value = String(state.hw.p0);
+    document.getElementById('val-hw-p0').textContent = state.hw.p0.toFixed(2);
+    document.getElementById('slider-hw-s').value = String(state.hw.s);
+    document.getElementById('val-hw-s').textContent = state.hw.s.toFixed(2);
+    document.getElementById('slider-hw-n').value = String(state.hw.nIndex);
+    document.getElementById('val-hw-n').textContent = POP_LABELS[state.hw.nIndex - 1];
+    document.getElementById('slider-hw-mu').value = String(state.hw.mu);
+    document.getElementById('val-hw-mu').textContent = state.hw.mu.toFixed(3);
+    document.getElementById('btn-hw-play').textContent = state.hw.playing ? 'Pause Sim' : 'Play Sim';
+
+    updateTelemetryAndUI(true);
+    updateHWUI();
+  }
+
+  function switchDrawerTab(tabName) {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tabName));
+    document.querySelectorAll('.tab-pane').forEach(p => p.classList.toggle('active', p.id === 'pane-' + tabName));
+    if (tabName === 'genetics') {
+      requestAnimationFrame(() => resizeHWCanvases());
+    } else if (tabName === 'inspect') {
+      updateInspectorList();
+    }
+  }
+
+  // =========================================================================
+  // 13. EVENT BINDINGS
+  // =========================================================================
+  // Drawer tabs
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => switchDrawerTab(btn.dataset.tab));
+  });
+
+  // Division mode & pair counts
+  document.getElementById('btn-mode-mitosis').addEventListener('click', () => { setView('cell'); setDivisionMode('mitosis'); });
+  document.getElementById('btn-mode-meiosis').addEventListener('click', () => { setView('cell'); setDivisionMode('meiosis'); });
+  document.getElementById('btn-pairs-2').addEventListener('click', () => { state.pairs = 2; syncControlsFromState(); });
+  document.getElementById('btn-pairs-3').addEventListener('click', () => { state.pairs = 3; syncControlsFromState(); });
+
+  // Phase scrubber & speed
+  document.getElementById('phase-scrubber').addEventListener('input', (e) => {
+    state.t = Number(e.target.value) / 1000;
+    state.playing = false;
+    document.getElementById('btn-play').textContent = 'Play';
+    document.getElementById('btn-play').classList.remove('active');
+    updateTelemetryAndUI(false);
+  });
+
+  document.getElementById('speed-slider').addEventListener('input', (e) => {
+    state.speed = Number(e.target.value);
+    document.getElementById('speed-val').textContent = state.speed.toFixed(1) + '×';
+  });
+
+  // Genetic toggles
+  document.getElementById('chk-crossover').addEventListener('change', (e) => {
+    state.crossingOver = e.target.checked;
+    updateTelemetryAndUI(true);
+  });
+  document.getElementById('chk-nondisjunction').addEventListener('change', (e) => {
+    state.nondisjunction = e.target.checked;
+    if (state.nondisjunction) showBanner('Nondisjunction Error enabled — Pair 1 spindle will jam!', true);
+    updateTelemetryAndUI(true);
+  });
+  document.getElementById('chk-loci').addEventListener('change', (e) => { state.showLoci = e.target.checked; });
+  document.getElementById('chk-spindle').addEventListener('change', (e) => { state.showSpindle = e.target.checked; });
+  document.getElementById('chk-organelles').addEventListener('change', (e) => { state.showOrganelles = e.target.checked; });
+
+  // Shuffle assortment & chiasmata
+  document.getElementById('btn-shuffle-assort').addEventListener('click', () => {
+    state.assortment = state.assortment.map(() => (Math.random() < 0.5 ? 0 : 1));
+    state.m2Flip = state.m2Flip.map(() => [Math.random() < 0.5 ? 0 : 1, Math.random() < 0.5 ? 0 : 1]);
+    updateTelemetryAndUI(true);
+    playSoundCue('metaphase');
+    showBanner('Independent Assortment shuffled — new gamete haplotypes!');
+  });
+  document.getElementById('btn-randomize-xo').addEventListener('click', () => {
+    state.crossingOver = true;
+    document.getElementById('chk-crossover').checked = true;
+    state.crossoverActive = [Math.random() < 0.85, Math.random() < 0.85, Math.random() < 0.85];
+    if (!state.crossoverActive.some(Boolean)) state.crossoverActive[0] = true;
+    state.chiasmaPos = [0.38 + Math.random() * 0.24, 0.38 + Math.random() * 0.24, 0.38 + Math.random() * 0.24];
+    updateTelemetryAndUI(true);
+    playSoundCue('crossover');
+    showBanner('New Chiasmata crossover loci randomized!');
+  });
+
+  // Presets
+  document.querySelectorAll('.preset-btn').forEach(btn => {
+    btn.addEventListener('click', () => applyPreset(btn.dataset.preset));
+  });
+
+  // Punnett controls
+  const setPunnettType = (type) => {
+    state.punnett.type = type;
+    state.punnett.selectedCell = null;
+    document.getElementById('btn-mono-mode').classList.toggle('active', type === 'monohybrid');
+    document.getElementById('btn-di-mode').classList.toggle('active', type === 'dihybrid');
+    document.getElementById('drawer-mono-btn').classList.toggle('active', type === 'monohybrid');
+    document.getElementById('drawer-di-btn').classList.toggle('active', type === 'dihybrid');
+    populateParentSelects();
+    renderPunnettSquare();
+  };
+  document.getElementById('btn-mono-mode').addEventListener('click', () => setPunnettType('monohybrid'));
+  document.getElementById('btn-di-mode').addEventListener('click', () => setPunnettType('dihybrid'));
+  document.getElementById('drawer-mono-btn').addEventListener('click', () => setPunnettType('monohybrid'));
+  document.getElementById('drawer-di-btn').addEventListener('click', () => setPunnettType('dihybrid'));
+
+  document.getElementById('sel-parent1').addEventListener('change', (e) => {
+    state.punnett.p1 = e.target.value;
+    renderPunnettSquare();
+  });
+  document.getElementById('sel-parent2').addEventListener('change', (e) => {
+    state.punnett.p2 = e.target.value;
+    renderPunnettSquare();
+  });
+  document.getElementById('btn-seed-meiosis').addEventListener('click', seedPunnettFromMeiosis);
+  document.getElementById('btn-drawer-seed').addEventListener('click', () => {
+    setView('genetics');
+    seedPunnettFromMeiosis();
+  });
+  document.getElementById('btn-toggle-lab-stage').addEventListener('click', () => {
+    setView(state.view === 'genetics' ? 'cell' : 'genetics');
+  });
+
+  // Hardy-Weinberg sliders & buttons
+  document.getElementById('slider-hw-p0').addEventListener('input', (e) => {
+    state.hw.p0 = Number(e.target.value);
+    document.getElementById('val-hw-p0').textContent = state.hw.p0.toFixed(2);
+    resetHW(false);
+  });
+  document.getElementById('slider-hw-s').addEventListener('input', (e) => {
+    state.hw.s = Number(e.target.value);
+    document.getElementById('val-hw-s').textContent = state.hw.s.toFixed(2);
+    resetHW(false);
+  });
+  document.getElementById('slider-hw-n').addEventListener('input', (e) => {
+    state.hw.nIndex = Number(e.target.value);
+    document.getElementById('val-hw-n').textContent = POP_LABELS[state.hw.nIndex - 1];
+    resetHW(false);
+  });
+  document.getElementById('slider-hw-mu').addEventListener('input', (e) => {
+    state.hw.mu = Number(e.target.value);
+    document.getElementById('val-hw-mu').textContent = state.hw.mu.toFixed(3);
+    resetHW(false);
+  });
+
+  document.getElementById('btn-hw-play').addEventListener('click', () => {
+    state.hw.playing = !state.hw.playing;
+    document.getElementById('btn-hw-play').textContent = state.hw.playing ? 'Pause Sim' : 'Play Sim';
+  });
+  document.getElementById('btn-hw-step').addEventListener('click', () => {
+    for (let i = 0; i < 10; i++) stepHWGeneration();
+    updateHWUI();
+    renderHWCharts();
+  });
+  document.getElementById('btn-hw-drift').addEventListener('click', () => {
+    if (state.hw.nIndex === 6) {
+      state.hw.nIndex = 2; // Jump to N=50 so drift is dramatic if currently Ideal
+      document.getElementById('slider-hw-n').value = '2';
+      document.getElementById('val-hw-n').textContent = POP_LABELS[1];
+    }
+    resetHW(true);
+    state.hw.playing = true;
+    document.getElementById('btn-hw-play').textContent = 'Pause Sim';
+  });
+  document.getElementById('btn-hw-reset').addEventListener('click', () => resetHW(false));
+
+  // Bottom Transport Bar
+  const togglePlay = () => {
+    state.playing = !state.playing;
+    document.getElementById('btn-play').textContent = state.playing ? 'Pause' : 'Play';
+    document.getElementById('btn-play').classList.toggle('active', state.playing);
+  };
+  document.getElementById('btn-play').addEventListener('click', togglePlay);
+
+  const stepPhase = (dir) => {
+    const phases = getPhases();
+    const cur = getCurrentPhase();
+    const idx = phases.findIndex(p => p.id === cur.id);
+    const nextIdx = (idx + dir + phases.length) % phases.length;
+    state.t = clamp(phases[nextIdx].start + 0.015, 0, 0.999);
+    updateTelemetryAndUI(false);
+  };
+  document.getElementById('btn-prev-phase').addEventListener('click', () => stepPhase(-1));
+  document.getElementById('btn-next-phase').addEventListener('click', () => stepPhase(1));
+
+  document.getElementById('btn-reset').addEventListener('click', () => {
+    state.t = 0;
+    state.cam = { x: 0, y: 0, zoom: 1, dragging: false, lastX: 0, lastY: 0 };
+    state.lastPhaseId = null;
+    state.crossoverChimed = false;
+    resetHW(false);
+    updateTelemetryAndUI(true);
+  });
+
+  document.getElementById('btn-view-cell').addEventListener('click', () => setView('cell'));
+  document.getElementById('btn-view-genetics').addEventListener('click', () => setView('genetics'));
+
+  document.getElementById('btn-audio').addEventListener('click', () => {
+    state.audioOn = !state.audioOn;
+    const btn = document.getElementById('btn-audio');
+    btn.textContent = state.audioOn ? 'Audio: On' : 'Audio: Off';
+    btn.classList.toggle('active', state.audioOn);
+    if (state.audioOn) {
+      ensureAudio();
+      playSoundCue('metaphase');
+    }
+  });
+
+  const toggleDrawer = () => {
+    state.drawerOpen = !state.drawerOpen;
+    document.getElementById('drawer').classList.toggle('collapsed', !state.drawerOpen);
+    document.body.classList.toggle('drawer-collapsed', !state.drawerOpen);
+    document.getElementById('btn-controls').classList.toggle('active', state.drawerOpen);
+    setTimeout(resizeHWCanvases, 260);
+  };
+  document.getElementById('btn-controls').addEventListener('click', toggleDrawer);
+
+  const toggleCinema = () => {
+    state.cinema = !state.cinema;
+    document.body.classList.toggle('cinema-mode', state.cinema);
+    document.getElementById('btn-cinema').classList.toggle('active', state.cinema);
+    setTimeout(resizeHWCanvases, 260);
+  };
+  document.getElementById('btn-cinema').addEventListener('click', toggleCinema);
+  document.getElementById('btn-cinema-restore').addEventListener('click', toggleCinema);
+
+  // Canvas Pan / Zoom
+  canvas.addEventListener('pointerdown', (e) => {
+    if (state.view !== 'cell') return;
+    state.cam.dragging = true;
+    state.cam.lastX = e.clientX;
+    state.cam.lastY = e.clientY;
+    canvas.classList.add('panning');
+    canvas.setPointerCapture(e.pointerId);
+  });
+  canvas.addEventListener('pointermove', (e) => {
+    if (!state.cam.dragging) return;
+    state.cam.x += e.clientX - state.cam.lastX;
+    state.cam.y += e.clientY - state.cam.lastY;
+    state.cam.lastX = e.clientX;
+    state.cam.lastY = e.clientY;
+  });
+  canvas.addEventListener('pointerup', () => {
+    state.cam.dragging = false;
+    canvas.classList.remove('panning');
+  });
+  canvas.addEventListener('wheel', (e) => {
+    if (state.view !== 'cell') return;
+    e.preventDefault();
+    const factor = e.deltaY < 0 ? 1.09 : 0.92;
+    state.cam.zoom = clamp(state.cam.zoom * factor, 0.5, 2.6);
+  }, { passive: false });
+  canvas.addEventListener('dblclick', () => {
+    state.cam.x = 0; state.cam.y = 0; state.cam.zoom = 1;
+  });
+
+  // Keyboard shortcuts
+  window.addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+    const k = e.key.toLowerCase();
+    if (k === ' ') {
+      e.preventDefault();
+      togglePlay();
+    } else if (k === 'h') {
+      toggleCinema();
+    } else if (k === 'r') {
+      document.getElementById('btn-reset').click();
+    } else if (k === 'm') {
+      setDivisionMode(state.mode === 'mitosis' ? 'meiosis' : 'mitosis');
+    } else if (k === 'x') {
+      document.getElementById('btn-shuffle-assort').click();
+    } else if (k === 'c') {
+      toggleDrawer();
+    } else if (e.key === 'ArrowRight') {
+      state.t = clamp(state.t + 0.025, 0, 1);
+      state.playing = false;
+      syncControlsFromState();
+    } else if (e.key === 'ArrowLeft') {
+      state.t = clamp(state.t - 0.025, 0, 1);
+      state.playing = false;
+      syncControlsFromState();
+    }
+  });
+
+  window.addEventListener('resize', resizeCanvas);
+
+  // =========================================================================
+  // 14. MAIN ANIMATION LOOP
+  // =========================================================================
+  let lastFrame = performance.now();
+  function animate(now) {
+    const dt = Math.min((now - lastFrame) / 1000, 0.05);
+    lastFrame = now;
+    const timeSec = now / 1000;
+
+    // Advance cell division timeline smoothly
+    if (state.playing) {
+      // Full cycle duration: ~18s for Mitosis, ~26s for Meiosis at 1.0x
+      const cycleDur = state.mode === 'mitosis' ? 18 : 26;
+      state.t += (dt * state.speed) / cycleDur;
+      if (state.t >= 1.0) {
+        // Hold briefly at final daughter cells/gametes before looping
+        if (!state._endHold) state._endHold = 0;
+        state._endHold += dt;
+        state.t = 1.0;
+        if (state._endHold > 2.8) {
+          state._endHold = 0;
+          state.t = 0.0;
+          state.lastPhaseId = null;
+          state.crossoverChimed = false;
+        }
+      } else {
+        state._endHold = 0;
+      }
+      updateTelemetryAndUI(false);
+    }
+
+    // Advance Hardy-Weinberg generations smoothly
+    if (state.hw.playing && state.hw.gen < 180) {
+      state.hw.accum += dt;
+      if (state.hw.accum >= 0.09) {
+        state.hw.accum = 0;
+        stepHWGeneration();
+        updateHWUI();
+        renderHWCharts();
+      }
+    }
+
+    renderMainCanvas(timeSec);
+    requestAnimationFrame(animate);
+  }
+
+  // =========================================================================
+  // 15. INITIALIZE
+  // =========================================================================
+  populateParentSelects();
+  setPunnettType('dihybrid');
+  rebuildPhaseButtons();
+  syncControlsFromState();
+  resizeCanvas();
+  requestAnimationFrame(animate);
+})();
+</script>
+</body>
+</html>

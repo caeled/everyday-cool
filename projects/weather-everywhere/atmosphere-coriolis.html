@@ -1,0 +1,4195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Cyclone — Global Circulation, Coriolis Force, Jet Streams & Hurricanes</title>
+<style>
+  :root {
+    --bg-deep: #040711;
+    --panel-bg: rgba(9, 13, 24, 0.78);
+    --panel-bg-strong: rgba(8, 12, 22, 0.92);
+    --panel-border: rgba(148, 179, 255, 0.16);
+    --panel-border-hi: rgba(148, 179, 255, 0.36);
+    --text-main: #eef3ff;
+    --text-dim: #9aa9cc;
+    --text-muted: #68789c;
+    --accent-amber: #ffbe5c;
+    --accent-cyan: #58dcff;
+    --accent-mint: #4af2b2;
+    --accent-rose: #ff6083;
+    --accent-violet: #a78bfa;
+    --radius-lg: 14px;
+    --radius-md: 10px;
+    --radius-sm: 7px;
+    --mono: ui-monospace, "Cascadia Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Inter, Helvetica, Arial, sans-serif;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg-deep);
+    color: var(--text-main);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    touch-action: none;
+  }
+
+  #sim-canvas {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    cursor: crosshair;
+  }
+  #sim-canvas.grabbing {
+    cursor: grabbing;
+  }
+  #sim-canvas.grabbable {
+    cursor: grab;
+  }
+
+  /* HUD Layer */
+  .hud {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 10;
+  }
+  body.zen-mode .hud > :not(.zen-restore) {
+    opacity: 0;
+    pointer-events: none !important;
+  }
+
+  .panel {
+    pointer-events: auto;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-lg);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    transition: opacity 0.25s ease, transform 0.25s ease;
+  }
+
+  /* Top-Left Brand + Telemetry */
+  .top-left {
+    position: fixed;
+    top: 14px;
+    left: 14px;
+    width: min(418px, calc(100vw - 362px));
+    min-width: 288px;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .brand-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .brand-title-wrap {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .brand-title {
+    font-size: 16px;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    background: linear-gradient(120deg, #e8faff 0%, #58dcff 48%, #ffbe5c 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .mode-badge {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 999px;
+    border: 1px solid rgba(88, 220, 255, 0.4);
+    background: rgba(88, 220, 255, 0.12);
+    color: var(--accent-cyan);
+  }
+  .mode-badge.cyclone {
+    border-color: rgba(255, 190, 92, 0.45);
+    background: rgba(255, 190, 92, 0.14);
+    color: var(--accent-amber);
+  }
+
+  .status-pill {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: rgba(74, 242, 178, 0.14);
+    color: var(--accent-mint);
+    border: 1px solid rgba(74, 242, 178, 0.35);
+    white-space: nowrap;
+  }
+  .status-pill.warn {
+    background: rgba(255, 190, 92, 0.16);
+    color: var(--accent-amber);
+    border-color: rgba(255, 190, 92, 0.42);
+  }
+  .status-pill.danger {
+    background: rgba(255, 96, 131, 0.18);
+    color: var(--accent-rose);
+    border-color: rgba(255, 96, 131, 0.48);
+  }
+  .status-pill.cyan {
+    background: rgba(88, 220, 255, 0.15);
+    color: var(--accent-cyan);
+    border-color: rgba(88, 220, 255, 0.4);
+  }
+  .status-pill.violet {
+    background: rgba(167, 139, 250, 0.16);
+    color: var(--accent-violet);
+    border-color: rgba(167, 139, 250, 0.45);
+  }
+
+  .telemetry-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+  }
+
+  .tele-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(148, 179, 255, 0.1);
+    border-radius: var(--radius-sm);
+    padding: 5px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .tele-label {
+    font-size: 9px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .tele-val {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--text-main);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .tele-val.amber { color: var(--accent-amber); }
+  .tele-val.cyan { color: var(--accent-cyan); }
+  .tele-val.mint { color: var(--accent-mint); }
+  .tele-val.rose { color: var(--accent-rose); }
+  .tele-val.violet { color: var(--accent-violet); }
+
+  .intensity-bar-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 10.5px;
+    color: var(--text-dim);
+  }
+  .intensity-track {
+    flex: 1;
+    height: 6px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+    overflow: hidden;
+  }
+  .intensity-fill {
+    height: 100%;
+    width: 35%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #58dcff 0%, #4af2b2 30%, #ffbe5c 62%, #ff6083 85%, #d946ef 100%);
+    transition: width 0.12s linear;
+  }
+
+  .clock-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding-top: 4px;
+    border-top: 1px solid rgba(148, 179, 255, 0.1);
+    font-size: 10.5px;
+    color: var(--text-dim);
+    font-family: var(--mono);
+  }
+  .clock-row span strong {
+    color: var(--text-main);
+    font-weight: 600;
+  }
+
+  /* Right Control Drawer */
+  .drawer {
+    position: fixed;
+    top: 14px;
+    right: 14px;
+    bottom: 14px;
+    width: 330px;
+    max-width: calc(100vw - 28px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: transform 0.25s ease, opacity 0.25s ease;
+  }
+  .drawer.collapsed {
+    transform: translateX(calc(100% + 24px));
+    pointer-events: none;
+  }
+
+  .drawer-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+    padding: 8px 8px 6px;
+    border-bottom: 1px solid var(--panel-border);
+    background: rgba(4, 7, 17, 0.45);
+  }
+
+  .tab-btn {
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 11.5px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    padding: 7px 6px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .tab-btn:hover {
+    color: var(--text-main);
+    background: rgba(255, 255, 255, 0.04);
+  }
+  .tab-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.16);
+    border-color: rgba(88, 220, 255, 0.4);
+  }
+
+  .drawer-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 11px 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .drawer-body::-webkit-scrollbar {
+    width: 5px;
+  }
+  .drawer-body::-webkit-scrollbar-thumb {
+    background: rgba(148, 179, 255, 0.22);
+    border-radius: 999px;
+  }
+
+  .tab-pane {
+    display: none;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .tab-pane.active {
+    display: flex;
+  }
+
+  .section {
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(148, 179, 255, 0.11);
+    border-radius: var(--radius-md);
+    padding: 10px 11px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .section-title {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  /* Presets grid */
+  .preset-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .preset-btn {
+    text-align: left;
+    padding: 7px 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(148, 179, 255, 0.14);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-main);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .preset-btn:hover {
+    border-color: rgba(88, 220, 255, 0.45);
+    background: rgba(88, 220, 255, 0.08);
+  }
+  .preset-btn.active {
+    border-color: var(--accent-cyan);
+    background: rgba(88, 220, 255, 0.14);
+  }
+  .preset-btn.cyclone-preset:hover {
+    border-color: rgba(255, 190, 92, 0.48);
+    background: rgba(255, 190, 92, 0.08);
+  }
+  .preset-btn.cyclone-preset.active {
+    border-color: var(--accent-amber);
+    background: rgba(255, 190, 92, 0.15);
+  }
+  .preset-name {
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.25;
+  }
+  .preset-sub {
+    font-size: 9.5px;
+    color: var(--text-muted);
+    line-height: 1.25;
+  }
+
+  /* Sliders */
+  .control-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .control-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11.5px;
+    color: var(--text-dim);
+  }
+  .control-head .val {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--text-main);
+    font-weight: 600;
+  }
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 5px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.18);
+    outline: none;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent-cyan);
+    border: 2px solid #08101f;
+    box-shadow: 0 0 10px rgba(88, 220, 255, 0.65);
+    cursor: pointer;
+  }
+  input[type="range"].amber::-webkit-slider-thumb {
+    background: var(--accent-amber);
+    box-shadow: 0 0 10px rgba(255, 190, 92, 0.65);
+  }
+  input[type="range"].rose::-webkit-slider-thumb {
+    background: var(--accent-rose);
+    box-shadow: 0 0 10px rgba(255, 96, 131, 0.65);
+  }
+
+  /* Segmented pills */
+  .seg-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(56px, 1fr));
+    gap: 4px;
+  }
+  .seg-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-dim);
+    font-size: 11px;
+    font-weight: 650;
+    padding: 6px 5px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-align: center;
+  }
+  .seg-btn:hover {
+    color: #fff;
+    border-color: rgba(148, 179, 255, 0.35);
+  }
+  .seg-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.18);
+    border-color: var(--accent-cyan);
+  }
+  .seg-btn.active.amber {
+    background: rgba(255, 190, 92, 0.18);
+    border-color: var(--accent-amber);
+    color: #ffdfaa;
+  }
+
+  /* Action Buttons */
+  .btn-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .btn {
+    border: 1px solid rgba(148, 179, 255, 0.22);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-main);
+    font-size: 11px;
+    font-weight: 700;
+    padding: 7.5px 9px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+  }
+  .btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 179, 255, 0.45);
+  }
+  .btn:active {
+    transform: scale(0.98);
+  }
+  .btn.primary {
+    background: linear-gradient(135deg, rgba(88, 220, 255, 0.28), rgba(56, 140, 255, 0.24));
+    border-color: rgba(88, 220, 255, 0.55);
+    color: #e6f9ff;
+  }
+  .btn.primary:hover {
+    background: linear-gradient(135deg, rgba(88, 220, 255, 0.4), rgba(56, 140, 255, 0.35));
+  }
+  .btn.amber {
+    background: linear-gradient(135deg, rgba(255, 190, 92, 0.25), rgba(255, 120, 60, 0.22));
+    border-color: rgba(255, 190, 92, 0.55);
+    color: #fff3db;
+  }
+  .btn.danger {
+    background: rgba(255, 96, 131, 0.14);
+    border-color: rgba(255, 96, 131, 0.4);
+    color: #ffc2d0;
+  }
+
+  /* Toggle switches */
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11.5px;
+    color: var(--text-dim);
+    cursor: pointer;
+    gap: 8px;
+  }
+  .toggle-row input {
+    display: none;
+  }
+  .switch {
+    width: 34px;
+    height: 18px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.2);
+    border: 1px solid rgba(148, 179, 255, 0.25);
+    position: relative;
+    transition: all 0.18s ease;
+    flex-shrink: 0;
+  }
+  .switch::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #c8d7f5;
+    transition: transform 0.18s ease, background 0.18s ease;
+  }
+  .toggle-row input:checked + .switch {
+    background: rgba(88, 220, 255, 0.32);
+    border-color: var(--accent-cyan);
+  }
+  .toggle-row input:checked + .switch::after {
+    transform: translateX(16px);
+    background: #fff;
+  }
+
+  /* Equation / Reference cards */
+  .formula-box {
+    background: rgba(4, 7, 17, 0.58);
+    border: 1px solid rgba(148, 179, 255, 0.14);
+    border-radius: var(--radius-sm);
+    padding: 8px 9px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--accent-cyan);
+    line-height: 1.5;
+  }
+  .formula-box .sub {
+    display: block;
+    font-family: var(--sans);
+    font-size: 10.5px;
+    color: var(--text-dim);
+    margin-top: 3px;
+    line-height: 1.38;
+  }
+
+  .scale-table {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 10.5px;
+  }
+  .scale-row {
+    display: grid;
+    grid-template-columns: 44px 1fr 68px;
+    align-items: center;
+    gap: 6px;
+    padding: 3.5px 6px;
+    border-radius: 5px;
+    background: rgba(255, 255, 255, 0.025);
+    font-family: var(--mono);
+  }
+  .scale-dot {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    margin-right: 4px;
+  }
+
+  /* Bottom Transport Bar */
+  .bottom-bar {
+    position: fixed;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 7px 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: nowrap;
+  }
+
+  .bar-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-main);
+    font-size: 11.5px;
+    font-weight: 650;
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    white-space: nowrap;
+  }
+  .bar-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 179, 255, 0.4);
+  }
+  .bar-btn.active {
+    background: rgba(88, 220, 255, 0.2);
+    border-color: var(--accent-cyan);
+    color: #fff;
+  }
+  .bar-btn.amber-active {
+    background: rgba(255, 190, 92, 0.22);
+    border-color: var(--accent-amber);
+    color: #ffebd0;
+  }
+
+  .bar-divider {
+    width: 1px;
+    height: 20px;
+    background: rgba(148, 179, 255, 0.16);
+    margin: 0 2px;
+  }
+
+  /* Bottom-left interaction hint */
+  .hint-pill {
+    position: fixed;
+    bottom: 14px;
+    left: 14px;
+    padding: 7px 11px;
+    font-size: 11px;
+    color: var(--text-dim);
+    max-width: 300px;
+    line-height: 1.4;
+  }
+  .hint-pill kbd {
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #fff;
+  }
+
+  /* Event Banner */
+  .event-banner {
+    position: fixed;
+    top: 18px;
+    left: 50%;
+    transform: translateX(-50%) translateY(-10px);
+    padding: 9px 15px;
+    border-radius: var(--radius-md);
+    background: rgba(8, 16, 28, 0.9);
+    border: 1px solid rgba(88, 220, 255, 0.5);
+    color: #d6f4ff;
+    font-size: 12px;
+    font-weight: 650;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease, transform 0.25s ease;
+    z-index: 20;
+    backdrop-filter: blur(12px);
+    white-space: nowrap;
+  }
+  .event-banner.visible {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+  .event-banner.warn {
+    background: rgba(24, 16, 8, 0.9);
+    border-color: rgba(255, 190, 92, 0.55);
+    color: #ffe8c2;
+  }
+  .event-banner.danger {
+    background: rgba(26, 8, 16, 0.92);
+    border-color: rgba(255, 96, 131, 0.58);
+    color: #ffd9e2;
+  }
+
+  .zen-restore {
+    position: fixed;
+    bottom: 14px;
+    right: 14px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+  }
+  body.zen-mode .zen-restore {
+    opacity: 0.9;
+    pointer-events: auto;
+  }
+
+  .note-small {
+    font-size: 10.5px;
+    color: var(--text-muted);
+    line-height: 1.38;
+  }
+
+  .hidden {
+    display: none !important;
+  }
+
+  @media (max-width: 920px) {
+    .top-left {
+      width: calc(100vw - 28px);
+      max-width: none;
+    }
+    .drawer {
+      top: auto;
+      bottom: 62px;
+      height: 50vh;
+      width: calc(100vw - 28px);
+    }
+    .hint-pill {
+      display: none;
+    }
+  }
+</style>
+</head>
+<body>
+<canvas id="sim-canvas"></canvas>
+
+<div class="hud">
+  <!-- Top-Left Telemetry -->
+  <div class="panel top-left">
+    <div class="brand-row">
+      <div class="brand-title-wrap">
+        <div class="brand-title">Cyclone</div>
+        <span id="mode-badge" class="mode-badge">Global Circulation</span>
+      </div>
+      <span id="status-pill" class="status-pill cyan">Earth 3-Cell</span>
+    </div>
+
+    <div class="telemetry-grid">
+      <div class="tele-card">
+        <span class="tele-label">Planetary Ω</span>
+        <span id="tel-omega" class="tele-val cyan">1.00× Ω⊕</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Central Pressure</span>
+        <span id="tel-pressure" class="tele-val amber">1008 hPa</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Max Winds</span>
+        <span id="tel-wind" class="tele-val mint">118 kt / 219 km/h</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Category / Regime</span>
+        <span id="tel-cat" class="tele-val">3-Cell Jet</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Ocean SST</span>
+        <span id="tel-sst" class="tele-val amber">28.0 °C</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Rossby No. Ro</span>
+        <span id="tel-rossby" class="tele-val violet">0.14</span>
+      </div>
+    </div>
+
+    <div class="intensity-bar-wrap">
+      <span id="bar-label">Jet Energy</span>
+      <div class="intensity-track"><div id="intensity-fill" class="intensity-fill"></div></div>
+      <span id="bar-val" style="font-family: var(--mono); color: var(--text-main);">118 kt</span>
+    </div>
+
+    <div class="clock-row">
+      <span>Sim Time: <strong id="tel-time">0.0 h</strong></span>
+      <span id="tel-extra-a">Ribbons: <strong>2,800</strong></span>
+      <span id="tel-extra-b">Parcels: <strong>0</strong></span>
+    </div>
+  </div>
+
+  <!-- Event Banner -->
+  <div id="event-banner" class="event-banner">
+    <span id="event-text">Preset loaded</span>
+  </div>
+
+  <!-- Right Control Drawer -->
+  <aside id="drawer" class="panel drawer">
+    <div class="drawer-tabs">
+      <button class="tab-btn active" data-tab="lab">Lab &amp; Presets</button>
+      <button class="tab-btn" data-tab="atmo">Atmosphere</button>
+      <button class="tab-btn" data-tab="physics">Physics</button>
+    </div>
+
+    <div class="drawer-body">
+      <!-- TAB 1: LAB & PRESETS -->
+      <div id="tab-lab" class="tab-pane active">
+        <div class="section">
+          <div class="section-title"><span>Simulation Mode</span></div>
+          <div class="seg-row">
+            <button id="btn-mode-global" class="seg-btn active">Global &amp; Coriolis</button>
+            <button id="btn-mode-cyclone" class="seg-btn">Hurricane Lab</button>
+          </div>
+          <p class="note-small" id="mode-summary">
+            Planetary 3-cell atmospheric circulation, meandering Rossby jet streams, and spherical Coriolis parcel deflection.
+          </p>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Curated Presets</span></div>
+          <div class="preset-grid">
+            <button class="preset-btn active" data-preset="earth3cell">
+              <span class="preset-name">Earth 3-Cell (1× Ω)</span>
+              <span class="preset-sub">Hadley, Ferrel, Polar &amp; Rossby jets</span>
+            </button>
+            <button class="preset-btn" data-preset="nonrotating">
+              <span class="preset-name">Non-Rotating (0× Ω)</span>
+              <span class="preset-sub">Single giant Hadley cell, zero Coriolis</span>
+            </button>
+            <button class="preset-btn" data-preset="jupiter">
+              <span class="preset-name">Jupiter Bands (2.5× Ω)</span>
+              <span class="preset-sub">Fast multi-band alternating jets</span>
+            </button>
+            <button class="preset-btn" data-preset="corioliscannon">
+              <span class="preset-name">Coriolis Cannon</span>
+              <span class="preset-sub">Multi-latitude NH/SH parcel volley</span>
+            </button>
+            <button class="preset-btn cyclone-preset" data-preset="cat5spinup">
+              <span class="preset-name">Cat 5 Intensification</span>
+              <span class="preset-sub">Rapid spin-up over 31.5°C warm pool</span>
+            </button>
+            <button class="preset-btn cyclone-preset" data-preset="landfall">
+              <span class="preset-name">Landfall Decay</span>
+              <span class="preset-sub">Major hurricane weakens over land</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Quick Actions Context Card -->
+        <div id="quick-global" class="section">
+          <div class="section-title"><span>Coriolis Air Parcel Cannon</span></div>
+          <div class="seg-row" id="parcel-dir-row">
+            <button class="seg-btn active" data-dir="north">North</button>
+            <button class="seg-btn" data-dir="south">South</button>
+            <button class="seg-btn" data-dir="poleward">Poleward</button>
+            <button class="seg-btn" data-dir="equatorward">Equator</button>
+          </div>
+          <div class="btn-row">
+            <button id="btn-launch-volley" class="btn primary">Launch Volley</button>
+            <button id="btn-clear-parcels" class="btn danger">Clear Parcels</button>
+          </div>
+          <p class="note-small">Click any latitude on the globe or map to fire a tracer parcel and compare its Coriolis curve to the dashed straight-line path.</p>
+        </div>
+
+        <div id="quick-cyclone" class="section hidden">
+          <div class="section-title"><span>Hurricane Basin Actions</span></div>
+          <div class="btn-row">
+            <button id="btn-spawn-wave" class="btn primary">Tropical Wave</button>
+            <button id="btn-boost-cat5" class="btn amber">Seed Cat 4 Eye</button>
+          </div>
+          <div class="btn-row">
+            <button id="btn-steer-warm" class="btn">Aim at Warm Pool</button>
+            <button id="btn-steer-land" class="btn danger">Aim at Landfall</button>
+          </div>
+          <p class="note-small">Drag the glowing <strong>Warm Pool</strong>, <strong>Cold Landmass</strong>, or the <strong>Hurricane Eye</strong> directly on the ocean basin.</p>
+        </div>
+      </div>
+
+      <!-- TAB 2: ATMOSPHERE CONTROLS -->
+      <div id="tab-atmo" class="tab-pane">
+        <!-- GLOBAL CONTROLS -->
+        <div id="ctrl-global-wrap" style="display:flex; flex-direction:column; gap:11px;">
+          <div class="section">
+            <div class="section-title"><span>Projection &amp; Planetary Spin</span></div>
+            <div class="seg-row">
+              <button id="btn-proj-globe" class="seg-btn active">3D Globe</button>
+              <button id="btn-proj-mercator" class="seg-btn">Mercator Map</button>
+            </div>
+            <div class="control-row">
+              <div class="control-head">
+                <span>Planetary Rotation Rate Ω</span>
+                <span id="val-omega" class="val">1.00×</span>
+              </div>
+              <input id="sl-omega" type="range" min="0" max="2.5" step="0.05" value="1.0" />
+            </div>
+            <div class="control-row">
+              <div class="control-head">
+                <span>Equator–Pole Heating ΔT</span>
+                <span id="val-dt" class="val">42 °C</span>
+              </div>
+              <input id="sl-dt" class="amber" type="range" min="14" max="65" step="1" value="42" />
+            </div>
+            <div class="control-row">
+              <div class="control-head">
+                <span>Rossby Wave Meander</span>
+                <span id="val-rossby-amp" class="val">0.85</span>
+              </div>
+              <input id="sl-rossby-amp" type="range" min="0" max="1.6" step="0.05" value="0.85" />
+            </div>
+            <div class="control-row">
+              <div class="control-head">
+                <span>Parcel Launch Speed</span>
+                <span id="val-parcel-spd" class="val">1.00×</span>
+              </div>
+              <input id="sl-parcel-spd" type="range" min="0.5" max="1.8" step="0.05" value="1.0" />
+            </div>
+          </div>
+
+          <div class="section">
+            <div class="section-title"><span>Atmospheric Overlays</span></div>
+            <label class="toggle-row">
+              <span>Meridional Circulation Cells</span>
+              <input id="chk-cells" type="checkbox" checked />
+              <span class="switch"></span>
+            </label>
+            <label class="toggle-row">
+              <span>Rossby Jet Stream Cores</span>
+              <input id="chk-jets" type="checkbox" checked />
+              <span class="switch"></span>
+            </label>
+            <label class="toggle-row">
+              <span>ITCZ &amp; Pressure Belts (L / H)</span>
+              <input id="chk-belts" type="checkbox" checked />
+              <span class="switch"></span>
+            </label>
+            <label class="toggle-row">
+              <span>Thermal &amp; Band Shading</span>
+              <input id="chk-thermal" type="checkbox" checked />
+              <span class="switch"></span>
+            </label>
+            <label class="toggle-row">
+              <span>Auto-Rotate 3D Globe</span>
+              <input id="chk-autorot" type="checkbox" checked />
+              <span class="switch"></span>
+            </label>
+          </div>
+        </div>
+
+        <!-- CYCLONE CONTROLS -->
+        <div id="ctrl-cyclone-wrap" class="hidden" style="display:flex; flex-direction:column; gap:11px;">
+          <div class="section">
+            <div class="section-title"><span>Ocean &amp; Atmospheric Environment</span></div>
+            <div class="control-row">
+              <div class="control-head">
+                <span>Base Sea Surface Temp (SST)</span>
+                <span id="val-sst" class="val">27.8 °C</span>
+              </div>
+              <input id="sl-sst" class="amber" type="range" min="22.0" max="32.0" step="0.2" value="27.8" />
+            </div>
+            <div class="control-row">
+              <div class="control-head">
+                <span>Vertical Wind Shear</span>
+                <span id="val-shear" class="val">6 kt</span>
+              </div>
+              <input id="sl-shear" class="rose" type="range" min="0" max="45" step="1" value="6" />
+            </div>
+            <div class="control-row">
+              <div class="control-head">
+                <span>Storm Latitude (Coriolis f)</span>
+                <span id="val-storm-lat" class="val">19° N</span>
+              </div>
+              <input id="sl-storm-lat" type="range" min="3" max="38" step="1" value="19" />
+            </div>
+            <div class="control-row">
+              <div class="control-head">
+                <span>Steering Flow Speed</span>
+                <span id="val-steer-spd" class="val">10 kt</span>
+              </div>
+              <input id="sl-steer-spd" type="range" min="0" max="24" step="1" value="10" />
+            </div>
+            <div class="seg-row">
+              <button id="btn-hemi-nh" class="seg-btn active">NH (CCW Spin)</button>
+              <button id="btn-hemi-sh" class="seg-btn">SH (CW Spin)</button>
+            </div>
+          </div>
+
+          <div class="section">
+            <div class="section-title"><span>Radar &amp; Diagnostic Layers</span></div>
+            <label class="toggle-row">
+              <span>SST Heatmap &amp; 26.5°C Contour</span>
+              <input id="chk-sst-map" type="checkbox" checked />
+              <span class="switch"></span>
+            </label>
+            <label class="toggle-row">
+              <span>Spiral Rainbands &amp; Radar dBZ</span>
+              <input id="chk-radar" type="checkbox" checked />
+              <span class="switch"></span>
+            </label>
+            <label class="toggle-row">
+              <span>Barometric Isobars (hPa)</span>
+              <input id="chk-isobars" type="checkbox" checked />
+              <span class="switch"></span>
+            </label>
+            <label class="toggle-row">
+              <span>Barometer &amp; Eyewall Gauge</span>
+              <input id="chk-gauge" type="checkbox" checked />
+              <span class="switch"></span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 3: PHYSICS & REFERENCE -->
+      <div id="tab-physics" class="tab-pane">
+        <div class="section">
+          <div class="section-title"><span>Rendering Density</span></div>
+          <div class="control-row">
+            <div class="control-head">
+              <span>Wind Ribbon Particles</span>
+              <span id="val-pcount" class="val">2,800</span>
+            </div>
+            <input id="sl-pcount" type="range" min="1500" max="3600" step="100" value="2800" />
+          </div>
+          <div class="control-row">
+            <div class="control-head">
+              <span>Simulation Speed</span>
+              <span id="val-timescale" class="val">1.0×</span>
+            </div>
+            <input id="sl-timescale" type="range" min="0.25" max="2.5" step="0.05" value="1.0" />
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Core Meteorology Equations</span></div>
+          <div class="formula-box">
+            F_c = -2 m (Ω × v), &nbsp; f = 2 Ω sin(φ)
+            <span class="sub">Coriolis force deflects moving air right in the Northern Hemisphere (φ &gt; 0) and left in the Southern Hemisphere (φ &lt; 0), vanishing at the Equator.</span>
+          </div>
+          <div class="formula-box">
+            Ro = U / (f · L)
+            <span class="sub">Rossby Number: Ro ≪ 1 means rotation dominates (geostrophic jets &amp; multi-band planets); Ro ≫ 1 means single thermally direct Hadley cells.</span>
+          </div>
+          <div class="formula-box">
+            SST &gt; 26.5 °C &nbsp;⇒&nbsp; Latent Heat Engine
+            <span class="sub">Tropical cyclones draw enthalpy from warm ocean mixed layers. Cold water, landfall friction, or &gt;20 kt vertical wind shear tilts and dissipates the eyewall.</span>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Saffir–Simpson Scale</span></div>
+          <div class="scale-table">
+            <div class="scale-row"><span><i class="scale-dot" style="background:#58dcff"></i>TS</span><span>34–63 kt</span><span style="color:var(--text-dim)">~998 hPa</span></div>
+            <div class="scale-row"><span><i class="scale-dot" style="background:#4af2b2"></i>CAT 1</span><span>64–82 kt</span><span style="color:var(--text-dim)">~985 hPa</span></div>
+            <div class="scale-row"><span><i class="scale-dot" style="background:#ffe066"></i>CAT 2</span><span>83–95 kt</span><span style="color:var(--text-dim)">~970 hPa</span></div>
+            <div class="scale-row"><span><i class="scale-dot" style="background:#ffbe5c"></i>CAT 3</span><span>96–112 kt</span><span style="color:var(--text-dim)">~952 hPa</span></div>
+            <div class="scale-row"><span><i class="scale-dot" style="background:#ff6083"></i>CAT 4</span><span>113–136 kt</span><span style="color:var(--text-dim)">~930 hPa</span></div>
+            <div class="scale-row"><span><i class="scale-dot" style="background:#e879f9"></i>CAT 5</span><span>≥ 137 kt</span><span style="color:var(--text-dim)">&lt;918 hPa</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Bottom-Left Hints -->
+  <div id="hint-pill" class="panel hint-pill">
+    Click globe to launch Coriolis air parcel · Drag to rotate · Scroll zoom · <kbd>H</kbd> cinema · <kbd>Space</kbd> pause
+  </div>
+
+  <!-- Bottom-Center Transport Bar -->
+  <div class="panel bottom-bar">
+    <button id="btn-play" class="bar-btn active">Pause</button>
+    <button id="btn-reset" class="bar-btn">Reset</button>
+    <div class="bar-divider"></div>
+    <button id="btn-quick-mode" class="bar-btn">Mode: Global</button>
+    <button id="btn-quick-proj" class="bar-btn">3D Globe</button>
+    <div class="bar-divider"></div>
+    <button id="btn-audio" class="bar-btn">Audio: Off</button>
+    <button id="btn-controls" class="bar-btn active">Controls</button>
+    <button id="btn-cinema" class="bar-btn">Cinema (H)</button>
+  </div>
+
+  <!-- Cinema Mode Restore Button -->
+  <button id="btn-zen-restore" class="panel bar-btn zen-restore">Exit Cinema (H)</button>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // =========================================================================
+  // CANVAS & VIEWPORT SETUP
+  // =========================================================================
+  const canvas = document.getElementById('sim-canvas');
+  const ctx = canvas.getContext('2d', { alpha: false });
+
+  let W = window.innerWidth;
+  let H = window.innerHeight;
+  let DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+  function resize() {
+    W = window.innerWidth;
+    H = window.innerHeight;
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.round(W * DPR);
+    canvas.height = Math.round(H * DPR);
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    if (state) state.sstDirty = true;
+  }
+
+  // =========================================================================
+  // DOM REFERENCES
+  // =========================================================================
+  const dom = {
+    modeBadge: document.getElementById('mode-badge'),
+    statusPill: document.getElementById('status-pill'),
+    telOmega: document.getElementById('tel-omega'),
+    telPressure: document.getElementById('tel-pressure'),
+    telWind: document.getElementById('tel-wind'),
+    telCat: document.getElementById('tel-cat'),
+    telSst: document.getElementById('tel-sst'),
+    telRossby: document.getElementById('tel-rossby'),
+    barLabel: document.getElementById('bar-label'),
+    intensityFill: document.getElementById('intensity-fill'),
+    barVal: document.getElementById('bar-val'),
+    telTime: document.getElementById('tel-time'),
+    telExtraA: document.getElementById('tel-extra-a'),
+    telExtraB: document.getElementById('tel-extra-b'),
+    eventBanner: document.getElementById('event-banner'),
+    eventText: document.getElementById('event-text'),
+    drawer: document.getElementById('drawer'),
+    modeSummary: document.getElementById('mode-summary'),
+    hintPill: document.getElementById('hint-pill'),
+
+    btnModeGlobal: document.getElementById('btn-mode-global'),
+    btnModeCyclone: document.getElementById('btn-mode-cyclone'),
+    quickGlobal: document.getElementById('quick-global'),
+    quickCyclone: document.getElementById('quick-cyclone'),
+    ctrlGlobalWrap: document.getElementById('ctrl-global-wrap'),
+    ctrlCycloneWrap: document.getElementById('ctrl-cyclone-wrap'),
+
+    btnLaunchVolley: document.getElementById('btn-launch-volley'),
+    btnClearParcels: document.getElementById('btn-clear-parcels'),
+    btnSpawnWave: document.getElementById('btn-spawn-wave'),
+    btnBoostCat5: document.getElementById('btn-boost-cat5'),
+    btnSteerWarm: document.getElementById('btn-steer-warm'),
+    btnSteerLand: document.getElementById('btn-steer-land'),
+
+    btnProjGlobe: document.getElementById('btn-proj-globe'),
+    btnProjMercator: document.getElementById('btn-proj-mercator'),
+    slOmega: document.getElementById('sl-omega'),
+    valOmega: document.getElementById('val-omega'),
+    slDt: document.getElementById('sl-dt'),
+    valDt: document.getElementById('val-dt'),
+    slRossbyAmp: document.getElementById('sl-rossby-amp'),
+    valRossbyAmp: document.getElementById('val-rossby-amp'),
+    slParcelSpd: document.getElementById('sl-parcel-spd'),
+    valParcelSpd: document.getElementById('val-parcel-spd'),
+
+    chkCells: document.getElementById('chk-cells'),
+    chkJets: document.getElementById('chk-jets'),
+    chkBelts: document.getElementById('chk-belts'),
+    chkThermal: document.getElementById('chk-thermal'),
+    chkAutorot: document.getElementById('chk-autorot'),
+
+    slSst: document.getElementById('sl-sst'),
+    valSst: document.getElementById('val-sst'),
+    slShear: document.getElementById('sl-shear'),
+    valShear: document.getElementById('val-shear'),
+    slStormLat: document.getElementById('sl-storm-lat'),
+    valStormLat: document.getElementById('val-storm-lat'),
+    slSteerSpd: document.getElementById('sl-steer-spd'),
+    valSteerSpd: document.getElementById('val-steer-spd'),
+    btnHemiNH: document.getElementById('btn-hemi-nh'),
+    btnHemiSH: document.getElementById('btn-hemi-sh'),
+
+    chkSstMap: document.getElementById('chk-sst-map'),
+    chkRadar: document.getElementById('chk-radar'),
+    chkIsobars: document.getElementById('chk-isobars'),
+    chkGauge: document.getElementById('chk-gauge'),
+
+    slPcount: document.getElementById('sl-pcount'),
+    valPcount: document.getElementById('val-pcount'),
+    slTimescale: document.getElementById('sl-timescale'),
+    valTimescale: document.getElementById('val-timescale'),
+
+    btnPlay: document.getElementById('btn-play'),
+    btnReset: document.getElementById('btn-reset'),
+    btnQuickMode: document.getElementById('btn-quick-mode'),
+    btnQuickProj: document.getElementById('btn-quick-proj'),
+    btnAudio: document.getElementById('btn-audio'),
+    btnControls: document.getElementById('btn-controls'),
+    btnCinema: document.getElementById('btn-cinema'),
+    btnZenRestore: document.getElementById('btn-zen-restore'),
+    parcelDirRow: document.getElementById('parcel-dir-row')
+  };
+
+  // =========================================================================
+  // CONSTANTS & STYLIZED EARTH CONTINENT POLYGONS (lon°, lat°)
+  // =========================================================================
+  const DEG = Math.PI / 180;
+  const RAD = 180 / Math.PI;
+  const MAX_PARTICLES = 3600;
+  const TRAIL_LEN = 6;
+
+  // Compact stylized world continents for recognizable globe & Mercator rendering
+  const CONTINENTS = [
+    // North America
+    [[-166,65],[-145,69],[-125,70],[-105,68],[-92,62],[-82,63],[-75,58],[-62,52],[-55,47],[-67,44],[-75,35],[-81,25],[-84,30],[-97,26],[-96,19],[-87,21],[-84,10],[-78,8],[-84,10],[-92,15],[-105,20],[-112,28],[-117,32],[-124,42],[-130,54],[-142,60],[-158,58]],
+    // Greenland
+    [[-52,60],[-42,61],[-32,68],[-20,76],[-28,82],[-50,82],[-66,76],[-56,67]],
+    // South America
+    [[-79,9],[-70,12],[-60,8],[-50,2],[-35,-6],[-38,-14],[-42,-23],[-52,-33],[-65,-42],[-68,-54],[-74,-52],[-73,-40],[-71,-20],[-81,-5]],
+    // Europe
+    [[-9,37],[-9,43],[-2,48],[4,52],[8,55],[5,61],[14,68],[28,71],[42,67],[55,68],[56,56],[44,46],[32,46],[24,38],[16,40],[12,44],[4,43],[-5,36]],
+    // Africa
+    [[-17,15],[-12,28],[-5,36],[10,37],[24,32],[33,31],[43,12],[51,11],[41,-2],[40,-15],[33,-26],[20,-35],[15,-28],[12,-14],[9,4],[-5,5],[-15,11]],
+    // Asia
+    [[42,42],[56,56],[60,68],[85,73],[118,73],[148,70],[170,66],[162,56],[142,54],[136,42],[128,36],[121,39],[122,30],[114,22],[106,20],[109,12],[102,13],[100,6],[97,16],[89,22],[80,14],[77,8],[72,21],[64,25],[56,26],[48,30],[40,37],[35,36],[27,40]],
+    // Indonesia / SE Islands
+    [[96,5],[105,-5],[115,-8],[124,-8],[120,-3],[106,1]],
+    // Australia
+    [[114,-22],[122,-17],[132,-12],[137,-15],[142,-11],[148,-20],[153,-28],[149,-37],[138,-35],[128,-32],[115,-34],[113,-26]],
+    // Antarctica
+    [[-180,-72],[-150,-76],[-110,-73],[-70,-68],[-58,-64],[-40,-72],[-10,-70],[30,-69],[70,-68],[115,-66],[150,-68],[178,-74],[180,-85],[-180,-85]]
+  ].map(poly => poly.map(([lon, lat]) => [lon * DEG, lat * DEG]));
+
+  // Precomputed stars for globe backdrop
+  const STARS = Array.from({ length: 240 }, () => ({
+    x: Math.random(),
+    y: Math.random(),
+    r: 0.4 + Math.random() * 1.35,
+    a: 0.2 + Math.random() * 0.65,
+    tw: Math.random() * Math.PI * 2
+  }));
+
+  // =========================================================================
+  // SIMULATION STATE
+  // =========================================================================
+  const state = {
+    mode: 'global', // 'global' | 'cyclone'
+    paused: false,
+    simTimeHours: 0,
+    timeScale: 1.0,
+    particleCount: 2800,
+    activePreset: 'earth3cell',
+    drawerOpen: true,
+    cinema: false,
+
+    // Global Mode State
+    projection: 'globe', // 'globe' | 'mercator'
+    omega: 1.0,          // 0.0 -> 2.5 (Earth = 1.0)
+    deltaT: 42,          // Equator-to-Pole temperature gradient (°C)
+    rossbyAmp: 0.85,
+    parcelDir: 'north',  // 'north' | 'south' | 'poleward' | 'equatorward'
+    parcelSpeed: 1.0,
+    showCells: true,
+    showJets: true,
+    showBelts: true,
+    showThermal: true,
+    autoRotate: true,
+
+    // Globe camera
+    globeLon: -0.55,
+    globeLat: 0.22,
+    globeZoom: 1.0,
+    globeCenterShift: 0,
+
+    // Launched Coriolis Tracer Parcels
+    parcels: [],
+
+    // Cyclone Mode State
+    baseSST: 27.8,
+    windShear: 6,        // kt (0..45)
+    stormLat: 19,        // degrees (3..38)
+    hemisphere: 1,       // +1 = NH (CCW), -1 = SH (CW)
+    steerSpeed: 10,      // kt
+    steerAngle: -2.65,   // radians (WNW default)
+    showSstMap: true,
+    showRadar: true,
+    showIsobars: true,
+    showGauge: true,
+    sstDirty: true,
+
+    // Basin Entities (normalized 0..1 coordinates in basin viewport)
+    storm: {
+      x: 0.68,
+      y: 0.56,
+      vx: 0,
+      vy: 0,
+      vmaxKt: 48,         // sustained max wind (kt)
+      pressureHpa: 999,
+      eyeRadius: 0.026,
+      rmw: 0.055,         // radius of max winds (normalized)
+      spinPhase: 0,
+      localSST: 28.0,
+      landFrac: 0,
+      shearTiltX: 0,
+      shearTiltY: 0,
+      lastCat: 0,
+      track: [],
+      lightning: []
+    },
+    warmPool: {
+      x: 0.45,
+      y: 0.52,
+      rx: 0.17,
+      ry: 0.13,
+      boost: 3.9
+    },
+    landmass: {
+      x: 0.21,
+      y: 0.46,
+      rx: 0.135,
+      ry: 0.22,
+      seed: 1.7
+    },
+
+    // Telemetry snapshot
+    maxDisplayWindKt: 118,
+    rossbyNumber: 0.14
+  };
+
+  // =========================================================================
+  // WIND PARTICLE POOLS (TypedArrays for silky 60fps with 2,800+ ribbons)
+  // =========================================================================
+  // Global particles (lon, lat + history ring buffer)
+  const gLon = new Float32Array(MAX_PARTICLES);
+  const gLat = new Float32Array(MAX_PARTICLES);
+  const gAge = new Float32Array(MAX_PARTICLES);
+  const gMaxAge = new Float32Array(MAX_PARTICLES);
+  const gSpd = new Float32Array(MAX_PARTICLES);
+  const gHistLon = new Float32Array(MAX_PARTICLES * TRAIL_LEN);
+  const gHistLat = new Float32Array(MAX_PARTICLES * TRAIL_LEN);
+  const gHistCount = new Uint8Array(MAX_PARTICLES);
+
+  function respawnGlobalParticle(i, randomAge = false) {
+    const lon = (Math.random() * 2 - 1) * Math.PI;
+    // Uniform area sampling on sphere: sin(lat) uniform in [-0.985, 0.985]
+    const lat = Math.asin((Math.random() * 2 - 1) * 0.985);
+    gLon[i] = lon;
+    gLat[i] = lat;
+    const maxA = 2.6 + Math.random() * 3.8;
+    gMaxAge[i] = maxA;
+    gAge[i] = randomAge ? Math.random() * maxA : 0;
+    gSpd[i] = 0;
+    gHistCount[i] = 1;
+    const base = i * TRAIL_LEN;
+    gHistLon[base] = lon;
+    gHistLat[base] = lat;
+  }
+
+  for (let i = 0; i < MAX_PARTICLES; i++) respawnGlobalParticle(i, true);
+
+  // Cyclone particles (normalized basin x, y + short trail)
+  const cX = new Float32Array(MAX_PARTICLES);
+  const cY = new Float32Array(MAX_PARTICLES);
+  const cAge = new Float32Array(MAX_PARTICLES);
+  const cMaxAge = new Float32Array(MAX_PARTICLES);
+  const cSpd = new Float32Array(MAX_PARTICLES);
+  const cLayer = new Uint8Array(MAX_PARTICLES); // 0 = inflow/eyewall, 1 = upper outflow cirrus
+  const cHistX = new Float32Array(MAX_PARTICLES * TRAIL_LEN);
+  const cHistY = new Float32Array(MAX_PARTICLES * TRAIL_LEN);
+  const cHistCount = new Uint8Array(MAX_PARTICLES);
+
+  function respawnCycloneParticle(i, randomAge = false) {
+    const s = state.storm;
+    let x, y;
+    const isOutflow = (i % 7 === 0);
+    cLayer[i] = isOutflow ? 1 : 0;
+    if (Math.random() < 0.72) {
+      // Concentrate richly around the storm & outer spiral bands
+      const r = isOutflow
+        ? (0.02 + Math.random() * 0.14)
+        : (0.025 + Math.pow(Math.random(), 0.78) * 0.42);
+      const ang = Math.random() * Math.PI * 2;
+      x = s.x + Math.cos(ang) * r;
+      y = s.y + Math.sin(ang) * r * (W / Math.max(H, 1));
+    } else {
+      x = Math.random();
+      y = Math.random();
+    }
+    cX[i] = x;
+    cY[i] = y;
+    const maxA = 1.6 + Math.random() * 2.8;
+    cMaxAge[i] = maxA;
+    cAge[i] = randomAge ? Math.random() * maxA : 0;
+    cSpd[i] = 0;
+    cHistCount[i] = 1;
+    const base = i * TRAIL_LEN;
+    cHistX[base] = x;
+    cHistY[base] = y;
+  }
+
+  for (let i = 0; i < MAX_PARTICLES; i++) respawnCycloneParticle(i, true);
+
+  // =========================================================================
+  // OFFSCREEN SST HEATMAP BUFFER (Mode B)
+  // =========================================================================
+  const sstCanvas = document.createElement('canvas');
+  const SST_W = 160;
+  const SST_H = 100;
+  sstCanvas.width = SST_W;
+  sstCanvas.height = SST_H;
+  const sstCtx = sstCanvas.getContext('2d');
+  const sstImg = sstCtx.createImageData(SST_W, SST_H);
+
+  // Landmass organic shape helper
+  function landmassShapeRadius(ang) {
+    const k = state.landmass.seed;
+    return 1.0
+      + 0.16 * Math.sin(2 * ang + k)
+      + 0.11 * Math.cos(3 * ang - k * 1.4)
+      + 0.06 * Math.sin(5 * ang + 0.8)
+      + 0.04 * Math.cos(7 * ang - 0.5);
+  }
+
+  function pointLandDistance(nx, ny) {
+    const lm = state.landmass;
+    const dx = (nx - lm.x) / lm.rx;
+    const dy = (ny - lm.y) / lm.ry;
+    const dist = Math.hypot(dx, dy);
+    const ang = Math.atan2(dy, dx);
+    const rad = landmassShapeRadius(ang);
+    return dist - rad; // < 0 means inside land
+  }
+
+  function sampleSST(nx, ny) {
+    // Base latitudinal gradient (warmer toward equator/south in NH, north in SH)
+    const latSlope = state.hemisphere > 0 ? (ny - 0.45) * 2.6 : (0.55 - ny) * 2.6;
+    // Warm Pool Gaussian anomaly
+    const wp = state.warmPool;
+    const wx = (nx - wp.x) / wp.rx;
+    const wy = (ny - wp.y) / wp.ry;
+    const wDist2 = wx * wx + wy * wy;
+    const warmBoost = wp.boost * Math.exp(-wDist2 * 1.15);
+
+    // Subtle secondary oceanographic eddy undulations
+    const wave = 0.55 * Math.sin(nx * 7.5 + ny * 3.2) * Math.cos(ny * 6.0 - nx * 2.0);
+    // Cool upwelling halo near landmass coastline
+    const ld = pointLandDistance(nx, ny);
+    const coastCool = ld < 0.35 ? -1.4 * Math.max(0, 1 - Math.max(0, ld) / 0.35) : 0;
+
+    return Math.max(19.5, Math.min(34.0, state.baseSST + latSlope + warmBoost + wave + coastCool));
+  }
+
+  function sstToRGB(temp) {
+    // 21°C deep abyss blue -> 25°C cobalt -> 26.5°C cyan threshold -> 28.5°C gold -> 31.5°C fiery coral
+    const stops = [
+      [20.5,  8,  20,  56],
+      [23.5, 11,  44,  96],
+      [25.5, 14,  82, 128],
+      [26.5, 22, 134, 152],
+      [27.8, 42, 168, 138],
+      [29.2, 204, 152, 54],
+      [30.8, 228,  86, 62],
+      [32.5, 212,  42, 108]
+    ];
+    if (temp <= stops[0][0]) return [stops[0][1], stops[0][2], stops[0][3]];
+    for (let i = 0; i < stops.length - 1; i++) {
+      const a = stops[i], b = stops[i + 1];
+      if (temp <= b[0]) {
+        const t = (temp - a[0]) / (b[0] - a[0]);
+        return [
+          a[1] + (b[1] - a[1]) * t,
+          a[2] + (b[2] - a[2]) * t,
+          a[3] + (b[3] - a[3]) * t
+        ];
+      }
+    }
+    const last = stops[stops.length - 1];
+    return [last[1], last[2], last[3]];
+  }
+
+  function rebuildSSTTexture() {
+    const data = sstImg.data;
+    for (let j = 0; j < SST_H; j++) {
+      const ny = (j + 0.5) / SST_H;
+      for (let i = 0; i < SST_W; i++) {
+        const nx = (i + 0.5) / SST_W;
+        const temp = sampleSST(nx, ny);
+        const [r, g, b] = sstToRGB(temp);
+        // Subtle contour highlight right on 26.5°C threshold
+        const onThresh = Math.abs(temp - 26.5) < 0.085;
+        const idx = (j * SST_W + i) * 4;
+        data[idx]     = onThresh ? Math.min(255, r + 95) : r;
+        data[idx + 1] = onThresh ? Math.min(255, g + 125) : g;
+        data[idx + 2] = onThresh ? Math.min(255, b + 125) : b;
+        data[idx + 3] = 255;
+      }
+    }
+    sstCtx.putImageData(sstImg, 0, 0);
+    state.sstDirty = false;
+  }
+
+  // =========================================================================
+  // GLOBAL ATMOSPHERIC CIRCULATION MODEL (Ω: 0× -> 1× Earth -> 2.5× Jupiter)
+  // =========================================================================
+  function getCellCountPerHemisphere(omega) {
+    if (omega < 0.14) return 1;
+    // Smoothly hits 3 at omega = 1.0, and ~7 at omega = 2.5
+    return 1 + 2 * Math.pow(omega, 1.18);
+  }
+
+  function getDisplayCellCount(omega) {
+    if (omega < 0.18) return 1;
+    if (omega < 0.7) return 2;
+    if (omega < 1.35) return 3;
+    if (omega < 1.85) return 5;
+    return 7;
+  }
+
+  // Returns { u (eastward), v (northward), jet (0..1), speedKt } in dimensionless sim units
+  function sampleGlobalWind(lon, lat, timeSec) {
+    const om = state.omega;
+    const heatScale = state.deltaT / 42;
+    const absLat = Math.abs(lat);
+    const hemi = lat >= 0 ? 1 : -1;
+    const cells = getCellCountPerHemisphere(om);
+
+    // Phase across cells from equator (0) to pole (cells * PI)
+    const phase = (absLat / (Math.PI * 0.5)) * cells * Math.PI;
+    const cellIdx = Math.floor(phase / Math.PI); // 0=Hadley, 1=Ferrel, 2=Polar...
+
+    // Surface meridional overturning:
+    // Odd/even alternating cells: cell 0 (Hadley) flows equatorward at surface (-hemi)
+    // cell 1 (Ferrel) flows poleward (+hemi), cell 2 (Polar) equatorward (-hemi)
+    const cellSign = (cellIdx % 2 === 0) ? -1 : 1;
+    const sinPhase = Math.sin(phase);
+
+    // Coriolis deflection factor: 0 at Ω=0, saturates near 1 for Ω>=0.6
+    const coriolisTurn = Math.tanh(om * 2.4);
+    const meridionalBase = cellSign * hemi * sinPhase * (0.52 - 0.24 * coriolisTurn) * heatScale;
+
+    // Zonal trade/westerly winds generated by Coriolis deflection of surface meridional flow:
+    // NH: equatorward flow deflects WEST (u < 0, Trades); poleward flow deflects EAST (u > 0, Westerlies)
+    // SH: equatorward flow deflects WEST (u < 0, Trades); poleward flow deflects EAST (u > 0, Westerlies)
+    // Notice cellSign = -1 for Hadley (equatorward -> u < 0 easterly trades), +1 for Ferrel (poleward -> u > 0 westerlies)!
+    let u = cellSign * sinPhase * coriolisTurn * (0.78 + 0.36 * om) * heatScale;
+    let v = meridionalBase;
+
+    // Rossby Wave Jet Streams along cell boundaries (phase = k * PI, k = 1..floor(cells))
+    let jetStrength = 0;
+    if (om > 0.22) {
+      const kRossby = Math.round(3 + om * 2.4); // 4-5 waves on Earth, 8-9 on Jupiter
+      const waveAmp = state.rossbyAmp * (0.11 / Math.max(1, cells * 0.38)) * Math.min(1.2, om);
+      const wavePhase = kRossby * lon - timeSec * (0.35 + 0.22 * om);
+
+      // Iterate over jet latitudes between cells
+      const nJets = Math.min(6, Math.max(1, Math.round(cells - 0.4)));
+      for (let j = 1; j <= nJets; j++) {
+        const baseLat = (j / cells) * (Math.PI * 0.49);
+        const meander = waveAmp * Math.sin(wavePhase + j * 1.9);
+        const dLat = absLat - (baseLat + meander);
+        const jetWidth = 0.105 / Math.sqrt(Math.max(0.7, cells / 3));
+        const g = Math.exp(-(dLat * dLat) / (2 * jetWidth * jetWidth));
+
+        // Alternating prograde/retrograde super-jets on fast rotators, prograde eastward jets on Earth
+        const isPrograde = (om < 1.55) ? 1 : (j % 2 === 1 ? 1 : -0.78);
+        const amp = (1.35 + 0.42 * om) * heatScale * Math.min(1, (om - 0.2) * 1.6);
+
+        u += g * amp * isPrograde;
+        // Meridional velocity tangent to the Rossby meander!
+        const dMeanderDLon = waveAmp * kRossby * Math.cos(wavePhase + j * 1.9);
+        v += g * amp * isPrograde * dMeanderDLon * hemi * 0.72;
+        if (g > jetStrength) jetStrength = g;
+      }
+
+      // Equatorial super-rotating jet on Jupiter-like fast rotators
+      if (om > 1.45) {
+        const eqG = Math.exp(-(lat * lat) / (2 * 0.085 * 0.085));
+        const eqBoost = (om - 1.45) * 1.35 * heatScale;
+        u += eqG * eqBoost;
+        jetStrength = Math.max(jetStrength, eqG * Math.min(1, (om - 1.45) * 0.9));
+      }
+    }
+
+    // Gentle ITCZ convergence shimmer near Equator
+    if (absLat < 0.14) {
+      v += -lat * 0.95 * heatScale;
+    }
+
+    // Clamp near exact poles to avoid singularity
+    const poleDamp = Math.cos(lat);
+    u *= (0.25 + 0.75 * poleDamp);
+
+    const mag = Math.hypot(u, v);
+    const speedKt = mag * 58; // calibrated so Earth jets hit ~110-145 kt, trades ~20-35 kt
+    return { u, v, jet: jetStrength, speedKt };
+  }
+
+  // =========================================================================
+  // CORIOLIS AIR PARCEL LAUNCHER & SPHERICAL INTEGRATOR
+  // =========================================================================
+  function launchAirParcel(lon, lat, dirOverride = null) {
+    const dir = dirOverride || state.parcelDir;
+    const spd = 0.56 * state.parcelSpeed;
+    let vx = 0; // eastward
+    let vy = 0; // northward
+    if (dir === 'north') vy = spd;
+    else if (dir === 'south') vy = -spd;
+    else if (dir === 'poleward') vy = lat >= 0 ? spd : -spd;
+    else if (dir === 'equatorward') vy = lat >= 0 ? -spd : spd;
+
+    const hemiLabel = Math.abs(lat) < 0.05 ? 'EQ → Straight' : (lat > 0 ? 'NH → Right' : 'SH → Left');
+    const color = lat > 0.05 ? '#58dcff' : (lat < -0.05 ? '#ffbe5c' : '#4af2b2');
+
+    state.parcels.push({
+      lon,
+      lat,
+      u: vx,
+      v: vy,
+      // Straight-line no-Coriolis ghost parcel for visual comparison!
+      gLon: lon,
+      gLat: lat,
+      gu: vx,
+      gv: vy,
+      trail: [{ lon, lat }],
+      ghost: [{ lon, lat }],
+      age: 0,
+      maxAge: 14,
+      color,
+      label: hemiLabel,
+      fcX: 0,
+      fcY: 0
+    });
+
+    if (state.parcels.length > 26) state.parcels.shift();
+    playParcelChime(lat);
+  }
+
+  function launchCoriolisVolley() {
+    state.parcels = [];
+    const baseLon = state.projection === 'globe' ? state.globeLon : 0;
+    const lats = [52, 26, 0, -26, -52];
+    const offsets = [-0.22, -0.11, 0, 0.11, 0.22];
+    lats.forEach((deg, idx) => {
+      const dir = deg >= 0 ? 'north' : 'south';
+      launchAirParcel(wrapLon(baseLon + offsets[idx]), deg * DEG, dir);
+    });
+    showBanner('Coriolis Volley: Deflects Right in NH · Left in SH · Straight at Equator', 'info');
+  }
+
+  function stepParcels(dt) {
+    const om = state.omega;
+    const drag = 0.025;
+    for (let i = state.parcels.length - 1; i >= 0; i--) {
+      const p = state.parcels[i];
+      p.age += dt;
+      if (p.age > p.maxAge) {
+        state.parcels.splice(i, 1);
+        continue;
+      }
+
+      // Sub-stepped RK2/Euler for clean Coriolis curves
+      const sub = 4;
+      const h = dt / sub;
+      for (let s = 0; s < sub; s++) {
+        // Real parcel with Coriolis force: F_c = -2 Ω × v
+        // du/dt = +f * v, dv/dt = -f * u  (f = 2 * Ω * sin(lat))
+        const f = 1.65 * om * Math.sin(p.lat);
+        const tanL = Math.tan(Math.max(-1.35, Math.min(1.35, p.lat)));
+        // Spherical metric terms for true great-circle motion when Ω=0
+        const metricU = p.u * p.v * tanL;
+        const metricV = -p.u * p.u * tanL;
+
+        const fcU = f * p.v;
+        const fcV = -f * p.u;
+        p.fcX = fcU;
+        p.fcY = fcV;
+
+        p.u += (fcU + metricU - drag * p.u) * h;
+        p.v += (fcV + metricV - drag * p.v) * h;
+
+        const cosL = Math.max(0.14, Math.cos(p.lat));
+        p.lon = wrapLon(p.lon + (p.u / cosL) * h);
+        p.lat = Math.max(-1.46, Math.min(1.46, p.lat + p.v * h));
+
+        // Ghost parcel (Ω = 0, no Coriolis, pure great-circle geodesic)
+        const gTan = Math.tan(Math.max(-1.35, Math.min(1.35, p.gLat)));
+        p.gu += (p.gu * p.gv * gTan - drag * p.gu) * h;
+        p.gv += (-p.gu * p.gu * gTan - drag * p.gv) * h;
+        const gCos = Math.max(0.14, Math.cos(p.gLat));
+        p.gLon = wrapLon(p.gLon + (p.gu / gCos) * h);
+        p.gLat = Math.max(-1.46, Math.min(1.46, p.gLat + p.gv * h));
+      }
+
+      const last = p.trail[p.trail.length - 1];
+      if (!last || Math.hypot(p.lon - last.lon, p.lat - last.lat) > 0.014) {
+        p.trail.push({ lon: p.lon, lat: p.lat });
+        p.ghost.push({ lon: p.gLon, lat: p.gLat });
+        if (p.trail.length > 180) {
+          p.trail.shift();
+          p.ghost.shift();
+        }
+      }
+    }
+  }
+
+  function wrapLon(lon) {
+    while (lon > Math.PI) lon -= Math.PI * 2;
+    while (lon < -Math.PI) lon += Math.PI * 2;
+    return lon;
+  }
+
+  // =========================================================================
+  // TROPICAL CYCLONE / HURRICANE THERMODYNAMICS & VORTEX WIND FIELD
+  // =========================================================================
+  function getSaffirSimpson(kt) {
+    if (kt < 34)  return { code: 'TD',    name: 'Tropical Depression', cat: 0, color: '#8ba4cc', pillClass: 'cyan' };
+    if (kt < 64)  return { code: 'TS',    name: 'Tropical Storm',      cat: 0, color: '#58dcff', pillClass: 'cyan' };
+    if (kt < 83)  return { code: 'CAT 1', name: 'Category 1 Hurricane',cat: 1, color: '#4af2b2', pillClass: '' };
+    if (kt < 96)  return { code: 'CAT 2', name: 'Category 2 Hurricane',cat: 2, color: '#ffe066', pillClass: 'warn' };
+    if (kt < 113) return { code: 'CAT 3', name: 'Category 3 Major',    cat: 3, color: '#ffbe5c', pillClass: 'warn' };
+    if (kt < 137) return { code: 'CAT 4', name: 'Category 4 Major',    cat: 4, color: '#ff6083', pillClass: 'danger' };
+    return               { code: 'CAT 5', name: 'Category 5 Catastrophic', cat: 5, color: '#e879f9', pillClass: 'danger' };
+  }
+
+  function stepCyclone(dt) {
+    const s = state.storm;
+
+    // 1. Sample SST & Land Fraction over eyewall footprint (9-point disk sample)
+    let sstSum = 0;
+    let landCount = 0;
+    const sampleR = 0.048;
+    const pts = 9;
+    for (let k = 0; k < pts; k++) {
+      const ang = (k / (pts - 1)) * Math.PI * 2;
+      const px = k === 0 ? s.x : s.x + Math.cos(ang) * sampleR;
+      const py = k === 0 ? s.y : s.y + Math.sin(ang) * sampleR;
+      sstSum += sampleSST(px, py);
+      if (pointLandDistance(px, py) < 0) landCount++;
+    }
+    s.localSST = sstSum / pts;
+    s.landFrac = landCount / pts;
+
+    // 2. Steering translation (unless user is actively dragging the eye)
+    if (!dragState.active || dragState.target !== 'storm') {
+      const speedNorm = state.steerSpeed * 0.00145;
+      s.vx = Math.cos(state.steerAngle) * speedNorm;
+      s.vy = Math.sin(state.steerAngle) * speedNorm;
+      s.x += s.vx * dt;
+      s.y += s.vy * dt;
+
+      // Soft wrap / bounce at basin boundaries so the storm stays in view
+      if (s.x < 0.07) { s.x = 0.07; state.steerAngle = Math.PI - state.steerAngle; }
+      if (s.x > 0.93) { s.x = 0.93; state.steerAngle = Math.PI - state.steerAngle; }
+      if (s.y < 0.11) { s.y = 0.11; state.steerAngle = -state.steerAngle; }
+      if (s.y > 0.89) { s.y = 0.89; state.steerAngle = -state.steerAngle; }
+    }
+
+    // Record storm track
+    const lastPt = s.track[s.track.length - 1];
+    if (!lastPt || Math.hypot(s.x - lastPt.x, s.y - lastPt.y) > 0.012) {
+      s.track.push({ x: s.x, y: s.y, kt: s.vmaxKt });
+      if (s.track.length > 140) s.track.shift();
+    }
+
+    // 3. Emanuel-inspired Maximum Potential Intensity (MPI)
+    // Coriolis factor: hurricanes cannot organize below ~4° latitude
+    const coriolisEff = Math.min(1, Math.max(0, (state.stormLat - 3) / 9));
+    // Ocean heat potential above 26.5°C threshold
+    const thermalExcess = s.localSST - 25.4;
+    let vTarget = 22;
+    if (thermalExcess > 0) {
+      // At 26.5°C -> ~68 kt (Cat 1), 28.5°C -> ~114 kt (Cat 4), 30.5°C+ -> ~162 kt (Cat 5)
+      vTarget = 26 + 31.5 * Math.pow(thermalExcess, 0.92);
+    } else {
+      vTarget = Math.max(16, 26 + thermalExcess * 5.5);
+    }
+
+    // Apply Coriolis efficiency
+    vTarget *= (0.25 + 0.75 * coriolisEff);
+
+    // Apply Vertical Wind Shear penalty (strongly disruptive > 15 kt)
+    const shearPenalty = Math.max(0, state.windShear - 8) * 3.1;
+    vTarget = Math.max(18, vTarget - shearPenalty);
+
+    // Apply Landfall enthalpy cutoff & friction collapse
+    if (s.landFrac > 0.02) {
+      vTarget = vTarget * (1 - 0.84 * s.landFrac) + 18 * s.landFrac;
+    }
+    vTarget = Math.max(16, Math.min(176, vTarget));
+
+    // Rate of intensification / decay
+    const diff = vTarget - s.vmaxKt;
+    let rate;
+    if (diff > 0) {
+      // Intensification rate faster over very warm water (>28.5°C = Rapid Intensification)
+      const riBoost = s.localSST > 28.5 ? 1.45 : 1.0;
+      rate = 0.24 * riBoost;
+    } else {
+      // Landfall & high shear decay sharply
+      rate = 0.22 + 0.42 * s.landFrac + Math.max(0, state.windShear - 18) * 0.012;
+    }
+    s.vmaxKt += diff * Math.min(1, rate * dt);
+    s.vmaxKt = Math.max(15, Math.min(178, s.vmaxKt));
+
+    // Barometric central pressure (Atkinson-Holliday / Holland empirical relation)
+    const targetP = Math.max(872, 1013 - Math.pow(Math.max(0, s.vmaxKt - 12) / 5.75, 1.48));
+    s.pressureHpa += (targetP - s.pressureHpa) * Math.min(1, 2.2 * dt);
+
+    // Dynamic Eye & Eyewall contraction as storm intensifies (conservation of angular momentum!)
+    const catFactor = Math.min(1, Math.max(0, (s.vmaxKt - 50) / 100));
+    const targetRmw = 0.072 - 0.026 * catFactor + 0.018 * s.landFrac;
+    s.rmw += (targetRmw - s.rmw) * Math.min(1, 1.5 * dt);
+    s.eyeRadius = s.rmw * (0.44 - 0.08 * catFactor);
+
+    // Spin rotation phase
+    s.spinPhase += state.hemisphere * (0.85 + s.vmaxKt * 0.019) * dt;
+
+    // Shear displacement vector (blows cloud canopy asymmetrically ENE under westerly shear)
+    const shearNorm = Math.min(1, state.windShear / 42);
+    s.shearTiltX += (shearNorm * 0.065 - s.shearTiltX) * Math.min(1, 2.5 * dt);
+    s.shearTiltY += (-shearNorm * 0.024 - s.shearTiltY) * Math.min(1, 2.5 * dt);
+
+    // Eyewall lightning flashes in intense hurricanes (Cat 3+)
+    if (s.vmaxKt > 95 && s.landFrac < 0.6 && Math.random() < (s.vmaxKt - 90) * 0.008 * dt * 60) {
+      const ang = Math.random() * Math.PI * 2;
+      const rad = s.rmw * (0.85 + Math.random() * 0.45);
+      s.lightning.push({
+        x: s.x + Math.cos(ang) * rad,
+        y: s.y + Math.sin(ang) * rad * (W / Math.max(H, 1)),
+        life: 0.22 + Math.random() * 0.16,
+        maxLife: 0.35
+      });
+    }
+    for (let i = s.lightning.length - 1; i >= 0; i--) {
+      s.lightning[i].life -= dt;
+      if (s.lightning[i].life <= 0) s.lightning.splice(i, 1);
+    }
+
+    // Category milestone announcements
+    const ss = getSaffirSimpson(s.vmaxKt);
+    if (ss.cat !== s.lastCat) {
+      if (ss.cat === 5 && s.lastCat < 5) {
+        showBanner('Category 5 Catastrophic Hurricane! Eyewall winds > 137 kt', 'danger');
+      } else if (ss.cat === 3 && s.lastCat < 3) {
+        showBanner('Major Hurricane (Category 3) — Clear Eye Forming', 'warn');
+      } else if (ss.cat === 1 && s.lastCat === 0) {
+        showBanner('Hurricane Status Reached (Category 1 · 64+ kt)', 'info');
+      } else if (s.landFrac > 0.35 && ss.cat < s.lastCat) {
+        showBanner(`Landfall Decay — Weakened to ${ss.name}`, 'warn');
+      }
+      s.lastCat = ss.cat;
+    }
+  }
+
+  // Holland / Rankine Vortex Wind Velocity in basin pixel-aspect-corrected coords
+  function sampleCycloneWind(nx, ny, isOutflow) {
+    const s = state.storm;
+    const aspect = W / Math.max(H, 1);
+    const dx = nx - s.x;
+    const dy = (ny - s.y) / aspect; // isotropic distance in X-normalized units
+    const r = Math.hypot(dx, dy);
+    const eps = 0.0005;
+    const rSafe = Math.max(r, eps);
+
+    // Holland profile for tangential speed
+    const rmw = s.rmw;
+    const ratio = rSafe / rmw;
+    let vFrac;
+    if (ratio < 1.0) {
+      // Inside eye: solid-body-like drop to calm center
+      vFrac = Math.pow(ratio, 1.85);
+    } else {
+      // Outside eyewall: smooth decay with radial exponent
+      vFrac = Math.pow(ratio, -0.64);
+    }
+
+    // Outer ambient fade
+    const env = Math.exp(-rSafe * rSafe / 0.16);
+    const windKt = s.vmaxKt * vFrac * (0.25 + 0.75 * env);
+
+    // Direction: CCW in NH (+1), CW in SH (-1)
+    // Remember canvas Y increases downward!
+    // In canvas coords (+x right, +y down):
+    // CCW around center has tangent (+dy, -dx)
+    // CW around center has tangent (-dy, +dx)
+    const dir = state.hemisphere; // +1 = NH (CCW), -1 = SH (CW)
+    let tx = (dy / rSafe) * dir;
+    let ty = (-dx / rSafe) * dir;
+
+    // Boundary-layer radial inflow vs upper-level anticyclonic outflow
+    let radial = 0;
+    if (isOutflow) {
+      // Upper-level cirrus spirals OUTWARD and reverses rotation at outer radii
+      const flip = rSafe > rmw * 1.9 ? -0.55 : 0.45;
+      tx *= flip;
+      ty *= flip;
+      radial = 0.42;
+    } else {
+      // Surface friction creates ~22° inward spiral toward eyewall (stronger over land)
+      const inflowAngle = (0.28 + 0.18 * s.landFrac) * Math.min(1, ratio);
+      radial = -inflowAngle * (ratio < 0.75 ? 0.12 : 1.0);
+    }
+
+    const ux = (dx / rSafe) * radial + tx;
+    const uy = (dy / rSafe) * radial + ty;
+
+    // Add ambient steering flow + subtle shear wind
+    const shearKick = isOutflow ? state.windShear * 0.0028 : 0;
+    const speedScale = (0.0014 + windKt * 0.00155);
+    const vx = ux * speedScale + s.vx * 0.65 + shearKick;
+    const vy = (uy * speedScale) * aspect + s.vy * 0.65 - shearKick * 0.35;
+
+    return { vx, vy, windKt, r: rSafe };
+  }
+
+  // =========================================================================
+  // PARTICLE STEPPERS
+  // =========================================================================
+  function stepGlobalParticles(dt, timeSec) {
+    const N = state.particleCount;
+    for (let i = 0; i < N; i++) {
+      gAge[i] += dt;
+      if (gAge[i] >= gMaxAge[i]) {
+        respawnGlobalParticle(i, false);
+        continue;
+      }
+      const lon = gLon[i];
+      const lat = gLat[i];
+      const w = sampleGlobalWind(lon, lat, timeSec);
+      gSpd[i] = w.speedKt;
+
+      const cosL = Math.max(0.16, Math.cos(lat));
+      const stepScale = 0.24 * dt;
+      let nLon = wrapLon(lon + (w.u / cosL) * stepScale);
+      let nLat = lat + w.v * stepScale;
+
+      if (Math.abs(nLat) > 1.50) {
+        respawnGlobalParticle(i, false);
+        continue;
+      }
+
+      gLon[i] = nLon;
+      gLat[i] = nLat;
+
+      // Push into history ring (shift small fixed buffer of length 6)
+      const base = i * TRAIL_LEN;
+      const cnt = gHistCount[i];
+      const limit = Math.min(cnt, TRAIL_LEN - 1);
+      for (let k = limit; k >= 1; k--) {
+        gHistLon[base + k] = gHistLon[base + k - 1];
+        gHistLat[base + k] = gHistLat[base + k - 1];
+      }
+      gHistLon[base] = nLon;
+      gHistLat[base] = nLat;
+      if (cnt < TRAIL_LEN) gHistCount[i] = cnt + 1;
+    }
+  }
+
+  function stepCycloneParticles(dt) {
+    const N = state.particleCount;
+    for (let i = 0; i < N; i++) {
+      cAge[i] += dt;
+      if (cAge[i] >= cMaxAge[i]) {
+        respawnCycloneParticle(i, false);
+        continue;
+      }
+      const x = cX[i];
+      const y = cY[i];
+      const isOut = cLayer[i] === 1;
+      const w = sampleCycloneWind(x, y, isOut);
+      cSpd[i] = w.windKt;
+
+      const nx = x + w.vx * dt;
+      const ny = y + w.vy * dt;
+
+      // Respawn if sucked deep into calm eye or escaped far offscreen
+      if (nx < -0.05 || nx > 1.05 || ny < -0.05 || ny > 1.05 || (!isOut && w.r < state.storm.eyeRadius * 0.45 && Math.random() < 0.15)) {
+        respawnCycloneParticle(i, false);
+        continue;
+      }
+
+      cX[i] = nx;
+      cY[i] = ny;
+
+      const base = i * TRAIL_LEN;
+      const cnt = cHistCount[i];
+      const limit = Math.min(cnt, TRAIL_LEN - 1);
+      for (let k = limit; k >= 1; k--) {
+        cHistX[base + k] = cHistX[base + k - 1];
+        cHistY[base + k] = cHistY[base + k - 1];
+      }
+      cHistX[base] = nx;
+      cHistY[base] = ny;
+      if (cnt < TRAIL_LEN) cHistCount[i] = cnt + 1;
+    }
+  }
+
+  // =========================================================================
+  // 3D GLOBE & MERCATOR PROJECTION MATH
+  // =========================================================================
+  function getGlobeMetrics() {
+    const drawerPad = (state.drawerOpen && !state.cinema && W > 920) ? 330 : 0;
+    const availW = W - drawerPad;
+    const cx = availW * 0.52;
+    const cy = H * 0.51;
+    const r = Math.min(availW * 0.36, H * 0.39) * state.globeZoom;
+    return { cx, cy, r };
+  }
+
+  function projectGlobe(lon, lat, gm, altScale = 1.0) {
+    const dLon = lon - state.globeLon;
+    const cosLat = Math.cos(lat);
+    const sinLat = Math.sin(lat);
+    const cosLat0 = Math.cos(state.globeLat);
+    const sinLat0 = Math.sin(state.globeLat);
+    const sinDL = Math.sin(dLon);
+    const cosDL = Math.cos(dLon);
+
+    const x = cosLat * sinDL;
+    const y = cosLat0 * sinLat - sinLat0 * cosLat * cosDL;
+    const z = sinLat0 * sinLat + cosLat0 * cosLat * cosDL;
+
+    return {
+      sx: gm.cx + x * gm.r * altScale,
+      sy: gm.cy - y * gm.r * altScale,
+      z
+    };
+  }
+
+  function unprojectGlobe(sx, sy, gm) {
+    const x = (sx - gm.cx) / gm.r;
+    const y = -(sy - gm.cy) / gm.r;
+    const rho2 = x * x + y * y;
+    if (rho2 > 0.998) return null;
+    const z = Math.sqrt(1 - rho2);
+    const cosLat0 = Math.cos(state.globeLat);
+    const sinLat0 = Math.sin(state.globeLat);
+
+    const lat = Math.asin(Math.max(-1, Math.min(1, y * cosLat0 + z * sinLat0)));
+    const lon = wrapLon(state.globeLon + Math.atan2(x, z * cosLat0 - y * sinLat0));
+    return { lon, lat };
+  }
+
+  function getMercatorRect() {
+    const drawerPad = (state.drawerOpen && !state.cinema && W > 920) ? 344 : 24;
+    const left = 24;
+    const right = W - drawerPad;
+    const top = Math.max(158, H * 0.16);
+    const bottom = H - 74;
+    const cellPanelW = state.showCells ? 96 : 0;
+    const mapW = Math.max(240, right - left - cellPanelW);
+    const mapH = Math.max(200, bottom - top);
+    return { x: left, y: top, w: mapW, h: mapH, cellPanelW };
+  }
+
+  function projectMercator(lon, lat, mr) {
+    const u = (lon + Math.PI) / (Math.PI * 2);
+    // Clamped Mercator up to 80° for graceful framing
+    const maxLat = 80 * DEG;
+    const cLat = Math.max(-maxLat, Math.min(maxLat, lat));
+    const maxY = Math.log(Math.tan(Math.PI / 4 + maxLat / 2));
+    const my = Math.log(Math.tan(Math.PI / 4 + cLat / 2));
+    const v = 0.5 - 0.5 * (my / maxY);
+    return {
+      sx: mr.x + u * mr.w,
+      sy: mr.y + v * mr.h
+    };
+  }
+
+  function unprojectMercator(sx, sy, mr) {
+    if (sx < mr.x || sx > mr.x + mr.w || sy < mr.y || sy > mr.y + mr.h) return null;
+    const u = (sx - mr.x) / mr.w;
+    const v = (sy - mr.y) / mr.h;
+    const lon = u * Math.PI * 2 - Math.PI;
+    const maxLat = 80 * DEG;
+    const maxY = Math.log(Math.tan(Math.PI / 4 + maxLat / 2));
+    const my = (0.5 - v) * 2 * maxY;
+    const lat = 2 * Math.atan(Math.exp(my)) - Math.PI / 2;
+    return { lon, lat };
+  }
+
+  // Wind speed color ramp (cool cyan -> mint -> amber -> magenta jet/cat5)
+  function windColor(kt, alpha = 0.85) {
+    if (kt < 28)  return `rgba(74, 178, 255, ${alpha})`;
+    if (kt < 55)  return `rgba(74, 242, 198, ${alpha})`;
+    if (kt < 88)  return `rgba(255, 206, 92, ${alpha})`;
+    if (kt < 122) return `rgba(255, 112, 118, ${alpha})`;
+    return               `rgba(240, 132, 255, ${alpha})`;
+  }
+
+  // =========================================================================
+  // RENDERING: MODE A (GLOBAL CIRCULATION & CORIOLIS)
+  // =========================================================================
+  function renderStarfield(timeSec) {
+    ctx.fillStyle = '#040711';
+    ctx.fillRect(0, 0, W, H);
+    // Subtle deep atmospheric nebula glow
+    const bgGrad = ctx.createRadialGradient(W * 0.42, H * 0.5, 40, W * 0.42, H * 0.5, Math.max(W, H) * 0.72);
+    bgGrad.addColorStop(0, 'rgba(18, 34, 68, 0.34)');
+    bgGrad.addColorStop(0.55, 'rgba(8, 15, 32, 0.18)');
+    bgGrad.addColorStop(1, 'rgba(4, 7, 17, 0)');
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, W, H);
+
+    for (let i = 0; i < STARS.length; i++) {
+      const st = STARS[i];
+      const twinkle = 0.7 + 0.3 * Math.sin(timeSec * 1.4 + st.tw);
+      ctx.fillStyle = `rgba(210, 228, 255, ${(st.a * twinkle).toFixed(3)})`;
+      ctx.beginPath();
+      ctx.arc(st.x * W, st.y * H, st.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  function renderGlobalGlobe(timeSec) {
+    const gm = getGlobeMetrics();
+    const { cx, cy, r } = gm;
+
+    // Outer Rayleigh Atmosphere Glow
+    const halo = ctx.createRadialGradient(cx, cy, r * 0.92, cx, cy, r * 1.24);
+    const jupMix = Math.max(0, Math.min(1, (state.omega - 1.55) / 0.9));
+    halo.addColorStop(0, jupMix > 0.4 ? 'rgba(245, 185, 115, 0.28)' : 'rgba(88, 200, 255, 0.32)');
+    halo.addColorStop(0.45, jupMix > 0.4 ? 'rgba(195, 130, 88, 0.11)' : 'rgba(56, 138, 255, 0.12)');
+    halo.addColorStop(1, 'rgba(4, 7, 17, 0)');
+    ctx.fillStyle = halo;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r * 1.24, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Clip sphere body
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.clip();
+
+    // Ocean Base Gradient
+    const oceanGrad = ctx.createRadialGradient(cx - r * 0.32, cy - r * 0.28, r * 0.08, cx, cy, r * 1.08);
+    if (jupMix < 0.5) {
+      oceanGrad.addColorStop(0, '#12335c');
+      oceanGrad.addColorStop(0.55, '#091b38');
+      oceanGrad.addColorStop(1, '#040a18');
+    } else {
+      oceanGrad.addColorStop(0, '#3a2a24');
+      oceanGrad.addColorStop(0.6, '#1f171b');
+      oceanGrad.addColorStop(1, '#0a0812');
+    }
+    ctx.fillStyle = oceanGrad;
+    ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+
+    // Thermal Equator-to-Pole & Zonal Band Shading
+    if (state.showThermal) {
+      const cells = getCellCountPerHemisphere(state.omega);
+      const bands = 28;
+      for (let b = 0; b < bands; b++) {
+        const lat1 = -Math.PI * 0.5 + (b / bands) * Math.PI;
+        const lat2 = -Math.PI * 0.5 + ((b + 1) / bands) * Math.PI;
+        const latMid = 0.5 * (lat1 + lat2);
+        const eqWarm = Math.cos(latMid);
+        const bandWave = Math.sin((Math.abs(latMid) / (Math.PI * 0.5)) * cells * Math.PI);
+
+        let fillCol;
+        if (jupMix > 0.05) {
+          // Smoothly blend Jovian cream/ochre/terracotta bands as Ω approaches 2.5×
+          const isZone = bandWave >= 0;
+          const a = (0.14 + 0.28 * jupMix) * (0.4 + 0.6 * Math.abs(bandWave));
+          fillCol = isZone
+            ? `rgba(255, 220, 170, ${a.toFixed(3)})`
+            : `rgba(186, 98, 64, ${a.toFixed(3)})`;
+        } else {
+          // Earth thermal gradient: warm amber equator -> cool cyan poles
+          const a = 0.08 + 0.09 * Math.abs(eqWarm - 0.5);
+          fillCol = eqWarm > 0.65
+            ? `rgba(255, 165, 76, ${(a * (state.deltaT / 42)).toFixed(3)})`
+            : `rgba(72, 168, 255, ${(a * 0.85).toFixed(3)})`;
+        }
+        drawGlobeLatBand(lat1, lat2, gm, fillCol);
+      }
+    }
+
+    // Stylized Continents (fade subtly in Jupiter fast-spin mode)
+    const landAlpha = Math.max(0.12, 1 - jupMix * 0.85);
+    ctx.fillStyle = `rgba(28, 56, 78, ${(0.72 * landAlpha).toFixed(3)})`;
+    ctx.strokeStyle = `rgba(105, 190, 235, ${(0.34 * landAlpha).toFixed(3)})`;
+    ctx.lineWidth = 1.1;
+    for (let c = 0; c < CONTINENTS.length; c++) {
+      const poly = CONTINENTS[c];
+      ctx.beginPath();
+      let started = false;
+      let anyVisible = false;
+      for (let k = 0; k < poly.length; k++) {
+        const pt = projectGlobe(poly[k][0], poly[k][1], gm);
+        if (pt.z > -0.06) anyVisible = true;
+        // Clamp rim slightly for clean clipped polygon silhouette
+        const sx = pt.sx;
+        const sy = pt.sy;
+        if (pt.z > -0.15) {
+          if (!started) { ctx.moveTo(sx, sy); started = true; }
+          else ctx.lineTo(sx, sy);
+        } else {
+          started = false;
+        }
+      }
+      if (anyVisible) {
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      }
+    }
+
+    // Latitude & Longitude Graticule
+    ctx.strokeStyle = 'rgba(148, 188, 255, 0.11)';
+    ctx.lineWidth = 0.85;
+    for (let deg = -60; deg <= 60; deg += 30) {
+      drawGlobeParallel(deg * DEG, gm, deg === 0 ? 'rgba(255, 190, 92, 0.35)' : 'rgba(148, 188, 255, 0.11)', deg === 0 ? 1.4 : 0.85, deg === 0);
+    }
+    for (let lDeg = -180; lDeg < 180; lDeg += 30) {
+      drawGlobeMeridian(lDeg * DEG, gm, 'rgba(148, 188, 255, 0.08)');
+    }
+
+    // ITCZ & Pressure Belts
+    if (state.showBelts) {
+      drawGlobeParallel(0, gm, 'rgba(255, 118, 96, 0.65)', 2.2, true);
+      if (state.omega >= 0.5) {
+        const cells = getCellCountPerHemisphere(state.omega);
+        const stepLat = 90 / cells;
+        for (let b = 1; b < Math.min(5, cells); b++) {
+          const deg = b * stepLat;
+          const isHigh = (b % 2 === 1);
+          const col = isHigh ? 'rgba(88, 220, 255, 0.28)' : 'rgba(255, 130, 160, 0.28)';
+          drawGlobeParallel(deg * DEG, gm, col, 1.1, true);
+          drawGlobeParallel(-deg * DEG, gm, col, 1.1, true);
+        }
+      }
+    }
+
+    // Rossby Wave Jet Stream Ribbons
+    if (state.showJets && state.omega > 0.25) {
+      drawGlobeJetStreams(gm, timeSec);
+    }
+
+    // 2,800+ Animated Wind-Ribbon Particles
+    const N = state.particleCount;
+    ctx.lineCap = 'round';
+    for (let i = 0; i < N; i++) {
+      const cnt = gHistCount[i];
+      if (cnt < 2) continue;
+      const base = i * TRAIL_LEN;
+      const p0 = projectGlobe(gHistLon[base], gHistLat[base], gm);
+      if (p0.z <= 0.02) continue;
+
+      const lifeT = gAge[i] / gMaxAge[i];
+      const fade = Math.sin(lifeT * Math.PI);
+      const alpha = Math.min(0.92, fade * (0.38 + 0.55 * p0.z));
+      const kt = gSpd[i];
+
+      ctx.strokeStyle = windColor(kt, alpha);
+      ctx.lineWidth = kt > 95 ? 1.85 : (kt > 55 ? 1.35 : 1.0);
+      ctx.beginPath();
+      ctx.moveTo(p0.sx, p0.sy);
+      let px = p0.sx, py = p0.sy;
+      for (let k = 1; k < cnt; k++) {
+        const pk = projectGlobe(gHistLon[base + k], gHistLat[base + k], gm);
+        if (pk.z <= -0.02 || Math.hypot(pk.sx - px, pk.sy - py) > r * 0.28) break;
+        ctx.lineTo(pk.sx, pk.sy);
+        px = pk.sx;
+        py = pk.sy;
+      }
+      ctx.stroke();
+    }
+
+    // Launched Coriolis Air Parcels (Inside Globe Clip)
+    renderGlobalParcels(gm, null);
+
+    // Subtle 3D Sphere Specular & Limb Shading
+    const limb = ctx.createRadialGradient(cx - r * 0.28, cy - r * 0.25, r * 0.45, cx, cy, r);
+    limb.addColorStop(0, 'rgba(255, 255, 255, 0)');
+    limb.addColorStop(0.76, 'rgba(6, 14, 34, 0.16)');
+    limb.addColorStop(1, 'rgba(2, 6, 16, 0.65)');
+    ctx.fillStyle = limb;
+    ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+
+    ctx.restore(); // end sphere clip
+
+    // Crisp Atmospheric Fresnel Rim
+    ctx.strokeStyle = jupMix > 0.45 ? 'rgba(255, 200, 145, 0.42)' : 'rgba(110, 215, 255, 0.45)';
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Glowing Meridional Cross-Section Overlay (Hadley / Ferrel / Polar Loops around East Limb!)
+    if (state.showCells) {
+      drawGlobeMeridionalCells(gm, timeSec);
+    }
+
+    // Pressure Belt Labels along center meridian
+    if (state.showBelts) {
+      drawGlobeBeltLabels(gm);
+    }
+  }
+
+  function drawGlobeLatBand(lat1, lat2, gm, fillStyle) {
+    ctx.fillStyle = fillStyle;
+    ctx.beginPath();
+    const steps = 42;
+    let count = 0;
+    for (let s = 0; s <= steps; s++) {
+      const lon = state.globeLon - Math.PI * 0.55 + (s / steps) * Math.PI * 1.1;
+      const p = projectGlobe(lon, lat1, gm);
+      if (s === 0) ctx.moveTo(p.sx, p.sy);
+      else ctx.lineTo(p.sx, p.sy);
+      if (p.z > 0) count++;
+    }
+    for (let s = steps; s >= 0; s--) {
+      const lon = state.globeLon - Math.PI * 0.55 + (s / steps) * Math.PI * 1.1;
+      const p = projectGlobe(lon, lat2, gm);
+      ctx.lineTo(p.sx, p.sy);
+    }
+    ctx.closePath();
+    if (count > 0) ctx.fill();
+  }
+
+  function drawGlobeParallel(lat, gm, color, lw, dashed = false) {
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = lw;
+    if (dashed) ctx.setLineDash([5, 5]);
+    ctx.beginPath();
+    let pen = false;
+    for (let s = 0; s <= 90; s++) {
+      const lon = -Math.PI + (s / 90) * Math.PI * 2;
+      const p = projectGlobe(lon, lat, gm);
+      if (p.z > 0.01) {
+        if (!pen) { ctx.moveTo(p.sx, p.sy); pen = true; }
+        else ctx.lineTo(p.sx, p.sy);
+      } else {
+        pen = false;
+      }
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawGlobeMeridian(lon, gm, color) {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 0.8;
+    ctx.beginPath();
+    let pen = false;
+    for (let s = 0; s <= 60; s++) {
+      const lat = -Math.PI * 0.5 + (s / 60) * Math.PI;
+      const p = projectGlobe(lon, lat, gm);
+      if (p.z > 0.01) {
+        if (!pen) { ctx.moveTo(p.sx, p.sy); pen = true; }
+        else ctx.lineTo(p.sx, p.sy);
+      } else {
+        pen = false;
+      }
+    }
+    ctx.stroke();
+  }
+
+  function drawGlobeJetStreams(gm, timeSec) {
+    const om = state.omega;
+    const cells = getCellCountPerHemisphere(om);
+    const nJets = Math.min(5, Math.max(1, Math.round(cells - 0.4)));
+    const kRossby = Math.round(3 + om * 2.4);
+    const waveAmp = state.rossbyAmp * (0.11 / Math.max(1, cells * 0.38)) * Math.min(1.2, om);
+
+    ctx.save();
+    for (const hemi of [1, -1]) {
+      for (let j = 1; j <= nJets; j++) {
+        const baseLat = (j / cells) * (Math.PI * 0.49);
+        const col = j === 1 ? 'rgba(255, 190, 92, 0.52)' : (j === 2 ? 'rgba(232, 121, 249, 0.52)' : 'rgba(88, 220, 255, 0.42)');
+        ctx.strokeStyle = col;
+        ctx.lineWidth = 3.2;
+        ctx.shadowColor = col;
+        ctx.shadowBlur = 10;
+        ctx.beginPath();
+        let pen = false;
+        for (let s = 0; s <= 120; s++) {
+          const lon = -Math.PI + (s / 120) * Math.PI * 2;
+          const wavePhase = kRossby * lon - timeSec * (0.35 + 0.22 * om) + j * 1.9;
+          const lat = hemi * (baseLat + waveAmp * Math.sin(wavePhase));
+          const p = projectGlobe(lon, lat, gm);
+          if (p.z > 0.04) {
+            if (!pen) { ctx.moveTo(p.sx, p.sy); pen = true; }
+            else ctx.lineTo(p.sx, p.sy);
+          } else {
+            pen = false;
+          }
+        }
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+
+  function drawGlobeMeridionalCells(gm, timeSec) {
+    const { cx, cy, r } = gm;
+    const nCells = getDisplayCellCount(state.omega);
+    const cellArc = (Math.PI * 0.48) / nCells;
+    const loopH = Math.max(18, Math.min(34, r * 0.135));
+    const names3 = ['HADLEY', 'FERREL', 'POLAR'];
+
+    ctx.save();
+    for (const hemi of [1, -1]) {
+      for (let c = 0; c < nCells; c++) {
+        const latA = hemi * (c * cellArc + 0.03);
+        const latB = hemi * ((c + 1) * cellArc - 0.03);
+        const latMid = 0.5 * (latA + latB);
+        const isDirect = (c % 2 === 0); // Hadley & Polar = thermally direct (rise warm side, sink cold side)
+        const strokeCol = isDirect ? 'rgba(255, 178, 86, 0.78)' : 'rgba(88, 220, 255, 0.78)';
+        const glowCol = isDirect ? 'rgba(255, 160, 64, 0.45)' : 'rgba(88, 220, 255, 0.45)';
+
+        // Draw curved meridional loop hugging the RIGHT limb of the globe!
+        const steps = 18;
+        ctx.beginPath();
+        // Bottom edge (surface)
+        for (let k = 0; k <= steps; k++) {
+          const lat = latA + (latB - latA) * (k / steps);
+          const x = cx + Math.cos(lat) * (r + 4);
+          const y = cy - Math.sin(lat) * (r + 4);
+          if (k === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        // Top edge (tropopause)
+        for (let k = steps; k >= 0; k--) {
+          const lat = latA + (latB - latA) * (k / steps);
+          const arch = Math.sin((k / steps) * Math.PI);
+          const rad = r + 7 + loopH * (0.65 + 0.35 * arch);
+          const x = cx + Math.cos(lat) * rad;
+          const y = cy - Math.sin(lat) * rad;
+          ctx.lineTo(x, y);
+        }
+        ctx.closePath();
+
+        ctx.fillStyle = isDirect ? 'rgba(255, 170, 72, 0.11)' : 'rgba(88, 220, 255, 0.11)';
+        ctx.fill();
+        ctx.strokeStyle = strokeCol;
+        ctx.lineWidth = 1.55;
+        ctx.shadowColor = glowCol;
+        ctx.shadowBlur = 8;
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+
+        // Animated circulation chevron moving around the cell perimeter
+        // Direct cell: rises at equatorward boundary (latA), moves poleward aloft, sinks at latB, moves equatorward at surface
+        const cycle = (timeSec * 0.48 + c * 0.33) % 1;
+        const dirFactor = isDirect ? 1 : -1;
+        // Upper branch arrow
+        const tAloft = dirFactor > 0 ? cycle : 1 - cycle;
+        const aLat = latA + (latB - latA) * tAloft;
+        const aRad = r + 7 + loopH * (0.65 + 0.35 * Math.sin(tAloft * Math.PI));
+        const ax = cx + Math.cos(aLat) * aRad;
+        const ay = cy - Math.sin(aLat) * aRad;
+        const tanAng = Math.atan2(-Math.cos(aLat) * (latB - latA) * dirFactor, -Math.sin(aLat) * (latB - latA) * dirFactor);
+        drawMiniArrow(ax, ay, tanAng, isDirect ? '#ffbe5c' : '#58dcff');
+
+        // Cell Name Label (on NH and when nCells <= 3 or alternating)
+        if (nCells <= 3 || c % 2 === 0) {
+          const lx = cx + Math.cos(latMid) * (r + loopH + 22);
+          const ly = cy - Math.sin(latMid) * (r + loopH + 22);
+          ctx.font = '700 9.5px ui-monospace, monospace';
+          ctx.fillStyle = isDirect ? '#ffd28e' : '#9cecff';
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'middle';
+          const lbl = nCells === 1
+            ? 'SINGLE HADLEY'
+            : (nCells === 3 ? names3[c] : `CELL ${c + 1}`);
+          ctx.fillText(lbl, lx, ly);
+        }
+      }
+    }
+    ctx.restore();
+  }
+
+  function drawMiniArrow(x, y, ang, color) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(ang);
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(5, 0);
+    ctx.lineTo(-3.5, -3.5);
+    ctx.lineTo(-1.8, 0);
+    ctx.lineTo(-3.5, 3.5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawGlobeBeltLabels(gm) {
+    const pEq = projectGlobe(state.globeLon, 0, gm);
+    ctx.save();
+    ctx.font = '700 10px ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    if (pEq.z > 0.2) {
+      drawTagPill(pEq.sx, pEq.sy, 'ITCZ · LOW (L)', 'rgba(255, 96, 131, 0.24)', '#ff9db3');
+    }
+    if (state.omega >= 0.55) {
+      const cells = getCellCountPerHemisphere(state.omega);
+      const stepDeg = 90 / cells;
+      const pH = projectGlobe(state.globeLon, stepDeg * DEG, gm);
+      if (pH.z > 0.25) drawTagPill(pH.sx, pH.sy, `${Math.round(stepDeg)}°N HIGH (H)`, 'rgba(88, 220, 255, 0.2)', '#9cecff');
+      const pL = projectGlobe(state.globeLon, Math.min(72, stepDeg * 2) * DEG, gm);
+      if (cells >= 2.3 && pL.z > 0.25) drawTagPill(pL.sx, pL.sy, `${Math.round(Math.min(72, stepDeg * 2))}°N JET · LOW (L)`, 'rgba(232, 121, 249, 0.2)', '#f0b8ff');
+      const pHS = projectGlobe(state.globeLon, -stepDeg * DEG, gm);
+      if (pHS.z > 0.25) drawTagPill(pHS.sx, pHS.sy, `${Math.round(stepDeg)}°S HIGH (H)`, 'rgba(88, 220, 255, 0.2)', '#9cecff');
+    }
+    ctx.restore();
+  }
+
+  function drawTagPill(x, y, text, bg, fg) {
+    const w = ctx.measureText(text).width + 12;
+    ctx.fillStyle = 'rgba(4, 7, 17, 0.72)';
+    roundRect(ctx, x - w / 2, y - 9, w, 18, 9);
+    ctx.fill();
+    ctx.fillStyle = bg;
+    roundRect(ctx, x - w / 2, y - 9, w, 18, 9);
+    ctx.fill();
+    ctx.strokeStyle = fg;
+    ctx.lineWidth = 0.8;
+    ctx.globalAlpha = 0.65;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = fg;
+    ctx.fillText(text, x, y + 0.5);
+  }
+
+  function renderGlobalMercator(timeSec) {
+    const mr = getMercatorRect();
+    const { x, y, w, h, cellPanelW } = mr;
+    const jupMix = Math.max(0, Math.min(1, (state.omega - 1.55) / 0.9));
+
+    // Map Frame
+    ctx.save();
+    ctx.fillStyle = 'rgba(8, 16, 34, 0.92)';
+    roundRect(ctx, x, y, w, h, 12);
+    ctx.fill();
+    ctx.clip();
+
+    // Thermal / Band Shading across latitude
+    if (state.showThermal) {
+      const cells = getCellCountPerHemisphere(state.omega);
+      const bands = 32;
+      for (let b = 0; b < bands; b++) {
+        const py1 = y + (b / bands) * h;
+        const py2 = y + ((b + 1) / bands) * h;
+        const midInfo = unprojectMercator(x + w * 0.5, 0.5 * (py1 + py2), mr);
+        const latMid = midInfo ? midInfo.lat : 0;
+        const eqWarm = Math.cos(latMid);
+        const bandWave = Math.sin((Math.abs(latMid) / (Math.PI * 0.5)) * cells * Math.PI);
+        if (jupMix > 0.05) {
+          const a = (0.14 + 0.28 * jupMix) * (0.4 + 0.6 * Math.abs(bandWave));
+          ctx.fillStyle = bandWave >= 0 ? `rgba(255, 220, 170, ${a.toFixed(3)})` : `rgba(186, 98, 64, ${a.toFixed(3)})`;
+        } else {
+          const a = 0.08 + 0.08 * Math.abs(eqWarm - 0.5);
+          ctx.fillStyle = eqWarm > 0.65
+            ? `rgba(255, 165, 76, ${(a * (state.deltaT / 42)).toFixed(3)})`
+            : `rgba(72, 168, 255, ${a.toFixed(3)})`;
+        }
+        ctx.fillRect(x, py1, w, py2 - py1 + 1);
+      }
+    }
+
+    // Continents
+    const landAlpha = Math.max(0.14, 1 - jupMix * 0.82);
+    ctx.fillStyle = `rgba(26, 54, 78, ${(0.76 * landAlpha).toFixed(3)})`;
+    ctx.strokeStyle = `rgba(105, 190, 235, ${(0.34 * landAlpha).toFixed(3)})`;
+    ctx.lineWidth = 1.1;
+    for (let c = 0; c < CONTINENTS.length; c++) {
+      const poly = CONTINENTS[c];
+      ctx.beginPath();
+      for (let k = 0; k < poly.length; k++) {
+        const pt = projectMercator(poly[k][0], poly[k][1], mr);
+        if (k === 0) ctx.moveTo(pt.sx, pt.sy);
+        else ctx.lineTo(pt.sx, pt.sy);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    }
+
+    // Graticule
+    ctx.strokeStyle = 'rgba(148, 188, 255, 0.12)';
+    ctx.lineWidth = 0.85;
+    ctx.font = '600 9.5px ui-monospace, monospace';
+    ctx.fillStyle = 'rgba(154, 169, 204, 0.65)';
+    for (let deg = -60; deg <= 60; deg += 30) {
+      const pt = projectMercator(0, deg * DEG, mr);
+      ctx.beginPath();
+      ctx.moveTo(x, pt.sy);
+      ctx.lineTo(x + w, pt.sy);
+      ctx.stroke();
+      ctx.fillText(deg === 0 ? '0° EQ' : `${Math.abs(deg)}°${deg > 0 ? 'N' : 'S'}`, x + 7, pt.sy - 4);
+    }
+    for (let lDeg = -150; lDeg <= 150; lDeg += 30) {
+      const pt = projectMercator(lDeg * DEG, 0, mr);
+      ctx.beginPath();
+      ctx.moveTo(pt.sx, y);
+      ctx.lineTo(pt.sx, y + h);
+      ctx.stroke();
+    }
+
+    // ITCZ & Pressure Belts
+    if (state.showBelts) {
+      const eq = projectMercator(0, 0, mr);
+      ctx.save();
+      ctx.setLineDash([6, 5]);
+      ctx.strokeStyle = 'rgba(255, 118, 96, 0.68)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(x, eq.sy);
+      ctx.lineTo(x + w, eq.sy);
+      ctx.stroke();
+      ctx.restore();
+      ctx.font = '700 10px ui-monospace, monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      drawTagPill(x + w * 0.5, eq.sy, 'ITCZ · EQUATORIAL LOW (L)', 'rgba(255, 96, 131, 0.24)', '#ff9db3');
+    }
+
+    // Rossby Wave Jet Streams
+    if (state.showJets && state.omega > 0.25) {
+      const om = state.omega;
+      const cells = getCellCountPerHemisphere(om);
+      const nJets = Math.min(5, Math.max(1, Math.round(cells - 0.4)));
+      const kRossby = Math.round(3 + om * 2.4);
+      const waveAmp = state.rossbyAmp * (0.11 / Math.max(1, cells * 0.38)) * Math.min(1.2, om);
+
+      ctx.save();
+      for (const hemi of [1, -1]) {
+        for (let j = 1; j <= nJets; j++) {
+          const baseLat = (j / cells) * (Math.PI * 0.49);
+          const col = j === 1 ? 'rgba(255, 190, 92, 0.55)' : (j === 2 ? 'rgba(232, 121, 249, 0.55)' : 'rgba(88, 220, 255, 0.44)');
+          ctx.strokeStyle = col;
+          ctx.lineWidth = 3.0;
+          ctx.shadowColor = col;
+          ctx.shadowBlur = 9;
+          ctx.beginPath();
+          for (let s = 0; s <= 120; s++) {
+            const lon = -Math.PI + (s / 120) * Math.PI * 2;
+            const wavePhase = kRossby * lon - timeSec * (0.35 + 0.22 * om) + j * 1.9;
+            const lat = hemi * (baseLat + waveAmp * Math.sin(wavePhase));
+            const p = projectMercator(lon, lat, mr);
+            if (s === 0) ctx.moveTo(p.sx, p.sy);
+            else ctx.lineTo(p.sx, p.sy);
+          }
+          ctx.stroke();
+        }
+      }
+      ctx.restore();
+    }
+
+    // 2,800+ Wind-Ribbon Particles
+    const N = state.particleCount;
+    ctx.lineCap = 'round';
+    for (let i = 0; i < N; i++) {
+      const cnt = gHistCount[i];
+      if (cnt < 2) continue;
+      const base = i * TRAIL_LEN;
+      const p0 = projectMercator(gHistLon[base], gHistLat[base], mr);
+      const lifeT = gAge[i] / gMaxAge[i];
+      const alpha = Math.min(0.92, Math.sin(lifeT * Math.PI) * 0.88);
+      const kt = gSpd[i];
+      ctx.strokeStyle = windColor(kt, alpha);
+      ctx.lineWidth = kt > 95 ? 1.85 : (kt > 55 ? 1.35 : 1.0);
+      ctx.beginPath();
+      ctx.moveTo(p0.sx, p0.sy);
+      let px = p0.sx;
+      for (let k = 1; k < cnt; k++) {
+        const pk = projectMercator(gHistLon[base + k], gHistLat[base + k], mr);
+        // Prevent horizontal wrap-around streaks across the map
+        if (Math.abs(pk.sx - px) > w * 0.35) break;
+        ctx.lineTo(pk.sx, pk.sy);
+        px = pk.sx;
+      }
+      ctx.stroke();
+    }
+
+    // Launched Coriolis Air Parcels
+    renderGlobalParcels(null, mr);
+
+    ctx.restore(); // end map clip
+
+    // Map border
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.28)';
+    ctx.lineWidth = 1.2;
+    roundRect(ctx, x, y, w, h, 12);
+    ctx.stroke();
+
+    // Meridional Cross-Section Panel on Right Edge of Mercator Map
+    if (state.showCells && cellPanelW > 0) {
+      drawMercatorCellPanel(x + w + 8, y, cellPanelW - 8, h, mr, timeSec);
+    }
+  }
+
+  function drawMercatorCellPanel(px, py, pw, ph, mr, timeSec) {
+    ctx.save();
+    ctx.fillStyle = 'rgba(9, 13, 24, 0.82)';
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.22)';
+    ctx.lineWidth = 1;
+    roundRect(ctx, px, py, pw, ph, 10);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.font = '700 9px ui-monospace, monospace';
+    ctx.fillStyle = 'rgba(154, 169, 204, 0.85)';
+    ctx.textAlign = 'center';
+    ctx.fillText('CELLS (ALT)', px + pw * 0.5, py + 13);
+
+    const nCells = getDisplayCellCount(state.omega);
+    const names3 = ['HADLEY', 'FERREL', 'POLAR'];
+
+    for (const hemi of [1, -1]) {
+      for (let c = 0; c < nCells; c++) {
+        const latA = hemi * ((c / nCells) * 78 * DEG);
+        const latB = hemi * (((c + 1) / nCells) * 78 * DEG);
+        const yA = projectMercator(0, latA, mr).sy;
+        const yB = projectMercator(0, latB, mr).sy;
+        const topY = Math.min(yA, yB) + 3;
+        const botY = Math.max(yA, yB) - 3;
+        const boxH = Math.max(10, botY - topY);
+        const isDirect = (c % 2 === 0);
+
+        ctx.fillStyle = isDirect ? 'rgba(255, 175, 82, 0.14)' : 'rgba(88, 220, 255, 0.14)';
+        ctx.strokeStyle = isDirect ? 'rgba(255, 190, 92, 0.78)' : 'rgba(88, 220, 255, 0.78)';
+        ctx.lineWidth = 1.4;
+        roundRect(ctx, px + 10, topY, pw - 20, boxH, Math.min(14, boxH * 0.4));
+        ctx.fill();
+        ctx.stroke();
+
+        // Animated circulation dot along cell border
+        const t = (timeSec * 0.55 + c * 0.25) % 1;
+        const cyDot = yA + (yB - yA) * (isDirect ? t : 1 - t);
+        ctx.fillStyle = isDirect ? '#ffbe5c' : '#58dcff';
+        ctx.beginPath();
+        ctx.arc(px + pw - 10, cyDot, 2.8, 0, Math.PI * 2);
+        ctx.fill();
+
+        if (boxH > 20) {
+          ctx.fillStyle = isDirect ? '#ffd28e' : '#9cecff';
+          ctx.font = '700 8.5px ui-monospace, monospace';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          const lbl = nCells === 1 ? 'HADLEY' : (nCells === 3 ? names3[c] : `C${c + 1}`);
+          ctx.fillText(lbl, px + pw * 0.5, topY + boxH * 0.5);
+        }
+      }
+    }
+    ctx.restore();
+  }
+
+  function renderGlobalParcels(gm, mr) {
+    const proj = gm
+      ? (lon, lat) => projectGlobe(lon, lat, gm)
+      : (lon, lat) => ({ ...projectMercator(lon, lat, mr), z: 1 });
+
+    for (let i = 0; i < state.parcels.length; i++) {
+      const p = state.parcels[i];
+      const fade = Math.min(1, (p.maxAge - p.age) * 0.7);
+
+      // 1. Dashed Ghost Path (No Coriolis — straight geodesic)
+      if (p.ghost.length > 1) {
+        ctx.save();
+        ctx.setLineDash([4, 4]);
+        ctx.strokeStyle = `rgba(255, 255, 255, ${(0.34 * fade).toFixed(3)})`;
+        ctx.lineWidth = 1.3;
+        ctx.beginPath();
+        let pen = false, prevX = 0;
+        for (let k = 0; k < p.ghost.length; k++) {
+          const pt = proj(p.ghost[k].lon, p.ghost[k].lat);
+          if (pt.z > 0.02 && (!pen || Math.abs(pt.sx - prevX) < W * 0.35)) {
+            if (!pen) { ctx.moveTo(pt.sx, pt.sy); pen = true; }
+            else ctx.lineTo(pt.sx, pt.sy);
+            prevX = pt.sx;
+          } else {
+            pen = false;
+          }
+        }
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // 2. Glowing Real Deflected Coriolis Trajectory
+      if (p.trail.length > 1) {
+        ctx.save();
+        ctx.strokeStyle = p.color;
+        ctx.globalAlpha = 0.92 * fade;
+        ctx.lineWidth = 2.6;
+        ctx.shadowColor = p.color;
+        ctx.shadowBlur = 12;
+        ctx.beginPath();
+        let pen = false, prevX = 0;
+        for (let k = 0; k < p.trail.length; k++) {
+          const pt = proj(p.trail[k].lon, p.trail[k].lat);
+          if (pt.z > 0.02 && (!pen || Math.abs(pt.sx - prevX) < W * 0.35)) {
+            if (!pen) { ctx.moveTo(pt.sx, pt.sy); pen = true; }
+            else ctx.lineTo(pt.sx, pt.sy);
+            prevX = pt.sx;
+          } else {
+            pen = false;
+          }
+        }
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // 3. Parcel Head + Coriolis Force Vector Fc
+      const head = proj(p.lon, p.lat);
+      if (head.z > 0.03) {
+        ctx.save();
+        ctx.globalAlpha = fade;
+
+        // Draw Fc Force Vector Arrow (bright rose-magenta)
+        const fcMag = Math.hypot(p.fcX, p.fcY);
+        if (fcMag > 0.02) {
+          const pFc = proj(wrapLon(p.lon + p.fcX * 0.16), Math.max(-1.45, Math.min(1.45, p.lat + p.fcY * 0.16)));
+          const dx = pFc.sx - head.sx;
+          const dy = pFc.sy - head.sy;
+          const len = Math.hypot(dx, dy);
+          if (len > 4 && len < 80) {
+            const scale = Math.min(34, Math.max(16, len * 1.4)) / len;
+            const ex = head.sx + dx * scale;
+            const ey = head.sy + dy * scale;
+            ctx.strokeStyle = '#ff6083';
+            ctx.lineWidth = 2.1;
+            ctx.beginPath();
+            ctx.moveTo(head.sx, head.sy);
+            ctx.lineTo(ex, ey);
+            ctx.stroke();
+            drawMiniArrow(ex, ey, Math.atan2(ey - head.sy, ex - head.sx), '#ff6083');
+          }
+        }
+
+        // Parcel bright core
+        ctx.fillStyle = '#ffffff';
+        ctx.shadowColor = p.color;
+        ctx.shadowBlur = 14;
+        ctx.beginPath();
+        ctx.arc(head.sx, head.sy, 4.6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+
+        // Compact floating hemisphere label
+        ctx.font = '700 9.5px ui-monospace, monospace';
+        ctx.fillStyle = p.color;
+        ctx.textAlign = 'left';
+        ctx.fillText(p.label, head.sx + 9, head.sy - 6);
+        ctx.restore();
+      }
+    }
+  }
+
+  // =========================================================================
+  // RENDERING: MODE B (TROPICAL CYCLONE / HURRICANE LAB)
+  // =========================================================================
+  function renderCycloneBasin(timeSec) {
+    if (state.sstDirty) rebuildSSTTexture();
+
+    // 1. Ocean SST Heatmap Layer (or deep oceanic dark slate)
+    if (state.showSstMap) {
+      ctx.imageSmoothingEnabled = true;
+      ctx.drawImage(sstCanvas, 0, 0, W, H);
+      // Slight dark vignette so bright cloud & wind ribbons pop with museum clarity
+      ctx.fillStyle = 'rgba(4, 9, 20, 0.34)';
+      ctx.fillRect(0, 0, W, H);
+    } else {
+      const grad = ctx.createRadialGradient(W * 0.5, H * 0.5, 50, W * 0.5, H * 0.5, Math.max(W, H) * 0.75);
+      grad.addColorStop(0, '#0a1930');
+      grad.addColorStop(1, '#040711');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, W, H);
+    }
+
+    // Ocean Lat/Lon Grid
+    ctx.strokeStyle = 'rgba(148, 188, 255, 0.08)';
+    ctx.lineWidth = 1;
+    const gridCols = 10, gridRows = 6;
+    for (let i = 1; i < gridCols; i++) {
+      const gx = (i / gridCols) * W;
+      ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, H); ctx.stroke();
+    }
+    for (let j = 1; j < gridRows; j++) {
+      const gy = (j / gridRows) * H;
+      ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(W, gy); ctx.stroke();
+    }
+
+    // 2. Draggable Warm Ocean Pool Marker
+    const wp = state.warmPool;
+    const wpx = wp.x * W;
+    const wpy = wp.y * H;
+    const wprx = wp.rx * W;
+    const wpry = wp.ry * H;
+
+    ctx.save();
+    const poolGlow = ctx.createRadialGradient(wpx, wpy, 10, wpx, wpy, Math.max(wprx, wpry) * 1.1);
+    poolGlow.addColorStop(0, 'rgba(255, 118, 66, 0.28)');
+    poolGlow.addColorStop(0.6, 'rgba(255, 175, 76, 0.11)');
+    poolGlow.addColorStop(1, 'rgba(255, 120, 60, 0)');
+    ctx.fillStyle = poolGlow;
+    ctx.beginPath();
+    ctx.ellipse(wpx, wpy, wprx * 1.15, wpry * 1.15, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.setLineDash([6, 5]);
+    ctx.strokeStyle = 'rgba(255, 190, 92, 0.62)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.ellipse(wpx, wpy, wprx * 0.72, wpry * 0.72, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    const peakPoolSST = sampleSST(wp.x, wp.y);
+    ctx.font = '700 10.5px ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    drawTagPill(wpx, wpy - wpry * 0.72 - 12, `WARM OCEAN POOL · ${peakPoolSST.toFixed(1)}°C (DRAG)`, 'rgba(255, 150, 72, 0.22)', '#ffd28e');
+    ctx.restore();
+
+    // 3. Draggable Cold Landmass Polygon
+    drawLandmass();
+
+    // 4. Storm Track History Line
+    const s = state.storm;
+    if (s.track.length > 1) {
+      ctx.save();
+      ctx.lineWidth = 2.4;
+      ctx.lineCap = 'round';
+      for (let i = 1; i < s.track.length; i++) {
+        const a = s.track[i - 1];
+        const b = s.track[i];
+        const ss = getSaffirSimpson(b.kt);
+        ctx.strokeStyle = ss.color;
+        ctx.globalAlpha = 0.2 + 0.55 * (i / s.track.length);
+        ctx.beginPath();
+        ctx.moveTo(a.x * W, a.y * H);
+        ctx.lineTo(b.x * W, b.y * H);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    // 5. Barometric Isobars (hPa)
+    if (state.showIsobars) {
+      drawCycloneIsobars();
+    }
+
+    // 6. Volumetric Spiral Cloud Canopy & Doppler Radar Rainbands
+    if (state.showRadar) {
+      drawCycloneRadarRainbands(timeSec);
+    }
+
+    // 7. 2,800+ Animated Swirling Vortex Wind-Ribbons
+    const N = state.particleCount;
+    ctx.lineCap = 'round';
+    for (let i = 0; i < N; i++) {
+      const cnt = cHistCount[i];
+      if (cnt < 2) continue;
+      const base = i * TRAIL_LEN;
+      const lifeT = cAge[i] / cMaxAge[i];
+      const fade = Math.sin(lifeT * Math.PI);
+      const isOut = cLayer[i] === 1;
+      const kt = cSpd[i];
+
+      const alpha = isOut ? fade * 0.34 : Math.min(0.92, fade * (0.32 + Math.min(0.65, kt / 135)));
+      ctx.strokeStyle = isOut ? `rgba(220, 238, 255, ${alpha.toFixed(3)})` : windColor(kt, alpha);
+      ctx.lineWidth = isOut ? 1.1 : (kt > 110 ? 2.0 : (kt > 65 ? 1.45 : 1.05));
+
+      ctx.beginPath();
+      ctx.moveTo(cHistX[base] * W, cHistY[base] * H);
+      for (let k = 1; k < cnt; k++) {
+        ctx.lineTo(cHistX[base + k] * W, cHistY[base + k] * H);
+      }
+      ctx.stroke();
+    }
+
+    // 8. Crisp Calm Eye & Eyewall Lightning Flashes
+    drawCycloneEyeAndLightning();
+
+    // 9. Vertical Wind Shear Indicator Arrows (when shear >= 14 kt)
+    if (state.windShear >= 14) {
+      drawShearIndicator(timeSec);
+    }
+
+    // 10. On-Canvas Barometric Pressure & Saffir–Simpson Eyewall Gauge
+    if (state.showGauge && !state.cinema && W > 760) {
+      drawCycloneGaugeWidget();
+    }
+  }
+
+  function drawLandmass() {
+    const lm = state.landmass;
+    const cx = lm.x * W;
+    const cy = lm.y * H;
+    const rx = lm.rx * W;
+    const ry = lm.ry * H;
+    const steps = 64;
+
+    ctx.save();
+    // Continental shelf glow
+    ctx.beginPath();
+    for (let i = 0; i <= steps; i++) {
+      const ang = (i / steps) * Math.PI * 2;
+      const rad = landmassShapeRadius(ang) * 1.14;
+      const px = cx + Math.cos(ang) * rx * rad;
+      const py = cy + Math.sin(ang) * ry * rad;
+      if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(54, 118, 148, 0.22)';
+    ctx.fill();
+
+    // Main Landmass Polygon
+    ctx.beginPath();
+    for (let i = 0; i <= steps; i++) {
+      const ang = (i / steps) * Math.PI * 2;
+      const rad = landmassShapeRadius(ang);
+      const px = cx + Math.cos(ang) * rx * rad;
+      const py = cy + Math.sin(ang) * ry * rad;
+      if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+
+    const landGrad = ctx.createRadialGradient(cx - rx * 0.2, cy - ry * 0.2, 8, cx, cy, Math.max(rx, ry));
+    landGrad.addColorStop(0, '#2a3946');
+    landGrad.addColorStop(0.6, '#1a2632');
+    landGrad.addColorStop(1, '#121b25');
+    ctx.fillStyle = landGrad;
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(138, 196, 224, 0.55)';
+    ctx.lineWidth = 2.0;
+    ctx.stroke();
+
+    // Inner topographic contour ring
+    ctx.beginPath();
+    for (let i = 0; i <= steps; i++) {
+      const ang = (i / steps) * Math.PI * 2;
+      const rad = landmassShapeRadius(ang) * 0.62;
+      const px = cx + Math.cos(ang) * rx * rad;
+      const py = cy + Math.sin(ang) * ry * rad;
+      if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.16)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    ctx.font = '700 10.5px ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    drawTagPill(cx, cy, 'COLD LANDMASS (DRAG)', 'rgba(148, 179, 255, 0.16)', '#cfe2ff');
+    ctx.font = '600 9px ui-monospace, monospace';
+    ctx.fillStyle = 'rgba(154, 169, 204, 0.72)';
+    ctx.fillText('FRICTION · NO LATENT HEAT', cx, cy + 19);
+    ctx.restore();
+  }
+
+  function drawCycloneIsobars() {
+    const s = state.storm;
+    const sx = s.x * W;
+    const sy = s.y * H;
+    const pMin = s.pressureHpa;
+    const pEnv = 1013;
+    const dp = Math.max(2, pEnv - pMin);
+    const levels = [1008, 1000, 992, 980, 964, 946, 926, 904, 885];
+
+    ctx.save();
+    ctx.font = '600 9.5px ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    for (let i = 0; i < levels.length; i++) {
+      const p = levels[i];
+      if (p <= pMin + 2 || p >= pEnv - 1) continue;
+      const frac = (p - pMin) / dp; // 0 at center, 1 at environment
+      // Holland pressure profile inversion: r/Rmw ~ (-ln(1 - frac))^(-1/B)
+      const normR = s.rmw * (0.85 + 3.4 * Math.pow(frac, 1.35));
+      const radPx = normR * W;
+      if (radPx > Math.max(W, H) * 0.75) continue;
+
+      ctx.strokeStyle = p < 950 ? 'rgba(255, 130, 155, 0.42)' : 'rgba(180, 214, 255, 0.24)';
+      ctx.lineWidth = p < 950 ? 1.3 : 1.0;
+      ctx.beginPath();
+      ctx.arc(sx, sy, radPx, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.fillStyle = p < 950 ? 'rgba(255, 175, 195, 0.85)' : 'rgba(180, 214, 255, 0.65)';
+      ctx.fillText(`${p}`, sx, sy - radPx - 6);
+    }
+    ctx.restore();
+  }
+
+  function drawCycloneRadarRainbands(timeSec) {
+    const s = state.storm;
+    const sx = (s.x + s.shearTiltX) * W;
+    const sy = (s.y + s.shearTiltY) * H;
+    const rmwPx = s.rmw * W;
+    const intensity = Math.min(1, Math.max(0.08, (s.vmaxKt - 20) / 130));
+    const dir = state.hemisphere;
+
+    ctx.save();
+
+    // Soft outer cloud shield
+    const shieldR = rmwPx * (4.2 + intensity * 1.4);
+    const shield = ctx.createRadialGradient(sx, sy, rmwPx * 0.4, sx, sy, shieldR);
+    shield.addColorStop(0, `rgba(210, 232, 255, ${(0.18 * intensity).toFixed(3)})`);
+    shield.addColorStop(0.45, `rgba(120, 175, 225, ${(0.11 * intensity).toFixed(3)})`);
+    shield.addColorStop(1, 'rgba(20, 40, 80, 0)');
+    ctx.fillStyle = shield;
+    ctx.beginPath();
+    ctx.arc(sx, sy, shieldR, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Logarithmic Spiral Rainbands (Doppler Radar reflectivity style)
+    const nArms = 5;
+    for (let arm = 0; arm < nArms; arm++) {
+      const baseAngle = s.spinPhase + (arm / nArms) * Math.PI * 2;
+      const steps = 42;
+      for (let k = 0; k < steps; k++) {
+        const t = k / steps; // 0 = eyewall, 1 = outer tail
+        const rPx = rmwPx * (0.95 + Math.pow(t, 1.32) * (3.6 + intensity * 1.2));
+        // Spiral winds trailing opposite to rotation direction
+        const theta = baseAngle - dir * (t * 3.15 + 0.25 * Math.sin(t * 7 + timeSec * 1.6));
+        const px = sx + Math.cos(theta) * rPx;
+        const py = sy + Math.sin(theta) * rPx;
+
+        // Disorganize rainbands under heavy shear or landfall
+        const coherence = Math.max(0.22, 1 - s.landFrac * 0.55 - Math.max(0, state.windShear - 16) * 0.018);
+        const blobR = (10 + 18 * t) * (0.7 + 0.5 * intensity);
+        const a = (1 - t * 0.78) * 0.22 * intensity * coherence;
+        if (a < 0.015) continue;
+
+        let col;
+        if (t < 0.22 && intensity > 0.45) col = `rgba(255, 74, 130, ${(a * 1.4).toFixed(3)})`; // intense convective red/magenta
+        else if (t < 0.45 && intensity > 0.25) col = `rgba(255, 186, 72, ${(a * 1.15).toFixed(3)})`; // heavy yellow/amber rain
+        else col = `rgba(74, 232, 182, ${a.toFixed(3)})`; // moderate green/teal rainband
+
+        ctx.fillStyle = col;
+        ctx.beginPath();
+        ctx.arc(px, py, blobR, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // Intense Glowing Eyewall Ring (centered on true low-pressure eye)
+    const ex = s.x * W;
+    const ey = s.y * H;
+    if (s.vmaxKt > 48) {
+      const eyeClarity = Math.min(1, (s.vmaxKt - 48) / 55) * Math.max(0.25, 1 - s.landFrac * 0.65);
+      const ewGrad = ctx.createRadialGradient(ex, ey, rmwPx * 0.42, ex, ey, rmwPx * 1.55);
+      ewGrad.addColorStop(0, 'rgba(0, 0, 0, 0)');
+      ewGrad.addColorStop(0.35, `rgba(255, 255, 255, ${(0.28 * eyeClarity).toFixed(3)})`);
+      ewGrad.addColorStop(0.55, s.vmaxKt >= 113
+        ? `rgba(232, 121, 249, ${(0.52 * eyeClarity).toFixed(3)})`
+        : `rgba(255, 96, 131, ${(0.46 * eyeClarity).toFixed(3)})`);
+      ewGrad.addColorStop(0.8, `rgba(255, 190, 92, ${(0.26 * eyeClarity).toFixed(3)})`);
+      ewGrad.addColorStop(1, 'rgba(255, 190, 92, 0)');
+      ctx.fillStyle = ewGrad;
+      ctx.beginPath();
+      ctx.arc(ex, ey, rmwPx * 1.55, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.restore();
+  }
+
+  function drawCycloneEyeAndLightning() {
+    const s = state.storm;
+    const ex = s.x * W;
+    const ey = s.y * H;
+    const eyePx = s.eyeRadius * W;
+
+    ctx.save();
+
+    // Clear dark calm Eye when Hurricane strength (Cat 1+) and not collapsed by land/shear
+    const eyeOpen = Math.min(1, Math.max(0, (s.vmaxKt - 62) / 38)) * Math.max(0, 1 - s.landFrac * 0.85 - Math.max(0, state.windShear - 22) * 0.035);
+    if (eyeOpen > 0.08) {
+      const eyeGrad = ctx.createRadialGradient(ex, ey, 0, ex, ey, eyePx * 1.15);
+      eyeGrad.addColorStop(0, `rgba(6, 15, 32, ${(0.88 * eyeOpen).toFixed(3)})`);
+      eyeGrad.addColorStop(0.7, `rgba(10, 24, 48, ${(0.72 * eyeOpen).toFixed(3)})`);
+      eyeGrad.addColorStop(1, 'rgba(10, 24, 48, 0)');
+      ctx.fillStyle = eyeGrad;
+      ctx.beginPath();
+      ctx.arc(ex, ey, eyePx * 1.15, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.strokeStyle = `rgba(255, 255, 255, ${(0.45 * eyeOpen).toFixed(3)})`;
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.arc(ex, ey, eyePx * 0.92, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    // Eyewall Lightning Flashes
+    for (let i = 0; i < s.lightning.length; i++) {
+      const fl = s.lightning[i];
+      const a = fl.life / fl.maxLife;
+      ctx.fillStyle = `rgba(230, 248, 255, ${(0.95 * a).toFixed(3)})`;
+      ctx.shadowColor = '#93e6ff';
+      ctx.shadowBlur = 16;
+      ctx.beginPath();
+      ctx.arc(fl.x * W, fl.y * H, 3.2 + 3.5 * a, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.shadowBlur = 0;
+
+    // Storm Center Reticle + Live Category Label
+    const ss = getSaffirSimpson(s.vmaxKt);
+    ctx.strokeStyle = ss.color;
+    ctx.lineWidth = 1.4;
+    ctx.globalAlpha = 0.85;
+    ctx.beginPath();
+    ctx.arc(ex, ey, 6, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Steering direction vector arrow
+    if (state.steerSpeed > 1) {
+      const len = 24 + state.steerSpeed * 1.4;
+      const ax = ex + Math.cos(state.steerAngle) * len;
+      const ay = ey + Math.sin(state.steerAngle) * len;
+      ctx.setLineDash([4, 3]);
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.45)';
+      ctx.beginPath();
+      ctx.moveTo(ex, ey);
+      ctx.lineTo(ax, ay);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      drawMiniArrow(ax, ay, state.steerAngle, 'rgba(255, 255, 255, 0.72)');
+    }
+
+    ctx.globalAlpha = 1;
+    ctx.font = '700 10.5px ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    drawTagPill(ex, ey + Math.max(eyePx + 20, 28), `${ss.code} · ${Math.round(s.pressureHpa)} hPa · ${Math.round(s.vmaxKt)} kt`, 'rgba(8, 14, 28, 0.75)', ss.color);
+
+    ctx.restore();
+  }
+
+  function drawShearIndicator(timeSec) {
+    const s = state.storm;
+    const sx = s.x * W;
+    const sy = s.y * H;
+    const rmwPx = s.rmw * W;
+    const alpha = Math.min(0.85, (state.windShear - 12) / 22);
+
+    ctx.save();
+    ctx.strokeStyle = `rgba(255, 96, 131, ${alpha.toFixed(3)})`;
+    ctx.lineWidth = 2;
+    for (let k = -1; k <= 1; k++) {
+      const yOff = k * 24;
+      const drift = ((timeSec * 36 + k * 14) % 44) - 22;
+      const x1 = sx - rmwPx * 1.8 + drift;
+      const x2 = x1 + 46;
+      const y1 = sy - rmwPx * 1.9 + yOff;
+      const y2 = y1 - 12;
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+      drawMiniArrow(x2, y2, Math.atan2(y2 - y1, x2 - x1), '#ff6083');
+    }
+    ctx.font = '700 9.5px ui-monospace, monospace';
+    ctx.fillStyle = '#ff8da6';
+    ctx.textAlign = 'center';
+    ctx.fillText(`HIGH WIND SHEAR (${state.windShear} kt)`, sx, sy - rmwPx * 1.9 - 38);
+    ctx.restore();
+  }
+
+  // Sleek On-Canvas Barometric Dial + Saffir–Simpson & Eyewall Profile Widget
+  function drawCycloneGaugeWidget() {
+    const s = state.storm;
+    const ss = getSaffirSimpson(s.vmaxKt);
+    const boxW = 282;
+    const boxH = 128;
+    const bx = 14;
+    const by = H - 72 - boxH; // cleanly above the bottom-left hint pill!
+
+    ctx.save();
+    ctx.fillStyle = 'rgba(9, 13, 24, 0.82)';
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.2)';
+    ctx.lineWidth = 1;
+    roundRect(ctx, bx, by, boxW, boxH, 12);
+    ctx.fill();
+    ctx.stroke();
+
+    // Left: Barometric Pressure Dial (875..1020 hPa)
+    const dcx = bx + 62;
+    const dcy = by + 68;
+    const dr = 42;
+    const startA = Math.PI * 0.78;
+    const endA = Math.PI * 2.22;
+
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.16)';
+    ctx.lineWidth = 7;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.arc(dcx, dcy, dr, startA, endA);
+    ctx.stroke();
+
+    // Pressure drop fraction (1020 = 0, 880 = 1)
+    const pFrac = Math.max(0, Math.min(1, (1020 - s.pressureHpa) / 140));
+    const needleA = startA + pFrac * (endA - startA);
+    ctx.strokeStyle = ss.color;
+    ctx.lineWidth = 7;
+    ctx.beginPath();
+    ctx.arc(dcx, dcy, dr, startA, needleA);
+    ctx.stroke();
+
+    // Needle
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(dcx, dcy);
+    ctx.lineTo(dcx + Math.cos(needleA) * (dr - 8), dcy + Math.sin(needleA) * (dr - 8));
+    ctx.stroke();
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(dcx, dcy, 3.2, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.font = '700 9px ui-monospace, monospace';
+    ctx.fillStyle = '#8b9cc0';
+    ctx.textAlign = 'center';
+    ctx.fillText('BAROMETER', dcx, by + 16);
+    ctx.font = '700 13px ui-monospace, monospace';
+    ctx.fillStyle = '#eef3ff';
+    ctx.fillText(`${Math.round(s.pressureHpa)}`, dcx, dcy + 26);
+    ctx.font = '600 8.5px ui-monospace, monospace';
+    ctx.fillStyle = '#8b9cc0';
+    ctx.fillText('hPa', dcx, dcy + 38);
+
+    // Right Top: Saffir–Simpson Category LED Steps (TS, 1, 2, 3, 4, 5)
+    const rx = bx + 118;
+    ctx.font = '700 9px ui-monospace, monospace';
+    ctx.fillStyle = '#8b9cc0';
+    ctx.textAlign = 'left';
+    ctx.fillText('SAFFIR–SIMPSON SCALE', rx, by + 16);
+
+    const cats = [
+      { lbl: 'TS', min: 34, col: '#58dcff' },
+      { lbl: '1',  min: 64, col: '#4af2b2' },
+      { lbl: '2',  min: 83, col: '#ffe066' },
+      { lbl: '3',  min: 96, col: '#ffbe5c' },
+      { lbl: '4',  min: 113, col: '#ff6083' },
+      { lbl: '5',  min: 137, col: '#e879f9' }
+    ];
+    const segW = 22;
+    cats.forEach((c, idx) => {
+      const cxSeg = rx + idx * (segW + 3);
+      const active = s.vmaxKt >= c.min;
+      ctx.fillStyle = active ? c.col : 'rgba(255, 255, 255, 0.08)';
+      roundRect(ctx, cxSeg, by + 24, segW, 16, 4);
+      ctx.fill();
+      ctx.font = '700 9.5px ui-monospace, monospace';
+      ctx.fillStyle = active ? '#040711' : '#68789c';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(c.lbl, cxSeg + segW * 0.5, by + 32.5);
+    });
+
+    // Right Bottom: Radial Eye-Wall Wind Speed Cross-Section Sparkline
+    const gx = rx;
+    const gy = by + 54;
+    const gw = 148;
+    const gh = 54;
+    ctx.fillStyle = 'rgba(4, 7, 17, 0.65)';
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.14)';
+    ctx.lineWidth = 1;
+    roundRect(ctx, gx, gy, gw, gh, 6);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.strokeStyle = ss.color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let k = 0; k <= 60; k++) {
+      const u = (k / 60) * 2 - 1; // -1..+1 across storm diameter
+      const rRatio = Math.abs(u) * 3.1;
+      const vNorm = rRatio < 1 ? Math.pow(rRatio, 1.85) : Math.pow(rRatio, -0.64);
+      const windNorm = Math.min(1, (s.vmaxKt / 170) * vNorm);
+      const px = gx + 4 + (k / 60) * (gw - 8);
+      const py = gy + gh - 5 - windNorm * (gh - 14);
+      if (k === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.stroke();
+
+    ctx.font = '600 8.5px ui-monospace, monospace';
+    ctx.fillStyle = '#8b9cc0';
+    ctx.textAlign = 'center';
+    ctx.fillText('EYEWALL · EYE · EYEWALL', gx + gw * 0.5, gy + gh + 9);
+
+    ctx.restore();
+  }
+
+  function roundRect(c, x, y, w, h, r) {
+    const rr = Math.min(r, w * 0.5, h * 0.5);
+    c.beginPath();
+    c.moveTo(x + rr, y);
+    c.arcTo(x + w, y, x + w, y + h, rr);
+    c.arcTo(x + w, y + h, x, y + h, rr);
+    c.arcTo(x, y + h, x, y, rr);
+    c.arcTo(x, y, x + w, y, rr);
+    c.closePath();
+  }
+
+  // =========================================================================
+  // TELEMETRY & HUD UPDATES
+  // =========================================================================
+  let lastHudTime = 0;
+  function updateTelemetry(nowMs) {
+    if (nowMs - lastHudTime < 90) return;
+    lastHudTime = nowMs;
+
+    dom.telTime.textContent = `${state.simTimeHours.toFixed(1)} h`;
+
+    if (state.mode === 'global') {
+      const om = state.omega;
+      const cells = getDisplayCellCount(om);
+      const heatScale = state.deltaT / 42;
+      const jetKt = om < 0.2
+        ? Math.round(32 * heatScale)
+        : Math.round((88 + 52 * om) * heatScale);
+      const jetKmh = Math.round(jetKt * 1.852);
+      state.maxDisplayWindKt = jetKt;
+
+      // Rossby Number Ro = U / (f L)
+      // Earth synoptic: U~25 m/s, f~1e-4 s^-1, L~1.8e6 m -> Ro ~ 0.14
+      const ro = om < 0.03 ? 99.9 : (0.14 * heatScale / Math.pow(om, 0.85));
+      state.rossbyNumber = ro;
+
+      const eqP = Math.round(1008 - 4 * heatScale);
+      dom.telOmega.textContent = `${om.toFixed(2)}× Ω⊕`;
+      dom.telPressure.textContent = `${eqP} hPa`;
+      dom.telWind.textContent = `${jetKt} kt / ${jetKmh} km/h`;
+      dom.telSst.textContent = `${(28.0 + (state.deltaT - 42) * 0.12).toFixed(1)} °C`;
+      dom.telRossby.textContent = ro > 20 ? '∞ (>20)' : ro.toFixed(2);
+
+      let regime, pillTxt, pillCls;
+      if (om < 0.2) {
+        regime = '1-Cell Hadley';
+        pillTxt = 'Non-Rotating (0× Ω)';
+        pillCls = 'status-pill warn';
+      } else if (om < 1.5) {
+        regime = `${cells}-Cell Jets`;
+        pillTxt = 'Earth 3-Cell Regime';
+        pillCls = 'status-pill cyan';
+      } else {
+        regime = `${cells}-Band Jovian`;
+        pillTxt = 'Fast Multi-Band Jets';
+        pillCls = 'status-pill violet';
+      }
+      dom.telCat.textContent = regime;
+      dom.statusPill.textContent = pillTxt;
+      dom.statusPill.className = pillCls;
+
+      dom.barLabel.textContent = 'Peak Jet';
+      dom.intensityFill.style.width = `${Math.min(100, (jetKt / 240) * 100).toFixed(1)}%`;
+      dom.barVal.textContent = `${jetKt} kt`;
+
+      dom.telExtraA.innerHTML = `Ribbons: <strong>${state.particleCount.toLocaleString()}</strong>`;
+      dom.telExtraB.innerHTML = `Parcels: <strong>${state.parcels.length}</strong>`;
+    } else {
+      const s = state.storm;
+      const ss = getSaffirSimpson(s.vmaxKt);
+      const kt = Math.round(s.vmaxKt);
+      const kmh = Math.round(s.vmaxKt * 1.852);
+      state.maxDisplayWindKt = s.vmaxKt;
+
+      // Cyclone Rossby Number: Ro = V_max / (f * R_mw)
+      const f = 2 * 7.292e-5 * Math.sin(state.stormLat * DEG);
+      const vMs = s.vmaxKt * 0.5144;
+      const rmwM = 45000 + (0.07 - s.rmw) * 350000;
+      const ro = vMs / Math.max(1e-6, f * Math.max(22000, rmwM));
+      state.rossbyNumber = ro;
+
+      dom.telOmega.textContent = `1.00× (${state.stormLat}°${state.hemisphere > 0 ? 'N' : 'S'})`;
+      dom.telPressure.textContent = `${Math.round(s.pressureHpa)} hPa`;
+      dom.telWind.textContent = `${kt} kt / ${kmh} km/h`;
+      dom.telCat.textContent = ss.code;
+      dom.telCat.style.color = ss.color;
+      dom.telSst.textContent = `${s.localSST.toFixed(1)} °C`;
+      dom.telRossby.textContent = ro.toFixed(1);
+
+      dom.statusPill.textContent = s.landFrac > 0.35 ? `Landfall · ${ss.code}` : ss.name;
+      dom.statusPill.className = `status-pill ${ss.pillClass}`;
+
+      dom.barLabel.textContent = 'Eyewall';
+      dom.intensityFill.style.width = `${Math.min(100, (s.vmaxKt / 165) * 100).toFixed(1)}%`;
+      dom.barVal.textContent = `${Math.round(s.pressureHpa)} hPa`;
+
+      dom.telExtraA.innerHTML = `Shear: <strong>${state.windShear} kt</strong>`;
+      dom.telExtraB.innerHTML = `Surface: <strong>${s.landFrac > 0.25 ? 'LAND' : (s.localSST >= 26.5 ? 'WARM SEA' : 'COOL SEA')}</strong>`;
+    }
+  }
+
+  // =========================================================================
+  // BANNER NOTIFICATIONS
+  // =========================================================================
+  let bannerTimer = null;
+  function showBanner(msg, type = 'info') {
+    dom.eventText.textContent = msg;
+    dom.eventBanner.className = `event-banner visible ${type}`;
+    if (bannerTimer) clearTimeout(bannerTimer);
+    bannerTimer = setTimeout(() => {
+      dom.eventBanner.classList.remove('visible');
+    }, 3400);
+  }
+
+  // =========================================================================
+  // WEB AUDIO ENGINE (Rushing Wind Bed, Muted by Default)
+  // =========================================================================
+  const audio = {
+    enabled: false,
+    ctx: null,
+    master: null,
+    lowFilter: null,
+    highFilter: null,
+    lowGain: null,
+    highGain: null
+  };
+
+  function initAudio() {
+    if (audio.ctx) return;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    const actx = new AC();
+
+    // Create 3-second seamless pink/brown noise buffer
+    const len = actx.sampleRate * 3;
+    const buf = actx.createBuffer(1, len, actx.sampleRate);
+    const ch = buf.getChannelData(0);
+    let b0 = 0, b1 = 0, b2 = 0;
+    for (let i = 0; i < len; i++) {
+      const white = Math.random() * 2 - 1;
+      b0 = 0.997 * b0 + white * 0.029;
+      b1 = 0.985 * b1 + white * 0.032;
+      b2 = 0.950 * b2 + white * 0.048;
+      ch[i] = (b0 + b1 + b2 + white * 0.05) * 1.4;
+    }
+
+    const master = actx.createGain();
+    master.gain.value = 0.0;
+    master.connect(actx.destination);
+
+    // Deep atmospheric / eyewall rumble
+    const srcLow = actx.createBufferSource();
+    srcLow.buffer = buf;
+    srcLow.loop = true;
+    const lowFilter = actx.createBiquadFilter();
+    lowFilter.type = 'lowpass';
+    lowFilter.frequency.value = 180;
+    const lowGain = actx.createGain();
+    lowGain.gain.value = 0.35;
+    srcLow.connect(lowFilter).connect(lowGain).connect(master);
+    srcLow.start();
+
+    // High-altitude rushing wind whistle
+    const srcHigh = actx.createBufferSource();
+    srcHigh.buffer = buf;
+    srcHigh.loop = true;
+    const highFilter = actx.createBiquadFilter();
+    highFilter.type = 'bandpass';
+    highFilter.frequency.value = 520;
+    highFilter.Q.value = 2.4;
+    const highGain = actx.createGain();
+    highGain.gain.value = 0.14;
+    srcHigh.connect(highFilter).connect(highGain).connect(master);
+    srcHigh.start();
+
+    audio.ctx = actx;
+    audio.master = master;
+    audio.lowFilter = lowFilter;
+    audio.highFilter = highFilter;
+    audio.lowGain = lowGain;
+    audio.highGain = highGain;
+  }
+
+  function updateAudio() {
+    if (!audio.ctx || !audio.enabled) return;
+    const now = audio.ctx.currentTime;
+    const norm = Math.min(1, Math.max(0.05, state.maxDisplayWindKt / 160));
+    const targetVol = state.paused ? 0.0 : (0.06 + norm * 0.24);
+    audio.master.gain.setTargetAtTime(targetVol, now, 0.15);
+    audio.lowFilter.frequency.setTargetAtTime(110 + norm * 280, now, 0.2);
+    audio.highFilter.frequency.setTargetAtTime(340 + norm * 780, now, 0.2);
+    audio.highGain.gain.setTargetAtTime(0.05 + norm * 0.22, now, 0.2);
+  }
+
+  function playParcelChime(lat) {
+    if (!audio.ctx || !audio.enabled) return;
+    const now = audio.ctx.currentTime;
+    const osc = audio.ctx.createOscillator();
+    const g = audio.ctx.createGain();
+    osc.type = 'sine';
+    const baseFreq = lat >= 0 ? 440 + Math.abs(lat) * 200 : 320 + Math.abs(lat) * 140;
+    osc.frequency.setValueAtTime(baseFreq, now);
+    osc.frequency.exponentialRampToValueAtTime(baseFreq * 1.32, now + 0.18);
+    g.gain.setValueAtTime(0.08, now);
+    g.gain.exponentialRampToValueAtTime(0.0008, now + 0.24);
+    osc.connect(g).connect(audio.ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.25);
+  }
+
+  function toggleAudio() {
+    audio.enabled = !audio.enabled;
+    if (audio.enabled) {
+      initAudio();
+      if (audio.ctx && audio.ctx.state === 'suspended') audio.ctx.resume();
+    } else if (audio.ctx) {
+      audio.master.gain.setTargetAtTime(0, audio.ctx.currentTime, 0.08);
+    }
+    dom.btnAudio.textContent = audio.enabled ? 'Audio: On' : 'Audio: Off';
+    dom.btnAudio.classList.toggle('active', audio.enabled);
+  }
+
+  // =========================================================================
+  // MODE SWITCHING & PRESETS
+  // =========================================================================
+  function setMode(mode) {
+    state.mode = mode;
+    const isGlobal = mode === 'global';
+
+    dom.btnModeGlobal.classList.toggle('active', isGlobal);
+    dom.btnModeCyclone.classList.toggle('active', !isGlobal);
+    dom.btnModeCyclone.classList.toggle('amber', !isGlobal);
+
+    dom.quickGlobal.classList.toggle('hidden', !isGlobal);
+    dom.quickCyclone.classList.toggle('hidden', isGlobal);
+    dom.ctrlGlobalWrap.classList.toggle('hidden', !isGlobal);
+    dom.ctrlCycloneWrap.classList.toggle('hidden', isGlobal);
+
+    dom.modeBadge.textContent = isGlobal ? 'Global Circulation' : 'Tropical Cyclone';
+    dom.modeBadge.classList.toggle('cyclone', !isGlobal);
+    dom.btnQuickMode.textContent = isGlobal ? 'Mode: Global' : 'Mode: Cyclone';
+    dom.btnQuickMode.classList.toggle('amber-active', !isGlobal);
+    dom.btnQuickProj.classList.toggle('hidden', !isGlobal);
+
+    if (isGlobal) {
+      dom.telCat.style.color = '';
+      dom.modeSummary.textContent = 'Planetary circulation cells, meandering Rossby jet streams, and spherical Coriolis parcel deflection.';
+      dom.hintPill.innerHTML = 'Click globe/map to launch Coriolis air parcel · Drag to spin · Scroll zoom · <kbd>H</kbd> cinema · <kbd>Space</kbd> pause';
+    } else {
+      state.sstDirty = true;
+      dom.modeSummary.textContent = 'Mesoscale tropical cyclone heat engine over an interactive SST ocean heatmap, Warm Pool, and Landmass.';
+      dom.hintPill.innerHTML = 'Drag <strong>Warm Pool</strong>, <strong>Landmass</strong>, or <strong>Hurricane Eye</strong> · <kbd>H</kbd> cinema · <kbd>Space</kbd> pause';
+    }
+    syncControlsUI();
+  }
+
+  function setProjection(proj) {
+    state.projection = proj;
+    dom.btnProjGlobe.classList.toggle('active', proj === 'globe');
+    dom.btnProjMercator.classList.toggle('active', proj === 'mercator');
+    dom.btnQuickProj.textContent = proj === 'globe' ? '3D Globe' : 'Mercator';
+  }
+
+  function applyPreset(name) {
+    state.activePreset = name;
+    state.simTimeHours = 0;
+
+    document.querySelectorAll('.preset-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.preset === name);
+    });
+
+    if (name === 'earth3cell') {
+      setMode('global');
+      setProjection('globe');
+      state.omega = 1.0;
+      state.deltaT = 42;
+      state.rossbyAmp = 0.85;
+      state.showCells = true;
+      state.showJets = true;
+      state.showBelts = true;
+      state.showThermal = true;
+      state.autoRotate = true;
+      state.globeLat = 0.22;
+      state.globeZoom = 1.0;
+      state.parcels = [];
+      showBanner('Earth 3-Cell Circulation (1.0× Ω) — Hadley, Ferrel & Polar Cells', 'info');
+    } else if (name === 'nonrotating') {
+      setMode('global');
+      setProjection('globe');
+      state.omega = 0.0;
+      state.deltaT = 46;
+      state.rossbyAmp = 0.0;
+      state.showCells = true;
+      state.showJets = false;
+      state.showBelts = true;
+      state.showThermal = true;
+      state.autoRotate = true;
+      state.globeLat = 0.14;
+      state.parcels = [];
+      launchAirParcel(state.globeLon, 35 * DEG, 'north');
+      launchAirParcel(state.globeLon, -35 * DEG, 'south');
+      showBanner('Non-Rotating Planet (0.0× Ω) — Single Giant Hadley Cell, Zero Coriolis', 'warn');
+    } else if (name === 'jupiter') {
+      setMode('global');
+      setProjection('globe');
+      state.omega = 2.5;
+      state.deltaT = 50;
+      state.rossbyAmp = 0.65;
+      state.showCells = true;
+      state.showJets = true;
+      state.showBelts = false;
+      state.showThermal = true;
+      state.autoRotate = true;
+      state.globeLat = 0.1;
+      state.parcels = [];
+      showBanner('Fast-Spinning Jupiter Regime (2.5× Ω) — Alternating Multi-Band Zonal Jets', 'info');
+    } else if (name === 'corioliscannon') {
+      setMode('global');
+      setProjection('mercator');
+      state.omega = 1.0;
+      state.deltaT = 38;
+      state.rossbyAmp = 0.7;
+      state.showCells = true;
+      state.showJets = true;
+      state.showBelts = true;
+      state.showThermal = true;
+      launchCoriolisVolley();
+    } else if (name === 'cat5spinup') {
+      setMode('cyclone');
+      state.baseSST = 28.4;
+      state.windShear = 5;
+      state.stormLat = 18;
+      state.hemisphere = 1;
+      state.steerSpeed = 7;
+      state.steerAngle = -2.92;
+      state.warmPool = { x: 0.50, y: 0.50, rx: 0.18, ry: 0.14, boost: 4.1 };
+      state.landmass = { x: 0.17, y: 0.44, rx: 0.125, ry: 0.22, seed: 1.7 };
+      state.storm.x = 0.68;
+      state.storm.y = 0.55;
+      state.storm.vmaxKt = 52;
+      state.storm.pressureHpa = 996;
+      state.storm.lastCat = 0;
+      state.storm.track = [{ x: 0.68, y: 0.55, kt: 52 }];
+      state.sstDirty = true;
+      for (let i = 0; i < state.particleCount; i++) respawnCycloneParticle(i, true);
+      showBanner('Tropical Storm Entering 32°C Warm Pool — Rapid Intensification to Cat 5!', 'warn');
+    } else if (name === 'landfall') {
+      setMode('cyclone');
+      state.baseSST = 27.6;
+      state.windShear = 12;
+      state.stormLat = 23;
+      state.hemisphere = 1;
+      state.steerSpeed = 12;
+      state.steerAngle = -2.98;
+      state.warmPool = { x: 0.66, y: 0.56, rx: 0.16, ry: 0.13, boost: 3.4 };
+      state.landmass = { x: 0.27, y: 0.48, rx: 0.16, ry: 0.25, seed: 2.1 };
+      state.storm.x = 0.47;
+      state.storm.y = 0.51;
+      state.storm.vmaxKt = 134;
+      state.storm.pressureHpa = 930;
+      state.storm.lastCat = 4;
+      state.storm.track = [{ x: 0.62, y: 0.54, kt: 138 }, { x: 0.47, y: 0.51, kt: 134 }];
+      state.sstDirty = true;
+      for (let i = 0; i < state.particleCount; i++) respawnCycloneParticle(i, true);
+      showBanner('Category 4 Hurricane Approaching Landfall — Watch Eyewall Collapse', 'danger');
+    }
+
+    syncControlsUI();
+  }
+
+  function syncControlsUI() {
+    dom.slOmega.value = state.omega;
+    dom.valOmega.textContent = `${state.omega.toFixed(2)}×`;
+    dom.slDt.value = state.deltaT;
+    dom.valDt.textContent = `${state.deltaT} °C`;
+    dom.slRossbyAmp.value = state.rossbyAmp;
+    dom.valRossbyAmp.textContent = state.rossbyAmp.toFixed(2);
+    dom.slParcelSpd.value = state.parcelSpeed;
+    dom.valParcelSpd.textContent = `${state.parcelSpeed.toFixed(2)}×`;
+
+    dom.chkCells.checked = state.showCells;
+    dom.chkJets.checked = state.showJets;
+    dom.chkBelts.checked = state.showBelts;
+    dom.chkThermal.checked = state.showThermal;
+    dom.chkAutorot.checked = state.autoRotate;
+
+    dom.slSst.value = state.baseSST;
+    dom.valSst.textContent = `${state.baseSST.toFixed(1)} °C`;
+    dom.slShear.value = state.windShear;
+    dom.valShear.textContent = `${state.windShear} kt`;
+    dom.slStormLat.value = state.stormLat;
+    dom.valStormLat.textContent = `${state.stormLat}° ${state.hemisphere > 0 ? 'N' : 'S'}`;
+    dom.slSteerSpd.value = state.steerSpeed;
+    dom.valSteerSpd.textContent = `${state.steerSpeed} kt`;
+    dom.btnHemiNH.classList.toggle('active', state.hemisphere > 0);
+    dom.btnHemiSH.classList.toggle('active', state.hemisphere < 0);
+
+    dom.chkSstMap.checked = state.showSstMap;
+    dom.chkRadar.checked = state.showRadar;
+    dom.chkIsobars.checked = state.showIsobars;
+    dom.chkGauge.checked = state.showGauge;
+
+    dom.slPcount.value = state.particleCount;
+    dom.valPcount.textContent = state.particleCount.toLocaleString();
+    dom.slTimescale.value = state.timeScale;
+    dom.valTimescale.textContent = `${state.timeScale.toFixed(2)}×`;
+  }
+
+  // =========================================================================
+  // INTERACTIVE POINTER HANDLING (Globe Drag / Parcel Launch / Cyclone Drag)
+  // =========================================================================
+  const dragState = {
+    active: false,
+    moved: false,
+    target: null, // 'globe' | 'storm' | 'warmPool' | 'landmass'
+    startX: 0,
+    startY: 0,
+    lastX: 0,
+    lastY: 0,
+    offsetX: 0,
+    offsetY: 0
+  };
+
+  function hitTestCycloneEntities(px, py) {
+    const nx = px / W;
+    const ny = py / H;
+    // Priority: Storm Eye -> Warm Pool -> Landmass
+    if (Math.hypot((nx - state.storm.x) * W, (ny - state.storm.y) * H) < Math.max(36, state.storm.rmw * W * 1.15)) {
+      return 'storm';
+    }
+    const wp = state.warmPool;
+    if (Math.hypot((nx - wp.x) / (wp.rx * 0.78), (ny - wp.y) / (wp.ry * 0.78)) < 1.0) {
+      return 'warmPool';
+    }
+    if (pointLandDistance(nx, ny) < 0.08) {
+      return 'landmass';
+    }
+    return null;
+  }
+
+  canvas.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    canvas.setPointerCapture(e.pointerId);
+    dragState.active = true;
+    dragState.moved = false;
+    dragState.startX = e.clientX;
+    dragState.startY = e.clientY;
+    dragState.lastX = e.clientX;
+    dragState.lastY = e.clientY;
+
+    if (state.mode === 'global') {
+      if (state.projection === 'globe') {
+        dragState.target = 'globe';
+      } else {
+        dragState.target = 'mercator';
+      }
+    } else {
+      const hit = hitTestCycloneEntities(e.clientX, e.clientY);
+      dragState.target = hit;
+      if (hit) {
+        const obj = hit === 'storm' ? state.storm : (hit === 'warmPool' ? state.warmPool : state.landmass);
+        dragState.offsetX = obj.x - e.clientX / W;
+        dragState.offsetY = obj.y - e.clientY / H;
+        canvas.classList.add('grabbing');
+      } else if (e.shiftKey) {
+        // Shift+Click moves warm pool right to cursor
+        state.warmPool.x = Math.max(0.1, Math.min(0.9, e.clientX / W));
+        state.warmPool.y = Math.max(0.12, Math.min(0.88, e.clientY / H));
+        state.sstDirty = true;
+      }
+    }
+  });
+
+  canvas.addEventListener('pointermove', (e) => {
+    if (!dragState.active) {
+      if (state.mode === 'cyclone') {
+        const hit = hitTestCycloneEntities(e.clientX, e.clientY);
+        canvas.classList.toggle('grabbable', !!hit);
+      } else {
+        canvas.classList.remove('grabbable');
+      }
+      return;
+    }
+
+    const dx = e.clientX - dragState.lastX;
+    const dy = e.clientY - dragState.lastY;
+    dragState.lastX = e.clientX;
+    dragState.lastY = e.clientY;
+    if (Math.hypot(e.clientX - dragState.startX, e.clientY - dragState.startY) > 6) {
+      dragState.moved = true;
+    }
+
+    if (state.mode === 'global' && dragState.target === 'globe' && dragState.moved) {
+      canvas.classList.add('grabbing');
+      const gm = getGlobeMetrics();
+      state.globeLon = wrapLon(state.globeLon - dx / Math.max(120, gm.r));
+      state.globeLat = Math.max(-1.25, Math.min(1.25, state.globeLat + dy / Math.max(120, gm.r)));
+    } else if (state.mode === 'cyclone' && dragState.target) {
+      const nx = Math.max(0.06, Math.min(0.94, e.clientX / W + dragState.offsetX));
+      const ny = Math.max(0.09, Math.min(0.91, e.clientY / H + dragState.offsetY));
+      if (dragState.target === 'storm') {
+        state.storm.x = nx;
+        state.storm.y = ny;
+      } else if (dragState.target === 'warmPool') {
+        state.warmPool.x = nx;
+        state.warmPool.y = ny;
+        state.sstDirty = true;
+      } else if (dragState.target === 'landmass') {
+        state.landmass.x = nx;
+        state.landmass.y = ny;
+        state.sstDirty = true;
+      }
+    }
+  });
+
+  canvas.addEventListener('pointerup', (e) => {
+    if (!dragState.active) return;
+    canvas.classList.remove('grabbing');
+
+    // Click without drag in Global mode -> Launch Coriolis Air Parcel!
+    if (state.mode === 'global' && !dragState.moved) {
+      let coord = null;
+      if (state.projection === 'globe') {
+        coord = unprojectGlobe(e.clientX, e.clientY, getGlobeMetrics());
+      } else {
+        coord = unprojectMercator(e.clientX, e.clientY, getMercatorRect());
+      }
+      if (coord) {
+        launchAirParcel(coord.lon, coord.lat);
+      }
+    }
+
+    dragState.active = false;
+    dragState.target = null;
+  });
+
+  canvas.addEventListener('wheel', (e) => {
+    if (state.mode !== 'global' || state.projection !== 'globe') return;
+    e.preventDefault();
+    const factor = e.deltaY > 0 ? 0.93 : 1.07;
+    state.globeZoom = Math.max(0.62, Math.min(1.85, state.globeZoom * factor));
+  }, { passive: false });
+
+  // =========================================================================
+  // UI EVENT WIRING
+  // =========================================================================
+  // Drawer Tabs
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tab = btn.dataset.tab;
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b === btn));
+      document.querySelectorAll('.tab-pane').forEach(p => p.classList.toggle('active', p.id === `tab-${tab}`));
+    });
+  });
+
+  // Mode buttons
+  dom.btnModeGlobal.addEventListener('click', () => setMode('global'));
+  dom.btnModeCyclone.addEventListener('click', () => setMode('cyclone'));
+  dom.btnQuickMode.addEventListener('click', () => setMode(state.mode === 'global' ? 'cyclone' : 'global'));
+
+  // Projection buttons
+  dom.btnProjGlobe.addEventListener('click', () => setProjection('globe'));
+  dom.btnProjMercator.addEventListener('click', () => setProjection('mercator'));
+  dom.btnQuickProj.addEventListener('click', () => setProjection(state.projection === 'globe' ? 'mercator' : 'globe'));
+
+  // Presets
+  document.querySelectorAll('.preset-btn').forEach(btn => {
+    btn.addEventListener('click', () => applyPreset(btn.dataset.preset));
+  });
+
+  // Parcel Launch Direction
+  dom.parcelDirRow.querySelectorAll('.seg-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.parcelDir = btn.dataset.dir;
+      dom.parcelDirRow.querySelectorAll('.seg-btn').forEach(b => b.classList.toggle('active', b === btn));
+    });
+  });
+
+  dom.btnLaunchVolley.addEventListener('click', launchCoriolisVolley);
+  dom.btnClearParcels.addEventListener('click', () => { state.parcels = []; });
+
+  // Cyclone quick actions
+  dom.btnSpawnWave.addEventListener('click', () => {
+    state.storm.x = 0.74;
+    state.storm.y = 0.56;
+    state.storm.vmaxKt = 34;
+    state.storm.pressureHpa = 1005;
+    state.storm.lastCat = 0;
+    state.storm.track = [{ x: 0.74, y: 0.56, kt: 34 }];
+    state.steerAngle = -2.95;
+    showBanner('Fresh Tropical Wave Seeded — Steer Over Warm Water (>26.5°C)', 'info');
+  });
+
+  dom.btnBoostCat5.addEventListener('click', () => {
+    state.storm.vmaxKt = 132;
+    state.storm.pressureHpa = 932;
+    state.storm.lastCat = 4;
+    showBanner('Category 4 Major Hurricane Eye Initialized', 'warn');
+  });
+
+  dom.btnSteerWarm.addEventListener('click', () => {
+    state.steerAngle = Math.atan2(state.warmPool.y - state.storm.y, state.warmPool.x - state.storm.x);
+    if (state.steerSpeed < 8) { state.steerSpeed = 10; syncControlsUI(); }
+    showBanner('Steering Flow Aimed Toward Warm Ocean Pool', 'info');
+  });
+
+  dom.btnSteerLand.addEventListener('click', () => {
+    state.steerAngle = Math.atan2(state.landmass.y - state.storm.y, state.landmass.x - state.storm.x);
+    if (state.steerSpeed < 8) { state.steerSpeed = 12; syncControlsUI(); }
+    showBanner('Steering Flow Aimed Directly for Landfall!', 'danger');
+  });
+
+  // Global Sliders & Toggles
+  dom.slOmega.addEventListener('input', () => {
+    state.omega = parseFloat(dom.slOmega.value);
+    dom.valOmega.textContent = `${state.omega.toFixed(2)}×`;
+  });
+  dom.slDt.addEventListener('input', () => {
+    state.deltaT = parseInt(dom.slDt.value, 10);
+    dom.valDt.textContent = `${state.deltaT} °C`;
+  });
+  dom.slRossbyAmp.addEventListener('input', () => {
+    state.rossbyAmp = parseFloat(dom.slRossbyAmp.value);
+    dom.valRossbyAmp.textContent = state.rossbyAmp.toFixed(2);
+  });
+  dom.slParcelSpd.addEventListener('input', () => {
+    state.parcelSpeed = parseFloat(dom.slParcelSpd.value);
+    dom.valParcelSpd.textContent = `${state.parcelSpeed.toFixed(2)}×`;
+  });
+
+  dom.chkCells.addEventListener('change', () => { state.showCells = dom.chkCells.checked; });
+  dom.chkJets.addEventListener('change', () => { state.showJets = dom.chkJets.checked; });
+  dom.chkBelts.addEventListener('change', () => { state.showBelts = dom.chkBelts.checked; });
+  dom.chkThermal.addEventListener('change', () => { state.showThermal = dom.chkThermal.checked; });
+  dom.chkAutorot.addEventListener('change', () => { state.autoRotate = dom.chkAutorot.checked; });
+
+  // Cyclone Sliders & Toggles
+  dom.slSst.addEventListener('input', () => {
+    state.baseSST = parseFloat(dom.slSst.value);
+    dom.valSst.textContent = `${state.baseSST.toFixed(1)} °C`;
+    state.sstDirty = true;
+  });
+  dom.slShear.addEventListener('input', () => {
+    state.windShear = parseInt(dom.slShear.value, 10);
+    dom.valShear.textContent = `${state.windShear} kt`;
+  });
+  dom.slStormLat.addEventListener('input', () => {
+    state.stormLat = parseInt(dom.slStormLat.value, 10);
+    dom.valStormLat.textContent = `${state.stormLat}° ${state.hemisphere > 0 ? 'N' : 'S'}`;
+  });
+  dom.slSteerSpd.addEventListener('input', () => {
+    state.steerSpeed = parseInt(dom.slSteerSpd.value, 10);
+    dom.valSteerSpd.textContent = `${state.steerSpeed} kt`;
+  });
+  dom.btnHemiNH.addEventListener('click', () => {
+    state.hemisphere = 1;
+    state.sstDirty = true;
+    syncControlsUI();
+    showBanner('Northern Hemisphere — Counter-Clockwise (CCW) Cyclonic Spin', 'info');
+  });
+  dom.btnHemiSH.addEventListener('click', () => {
+    state.hemisphere = -1;
+    state.sstDirty = true;
+    syncControlsUI();
+    showBanner('Southern Hemisphere — Clockwise (CW) Cyclonic Spin', 'info');
+  });
+
+  dom.chkSstMap.addEventListener('change', () => { state.showSstMap = dom.chkSstMap.checked; });
+  dom.chkRadar.addEventListener('change', () => { state.showRadar = dom.chkRadar.checked; });
+  dom.chkIsobars.addEventListener('change', () => { state.showIsobars = dom.chkIsobars.checked; });
+  dom.chkGauge.addEventListener('change', () => { state.showGauge = dom.chkGauge.checked; });
+
+  // Shared Sliders
+  dom.slPcount.addEventListener('input', () => {
+    state.particleCount = parseInt(dom.slPcount.value, 10);
+    dom.valPcount.textContent = state.particleCount.toLocaleString();
+  });
+  dom.slTimescale.addEventListener('input', () => {
+    state.timeScale = parseFloat(dom.slTimescale.value);
+    dom.valTimescale.textContent = `${state.timeScale.toFixed(2)}×`;
+  });
+
+  // Transport Bar Controls
+  function togglePause() {
+    state.paused = !state.paused;
+    dom.btnPlay.textContent = state.paused ? 'Play' : 'Pause';
+    dom.btnPlay.classList.toggle('active', !state.paused);
+  }
+
+  function toggleDrawer() {
+    state.drawerOpen = !state.drawerOpen;
+    dom.drawer.classList.toggle('collapsed', !state.drawerOpen);
+    dom.btnControls.classList.toggle('active', state.drawerOpen);
+  }
+
+  function toggleCinema() {
+    state.cinema = !state.cinema;
+    document.body.classList.toggle('zen-mode', state.cinema);
+    dom.btnCinema.classList.toggle('active', state.cinema);
+  }
+
+  dom.btnPlay.addEventListener('click', togglePause);
+  dom.btnReset.addEventListener('click', () => applyPreset(state.activePreset));
+  dom.btnAudio.addEventListener('click', toggleAudio);
+  dom.btnControls.addEventListener('click', toggleDrawer);
+  dom.btnCinema.addEventListener('click', toggleCinema);
+  dom.btnZenRestore.addEventListener('click', toggleCinema);
+
+  // Keyboard Shortcuts
+  window.addEventListener('keydown', (e) => {
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+    if (e.code === 'Space') {
+      e.preventDefault();
+      togglePause();
+    } else if (e.key === 'h' || e.key === 'H') {
+      toggleCinema();
+    } else if (e.key === 'r' || e.key === 'R') {
+      applyPreset(state.activePreset);
+    } else if (e.key === 'm' || e.key === 'M') {
+      setMode(state.mode === 'global' ? 'cyclone' : 'global');
+    } else if (e.key === 'c' || e.key === 'C') {
+      toggleDrawer();
+    }
+  });
+
+  window.addEventListener('resize', resize);
+
+  // =========================================================================
+  // MAIN ANIMATION LOOP
+  // =========================================================================
+  let lastFrame = performance.now();
+  let simSec = 0;
+
+  function tick(now) {
+    requestAnimationFrame(tick);
+    const rawDt = Math.min(0.05, Math.max(0.001, (now - lastFrame) / 1000));
+    lastFrame = now;
+
+    if (!state.paused) {
+      const dt = rawDt * state.timeScale;
+      simSec += dt;
+      state.simTimeHours += dt * (state.mode === 'global' ? 3.2 : 1.8);
+
+      if (state.mode === 'global') {
+        if (state.projection === 'globe' && state.autoRotate && !(dragState.active && dragState.target === 'globe')) {
+          state.globeLon = wrapLon(state.globeLon + (0.04 + 0.055 * state.omega) * dt);
+        }
+        stepGlobalParticles(dt, simSec);
+        stepParcels(dt);
+      } else {
+        stepCyclone(dt);
+        stepCycloneParticles(dt);
+      }
+    }
+
+    if (state.mode === 'global') {
+      renderStarfield(simSec);
+      if (state.projection === 'globe') {
+        renderGlobalGlobe(simSec);
+      } else {
+        renderGlobalMercator(simSec);
+      }
+    } else {
+      renderCycloneBasin(simSec);
+    }
+
+    updateTelemetry(now);
+    updateAudio();
+  }
+
+  // Initialize
+  resize();
+  rebuildSSTTexture();
+  applyPreset('earth3cell');
+  requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>

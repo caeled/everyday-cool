@@ -48,3 +48,18 @@ The rules (the nines table, ×11, squares ending in 5, casting out nines, divisi
 ## Deep Zoom (added 22 November 2026)
 
 A Mandelbrot and Julia explorer with a real perturbation engine past 10¹²×. Open `deep-zoom.html`; the audit lesson is `deep-zoom-lesson.html`.
+
+
+## The Mathematics Wave (added 23 November 2026)
+
+Seven interactive mathematics exhibits built by Google Antigravity (Gemini) at Steven Powell's direction, integrated byte-for-byte and audited by Muse — the shipped code driven headlessly, every claim measured against independent mathematics, the lessons printed beside each exhibit:
+
+- `graph-pathfinding-arena.html` / `graph-pathfinding-arena-lesson.html` — A*/Dijkstra optimal in 4-way mode, but the page crashes during its own start-up, Bidirectional A* is suboptimal, and Manhattan + diagonals breaks the optimality promise.
+- `vector-calculus-fields.html` / `vector-calculus-fields-lesson.html` — Nabla: theorem-exact loop integrals and Taylor coefficients; the Magnetic Dipole's "divergence-free" claim is false.
+- `probability-markov-lab.html` / `probability-markov-lab-lesson.html` — stationary solver exact to 1×10⁻¹⁰; burst mode respawns ruined walkers and never reaches its plotted equilibrium.
+- `linear-algebra-eigen.html` / `linear-algebra-eigen-lesson.html` — eigenpairs and SVD exact to machine precision; one toggle label names a formula the code doesn't compute.
+- `hyperbolic-geometry.html` / `hyperbolic-geometry-lesson.html` — the Poincaré model reproduced to near machine precision; the distance function silently caps at the horizon.
+- `strange-attractors-3d.html` / `strange-attractors-3d-lesson.html` — six canonical systems, genuine RK4, Lyapunov +0.905 measured vs 0.906 canonical.
+- `fourier-epicycles.html` / `fourier-epicycles-lesson.html` — the DFT exact to ≤1.3×10⁻¹² on every preset; the "~9% Gibbs" label is false as shipped.
+
+The wave has its own section at the top of `index.html` ("The Math Wave"). Reference bank: ~/workspace/your_files/mathematics-seven-references_2026-11-23.md (17 sources, all curl-verified 200).

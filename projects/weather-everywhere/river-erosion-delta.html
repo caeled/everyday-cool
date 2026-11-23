@@ -1,0 +1,3589 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Watershed — Hydraulic Erosion, River Meandering &amp; Delta Builder</title>
+<style>
+  :root {
+    --bg-deep: #040711;
+    --panel-bg: rgba(9, 13, 24, 0.78);
+    --panel-bg-strong: rgba(8, 12, 22, 0.92);
+    --panel-border: rgba(148, 179, 255, 0.16);
+    --panel-border-hi: rgba(148, 179, 255, 0.36);
+    --text-main: #eef3ff;
+    --text-dim: #9aa9cc;
+    --text-muted: #68789c;
+    --accent-amber: #ffbe5c;
+    --accent-cyan: #58dcff;
+    --accent-mint: #4af2b2;
+    --accent-rose: #ff6083;
+    --accent-violet: #a78bfa;
+    --radius-lg: 14px;
+    --radius-md: 10px;
+    --radius-sm: 7px;
+    --mono: ui-monospace, "Cascadia Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Inter, Helvetica, Arial, sans-serif;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg-deep);
+    color: var(--text-main);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    touch-action: none;
+  }
+
+  #sim-canvas {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    cursor: crosshair;
+  }
+  #sim-canvas.panning {
+    cursor: grabbing;
+  }
+  #sim-canvas.inspecting {
+    cursor: grab;
+  }
+
+  /* HUD Layer */
+  .hud {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 10;
+  }
+  body.zen-mode .hud > :not(.zen-restore) {
+    opacity: 0;
+    pointer-events: none !important;
+  }
+
+  .panel {
+    pointer-events: auto;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-lg);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.52), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    transition: opacity 0.25s ease, transform 0.25s ease;
+  }
+
+  /* Top-Left Brand + Telemetry */
+  .top-left {
+    position: fixed;
+    top: 14px;
+    left: 14px;
+    width: min(418px, calc(100vw - 364px));
+    min-width: 280px;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .brand-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .brand-title-wrap {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .brand-title {
+    font-size: 16px;
+    font-weight: 800;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+    background: linear-gradient(120deg, #e7fbff 0%, #58dcff 46%, #4af2b2 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .mode-badge {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 999px;
+    border: 1px solid rgba(88, 220, 255, 0.4);
+    background: rgba(88, 220, 255, 0.12);
+    color: var(--accent-cyan);
+  }
+
+  .status-pill {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: rgba(74, 242, 178, 0.14);
+    color: var(--accent-mint);
+    border: 1px solid rgba(74, 242, 178, 0.35);
+    white-space: nowrap;
+  }
+  .status-pill.warn {
+    background: rgba(255, 190, 92, 0.16);
+    color: var(--accent-amber);
+    border-color: rgba(255, 190, 92, 0.42);
+  }
+  .status-pill.danger {
+    background: rgba(255, 96, 131, 0.18);
+    color: var(--accent-rose);
+    border-color: rgba(255, 96, 131, 0.45);
+  }
+  .status-pill.info {
+    background: rgba(88, 220, 255, 0.16);
+    color: var(--accent-cyan);
+    border-color: rgba(88, 220, 255, 0.42);
+  }
+
+  .telemetry-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+  }
+
+  .tele-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(148, 179, 255, 0.1);
+    border-radius: var(--radius-sm);
+    padding: 6px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .tele-label {
+    font-size: 9px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .tele-val {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--text-main);
+  }
+  .tele-val.amber { color: var(--accent-amber); }
+  .tele-val.cyan { color: var(--accent-cyan); }
+  .tele-val.mint { color: var(--accent-mint); }
+  .tele-val.rose { color: var(--accent-rose); }
+
+  .probe-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding-top: 5px;
+    border-top: 1px solid rgba(148, 179, 255, 0.1);
+    font-size: 10.5px;
+    color: var(--text-dim);
+    font-family: var(--mono);
+  }
+  .probe-row span strong {
+    color: var(--text-main);
+    font-weight: 650;
+  }
+
+  /* View legend bar */
+  .legend-bar {
+    display: none;
+    align-items: center;
+    gap: 8px;
+    font-size: 10px;
+    color: var(--text-dim);
+    padding-top: 2px;
+  }
+  .legend-bar.visible {
+    display: flex;
+  }
+  .legend-grad {
+    flex: 1;
+    height: 7px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+  }
+
+  /* Right Control Drawer */
+  .drawer {
+    position: fixed;
+    top: 14px;
+    right: 14px;
+    bottom: 14px;
+    width: 330px;
+    max-width: calc(100vw - 28px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: transform 0.25s ease, opacity 0.25s ease;
+  }
+  .drawer.collapsed {
+    transform: translateX(calc(100% + 24px));
+    pointer-events: none;
+  }
+
+  .drawer-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+    padding: 8px 8px 6px;
+    border-bottom: 1px solid var(--panel-border);
+    background: rgba(4, 7, 15, 0.42);
+  }
+
+  .tab-btn {
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    padding: 7px 5px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .tab-btn:hover {
+    color: var(--text-main);
+    background: rgba(255, 255, 255, 0.04);
+  }
+  .tab-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.16);
+    border-color: rgba(88, 220, 255, 0.4);
+  }
+
+  .drawer-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 13px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .drawer-body::-webkit-scrollbar {
+    width: 5px;
+  }
+  .drawer-body::-webkit-scrollbar-thumb {
+    background: rgba(148, 179, 255, 0.22);
+    border-radius: 999px;
+  }
+
+  .tab-pane {
+    display: none;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .tab-pane.active {
+    display: flex;
+  }
+
+  .section {
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(148, 179, 255, 0.11);
+    border-radius: var(--radius-md);
+    padding: 10px 11px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .section-title {
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  /* Tool Grid */
+  .tool-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .tool-btn {
+    text-align: left;
+    padding: 7px 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(148, 179, 255, 0.15);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-main);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .tool-btn:hover {
+    border-color: rgba(88, 220, 255, 0.42);
+    background: rgba(88, 220, 255, 0.08);
+  }
+  .tool-btn.active {
+    border-color: var(--accent-cyan);
+    background: rgba(88, 220, 255, 0.18);
+    box-shadow: 0 0 14px rgba(88, 220, 255, 0.16);
+  }
+  .tool-btn.amber.active {
+    border-color: var(--accent-amber);
+    background: rgba(255, 190, 92, 0.18);
+    box-shadow: 0 0 14px rgba(255, 190, 92, 0.16);
+  }
+  .tool-btn.span2 {
+    grid-column: span 2;
+  }
+  .tool-name {
+    font-size: 11.5px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .tool-key {
+    font-family: var(--mono);
+    font-size: 9.5px;
+    color: var(--text-muted);
+    background: rgba(255, 255, 255, 0.07);
+    padding: 0px 4px;
+    border-radius: 4px;
+  }
+  .tool-sub {
+    font-size: 9.5px;
+    color: var(--text-muted);
+    line-height: 1.25;
+  }
+
+  /* Presets grid */
+  .preset-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .preset-btn {
+    text-align: left;
+    padding: 7px 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(148, 179, 255, 0.14);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-main);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .preset-btn:hover {
+    border-color: rgba(255, 190, 92, 0.45);
+    background: rgba(255, 190, 92, 0.08);
+  }
+  .preset-btn.active {
+    border-color: var(--accent-amber);
+    background: rgba(255, 190, 92, 0.14);
+  }
+  .preset-name {
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+  .preset-sub {
+    font-size: 9.3px;
+    color: var(--text-muted);
+    line-height: 1.25;
+  }
+
+  /* Sliders */
+  .control-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .control-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11.5px;
+    color: var(--text-dim);
+  }
+  .control-head .val {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--text-main);
+    font-weight: 600;
+  }
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 5px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.18);
+    outline: none;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent-cyan);
+    border: 2px solid #08101f;
+    box-shadow: 0 0 10px rgba(88, 220, 255, 0.65);
+    cursor: pointer;
+  }
+  input[type="range"].amber::-webkit-slider-thumb {
+    background: var(--accent-amber);
+    box-shadow: 0 0 10px rgba(255, 190, 92, 0.65);
+  }
+  input[type="range"].mint::-webkit-slider-thumb {
+    background: var(--accent-mint);
+    box-shadow: 0 0 10px rgba(74, 242, 178, 0.65);
+  }
+
+  /* Segmented pills */
+  .seg-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(60px, 1fr));
+    gap: 4px;
+  }
+  .seg-row.cols2 {
+    grid-template-columns: 1fr 1fr;
+  }
+  .seg-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-dim);
+    font-size: 10.8px;
+    font-weight: 650;
+    padding: 6px 5px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-align: center;
+  }
+  .seg-btn:hover {
+    color: #fff;
+    border-color: rgba(148, 179, 255, 0.35);
+  }
+  .seg-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.18);
+    border-color: var(--accent-cyan);
+  }
+  .seg-btn.active.amber {
+    background: rgba(255, 190, 92, 0.18);
+    border-color: var(--accent-amber);
+    color: #ffdfaa;
+  }
+
+  /* Action Buttons */
+  .btn-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .btn {
+    border: 1px solid rgba(148, 179, 255, 0.22);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-main);
+    font-size: 11px;
+    font-weight: 700;
+    padding: 7px 9px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+  }
+  .btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 179, 255, 0.45);
+  }
+  .btn:active {
+    transform: scale(0.98);
+  }
+  .btn.primary {
+    background: linear-gradient(135deg, rgba(88, 220, 255, 0.28), rgba(56, 140, 255, 0.24));
+    border-color: rgba(88, 220, 255, 0.55);
+    color: #e6f9ff;
+  }
+  .btn.amber {
+    background: linear-gradient(135deg, rgba(255, 190, 92, 0.25), rgba(255, 120, 60, 0.22));
+    border-color: rgba(255, 190, 92, 0.55);
+    color: #fff3db;
+  }
+  .btn.danger {
+    background: rgba(255, 96, 131, 0.14);
+    border-color: rgba(255, 96, 131, 0.4);
+    color: #ffc2d0;
+  }
+
+  /* Toggle switches */
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11.5px;
+    color: var(--text-dim);
+    cursor: pointer;
+  }
+  .toggle-row input {
+    display: none;
+  }
+  .switch {
+    width: 34px;
+    height: 18px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.2);
+    border: 1px solid rgba(148, 179, 255, 0.25);
+    position: relative;
+    transition: all 0.18s ease;
+    flex-shrink: 0;
+  }
+  .switch::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #c8d7f5;
+    transition: transform 0.18s ease, background 0.18s ease;
+  }
+  .toggle-row input:checked + .switch {
+    background: rgba(88, 220, 255, 0.32);
+    border-color: var(--accent-cyan);
+  }
+  .toggle-row input:checked + .switch::after {
+    transform: translateX(16px);
+    background: #fff;
+  }
+
+  /* Spring list */
+  .obj-list {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    max-height: 150px;
+    overflow-y: auto;
+  }
+  .obj-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    padding: 5px 8px;
+    border-radius: var(--radius-sm);
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(148, 179, 255, 0.1);
+    font-size: 11px;
+  }
+  .obj-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--accent-cyan);
+    box-shadow: 0 0 8px rgba(88, 220, 255, 0.8);
+    flex-shrink: 0;
+  }
+  .obj-meta {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .obj-name {
+    font-weight: 650;
+    color: var(--text-main);
+  }
+  .obj-dist {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text-muted);
+  }
+  .icon-x {
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 14px;
+    cursor: pointer;
+    padding: 0 4px;
+  }
+  .icon-x:hover {
+    color: var(--accent-rose);
+  }
+
+  /* Bottom Transport Bar */
+  .bottom-bar {
+    position: fixed;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 7px 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: nowrap;
+  }
+
+  .bar-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-main);
+    font-size: 11.5px;
+    font-weight: 650;
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    white-space: nowrap;
+  }
+  .bar-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 179, 255, 0.4);
+  }
+  .bar-btn.active {
+    background: rgba(88, 220, 255, 0.2);
+    border-color: var(--accent-cyan);
+    color: #fff;
+  }
+
+  .bar-divider {
+    width: 1px;
+    height: 20px;
+    background: rgba(148, 179, 255, 0.16);
+    margin: 0 2px;
+  }
+
+  /* Bottom-left interaction hint */
+  .hint-pill {
+    position: fixed;
+    bottom: 14px;
+    left: 14px;
+    padding: 7px 11px;
+    font-size: 11px;
+    color: var(--text-dim);
+    max-width: 325px;
+    line-height: 1.4;
+  }
+  .hint-pill kbd {
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #fff;
+  }
+
+  /* Event Banner */
+  .event-banner {
+    position: fixed;
+    top: 84px;
+    left: 50%;
+    transform: translateX(-50%) translateY(-10px);
+    padding: 9px 15px;
+    border-radius: var(--radius-md);
+    background: rgba(8, 16, 28, 0.9);
+    border: 1px solid rgba(88, 220, 255, 0.48);
+    color: #d6f4ff;
+    font-size: 12px;
+    font-weight: 650;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease, transform 0.25s ease;
+    z-index: 20;
+    backdrop-filter: blur(12px);
+  }
+  .event-banner.visible {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+
+  .zen-restore {
+    position: fixed;
+    bottom: 14px;
+    right: 14px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+  }
+  body.zen-mode .zen-restore {
+    opacity: 0.88;
+    pointer-events: auto;
+  }
+
+  .note-small {
+    font-size: 10.5px;
+    color: var(--text-muted);
+    line-height: 1.35;
+  }
+
+  @media (max-width: 940px) {
+    .top-left {
+      width: calc(100vw - 28px);
+      max-width: none;
+    }
+    .drawer {
+      top: auto;
+      bottom: 62px;
+      height: 50vh;
+      width: calc(100vw - 28px);
+    }
+    .hint-pill {
+      display: none;
+    }
+    .bottom-bar {
+      max-width: calc(100vw - 20px);
+      overflow-x: auto;
+    }
+  }
+</style>
+</head>
+<body>
+<canvas id="sim-canvas"></canvas>
+
+<div class="hud">
+  <!-- Top-Left Telemetry -->
+  <div class="panel top-left">
+    <div class="brand-row">
+      <div class="brand-title-wrap">
+        <div class="brand-title">Watershed</div>
+        <span id="view-badge" class="mode-badge">Satellite Relief</span>
+      </div>
+      <span id="geo-status" class="status-pill">Delta Prograding</span>
+    </div>
+
+    <div class="telemetry-grid">
+      <div class="tele-card">
+        <span class="tele-label">Geologic Age</span>
+        <span id="tel-age" class="tele-val amber">0.0 kyr</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Eroded Volume</span>
+        <span id="tel-eroded" class="tele-val rose">0.00 km³</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Delta Area</span>
+        <span id="tel-delta" class="tele-val cyan">0.0%</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Peak Elevation</span>
+        <span id="tel-peak" class="tele-val">2,840 m</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Water Flux</span>
+        <span id="tel-flux" class="tele-val mint">0 m³/s</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Max Channel</span>
+        <span id="tel-depth" class="tele-val">0.0 m</span>
+      </div>
+    </div>
+
+    <div id="legend-bar" class="legend-bar">
+      <span id="legend-min">Incision</span>
+      <div id="legend-grad" class="legend-grad"></div>
+      <span id="legend-max">Deposition</span>
+    </div>
+
+    <div class="probe-row">
+      <span>Elev: <strong id="probe-elev">—</strong></span>
+      <span>Depth: <strong id="probe-depth">—</strong></span>
+      <span>Δh: <strong id="probe-dh">—</strong></span>
+      <span>Oxbow: <strong id="probe-oxbow" style="color:var(--accent-cyan)">0</strong></span>
+    </div>
+  </div>
+
+  <!-- Right Control Drawer -->
+  <aside id="drawer" class="panel drawer">
+    <div class="drawer-tabs">
+      <button class="tab-btn active" data-tab="tools">Tools &amp; Scenes</button>
+      <button class="tab-btn" data-tab="hydro">Geology</button>
+      <button class="tab-btn" data-tab="view">View &amp; Springs</button>
+    </div>
+
+    <div class="drawer-body">
+      <!-- TAB 1: TOOLS & SCENES -->
+      <div id="tab-tools" class="tab-pane active">
+        <div class="section">
+          <div class="section-title">
+            <span>Terrain &amp; Hydrology Tools</span>
+            <span id="active-tool-label" style="color:var(--accent-cyan); font-family:var(--mono);">Rainstorm</span>
+          </div>
+
+          <div class="tool-grid" id="tool-grid">
+            <button class="tool-btn active" data-tool="rain">
+              <span class="tool-name">🌧 Rainstorm <span class="tool-key">1</span></span>
+              <span class="tool-sub">Drag flash-flood erosion</span>
+            </button>
+            <button class="tool-btn amber" data-tool="uplift">
+              <span class="tool-name">⛰ Uplift / Fault <span class="tool-key">2</span></span>
+              <span class="tool-sub">Raise ridges or drop basins</span>
+            </button>
+            <button class="tool-btn" data-tool="spring">
+              <span class="tool-name">💧 River Spring <span class="tool-key">3</span></span>
+              <span class="tool-sub">Click to place river source</span>
+            </button>
+            <button class="tool-btn amber" data-tool="dam">
+              <span class="tool-name">🧱 Dam / Levee <span class="tool-key">4</span></span>
+              <span class="tool-sub">Build barrier &amp; reservoir</span>
+            </button>
+            <button class="tool-btn span2" data-tool="inspect">
+              <span class="tool-name">🧭 Inspect &amp; Pan Map <span class="tool-key">5</span></span>
+              <span class="tool-sub">Drag to pan · Hover for live stratigraphic probe</span>
+            </button>
+          </div>
+
+          <div id="tool-submode-wrap" class="seg-row" style="display:none;">
+            <button class="seg-btn active amber" data-submode="raise">Raise Ridge</button>
+            <button class="seg-btn" data-submode="basin">Drop Basin</button>
+            <button class="seg-btn" data-submode="fault">Fault Scarp</button>
+          </div>
+
+          <div id="dam-submode-wrap" class="seg-row cols2" style="display:none;">
+            <button class="seg-btn active amber" data-dam="build">Build Concrete Dam</button>
+            <button class="seg-btn" data-dam="breach">Breach / Demolish</button>
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Brush Radius</span>
+              <span id="val-brush" class="val">9 cells</span>
+            </div>
+            <input id="sl-brush" type="range" min="3" max="22" step="1" value="9" />
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Curated Landscapes</span></div>
+          <div class="preset-grid" id="preset-grid">
+            <button class="preset-btn active" data-preset="alpine">
+              <span class="preset-name">Alpine → Delta</span>
+              <span class="preset-sub">Cordillera gorges &amp; coastal fan</span>
+            </button>
+            <button class="preset-btn" data-preset="canyon">
+              <span class="preset-name">Grand Canyon</span>
+              <span class="preset-sub">Stratified plateau deep incision</span>
+            </button>
+            <button class="preset-btn" data-preset="meander">
+              <span class="preset-name">Meanders &amp; Oxbow</span>
+              <span class="preset-sub">Cut-bank migration &amp; cutoffs</span>
+            </button>
+            <button class="preset-btn" data-preset="volcano">
+              <span class="preset-name">Volcanic Island</span>
+              <span class="preset-sub">Radial barrancos &amp; sea fans</span>
+            </button>
+            <button class="preset-btn" data-preset="tectonic">
+              <span class="preset-name">Tectonic Balance</span>
+              <span class="preset-sub">Uplift vs antecedent river gap</span>
+            </button>
+            <button class="preset-btn" data-preset="flashflood">
+              <span class="preset-name">Flash-Flood Storm</span>
+              <span class="preset-sub">Badlands monsoon &amp; braided fans</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Quick Events</span></div>
+          <div class="btn-row">
+            <button id="btn-cloudburst" class="btn primary">⛈ Monsoon Pulse</button>
+            <button id="btn-quake" class="btn amber">⚡ Tectonic Quake</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 2: HYDROLOGY & GEOLOGY -->
+      <div id="tab-hydro" class="tab-pane">
+        <div class="section">
+          <div class="section-title"><span>Hydrology &amp; Erosion Physics</span></div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Rainfall / Discharge Rate</span>
+              <span id="val-rain" class="val">1.00×</span>
+            </div>
+            <input id="sl-rain" type="range" min="0" max="2.6" step="0.05" value="1.00" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Rock Erodibility</span>
+              <span id="val-erode" class="val">1.00×</span>
+            </div>
+            <input id="sl-erode" class="amber" type="range" min="0.1" max="2.6" step="0.05" value="1.00" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Sediment Capacity</span>
+              <span id="val-cap" class="val">1.10×</span>
+            </div>
+            <input id="sl-cap" class="amber" type="range" min="0.2" max="2.6" step="0.05" value="1.10" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Sea Level</span>
+              <span id="val-sea" class="val">0 m</span>
+            </div>
+            <input id="sl-sea" class="mint" type="range" min="-420" max="900" step="10" value="0" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Tectonic Uplift Rate</span>
+              <span id="val-uplift" class="val">0.00 mm/yr</span>
+            </div>
+            <input id="sl-uplift" class="amber" type="range" min="0" max="2.0" step="0.05" value="0.00" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Meander Bank Migration</span>
+              <span id="val-meander" class="val">1.00×</span>
+            </div>
+            <input id="sl-meander" type="range" min="0" max="2.5" step="0.05" value="1.00" />
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Geomorphic Actions</span></div>
+          <div class="btn-row">
+            <button id="btn-clear-dams" class="btn danger">Demolish Dams</button>
+            <button id="btn-reset-baseline" class="btn">Zero Δh Baseline</button>
+          </div>
+          <p class="note-small">Lowering <strong>Sea Level</strong> exposes continental shelves and triggers knickpoint canyon incision; raising it drowns river mouths into estuaries.</p>
+        </div>
+      </div>
+
+      <!-- TAB 3: VIEW & SPRINGS -->
+      <div id="tab-view" class="tab-pane">
+        <div class="section">
+          <div class="section-title"><span>Map Visualization Mode</span></div>
+          <div class="seg-row cols2" id="view-mode-row">
+            <button class="seg-btn active" data-view="satellite">Satellite Relief</button>
+            <button class="seg-btn" data-view="water">Depth &amp; Velocity</button>
+            <button class="seg-btn" data-view="heatmap">Erosion / Delta</button>
+            <button class="seg-btn" data-view="contour">Topo Contours</button>
+          </div>
+
+          <label class="toggle-row">
+            <span>Lagrangian Flow Particles</span>
+            <input id="chk-particles" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+
+          <label class="toggle-row">
+            <span>Overlay Elevation Contours</span>
+            <input id="chk-contours" type="checkbox" />
+            <span class="switch"></span>
+          </label>
+
+          <label class="toggle-row">
+            <span>Show Spring Beacons</span>
+            <input id="chk-springs" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+
+          <label class="toggle-row">
+            <span>Highlight Oxbow Lakes</span>
+            <input id="chk-oxbow" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Sun Azimuth (3D Hillshade)</span>
+              <span id="val-sun" class="val">315° NW</span>
+            </div>
+            <input id="sl-sun" class="amber" type="range" min="0" max="360" step="5" value="315" />
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">
+            <span>Active River Springs</span>
+            <button id="btn-clear-springs" class="icon-x" title="Remove all springs" style="font-size:11px; color:var(--accent-rose);">Clear All</button>
+          </div>
+          <div id="spring-list" class="obj-list">
+            <div class="note-small">No active springs. Select tool 3 to place springs.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Event Notification Banner -->
+  <div id="event-banner" class="event-banner">
+    <span id="event-text">Monsoon cloudburst triggered!</span>
+  </div>
+
+  <!-- Bottom-Left Hint -->
+  <div class="panel hint-pill">
+    <div><kbd>1</kbd>–<kbd>5</kbd> Tools · <kbd>Space</kbd> Pause · <kbd>H</kbd> Cinema · <kbd>Shift</kbd> Invert brush</div>
+    <div><strong>Left-drag</strong> sculpt/rain/dam · <strong>Right-drag</strong> pan · <strong>Scroll</strong> zoom</div>
+  </div>
+
+  <!-- Bottom Transport Bar -->
+  <div class="panel bottom-bar">
+    <button id="btn-play" class="bar-btn active">⏸ Pause</button>
+    <button id="btn-reset" class="bar-btn">↺ Reset</button>
+    <div class="bar-divider"></div>
+    <button class="bar-btn speed-btn" data-speed="0.5">0.5×</button>
+    <button class="bar-btn speed-btn active" data-speed="1">1×</button>
+    <button class="bar-btn speed-btn" data-speed="2">2×</button>
+    <button class="bar-btn speed-btn" data-speed="4">4×</button>
+    <div class="bar-divider"></div>
+    <button id="btn-fit" class="bar-btn" title="Fit terrain to viewport">⌖ Fit</button>
+    <button id="btn-sound" class="bar-btn">🔇 Audio</button>
+    <button id="btn-toggle-drawer" class="bar-btn active">Controls</button>
+    <button id="btn-zen" class="bar-btn" title="Hide HUD (H)">Cinema</button>
+  </div>
+
+  <button id="btn-zen-restore" class="panel bar-btn zen-restore">Show HUD (H)</button>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // =========================================================================
+  // GRID DIMENSIONS & GEOMORPHOLOGY CONSTANTS (180 x 130 @ 60fps)
+  // =========================================================================
+  const GW = 180;
+  const GH = 130;
+  const N = GW * GH;
+
+  // Height scaling: normalized h in [0..1] -> meters via elevM = h * ELEV_SCALE - ELEV_OFFSET
+  // At h = 0.24 => 0 m (default sea level). h = 0.95 => ~2980 m alpine peak.
+  const ELEV_SCALE = 4200;
+  const ELEV_OFFSET = 1008; // 0.24 * 4200
+  const CELL_KM = 0.22;     // each grid cell ~ 220m x 220m
+
+  const hToMeters = (h) => h * ELEV_SCALE - ELEV_OFFSET;
+  const metersToH = (m) => (m + ELEV_OFFSET) / ELEV_SCALE;
+
+  // =========================================================================
+  // SIMULATION ARRAYS (TypedArrays for zero-GC 60fps compute)
+  // =========================================================================
+  const bedrock    = new Float32Array(N); // Consolidated rock elevation
+  const sediment   = new Float32Array(N); // Unconsolidated alluvium / delta sand
+  const dam        = new Float32Array(N); // Impervious concrete dam / levee height
+  const initH      = new Float32Array(N); // Baseline terrain for erosion/deposition heatmap
+  const strataHard = new Float32Array(N); // Spatial rock hardness multiplier (0.5..1.5)
+  const upliftMask = new Float32Array(N); // Spatial mask for tectonic uplift
+
+  // Shallow-water virtual pipe arrays
+  const water      = new Float32Array(N); // River / lake / reservoir depth
+  const fluxL      = new Float32Array(N);
+  const fluxR      = new Float32Array(N);
+  const fluxT      = new Float32Array(N);
+  const fluxB      = new Float32Array(N);
+  const vx         = new Float32Array(N); // Flow velocity X
+  const vy         = new Float32Array(N); // Flow velocity Y
+  const speedField = new Float32Array(N); // Smoothed speed magnitude
+  const suspended  = new Float32Array(N); // Suspended sediment load in water
+  const suspNext   = new Float32Array(N);
+
+  // Hydrologic & Geomorphic tracking fields
+  const flowAccum  = new Float32Array(N); // Smoothed discharge intensity (for river glow & deltas)
+  const peakFlow   = new Float32Array(N); // Historical peak flow (detects abandoned meander oxbows!)
+  const oxbowMask  = new Float32Array(N); // Standing cut-off crescent oxbow lake intensity
+  const moisture   = new Float32Array(N); // Riparian vegetation moisture
+  const tmpField   = new Float32Array(N); // Scratch buffer for diffusion / thermal slumping
+
+  // Precomputed erosion droplet radial kernel (radius 2)
+  const BRUSH_R = 2;
+  const brushOffsets = [];
+  const brushWeights = [];
+  {
+    let sum = 0;
+    for (let dy = -BRUSH_R; dy <= BRUSH_R; dy++) {
+      for (let dx = -BRUSH_R; dx <= BRUSH_R; dx++) {
+        const d = Math.hypot(dx, dy);
+        if (d <= BRUSH_R + 0.25) {
+          const w = Math.max(0, 1 - d / (BRUSH_R + 0.35));
+          brushOffsets.push([dx, dy]);
+          brushWeights.push(w);
+          sum += w;
+        }
+      }
+    }
+    for (let i = 0; i < brushWeights.length; i++) brushWeights[i] /= sum;
+  }
+
+  // Visible Lagrangian flow particles & rainstorm visual droplets
+  const MAX_PARTICLES = 520;
+  const particles = [];
+  const rainStreaks = [];
+
+  // =========================================================================
+  // SIMULATION STATE & PARAMETERS
+  // =========================================================================
+  const state = {
+    running: true,
+    speed: 1,
+    preset: 'alpine',
+    tool: 'rain',
+    upliftSubmode: 'raise',
+    damSubmode: 'build',
+    viewMode: 'satellite',
+    brushRadius: 9,
+
+    // Physics parameters
+    rainRate: 1.0,
+    erodibility: 1.0,
+    sedCapacity: 1.1,
+    seaLevelM: 0,
+    seaH: metersToH(0),
+    upliftRate: 0.0,
+    meanderStrength: 1.0,
+    strataBanding: 0.35,
+
+    // Display toggles
+    showParticles: true,
+    showContours: false,
+    showSprings: true,
+    showOxbow: true,
+    sunAzimuth: 315,
+
+    // Time & Telemetry
+    ageKyr: 0,
+    totalErodedKm3: 0,
+    deltaPct: 0,
+    peakElevM: 2800,
+    activeFluxM3s: 0,
+    maxChannelM: 0,
+    oxbowCount: 0,
+    frameCount: 0,
+    stormBoost: 0,
+
+    // Active river springs
+    springs: [],
+
+    // Camera (world coordinates are grid [0..GW, 0..GH])
+    camX: GW * 0.5,
+    camY: GH * 0.5,
+    camZoom: 1.0, // computed on resize to cover/fit nicely
+
+    // Pointer interaction
+    pointerDown: false,
+    panning: false,
+    shiftHeld: false,
+    mouseCanvasX: -1,
+    mouseCanvasY: -1,
+    mouseGridX: -1,
+    mouseGridY: -1,
+    lastPanX: 0,
+    lastPanY: 0,
+    lastDamGX: -1,
+    lastDamGY: -1,
+
+    // Audio
+    audioOn: false
+  };
+
+  // =========================================================================
+  // DETERMINISTIC VALUE NOISE & FBM FOR REALISTIC TERRAIN PRESETS
+  // =========================================================================
+  let noiseSeed = 1337;
+  function hash2(ix, iy) {
+    let n = (ix * 374761393 + iy * 668265263 + noiseSeed * 1442695041) | 0;
+    n = (n ^ (n >> 13)) * 1274126177;
+    return ((n ^ (n >> 16)) >>> 0) / 4294967295;
+  }
+  function smoothNoise(x, y) {
+    const ix = Math.floor(x);
+    const iy = Math.floor(y);
+    const fx = x - ix;
+    const fy = y - iy;
+    const ux = fx * fx * (3 - 2 * fx);
+    const uy = fy * fy * (3 - 2 * fy);
+    const a = hash2(ix, iy);
+    const b = hash2(ix + 1, iy);
+    const c = hash2(ix, iy + 1);
+    const d = hash2(ix + 1, iy + 1);
+    return a + (b - a) * ux + (c - a) * uy + (a - b - c + d) * ux * uy;
+  }
+  function fbm(x, y, octaves = 5) {
+    let val = 0, amp = 0.5, freq = 1.0, norm = 0;
+    for (let o = 0; o < octaves; o++) {
+      val += smoothNoise(x * freq, y * freq) * amp;
+      norm += amp;
+      amp *= 0.5;
+      freq *= 2.04;
+    }
+    return val / norm;
+  }
+  function ridgedFbm(x, y, octaves = 5) {
+    let val = 0, amp = 0.55, freq = 1.0, norm = 0;
+    for (let o = 0; o < octaves; o++) {
+      const n = 1 - Math.abs(smoothNoise(x * freq, y * freq) * 2 - 1);
+      val += n * n * amp;
+      norm += amp;
+      amp *= 0.48;
+      freq *= 2.08;
+    }
+    return val / norm;
+  }
+
+  // =========================================================================
+  // CANVAS & OFFSCREEN IMAGEDATA SETUP
+  // =========================================================================
+  const canvas = document.getElementById('sim-canvas');
+  const ctx = canvas.getContext('2d', { alpha: false });
+  const offCanvas = document.createElement('canvas');
+  offCanvas.width = GW;
+  offCanvas.height = GH;
+  const offCtx = offCanvas.getContext('2d');
+  const imgData = offCtx.createImageData(GW, GH);
+  const pixels = imgData.data;
+
+  let viewW = window.innerWidth;
+  let viewH = window.innerHeight;
+  let dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+  function resizeCanvas() {
+    viewW = window.innerWidth;
+    viewH = window.innerHeight;
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.floor(viewW * dpr);
+    canvas.height = Math.floor(viewH * dpr);
+    fitCamera();
+  }
+
+  function fitCamera() {
+    state.camX = GW * 0.5;
+    state.camY = GH * 0.5;
+    const scaleX = viewW / GW;
+    const scaleY = viewH / GH;
+    // Slight cover-fit so terrain fills the full viewport like a museum table
+    state.camZoom = Math.max(scaleX, scaleY) * 1.01;
+  }
+
+  function screenToGrid(sx, sy) {
+    const gx = (sx - viewW * 0.5) / state.camZoom + state.camX;
+    const gy = (sy - viewH * 0.5) / state.camZoom + state.camY;
+    return [gx, gy];
+  }
+
+  function gridToScreen(gx, gy) {
+    const sx = (gx - state.camX) * state.camZoom + viewW * 0.5;
+    const sy = (gy - state.camY) * state.camZoom + viewH * 0.5;
+    return [sx, sy];
+  }
+
+  // =========================================================================
+  // PRESET TERRAIN GENERATORS
+  // =========================================================================
+  const PRESET_CONFIG = {
+    alpine: {
+      name: 'Alpine Mountain Range → River Delta',
+      rainRate: 1.05, erodibility: 1.05, sedCapacity: 1.25, seaLevelM: 0, upliftRate: 0.0, meanderStrength: 0.9, strataBanding: 0.25
+    },
+    canyon: {
+      name: 'Grand Canyon Plateau Incision',
+      rainRate: 0.85, erodibility: 1.25, sedCapacity: 1.55, seaLevelM: -260, upliftRate: 0.15, meanderStrength: 0.55, strataBanding: 1.0
+    },
+    meander: {
+      name: 'Floodplain Meanders & Oxbow Lakes',
+      rainRate: 0.65, erodibility: 1.15, sedCapacity: 1.15, seaLevelM: -80, upliftRate: 0.0, meanderStrength: 2.15, strataBanding: 0.15
+    },
+    volcano: {
+      name: 'Volcanic Island Radial Drainage',
+      rainRate: 1.25, erodibility: 1.15, sedCapacity: 1.35, seaLevelM: 40, upliftRate: 0.0, meanderStrength: 0.5, strataBanding: 0.2
+    },
+    tectonic: {
+      name: 'Tectonic Uplift vs Erosion Balance',
+      rainRate: 1.20, erodibility: 1.15, sedCapacity: 1.30, seaLevelM: -60, upliftRate: 1.15, meanderStrength: 0.8, strataBanding: 0.5
+    },
+    flashflood: {
+      name: 'Flash-Flood Rainstorm',
+      rainRate: 2.15, erodibility: 1.65, sedCapacity: 1.50, seaLevelM: -180, upliftRate: 0.0, meanderStrength: 0.95, strataBanding: 0.45
+    }
+  };
+
+  function clearFields() {
+    bedrock.fill(0);
+    sediment.fill(0);
+    dam.fill(0);
+    water.fill(0);
+    fluxL.fill(0);
+    fluxR.fill(0);
+    fluxT.fill(0);
+    fluxB.fill(0);
+    vx.fill(0);
+    vy.fill(0);
+    speedField.fill(0);
+    suspended.fill(0);
+    suspNext.fill(0);
+    flowAccum.fill(0);
+    peakFlow.fill(0);
+    oxbowMask.fill(0);
+    moisture.fill(0);
+    upliftMask.fill(0);
+    strataHard.fill(1.0);
+    particles.length = 0;
+    rainStreaks.length = 0;
+    state.springs = [];
+    state.ageKyr = 0;
+    state.totalErodedKm3 = 0;
+    state.deltaPct = 0;
+    state.oxbowCount = 0;
+    state.stormBoost = 0;
+  }
+
+  function loadPreset(presetKey, seedOffset = 0) {
+    state.preset = presetKey;
+    const cfg = PRESET_CONFIG[presetKey] || PRESET_CONFIG.alpine;
+    state.rainRate = cfg.rainRate;
+    state.erodibility = cfg.erodibility;
+    state.sedCapacity = cfg.sedCapacity;
+    state.seaLevelM = cfg.seaLevelM;
+    state.seaH = metersToH(cfg.seaLevelM);
+    state.upliftRate = cfg.upliftRate;
+    state.meanderStrength = cfg.meanderStrength;
+    state.strataBanding = cfg.strataBanding;
+
+    clearFields();
+    noiseSeed = (presetKey.charCodeAt(0) * 911 + presetKey.charCodeAt(1) * 353 + seedOffset * 97) | 0;
+
+    if (presetKey === 'alpine') {
+      // Dramatic mountain cordillera along left/upper-left descending to coastal plain & ocean basin on right/bottom-right
+      for (let y = 0; y < GH; y++) {
+        const ny = y / GH;
+        for (let x = 0; x < GW; x++) {
+          const nx = x / GW;
+          const idx = y * GW + x;
+
+          // Sloping continental ramp from NW alpine range to SE ocean shelf
+          const coastLine = 0.64 + 0.08 * Math.sin(ny * 5.2 + 0.4) + 0.05 * fbm(nx * 3.5, ny * 3.5, 3);
+          const distFromCoast = coastLine - nx; // >0 land, <0 ocean
+
+          let h;
+          if (distFromCoast > 0) {
+            const ramp = Math.pow(distFromCoast / coastLine, 1.38);
+            const ridge = ridgedFbm(nx * 4.8 + 1.2, ny * 4.2 + 0.5, 5);
+            const detail = fbm(nx * 10.0, ny * 10.0, 3) * 0.05;
+            // Broad alpine belt on left third
+            const mtnEnvelope = Math.exp(-Math.pow((nx - 0.14) / 0.24, 2)) * 0.48 + 0.14 * ramp;
+            h = state.seaH + 0.012 + ramp * 0.28 + ridge * mtnEnvelope + detail;
+            // Slight valley depressions guiding initial trunk rivers
+            const v1 = Math.exp(-Math.pow((ny - (0.30 + 0.07 * Math.sin(nx * 7))) / 0.075, 2));
+            const v2 = Math.exp(-Math.pow((ny - (0.68 + 0.06 * Math.cos(nx * 6))) / 0.085, 2));
+            h -= (v1 + v2) * 0.065 * Math.min(1, nx * 2.2);
+          } else {
+            // Shallow continental shelf dropping into ocean basin
+            const depth = -distFromCoast / (1 - coastLine);
+            const shelfNoise = fbm(nx * 6.0, ny * 6.0, 3) * 0.025;
+            h = state.seaH - 0.015 - Math.pow(depth, 1.15) * 0.19 + shelfNoise;
+          }
+
+          bedrock[idx] = Math.max(0.03, Math.min(0.96, h));
+          sediment[idx] = distFromCoast > 0 && distFromCoast < 0.22 ? 0.018 : 0.006;
+          upliftMask[idx] = Math.max(0, 1 - nx * 1.6);
+          strataHard[idx] = 0.85 + 0.3 * fbm(nx * 7, ny * 7, 2);
+        }
+      }
+      state.springs = [
+        { x: 24, y: 34, rate: 0.038, name: 'North Glacier Headwater' },
+        { x: 22, y: 84, rate: 0.036, name: 'South Alpine Cirque' },
+        { x: 34, y: 58, rate: 0.026, name: 'Central Tarn Spring' }
+      ];
+    } else if (presetKey === 'canyon') {
+      // High Colorado-style stratified plateau with meandering precursor river incising deep gorge
+      for (let y = 0; y < GH; y++) {
+        const ny = y / GH;
+        for (let x = 0; x < GW; x++) {
+          const nx = x / GW;
+          const idx = y * GW + x;
+
+          // Broad high plateau sloping slightly E->W and dropping at far right outlet
+          const basePlateau = 0.72 - nx * 0.16 + 0.035 * fbm(nx * 4.5, ny * 4.5, 4);
+          // Stepped mesa buttes
+          const mesa = smoothNoise(nx * 5.5 + 3.1, ny * 5.0 + 1.7) > 0.62 ? 0.055 : 0;
+          let h = basePlateau + mesa;
+
+          // Sinuous precursor Colorado-like channel path across plateau
+          const centerY = 0.50 + 0.17 * Math.sin(nx * 10.5 - 0.6) + 0.06 * Math.sin(nx * 21.0);
+          const distToRiver = Math.abs(ny - centerY);
+          const canyonCut = Math.exp(-Math.pow(distToRiver / 0.048, 2)) * (0.14 + 0.08 * nx);
+          h -= canyonCut;
+
+          // Side tributary slots
+          const trib1 = Math.exp(-Math.pow((nx - 0.34 - (ny - 0.5) * 0.4) / 0.035, 2)) * (ny < centerY ? 0.07 : 0);
+          const trib2 = Math.exp(-Math.pow((nx - 0.62 + (ny - 0.5) * 0.35) / 0.035, 2)) * (ny > centerY ? 0.07 : 0);
+          h -= (trib1 + trib2);
+
+          // Outlet gorge opening at far right
+          if (nx > 0.87) {
+            const t = (nx - 0.87) / 0.13;
+            h -= t * t * 0.24;
+          }
+
+          bedrock[idx] = Math.max(0.12, Math.min(0.92, h));
+          sediment[idx] = 0.015;
+          upliftMask[idx] = 0.85 * (1 - nx * 0.6);
+          strataHard[idx] = 0.75 + 0.45 * Math.sin(h * 45) * 0.5;
+        }
+      }
+      state.springs = [
+        { x: 10, y: Math.round(GH * (0.50 + 0.17 * Math.sin(-0.6))), rate: 0.065, name: 'Plateau Trunk River' },
+        { x: 48, y: 18, rate: 0.020, name: 'North Rim Tributary' },
+        { x: 96, y: 112, rate: 0.020, name: 'South Rim Arroyo' }
+      ];
+    } else if (presetKey === 'meander') {
+      // Low-gradient alluvial floodplain with sinuous meandering trunk river & nascent oxbow cutoffs!
+      const valleyFloor = state.seaH + 0.13;
+      for (let y = 0; y < GH; y++) {
+        const ny = y / GH;
+        for (let x = 0; x < GW; x++) {
+          const nx = x / GW;
+          const idx = y * GW + x;
+
+          // Gentle E->W gradient across wide valley with framing terrace hills on top & bottom
+          const slope = (1 - nx) * 0.095;
+          const bankWall = Math.pow(Math.max(0, Math.abs(ny - 0.5) - 0.33) / 0.17, 1.8) * 0.26;
+          const micro = (fbm(nx * 9, ny * 9, 4) - 0.5) * 0.014;
+          let h = valleyFloor + slope + bankWall + micro;
+
+          // Sinuous meandering trunk channel with exaggerated tight bends
+          const wave1 = 0.21 * Math.sin(nx * 14.5 + 0.3);
+          const wave2 = 0.045 * Math.sin(nx * 29.0 - 0.8);
+          const riverY = 0.5 + wave1 + wave2;
+          const dRiver = Math.abs(ny - riverY);
+          const channelDepth = Math.exp(-Math.pow(dRiver / 0.028, 2)) * 0.052;
+          h -= channelDepth;
+
+          // Pre-carve one scenic abandoned crescent oxbow depression so oxbow mechanics shine immediately
+          const oxCX = 0.44, oxCY = 0.26;
+          const oxR = Math.hypot((nx - oxCX) * 1.35, ny - oxCY);
+          const oxAng = Math.atan2(ny - oxCY, (nx - oxCX) * 1.35);
+          if (oxAng < 0.3 && oxAng > -Math.PI - 0.3) {
+            const ring = Math.exp(-Math.pow((oxR - 0.085) / 0.016, 2));
+            if (ring > 0.15) {
+              h -= ring * 0.036;
+              water[idx] = Math.max(water[idx], ring * 0.026);
+              oxbowMask[idx] = Math.max(oxbowMask[idx], ring * 0.9);
+              peakFlow[idx] = Math.max(peakFlow[idx], ring * 0.65);
+            }
+          }
+
+          // Fill main river channel with initial flowing water
+          if (dRiver < 0.032) {
+            const wAmt = (1 - dRiver / 0.032) * 0.034;
+            water[idx] = Math.max(water[idx], wAmt);
+            flowAccum[idx] = (1 - dRiver / 0.032) * 0.7;
+            peakFlow[idx] = flowAccum[idx];
+            vx[idx] = 0.65;
+          }
+
+          // Coastal marsh outlet at far right
+          if (nx > 0.88) {
+            const t = (nx - 0.88) / 0.12;
+            h -= t * 0.14;
+          }
+
+          bedrock[idx] = Math.max(0.06, h - 0.045);
+          sediment[idx] = 0.045; // Thick soft erodible alluvium!
+          upliftMask[idx] = 0;
+          strataHard[idx] = 0.65;
+        }
+      }
+      const startY = Math.round(GH * (0.5 + 0.21 * Math.sin(0.3) + 0.045 * Math.sin(-0.8)));
+      state.springs = [
+        { x: 6, y: Math.max(12, Math.min(GH - 12, startY)), rate: 0.072, name: 'Floodplain Trunk River' }
+      ];
+    } else if (presetKey === 'volcano') {
+      // Towering central stratovolcano with summit caldera surrounded by deep ocean
+      const cx = GW * 0.5, cy = GH * 0.5;
+      for (let y = 0; y < GH; y++) {
+        for (let x = 0; x < GW; x++) {
+          const idx = y * GW + x;
+          const dx = (x - cx) / (GH * 0.48);
+          const dy = (y - cy) / (GH * 0.48);
+          const r = Math.hypot(dx, dy);
+          const ang = Math.atan2(dy, dx);
+
+          // Volcanic cone + subtle radial ridges + summit crater
+          const radialPerturb = 0.045 * fbm(Math.cos(ang) * 2.2 + 3, Math.sin(ang) * 2.2 + 3, 4);
+          const cone = Math.exp(-r * r * 1.45) * 0.74;
+          const caldera = r < 0.22 ? Math.exp(-Math.pow(r / 0.11, 2)) * 0.22 : 0;
+          // Slight flank secondary cone
+          const r2 = Math.hypot((x - cx * 1.32) / (GH * 0.24), (y - cy * 0.78) / (GH * 0.24));
+          const flank = Math.exp(-r2 * r2 * 2.2) * 0.26;
+          const detail = (ridgedFbm(x * 0.06, y * 0.06, 4) - 0.4) * 0.07 * Math.exp(-r * 0.9);
+
+          let h = 0.08 + cone - caldera + flank + detail + radialPerturb * Math.exp(-r * 0.7);
+          bedrock[idx] = Math.max(0.04, Math.min(0.96, h));
+          sediment[idx] = r < 0.8 ? 0.014 : 0.004;
+          upliftMask[idx] = Math.exp(-r * r * 2.0);
+          strataHard[idx] = 0.85 + 0.3 * fbm(x * 0.09, y * 0.09, 2);
+        }
+      }
+      // Fill crater lake slightly & place rim springs
+      for (let y = Math.floor(cy - 10); y <= Math.ceil(cy + 10); y++) {
+        for (let x = Math.floor(cx - 10); x <= Math.ceil(cx + 10); x++) {
+          const r = Math.hypot(x - cx, y - cy);
+          if (r < 6.5) water[y * GW + x] = 0.032;
+        }
+      }
+      state.springs = [
+        { x: Math.round(cx), y: Math.round(cy - 8), rate: 0.030, name: 'North Caldera Spillway' },
+        { x: Math.round(cx + 9), y: Math.round(cy + 5), rate: 0.028, name: 'SE Flank Fumarole' },
+        { x: Math.round(cx - 9), y: Math.round(cy + 6), rate: 0.028, name: 'SW Crater Spring' }
+      ];
+    } else if (presetKey === 'tectonic') {
+      // Rising central tectonic fault block with antecedent rivers slicing transverse gorges through it!
+      for (let y = 0; y < GH; y++) {
+        const ny = y / GH;
+        for (let x = 0; x < GW; x++) {
+          const nx = x / GW;
+          const idx = y * GW + x;
+
+          // General slope left->right with rising central horst/fault range around nx = 0.48
+          const baseSlope = 0.56 - nx * 0.36;
+          const faultBlock = Math.exp(-Math.pow((nx - 0.47) / 0.14, 2)) * 0.24;
+          const ridgeTex = ridgedFbm(nx * 6.5, ny * 6.5, 4) * 0.08;
+          // Two pre-existing antecedent river notches across the rising fault block
+          const gap1 = Math.exp(-Math.pow((ny - 0.34) / 0.055, 2)) * faultBlock * 0.65;
+          const gap2 = Math.exp(-Math.pow((ny - 0.69) / 0.055, 2)) * faultBlock * 0.65;
+
+          const h = baseSlope + faultBlock + ridgeTex - gap1 - gap2;
+          bedrock[idx] = Math.max(0.06, Math.min(0.94, h));
+          sediment[idx] = nx > 0.62 ? 0.02 : 0.008;
+          upliftMask[idx] = Math.exp(-Math.pow((nx - 0.47) / 0.15, 2));
+          strataHard[idx] = 0.9 + 0.25 * fbm(nx * 8, ny * 8, 2);
+        }
+      }
+      state.springs = [
+        { x: 14, y: Math.round(GH * 0.34), rate: 0.048, name: 'North Antecedent River' },
+        { x: 14, y: Math.round(GH * 0.69), rate: 0.046, name: 'South Antecedent River' }
+      ];
+    } else if (presetKey === 'flashflood') {
+      // Arid badlands escarpment & piedmont alluvial basin hit by torrential monsoon rainstorms
+      for (let y = 0; y < GH; y++) {
+        const ny = y / GH;
+        for (let x = 0; x < GW; x++) {
+          const nx = x / GW;
+          const idx = y * GW + x;
+
+          // Steep upper escarpment (top-left) dropping onto broad bajada / playa basin (bottom-right)
+          const diag = (1 - nx) * 0.45 + (1 - ny) * 0.55;
+          const escarpment = 1 / (1 + Math.exp(-(diag - 0.52) * 11));
+          const ridges = ridgedFbm(nx * 6.0 + 2.1, ny * 6.0 + 1.3, 5);
+          const fine = fbm(nx * 14, ny * 14, 3) * 0.035;
+          const h = 0.22 + escarpment * 0.44 + ridges * (0.18 * escarpment + 0.04) + fine;
+
+          bedrock[idx] = Math.max(0.08, Math.min(0.94, h));
+          sediment[idx] = 0.025 * (1 - escarpment * 0.5);
+          upliftMask[idx] = escarpment * 0.6;
+          strataHard[idx] = 0.72 + 0.45 * fbm(nx * 10, ny * 10, 2);
+        }
+      }
+      state.springs = [
+        { x: 34, y: 24, rate: 0.042, name: 'Badlands Cloudburst Head' },
+        { x: 82, y: 18, rate: 0.038, name: 'Escarpment Arroyo' }
+      ];
+      state.stormBoost = 1.0;
+    }
+
+    // Store baseline height for Erosion vs Deposition Heatmap
+    for (let i = 0; i < N; i++) {
+      initH[i] = bedrock[i] + sediment[i];
+    }
+
+    // Warm up initial river channels slightly so first frame already has living hydrology
+    for (let k = 0; k < 18; k++) {
+      stepShallowWater(0.14);
+    }
+    for (let k = 0; k < 350; k++) {
+      runDroplet(true);
+    }
+    seedVisualParticles();
+    syncUI();
+    renderSpringList();
+    updateTelemetry();
+  }
+
+  function seedVisualParticles() {
+    particles.length = 0;
+    for (let i = 0; i < 240; i++) {
+      spawnVisualParticle();
+    }
+  }
+
+  function spawnVisualParticle(fx, fy) {
+    if (particles.length >= MAX_PARTICLES) return;
+    let x = fx, y = fy;
+    if (x === undefined) {
+      if (state.springs.length > 0 && Math.random() < 0.55) {
+        const sp = state.springs[(Math.random() * state.springs.length) | 0];
+        x = sp.x + (Math.random() - 0.5) * 4;
+        y = sp.y + (Math.random() - 0.5) * 4;
+      } else {
+        x = 2 + Math.random() * (GW - 4);
+        y = 2 + Math.random() * (GH - 4);
+      }
+    }
+    particles.push({
+      x, y,
+      px: x, py: y,
+      life: 25 + Math.random() * 65,
+      maxLife: 90,
+      sed: 0
+    });
+  }
+
+  // =========================================================================
+  // PHYSICS ENGINE 1: LAGRANGIAN HYDRAULIC DROPLET EROSION & DELTA DEPOSITION
+  // =========================================================================
+  function sampleHeightGrad(px, py) {
+    const x0 = Math.max(0, Math.min(GW - 2, px | 0));
+    const y0 = Math.max(0, Math.min(GH - 2, py | 0));
+    const fx = px - x0;
+    const fy = py - y0;
+
+    const i00 = y0 * GW + x0;
+    const i10 = i00 + 1;
+    const i01 = i00 + GW;
+    const i11 = i01 + 1;
+
+    // Effective terrain+dam height (dams deflect droplets around or pool them!)
+    const h00 = bedrock[i00] + sediment[i00] + dam[i00];
+    const h10 = bedrock[i10] + sediment[i10] + dam[i10];
+    const h01 = bedrock[i01] + sediment[i01] + dam[i01];
+    const h11 = bedrock[i11] + sediment[i11] + dam[i11];
+
+    const gx = (h10 - h00) * (1 - fy) + (h11 - h01) * fy;
+    const gy = (h01 - h00) * (1 - fx) + (h11 - h10) * fx;
+    const h = h00 * (1 - fx) * (1 - fy) + h10 * fx * (1 - fy) + h01 * (1 - fx) * fy + h11 * fx * fy;
+    return [h, gx, gy];
+  }
+
+  function runDroplet(warmup = false, spawnX = -1, spawnY = -1, rainBoost = 1.0) {
+    let px, py;
+    if (spawnX >= 0) {
+      px = spawnX;
+      py = spawnY;
+    } else if (state.springs.length > 0 && Math.random() < 0.42) {
+      const sp = state.springs[(Math.random() * state.springs.length) | 0];
+      px = sp.x + (Math.random() - 0.5) * 3.0;
+      py = sp.y + (Math.random() - 0.5) * 3.0;
+    } else {
+      px = 2 + Math.random() * (GW - 4);
+      py = 2 + Math.random() * (GH - 4);
+    }
+
+    if (px < 1 || px >= GW - 2 || py < 1 || py >= GH - 2) return;
+    const startIdx = (py | 0) * GW + (px | 0);
+    // Avoid wasting rain droplets deep inside open ocean
+    if (spawnX < 0 && bedrock[startIdx] + sediment[startIdx] < state.seaH - 0.025) return;
+
+    let dirX = 0, dirY = 0;
+    let speed = 1.0;
+    let wVol = 1.0 * rainBoost;
+    let sed = 0.0;
+
+    const inertia = 0.32;
+    const gravity = 4.2;
+    const evap = 0.018;
+    const minSlope = 0.0022;
+    const erodeK = 0.19 * state.erodibility * (warmup ? 0.5 : 1.0);
+    const depositK = 0.28;
+    const capFactor = 3.2 * state.sedCapacity;
+    const maxSteps = warmup ? 36 : 48;
+    const seaH = state.seaH;
+
+    for (let step = 0; step < maxSteps; step++) {
+      const ix = px | 0;
+      const iy = py | 0;
+      if (ix < 1 || ix >= GW - 2 || iy < 1 || iy >= GH - 2) break;
+      const idx = iy * GW + ix;
+
+      const [hOld, gx, gy] = sampleHeightGrad(px, py);
+
+      // Update direction with momentum (creates natural curved canyons & sinuous channels)
+      dirX = dirX * inertia - gx * (1 - inertia);
+      dirY = dirY * inertia - gy * (1 - inertia);
+      const len = Math.hypot(dirX, dirY);
+      if (len < 1e-6) {
+        const ang = Math.random() * 6.2831853;
+        dirX = Math.cos(ang);
+        dirY = Math.sin(ang);
+      } else {
+        dirX /= len;
+        dirY /= len;
+      }
+
+      const nx = px + dirX;
+      const ny = py + dirY;
+      if (nx < 1 || nx >= GW - 2 || ny < 1 || ny >= GH - 2) break;
+
+      const [hNew] = sampleHeightGrad(nx, ny);
+      const dh = hNew - hOld;
+
+      // Record discharge into flowAccum & moisture
+      flowAccum[idx] = Math.min(3.5, flowAccum[idx] + 0.028 * wVol);
+      if (flowAccum[idx] > peakFlow[idx]) peakFlow[idx] = flowAccum[idx];
+      moisture[idx] = Math.min(1.0, moisture[idx] + 0.05);
+
+      // Entering the ocean or a deep reservoir slows droplet sharply -> ALLUVIAL DELTA DEPOSITION!
+      const submerged = hNew < seaH;
+      if (submerged) {
+        // Fan out sediment gently into shallow coastal water to prograde sweeping alluvial delta lobes!
+        const dropAmt = sed * 0.58;
+        if (dropAmt > 1e-6) {
+          sed -= dropAmt;
+          // Deposit across small fan so delta builds smooth sweeping lobes
+          const fanAngle = Math.atan2(dirY, dirX) + (Math.random() - 0.5) * 1.15;
+          const fx = Math.max(1, Math.min(GW - 2, Math.round(nx + Math.cos(fanAngle) * 1.1)));
+          const fy = Math.max(1, Math.min(GH - 2, Math.round(ny + Math.sin(fanAngle) * 1.1)));
+          const fIdx = fy * GW + fx;
+          sediment[fIdx] += dropAmt * 0.65;
+          sediment[idx] += dropAmt * 0.35;
+          suspended[fIdx] = Math.min(1.0, suspended[fIdx] + dropAmt * 14);
+        }
+        speed *= 0.62;
+        wVol *= 0.72;
+        if (sed < 0.00015 || wVol < 0.08) break;
+        px = nx;
+        py = ny;
+        continue;
+      }
+
+      // Compute sediment carrying capacity
+      const cap = Math.max(-dh, minSlope) * speed * wVol * capFactor;
+
+      if (sed > cap || dh > 0) {
+        // Deposit sediment (fills basins, builds braided bars & alluvial fans)
+        const amt = dh > 0 ? Math.min(dh * 0.85, sed) : (sed - cap) * depositK;
+        sed -= amt;
+
+        // Bilinear deposition at (px, py)
+        const fx = px - ix;
+        const fy = py - iy;
+        sediment[idx]          += amt * (1 - fx) * (1 - fy);
+        sediment[idx + 1]      += amt * fx * (1 - fy);
+        sediment[idx + GW]     += amt * (1 - fx) * fy;
+        sediment[idx + GW + 1] += amt * fx * fy;
+      } else {
+        // Erode terrain with smooth radial brush (carves crisp dendritic valleys & canyons)
+        // Skip concrete dams!
+        if (dam[idx] < 0.002) {
+          // Sedimentary strata modulation (hard/soft horizontal bands for Grand Canyon!)
+          const strataMod = state.strataBanding > 0.05
+            ? (1.0 - 0.38 * state.strataBanding * Math.sin(hOld * 58.0))
+            : 1.0;
+          const rawErode = Math.min((cap - sed) * erodeK * strataMod, -dh * 0.92 + 0.0004);
+          let totalTaken = 0;
+
+          for (let b = 0; b < brushOffsets.length; b++) {
+            const bx = ix + brushOffsets[b][0];
+            const by = iy + brushOffsets[b][1];
+            if (bx <= 0 || bx >= GW - 1 || by <= 0 || by >= GH - 1) continue;
+            const bIdx = by * GW + bx;
+            if (dam[bIdx] > 0.002) continue;
+
+            const want = rawErode * brushWeights[b];
+            // Unconsolidated sediment erodes 2.2x faster than consolidated bedrock
+            if (sediment[bIdx] >= want) {
+              sediment[bIdx] -= want;
+              totalTaken += want;
+            } else {
+              const fromSed = sediment[bIdx];
+              sediment[bIdx] = 0;
+              const rem = (want - fromSed) * 0.52 / strataHard[bIdx];
+              const takenRock = Math.min(rem, Math.max(0, bedrock[bIdx] - 0.02));
+              bedrock[bIdx] -= takenRock;
+              totalTaken += fromSed + takenRock;
+            }
+          }
+          sed += totalTaken;
+          if (!warmup) {
+            state.totalErodedKm3 += totalTaken * (ELEV_SCALE / 1000) * (CELL_KM * CELL_KM);
+          }
+        }
+      }
+
+      speed = Math.sqrt(Math.max(0.05, speed * speed + Math.max(-0.25, -dh) * gravity));
+      speed = Math.min(speed, 4.5);
+      wVol *= (1 - evap);
+      px = nx;
+      py = ny;
+      if (wVol < 0.05) break;
+    }
+  }
+
+  // =========================================================================
+  // PHYSICS ENGINE 2: SHALLOW-WATER VIRTUAL PIPE FLOW (DAMS, LAKES & DELTAS)
+  // =========================================================================
+  function stepShallowWater(dt) {
+    const rainBase = 0.00018 * state.rainRate * (1 + state.stormBoost * 1.8);
+    const seaH = state.seaH;
+
+    // 1. Add distributed rain & spring discharges
+    if (rainBase > 0) {
+      for (let y = 1; y < GH - 1; y++) {
+        let row = y * GW;
+        for (let x = 1; x < GW - 1; x++) {
+          const i = row + x;
+          const h = bedrock[i] + sediment[i] + dam[i];
+          if (h > seaH) {
+            // Orographic rainfall: mountains get slightly more precipitation!
+            const oro = 0.65 + Math.max(0, h - seaH) * 1.4;
+            water[i] += rainBase * oro;
+          }
+        }
+      }
+    }
+
+    // Permanent river springs
+    for (let s = 0; s < state.springs.length; s++) {
+      const sp = state.springs[s];
+      const sx = Math.max(2, Math.min(GW - 3, sp.x | 0));
+      const sy = Math.max(2, Math.min(GH - 3, sp.y | 0));
+      const rate = sp.rate * (0.45 + 0.65 * state.rainRate);
+      const i = sy * GW + sx;
+      water[i] += rate;
+      water[i - 1] += rate * 0.25;
+      water[i + 1] += rate * 0.25;
+      water[i - GW] += rate * 0.25;
+      water[i + GW] += rate * 0.25;
+      flowAccum[i] = Math.min(3.5, flowAccum[i] + 0.22);
+    }
+
+    // 2. Compute pipe outflow fluxes using hydrostatic surface difference
+    const pipeK = dt * 1.55;
+    for (let y = 1; y < GH - 1; y++) {
+      let row = y * GW;
+      for (let x = 1; x < GW - 1; x++) {
+        const i = row + x;
+        const w = water[i];
+        if (w < 1e-6) {
+          fluxL[i] = 0; fluxR[i] = 0; fluxT[i] = 0; fluxB[i] = 0;
+          continue;
+        }
+        const h = bedrock[i] + sediment[i] + dam[i];
+        const surf = Math.max(h + w, seaH);
+
+        const hL = bedrock[i - 1] + sediment[i - 1] + dam[i - 1];
+        const hR = bedrock[i + 1] + sediment[i + 1] + dam[i + 1];
+        const hT = bedrock[i - GW] + sediment[i - GW] + dam[i - GW];
+        const hB = bedrock[i + GW] + sediment[i + GW] + dam[i + GW];
+
+        const sL = Math.max(hL + water[i - 1], seaH);
+        const sR = Math.max(hR + water[i + 1], seaH);
+        const sT = Math.max(hT + water[i - GW], seaH);
+        const sB = Math.max(hB + water[i + GW], seaH);
+
+        let fL = Math.max(0, fluxL[i] * 0.91 + pipeK * (surf - sL));
+        let fR = Math.max(0, fluxR[i] * 0.91 + pipeK * (surf - sR));
+        let fT = Math.max(0, fluxT[i] * 0.91 + pipeK * (surf - sT));
+        let fB = Math.max(0, fluxB[i] * 0.91 + pipeK * (surf - sB));
+
+        const sum = fL + fR + fT + fB;
+        if (sum * dt > w) {
+          const k = w / (sum * dt + 1e-9);
+          fL *= k; fR *= k; fT *= k; fB *= k;
+        }
+        fluxL[i] = fL; fluxR[i] = fR; fluxT[i] = fT; fluxB[i] = fB;
+      }
+    }
+
+    // 3. Update water depth, velocity vector field, and SWE sediment transport
+    const evapKeep = 0.9965;
+    const sweErode = 0.0026 * state.erodibility;
+    const sweDep   = 0.032;
+    const sweCap   = 0.055 * state.sedCapacity;
+
+    for (let y = 1; y < GH - 1; y++) {
+      let row = y * GW;
+      for (let x = 1; x < GW - 1; x++) {
+        const i = row + x;
+        const inflow = fluxR[i - 1] + fluxL[i + 1] + fluxB[i - GW] + fluxT[i + GW];
+        const outflow = fluxL[i] + fluxR[i] + fluxT[i] + fluxB[i];
+        const dW = dt * (inflow - outflow);
+        const wPrev = water[i];
+        let wNew = Math.max(0, (wPrev + dW) * evapKeep);
+
+        const h = bedrock[i] + sediment[i] + dam[i];
+        // Ocean cells absorb excess freshwater smoothly while preserving delta outflow momentum
+        if (h < seaH) {
+          wNew *= 0.86;
+        }
+        water[i] = Math.min(0.32, wNew);
+
+        // Velocity estimate
+        const u = 0.5 * (fluxR[i - 1] - fluxL[i] + fluxR[i] - fluxL[i + 1]);
+        const v = 0.5 * (fluxB[i - GW] - fluxT[i] + fluxB[i] - fluxT[i + GW]);
+        const avgW = Math.max(0.003, 0.5 * (wPrev + wNew));
+        const velX = Math.max(-2.2, Math.min(2.2, u / avgW));
+        const velY = Math.max(-2.2, Math.min(2.2, v / avgW));
+        vx[i] = vx[i] * 0.65 + velX * 0.35;
+        vy[i] = vy[i] * 0.65 + velY * 0.35;
+
+        const spd = Math.hypot(vx[i], vy[i]);
+        speedField[i] = speedField[i] * 0.72 + spd * 0.28;
+
+        // Flow accumulation glow driven by actual hydraulic discharge (depth * speed)
+        const discharge = wNew * spd * 24.0;
+        flowAccum[i] = flowAccum[i] * 0.965 + Math.min(0.28, discharge * 0.08);
+        if (flowAccum[i] > peakFlow[i]) peakFlow[i] = flowAccum[i];
+
+        if (wNew > 0.0025) {
+          moisture[i] = Math.min(1.0, moisture[i] + 0.025);
+        } else {
+          moisture[i] *= 0.997;
+        }
+
+        // Shallow-water sediment pickup & delta deposition
+        if (dam[i] < 0.002) {
+          const cap = sweCap * spd * Math.min(0.08, wNew) * (h < seaH ? 0.08 : 1.0);
+          let s = suspended[i];
+          if (s < cap && h > seaH) {
+            const take = Math.min((cap - s) * sweErode * 4.5, 0.0018);
+            if (sediment[i] >= take) {
+              sediment[i] -= take;
+              s += take;
+            } else {
+              const fromSed = sediment[i];
+              sediment[i] = 0;
+              const rockTake = Math.min((take - fromSed) * 0.45 / strataHard[i], Math.max(0, bedrock[i] - 0.03));
+              bedrock[i] -= rockTake;
+              s += fromSed + rockTake;
+            }
+          } else if (s > cap) {
+            // Deposit rapidly when entering standing sea water or reservoirs!
+            const depRate = h < seaH ? sweDep * 4.2 : sweDep;
+            const drop = (s - cap) * depRate;
+            sediment[i] += drop;
+            s -= drop;
+          }
+          suspended[i] = s;
+        }
+      }
+    }
+
+    // Open draining boundaries (ocean edges & canyon outlet)
+    for (let x = 0; x < GW; x++) {
+      water[x] *= 0.4;
+      water[(GH - 1) * GW + x] *= 0.4;
+      suspended[x] *= 0.4;
+      suspended[(GH - 1) * GW + x] *= 0.4;
+    }
+    for (let y = 0; y < GH; y++) {
+      water[y * GW] *= 0.4;
+      water[y * GW + GW - 1] *= 0.4;
+      suspended[y * GW] *= 0.4;
+      suspended[y * GW + GW - 1] *= 0.4;
+    }
+
+    // 4. Semi-Lagrangian advection of suspended sediment downstream (builds protruding deltas!)
+    for (let y = 1; y < GH - 1; y++) {
+      let row = y * GW;
+      for (let x = 1; x < GW - 1; x++) {
+        const i = row + x;
+        const bx = Math.max(1, Math.min(GW - 2, x - vx[i] * dt * 2.2));
+        const by = Math.max(1, Math.min(GH - 2, y - vy[i] * dt * 2.2));
+        const x0 = bx | 0, y0 = by | 0;
+        const fx = bx - x0, fy = by - y0;
+        const j = y0 * GW + x0;
+        suspNext[i] =
+          suspended[j] * (1 - fx) * (1 - fy) +
+          suspended[j + 1] * fx * (1 - fy) +
+          suspended[j + GW] * (1 - fx) * fy +
+          suspended[j + GW + 1] * fx * fy;
+      }
+    }
+    suspended.set(suspNext);
+  }
+
+  // =========================================================================
+  // PHYSICS ENGINE 3: CUT-BANK MEANDERING, POINT BARS & OXBOW LAKE CUTOFFS
+  // =========================================================================
+  function stepMeanderAndOxbow() {
+    const mStrength = state.meanderStrength * 0.0014 * state.erodibility;
+    const seaH = state.seaH;
+    let oxCells = 0;
+
+    for (let y = 2; y < GH - 2; y++) {
+      const row = y * GW;
+      for (let x = 2; x < GW - 2; x++) {
+        const i = row + x;
+        const h = bedrock[i] + sediment[i] + dam[i];
+        if (h <= seaH + 0.002) {
+          oxbowMask[i] *= 0.92;
+          continue;
+        }
+
+        const w = water[i];
+        const spd = speedField[i];
+
+        // 1. Dynamic Cut-Bank Erosion & Inner Point-Bar Deposition on active river bends
+        if (mStrength > 0 && w > 0.004 && spd > 0.08 && dam[i] < 0.001) {
+          const ux = vx[i] / (spd + 1e-5);
+          const uy = vy[i] / (spd + 1e-5);
+
+          // Sample downstream velocity to compute local bend curvature (centrifugal helicoidal flow)
+          const dxCell = Math.round(ux * 2);
+          const dyCell = Math.round(uy * 2);
+          const j = Math.max(0, Math.min(N - 1, (y + dyCell) * GW + (x + dxCell)));
+          const crossTurn = ux * vy[j] - uy * vx[j]; // >0 left turn, <0 right turn
+
+          if (Math.abs(crossTurn) > 0.015) {
+            // Normal pointing toward OUTER bank of the bend
+            const sign = crossTurn > 0 ? 1 : -1;
+            const nx = Math.round(uy * sign);
+            const ny = Math.round(-ux * sign);
+
+            const outerIdx = (y + ny) * GW + (x + nx);
+            const innerIdx = (y - ny) * GW + (x - nx);
+
+            if (dam[outerIdx] < 0.001 && dam[innerIdx] < 0.001) {
+              const mag = Math.min(0.0032, Math.abs(crossTurn) * mStrength * (0.4 + Math.min(1.5, w * 40)));
+              // Erode outer cut-bank (especially soft alluvial sediment)
+              let eroded = 0;
+              if (sediment[outerIdx] > mag) {
+                sediment[outerIdx] -= mag;
+                eroded = mag;
+              } else {
+                eroded = sediment[outerIdx];
+                sediment[outerIdx] = 0;
+                const rk = Math.min((mag - eroded) * 0.45, Math.max(0, bedrock[outerIdx] - seaH));
+                bedrock[outerIdx] -= rk;
+                eroded += rk;
+              }
+              // Deposit onto inner point bar!
+              sediment[innerIdx] += eroded * 0.88;
+              // Slightly deepen thalweg along outer edge so river migrates smoothly
+              if (sediment[i] > eroded * 0.2) sediment[i] -= eroded * 0.15;
+            }
+          }
+        }
+
+        // 2. Oxbow Lake Formation: previously active channel bypassed by meander neck cutoff!
+        const wasRiver = peakFlow[i] > 0.34;
+        const nowSlow = flowAccum[i] < 0.17 && spd < 0.14;
+        const localMin = (h <= bedrock[i - 1] + sediment[i - 1] + 0.012) || (h <= bedrock[i - GW] + sediment[i - GW] + 0.012);
+
+        if (wasRiver && nowSlow && localMin) {
+          oxbowMask[i] = Math.min(1.0, oxbowMask[i] + 0.025);
+          // Retain tranquil standing water in abandoned crescent oxbow lake
+          if (water[i] < 0.014) water[i] += 0.0005;
+        } else if (flowAccum[i] > 0.30 && spd > 0.22) {
+          // Re-occupied active channel is no longer a stagnant oxbow
+          oxbowMask[i] *= 0.90;
+        } else {
+          oxbowMask[i] *= 0.9985;
+        }
+
+        if (oxbowMask[i] > 0.32) oxCells++;
+        peakFlow[i] *= 0.9994;
+      }
+    }
+    state.oxbowCount = Math.round(oxCells / 14);
+  }
+
+  // =========================================================================
+  // PHYSICS ENGINE 4: THERMAL SLUMPING (TALUS) & TECTONIC UPLIFT
+  // =========================================================================
+  function stepThermalAndTectonics() {
+    const talusSed = 0.019;  // Alluvial sand/delta angle of repose
+    const talusRock = 0.052; // Steep canyon cliff bedrock angle of repose
+    const upliftStep = state.upliftRate * 0.00018;
+
+    for (let y = 1; y < GH - 1; y++) {
+      const row = y * GW;
+      for (let x = 1; x < GW - 1; x++) {
+        const i = row + x;
+
+        // Continuous tectonic uplift
+        if (upliftStep > 0) {
+          const m = upliftMask[i] > 0.02 ? upliftMask[i] : 0.25;
+          bedrock[i] = Math.min(0.97, bedrock[i] + upliftStep * m);
+        }
+
+        if (dam[i] > 0.002) continue;
+
+        // Soft sediment slumping (creates realistic smooth alluvial fans & point bars)
+        const h = bedrock[i] + sediment[i];
+        let maxD = 0, bestN = -1;
+        const n0 = i - 1, n1 = i + 1, n2 = i - GW, n3 = i + GW;
+        let d;
+        d = h - (bedrock[n0] + sediment[n0] + dam[n0]); if (d > maxD) { maxD = d; bestN = n0; }
+        d = h - (bedrock[n1] + sediment[n1] + dam[n1]); if (d > maxD) { maxD = d; bestN = n1; }
+        d = h - (bedrock[n2] + sediment[n2] + dam[n2]); if (d > maxD) { maxD = d; bestN = n2; }
+        d = h - (bedrock[n3] + sediment[n3] + dam[n3]); if (d > maxD) { maxD = d; bestN = n3; }
+
+        if (bestN >= 0) {
+          if (sediment[i] > 0.0005 && maxD > talusSed) {
+            const move = Math.min(sediment[i], (maxD - talusSed) * 0.24);
+            sediment[i] -= move;
+            sediment[bestN] += move;
+          } else if (maxD > talusRock) {
+            // Bedrock scree weathering into talus sediment
+            const rockSlide = (maxD - talusRock) * 0.08;
+            bedrock[i] -= rockSlide;
+            sediment[bestN] += rockSlide;
+          }
+        }
+      }
+    }
+  }
+
+  // =========================================================================
+  // INTERACTIVE TERRAIN & HYDROLOGY BRUSHES
+  // =========================================================================
+  function applyBrush(gx, gy) {
+    const r = state.brushRadius;
+    const r2 = r * r;
+    const ix0 = Math.max(1, Math.floor(gx - r));
+    const ix1 = Math.min(GW - 2, Math.ceil(gx + r));
+    const iy0 = Math.max(1, Math.floor(gy - r));
+    const iy1 = Math.min(GH - 2, Math.ceil(gy + r));
+
+    if (state.tool === 'rain') {
+      // Unleash intense localized flash-flood rainstorm!
+      const dir = state.shiftHeld ? -1 : 1;
+      for (let y = iy0; y <= iy1; y++) {
+        for (let x = ix0; x <= ix1; x++) {
+          const d2 = (x - gx) * (x - gx) + (y - gy) * (y - gy);
+          if (d2 > r2) continue;
+          const f = 1 - Math.sqrt(d2) / r;
+          const idx = y * GW + x;
+          if (dir > 0) {
+            water[idx] = Math.min(0.32, water[idx] + 0.011 * f * f);
+            flowAccum[idx] = Math.min(3.5, flowAccum[idx] + 0.06 * f);
+          } else {
+            // Shift+Rain acts as drought/evaporate brush
+            water[idx] *= (1 - 0.45 * f);
+          }
+        }
+      }
+      if (dir > 0) {
+        // Spawn burst of erosive Lagrangian droplets directly inside the storm cell!
+        const drops = 32;
+        for (let d = 0; d < drops; d++) {
+          const a = Math.random() * 6.2831853;
+          const rad = Math.sqrt(Math.random()) * r * 0.9;
+          runDroplet(false, gx + Math.cos(a) * rad, gy + Math.sin(a) * rad, 1.85);
+        }
+        // Add animated falling rain streaks
+        for (let k = 0; k < 7; k++) {
+          const a = Math.random() * 6.2831853;
+          const rad = Math.sqrt(Math.random()) * r;
+          rainStreaks.push({
+            x: gx + Math.cos(a) * rad,
+            y: gy + Math.sin(a) * rad,
+            life: 1.0
+          });
+        }
+        state.stormBoost = Math.min(1.2, state.stormBoost + 0.12);
+      }
+    } else if (state.tool === 'uplift') {
+      let mode = state.upliftSubmode;
+      if (state.shiftHeld) {
+        mode = mode === 'basin' ? 'raise' : 'basin';
+      }
+      for (let y = iy0; y <= iy1; y++) {
+        for (let x = ix0; x <= ix1; x++) {
+          const dx = x - gx, dy = y - gy;
+          const d2 = dx * dx + dy * dy;
+          if (d2 > r2) continue;
+          const t = 1 - Math.sqrt(d2) / r;
+          const smooth = t * t * (3 - 2 * t);
+          const idx = y * GW + x;
+
+          if (mode === 'raise') {
+            bedrock[idx] = Math.min(0.96, bedrock[idx] + 0.014 * smooth);
+            upliftMask[idx] = Math.min(1.0, upliftMask[idx] + 0.08 * smooth);
+          } else if (mode === 'basin') {
+            const drop = 0.014 * smooth;
+            if (sediment[idx] >= drop) {
+              sediment[idx] -= drop;
+            } else {
+              bedrock[idx] = Math.max(0.03, bedrock[idx] - (drop - sediment[idx]));
+              sediment[idx] = 0;
+            }
+          } else if (mode === 'fault') {
+            // Crisp tectonic fault scarp (raises NW side, drops SE side!)
+            const side = (dx * 0.72 + dy * 0.72) > 0 ? -1 : 1;
+            bedrock[idx] = Math.max(0.04, Math.min(0.96, bedrock[idx] + side * 0.013 * smooth));
+          }
+        }
+      }
+    } else if (state.tool === 'dam') {
+      const building = state.shiftHeld ? (state.damSubmode !== 'build') : (state.damSubmode === 'build');
+      const damR = Math.max(1.5, Math.min(4.5, r * 0.28));
+      // Interpolate along drag stroke so dams have zero gaps!
+      const sx0 = state.lastDamGX >= 0 ? state.lastDamGX : gx;
+      const sy0 = state.lastDamGY >= 0 ? state.lastDamGY : gy;
+      const dist = Math.hypot(gx - sx0, gy - sy0);
+      const steps = Math.max(1, Math.ceil(dist * 1.5));
+
+      for (let s = 0; s <= steps; s++) {
+        const cx = sx0 + (gx - sx0) * (s / steps);
+        const cy = sy0 + (gy - sy0) * (s / steps);
+        const x0 = Math.max(1, Math.floor(cx - damR));
+        const x1 = Math.min(GW - 2, Math.ceil(cx + damR));
+        const y0 = Math.max(1, Math.floor(cy - damR));
+        const y1 = Math.min(GH - 2, Math.ceil(cy + damR));
+        for (let y = y0; y <= y1; y++) {
+          for (let x = x0; x <= x1; x++) {
+            const d = Math.hypot(x - cx, y - cy);
+            if (d > damR) continue;
+            const idx = y * GW + x;
+            if (building) {
+              const target = 0.095 * (1 - (d / damR) * 0.35);
+              if (dam[idx] < target) dam[idx] = target;
+            } else {
+              dam[idx] = 0;
+            }
+          }
+        }
+      }
+      state.lastDamGX = gx;
+      state.lastDamGY = gy;
+    }
+  }
+
+  function placeOrRemoveSpring(gx, gy) {
+    if (gx < 2 || gx > GW - 3 || gy < 2 || gy > GH - 3) return;
+    if (state.shiftHeld) {
+      // Remove closest spring within 10 cells
+      let best = -1, bestD = 12;
+      for (let i = 0; i < state.springs.length; i++) {
+        const d = Math.hypot(state.springs[i].x - gx, state.springs[i].y - gy);
+        if (d < bestD) { bestD = d; best = i; }
+      }
+      if (best >= 0) {
+        state.springs.splice(best, 1);
+        renderSpringList();
+        showBanner('River spring removed.');
+      }
+      return;
+    }
+    if (state.springs.length >= 12) {
+      showBanner('Maximum 12 active springs reached (clear or Shift+click to remove).');
+      return;
+    }
+    const idx = (gy | 0) * GW + (gx | 0);
+    const elevM = Math.round(hToMeters(bedrock[idx] + sediment[idx]));
+    state.springs.push({
+      x: Math.round(gx),
+      y: Math.round(gy),
+      rate: 0.042,
+      name: `Spring #${state.springs.length + 1} (${elevM}m)`
+    });
+    renderSpringList();
+    showBanner(`Alpine spring placed at ${elevM} m elevation!`);
+  }
+
+  // =========================================================================
+  // RENDERING ENGINE: 3D-HILLSHADED IMAGEDATA + VECTOR OVERLAYS
+  // =========================================================================
+  function clampByte(v) {
+    return v < 0 ? 0 : (v > 255 ? 255 : v | 0);
+  }
+
+  function lerp3(c0, c1, t) {
+    return [
+      c0[0] + (c1[0] - c0[0]) * t,
+      c0[1] + (c1[1] - c0[1]) * t,
+      c0[2] + (c1[2] - c0[2]) * t
+    ];
+  }
+
+  // Hypsometric satellite elevation palette (relH = height above sea level, 0..0.76)
+  function sampleHypsometric(relH, moist, sedThick, slope, strataVal) {
+    let r, g, b;
+    if (relH < 0.018) {
+      // Wet coastal beach / delta mudflat sand
+      const t = relH / 0.018;
+      r = 186 - t * 38;
+      g = 172 - t * 24;
+      b = 132 - t * 28;
+    } else if (relH < 0.14) {
+      // Floodplain & lowland forests (shifts lush emerald near rivers/moisture)
+      const t = (relH - 0.018) / 0.122;
+      const dryR = 148 - t * 28, dryG = 146 - t * 18, dryB = 104 - t * 24;
+      const lushR = 54 + t * 16, lushG = 128 - t * 18, lushB = 72 - t * 14;
+      const m = Math.min(1, moist * 1.15);
+      r = dryR + (lushR - dryR) * m;
+      g = dryG + (lushG - dryG) * m;
+      b = dryB + (lushB - dryB) * m;
+    } else if (relH < 0.33) {
+      // Foothills & conifer alpine forest -> upland scrub
+      const t = (relH - 0.14) / 0.19;
+      r = 70 + t * 62;
+      g = 108 + t * 14;
+      b = 64 + t * 22;
+      if (moist > 0.35) {
+        const m = Math.min(1, (moist - 0.35) * 1.4) * (1 - t * 0.6);
+        r -= m * 24; g += m * 16; b -= m * 8;
+      }
+    } else if (relH < 0.50) {
+      // Exposed alpine granite / ochre rock & canyon walls
+      const t = (relH - 0.33) / 0.17;
+      r = 132 + t * 28;
+      g = 122 + t * 22;
+      b = 98 + t * 32;
+    } else {
+      // High peaks & glacial snowcaps (snow melts off ultra-steep cliffs!)
+      const snowT = Math.min(1, (relH - 0.50) / 0.15) * Math.max(0.15, 1 - slope * 6.5);
+      r = 158 + snowT * 88;
+      g = 150 + snowT * 98;
+      b = 142 + snowT * 108;
+    }
+
+    // Alluvial deposited sandbar / delta fan warm golden-tan tint
+    if (sedThick > 0.008 && relH < 0.18) {
+      const st = Math.min(0.68, (sedThick - 0.008) * 18);
+      r = r * (1 - st) + 196 * st;
+      g = g * (1 - st) + 174 * st;
+      b = b * (1 - st) + 126 * st;
+    }
+
+    // Sedimentary red-rock / sandstone strata on steep incised canyon walls
+    if (slope > 0.022 || state.strataBanding > 0.6) {
+      const rockMix = Math.min(0.82, Math.max(0, (slope - 0.015) * 11) + (state.strataBanding > 0.7 ? 0.38 : 0));
+      const band = 0.5 + 0.5 * Math.sin(strataVal);
+      const strataR = 138 + band * 68;
+      const strataG = 86 + band * 48;
+      const strataB = 64 + band * 34;
+      const blend = rockMix * (0.35 + 0.65 * state.strataBanding);
+      r = r * (1 - blend) + strataR * blend;
+      g = g * (1 - blend) + strataG * blend;
+      b = b * (1 - blend) + strataB * blend;
+    }
+
+    return [r, g, b];
+  }
+
+  function renderTerrainImageData() {
+    const seaH = state.seaH;
+    const mode = state.viewMode;
+
+    // Directional 3D sun vector from azimuth slider
+    const azRad = (state.sunAzimuth * Math.PI) / 180;
+    const elevRad = 0.62; // ~35 deg solar elevation for dramatic sculptural relief
+    const lx = Math.cos(azRad) * Math.cos(elevRad);
+    const ly = Math.sin(azRad) * Math.cos(elevRad);
+    const lz = Math.sin(elevRad);
+    const reliefZ = 9.5; // vertical exaggeration for crisp museum-grade 3D hillshade
+
+    for (let y = 0; y < GH; y++) {
+      const ym = y > 0 ? y - 1 : 0;
+      const yp = y < GH - 1 ? y + 1 : GH - 1;
+      const row = y * GW;
+      const rowM = ym * GW;
+      const rowP = yp * GW;
+
+      for (let x = 0; x < GW; x++) {
+        const xm = x > 0 ? x - 1 : 0;
+        const xp = x < GW - 1 ? x + 1 : GW - 1;
+        const i = row + x;
+
+        const h = bedrock[i] + sediment[i] + dam[i];
+        const hL = bedrock[row + xm] + sediment[row + xm] + dam[row + xm];
+        const hR = bedrock[row + xp] + sediment[row + xp] + dam[row + xp];
+        const hT = bedrock[rowM + x] + sediment[rowM + x] + dam[rowM + x];
+        const hB = bedrock[rowP + x] + sediment[rowP + x] + dam[rowP + x];
+
+        const dzdx = (hR - hL) * 0.5;
+        const dzdy = (hB - hT) * 0.5;
+        const slope = Math.hypot(dzdx, dzdy);
+
+        // Surface normal & Lambertian + ambient sky hillshade
+        const nx = -dzdx * reliefZ;
+        const ny = -dzdy * reliefZ;
+        const nz = 1.0;
+        const invLen = 1 / Math.sqrt(nx * nx + ny * ny + nz * nz);
+        const dot = Math.max(0, (nx * lx + ny * ly + nz * lz) * invLen);
+        // Subtle curvature AO (gorges slightly darker, ridges slightly brighter)
+        const lap = (hL + hR + hT + hB) * 0.25 - h;
+        const ao = Math.max(0.76, Math.min(1.12, 1.0 - lap * 8.5));
+        const shade = (0.34 + 0.86 * dot) * ao;
+
+        let r = 0, g = 0, b = 0;
+        const w = water[i];
+        const fl = flowAccum[i];
+        const spd = speedField[i];
+        const isDam = dam[i] > 0.004;
+        const relH = h - seaH;
+
+        if (mode === 'satellite') {
+          if (isDam) {
+            // Crisp concrete architectural dam wall
+            const c = (165 + dam[i] * 350) * (0.55 + 0.65 * dot);
+            r = c * 0.96; g = c * 1.0; b = c * 1.06;
+          } else if (relH < 0) {
+            // Ocean bathymetry + turbid delta sediment plume + shoreline foam!
+            const depth = -relH;
+            const bathyT = Math.min(1, depth / 0.18);
+            // Coastal turquoise -> deep sapphire -> abyssal navy
+            r = 26 * (1 - bathyT) + 7 * bathyT;
+            g = 112 * (1 - bathyT) + 28 * bathyT;
+            b = 148 * (1 - bathyT) + 64 * bathyT;
+
+            // Subtle underwater bathymetric relief shading
+            const subShade = 0.78 + 0.34 * dot;
+            r *= subShade; g *= subShade; b *= subShade;
+
+            // Turbid golden-turquoise river sediment plume fanning into ocean!
+            const plume = Math.min(0.85, suspended[i] * 26 + Math.max(0, sediment[i] - 0.01) * 14 * Math.exp(-depth * 24));
+            if (plume > 0.03) {
+              r = r * (1 - plume) + 148 * plume;
+              g = g * (1 - plume) + 168 * plume;
+              b = b * (1 - plume) + 142 * plume;
+            }
+
+            // Crisp coastal surf foam line right at sea level
+            if (depth < 0.0075) {
+              const surf = (1 - depth / 0.0075) * 0.55;
+              r += surf * 130; g += surf * 155; b += surf * 165;
+            }
+          } else {
+            // Land hypsometric relief
+            const dhNet = (bedrock[i] + sediment[i]) - initH[i];
+            const depHighlight = Math.max(0, dhNet) * 1.2 + sediment[i];
+            const [tr, tg, tb] = sampleHypsometric(relH, moisture[i], depHighlight, slope, h * 62.0);
+            r = tr * shade;
+            g = tg * shade;
+            b = tb * shade;
+
+            // Glowing crescent Oxbow Lakes!
+            if (state.showOxbow && oxbowMask[i] > 0.22) {
+              const ox = Math.min(0.92, (oxbowMask[i] - 0.22) * 1.35);
+              r = r * (1 - ox) + 38 * ox;
+              g = g * (1 - ox) + 216 * ox;
+              b = b * (1 - ox) + 210 * ox;
+            }
+
+            // Flowing rivers, braided channels, lakes & reservoirs behind dams
+            const riverVis = Math.min(1, w * 42 + fl * 0.55);
+            if (riverVis > 0.09) {
+              const alpha = Math.min(0.94, Math.pow((riverVis - 0.09) / 0.91, 0.72));
+              const deepT = Math.min(1, w * 22);
+              // Clear shallow cyan -> deep sapphire reservoir/river
+              let wr = 52 * (1 - deepT) + 18 * deepT;
+              let wg = 186 * (1 - deepT) + 102 * deepT;
+              let wb = 228 * (1 - deepT) + 184 * deepT;
+
+              // Sediment-rich muddy turquoise tint in active alluvial rivers
+              const mud = Math.min(0.45, suspended[i] * 18);
+              wr = wr * (1 - mud) + 135 * mud;
+              wg = wg * (1 - mud) + 162 * mud;
+              wb = wb * (1 - mud) + 148 * mud;
+
+              // Frothy whitewater rapids on steep high-velocity cascades & dam spillovers!
+              const foam = Math.min(0.88, Math.max(0, (spd * slope * 28 - 0.08) * 2.2));
+              wr += foam * (242 - wr);
+              wg += foam * (250 - wg);
+              wb += foam * (255 - wb);
+
+              // Subtle specular glint on water surface
+              const spec = Math.pow(Math.max(0, dot), 8) * 24;
+              r = r * (1 - alpha) + (wr + spec) * alpha;
+              g = g * (1 - alpha) + (wg + spec) * alpha;
+              b = b * (1 - alpha) + (wb + spec) * alpha;
+            }
+          }
+        } else if (mode === 'water') {
+          // Dark slate relief + glowing hydrologic depth & flow velocity visualization
+          const base = (relH < 0 ? 18 : 26 + relH * 52) * (0.45 + 0.72 * dot);
+          r = base * 0.85; g = base * 0.95; b = base * 1.15;
+
+          if (isDam) {
+            r = 215 * shade; g = 185 * shade; b = 135 * shade;
+          } else if (relH < 0) {
+            const dT = Math.min(1, -relH / 0.22);
+            r = 10; g = 34 * (1 - dT * 0.5) + 10; b = 68 + 30 * (1 - dT);
+          } else {
+            const energy = Math.min(1, w * 32 + fl * 0.65);
+            if (energy > 0.05) {
+              const velT = Math.min(1, spd * 1.45);
+              // Deep indigo -> electric cyan -> glowing white-gold rapids
+              const wr = velT < 0.5 ? 20 + velT * 130 : 85 + (velT - 0.5) * 340;
+              const wg = velT < 0.5 ? 110 + velT * 260 : 240 + (velT - 0.5) * 30;
+              const wb = velT < 0.5 ? 210 + velT * 90 : 255 - (velT - 0.5) * 90;
+              const a = Math.min(0.96, Math.pow(energy, 0.65));
+              r = r * (1 - a) + wr * a;
+              g = g * (1 - a) + wg * a;
+              b = b * (1 - a) + wb * a;
+            }
+            if (state.showOxbow && oxbowMask[i] > 0.25) {
+              const ox = Math.min(0.9, oxbowMask[i]);
+              r = r * (1 - ox) + 74 * ox;
+              g = g * (1 - ox) + 242 * ox;
+              b = b * (1 - ox) + 178 * ox;
+            }
+          }
+        } else if (mode === 'heatmap') {
+          // Erosion (crimson/amber) vs Deposition (electric cyan/teal) Heatmap!
+          const base = (relH < 0 ? 16 : 36 + relH * 56) * (0.45 + 0.72 * dot);
+          r = base * 0.92; g = base * 0.96; b = base * 1.05;
+
+          if (isDam) {
+            r = 210 * shade; g = 215 * shade; b = 225 * shade;
+          } else {
+            const dh = (bedrock[i] + sediment[i]) - initH[i];
+            if (dh < -0.0012) {
+              // Incised canyon / eroded cut-bank -> fiery amber to crimson-magenta
+              const t = Math.min(1, Math.pow(-dh / 0.055, 0.62));
+              const er = 255;
+              const eg = 165 * (1 - t) + 38 * t;
+              const eb = 45 * (1 - t) + 92 * t;
+              const a = Math.min(0.95, 0.2 + t * 0.8);
+              r = r * (1 - a) + er * a;
+              g = g * (1 - a) + eg * a;
+              b = b * (1 - a) + eb * a;
+            } else if (dh > 0.0012) {
+              // Deposited delta / alluvial fan / inner point bar -> glowing teal to bright cyan-white
+              const t = Math.min(1, Math.pow(dh / 0.045, 0.62));
+              const dr = 35 * (1 - t) + 150 * t;
+              const dg = 195 * (1 - t) + 252 * t;
+              const db = 225 * (1 - t) + 255 * t;
+              const a = Math.min(0.95, 0.2 + t * 0.8);
+              r = r * (1 - a) + dr * a;
+              g = g * (1 - a) + dg * a;
+              b = b * (1 - a) + db * a;
+            }
+            // Faint shoreline ring
+            if (Math.abs(relH) < 0.004) {
+              r += 45; g += 55; b += 70;
+            }
+          }
+        } else {
+          // Topographic Contour Map Mode (crisp dark USGS shaded cartography)
+          if (isDam) {
+            r = 220 * shade; g = 180 * shade; b = 110 * shade;
+          } else if (relH < 0) {
+            const dT = Math.min(1, -relH / 0.2);
+            r = 12 * (1 - dT * 0.4);
+            g = 32 * (1 - dT * 0.4);
+            b = 58 * (1 - dT * 0.3);
+          } else {
+            const elevT = Math.min(1, relH / 0.65);
+            const c = (34 + elevT * 88) * (0.48 + 0.72 * dot);
+            r = c * 0.95; g = c * 1.02; b = c * 1.06;
+
+            // Subtle river network cyan highlight
+            const rv = Math.min(0.82, w * 32 + fl * 0.42);
+            if (rv > 0.12) {
+              r = r * (1 - rv) + 64 * rv;
+              g = g * (1 - rv) + 210 * rv;
+              b = b * (1 - rv) + 245 * rv;
+            }
+          }
+        }
+
+        const p = i << 2;
+        pixels[p]     = clampByte(r);
+        pixels[p + 1] = clampByte(g);
+        pixels[p + 2] = clampByte(b);
+        pixels[p + 3] = 255;
+      }
+    }
+
+    offCtx.putImageData(imgData, 0, 0);
+  }
+
+  // Crisp vector contour lines (marching-squares edge crossings at major/minor intervals)
+  function drawContourLines() {
+    const seaH = state.seaH;
+    const isTopo = state.viewMode === 'contour';
+    const intervalM = isTopo ? 140 : 220;
+    const stepH = intervalM / ELEV_SCALE;
+
+    ctx.save();
+    ctx.lineCap = 'round';
+    const [ox, oy] = gridToScreen(0, 0);
+    const z = state.camZoom;
+
+    // Sample every cell quad for clean iso-contour line segments
+    ctx.beginPath();
+    const majorPath = new Path2D();
+
+    for (let y = 0; y < GH - 1; y++) {
+      const row = y * GW;
+      const rowN = row + GW;
+      for (let x = 0; x < GW - 1; x++) {
+        const h00 = bedrock[row + x] + sediment[row + x] - seaH;
+        const h10 = bedrock[row + x + 1] + sediment[row + x + 1] - seaH;
+        const h01 = bedrock[rowN + x] + sediment[rowN + x] - seaH;
+        const h11 = bedrock[rowN + x + 1] + sediment[rowN + x + 1] - seaH;
+
+        const hMin = Math.min(h00, h10, h01, h11);
+        const hMax = Math.max(h00, h10, h01, h11);
+        if (hMax < 0) continue; // skip deep ocean contours
+
+        const kStart = Math.max(0, Math.ceil(hMin / stepH));
+        const kEnd = Math.floor(hMax / stepH);
+        if (kStart > kEnd) continue;
+
+        for (let k = kStart; k <= kEnd; k++) {
+          const iso = k * stepH;
+          const pts = [];
+          if ((h00 < iso) !== (h10 < iso)) {
+            const t = (iso - h00) / (h10 - h00);
+            pts.push([ox + (x + t) * z, oy + y * z]);
+          }
+          if ((h10 < iso) !== (h11 < iso)) {
+            const t = (iso - h10) / (h11 - h10);
+            pts.push([ox + (x + 1) * z, oy + (y + t) * z]);
+          }
+          if ((h01 < iso) !== (h11 < iso)) {
+            const t = (iso - h01) / (h11 - h01);
+            pts.push([ox + (x + t) * z, oy + (y + 1) * z]);
+          }
+          if ((h00 < iso) !== (h01 < iso)) {
+            const t = (iso - h00) / (h01 - h00);
+            pts.push([ox + x * z, oy + (y + t) * z]);
+          }
+          if (pts.length >= 2) {
+            if (k % 4 === 0) {
+              majorPath.moveTo(pts[0][0], pts[0][1]);
+              majorPath.lineTo(pts[1][0], pts[1][1]);
+            } else {
+              ctx.moveTo(pts[0][0], pts[0][1]);
+              ctx.lineTo(pts[1][0], pts[1][1]);
+            }
+          }
+        }
+      }
+    }
+
+    ctx.strokeStyle = isTopo ? 'rgba(182, 224, 255, 0.34)' : 'rgba(255, 255, 255, 0.16)';
+    ctx.lineWidth = isTopo ? 0.9 : 0.7;
+    ctx.stroke();
+
+    ctx.strokeStyle = isTopo ? 'rgba(255, 206, 128, 0.78)' : 'rgba(255, 220, 155, 0.38)';
+    ctx.lineWidth = isTopo ? 1.5 : 1.1;
+    ctx.stroke(majorPath);
+    ctx.restore();
+  }
+
+  // Update & draw shimmering Lagrangian river stream particles + rainstorm streaks
+  function updateAndDrawParticles() {
+    if (!state.showParticles) return;
+
+    // Keep particle pool replenished
+    const desired = Math.min(MAX_PARTICLES, Math.floor(180 + state.rainRate * 160));
+    while (particles.length < desired) {
+      spawnVisualParticle();
+    }
+
+    const dtStep = state.running ? 0.35 * Math.min(2.2, state.speed) : 0;
+
+    ctx.save();
+    ctx.lineCap = 'round';
+
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      const ix = p.x | 0;
+      const iy = p.y | 0;
+      if (ix < 1 || ix >= GW - 2 || iy < 1 || iy >= GH - 2 || p.life <= 0) {
+        particles.splice(i, 1);
+        continue;
+      }
+      const idx = iy * GW + ix;
+      const h = bedrock[idx] + sediment[idx] + dam[idx];
+
+      if (dtStep > 0) {
+        p.px = p.x;
+        p.py = p.y;
+
+        // Follow combined SWE velocity + terrain gradient
+        const [, gx, gy] = sampleHeightGrad(p.x, p.y);
+        let mvx = vx[idx] * 0.9 - gx * 26;
+        let mvy = vy[idx] * 0.9 - gy * 26;
+        const mag = Math.hypot(mvx, mvy);
+        if (mag > 1.8) {
+          mvx = (mvx / mag) * 1.8;
+          mvy = (mvy / mag) * 1.8;
+        }
+        p.x += mvx * dtStep;
+        p.y += mvy * dtStep;
+        p.life -= (h < state.seaH ? 2.4 : 0.65) * Math.max(0.5, state.speed * 0.5);
+        if (mag < 0.03) p.life -= 2.5;
+      }
+
+      // Draw only when inside active rivers / flowing water
+      if (flowAccum[idx] > 0.14 || water[idx] > 0.005) {
+        const [x0, y0] = gridToScreen(p.px, p.py);
+        const [x1, y1] = gridToScreen(p.x, p.y);
+        const alpha = Math.min(0.75, (p.life / 35) * Math.min(1, flowAccum[idx] * 1.4));
+        const isDelta = h < state.seaH + 0.015;
+        ctx.strokeStyle = isDelta
+          ? `rgba(180, 245, 255, ${alpha * 0.75})`
+          : `rgba(175, 238, 255, ${alpha})`;
+        ctx.lineWidth = Math.max(1.1, Math.min(2.4, state.camZoom * 0.22));
+        ctx.beginPath();
+        ctx.moveTo(x0, y0);
+        ctx.lineTo(x1, y1);
+        ctx.stroke();
+      }
+    }
+
+    // Rainstorm brush visual streaks
+    if (rainStreaks.length > 0) {
+      ctx.lineWidth = 1.4;
+      for (let i = rainStreaks.length - 1; i >= 0; i--) {
+        const rs = rainStreaks[i];
+        const [sx, sy] = gridToScreen(rs.x, rs.y);
+        ctx.strokeStyle = `rgba(150, 230, 255, ${rs.life * 0.75})`;
+        ctx.beginPath();
+        ctx.moveTo(sx - 5, sy - 14 * rs.life);
+        ctx.lineTo(sx, sy);
+        ctx.stroke();
+        rs.life -= 0.09;
+        if (rs.life <= 0) rainStreaks.splice(i, 1);
+      }
+    }
+    ctx.restore();
+  }
+
+  function drawSpringMarkers() {
+    if (!state.showSprings || state.springs.length === 0) return;
+    const pulse = 0.5 + 0.5 * Math.sin(performance.now() * 0.005);
+
+    ctx.save();
+    for (let i = 0; i < state.springs.length; i++) {
+      const sp = state.springs[i];
+      const [sx, sy] = gridToScreen(sp.x + 0.5, sp.y + 0.5);
+
+      // Animated ripple halo
+      ctx.beginPath();
+      ctx.arc(sx, sy, 6 + pulse * 6, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(88, 220, 255, ${0.55 - pulse * 0.35})`;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      // Core hydro beacon
+      ctx.beginPath();
+      ctx.arc(sx, sy, 4.2, 0, Math.PI * 2);
+      ctx.fillStyle = '#58dcff';
+      ctx.fill();
+      ctx.lineWidth = 1.6;
+      ctx.strokeStyle = '#040711';
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawBrushCursor() {
+    if (state.mouseGridX < 0 || state.mouseGridX >= GW || state.mouseGridY < 0 || state.mouseGridY >= GH) return;
+    if (state.tool === 'inspect' || state.panning) return;
+
+    const [sx, sy] = gridToScreen(state.mouseGridX, state.mouseGridY);
+    ctx.save();
+
+    if (state.tool === 'spring') {
+      ctx.beginPath();
+      ctx.arc(sx, sy, 10, 0, Math.PI * 2);
+      ctx.strokeStyle = state.shiftHeld ? '#ff6083' : '#58dcff';
+      ctx.lineWidth = 1.8;
+      ctx.setLineDash([4, 3]);
+      ctx.stroke();
+    } else {
+      const radPx = (state.tool === 'dam' ? Math.max(1.5, Math.min(4.5, state.brushRadius * 0.28)) : state.brushRadius) * state.camZoom;
+      ctx.beginPath();
+      ctx.arc(sx, sy, radPx, 0, Math.PI * 2);
+
+      if (state.tool === 'rain') {
+        if (state.pointerDown && !state.shiftHeld) {
+          const grad = ctx.createRadialGradient(sx, sy, 2, sx, sy, radPx);
+          grad.addColorStop(0, 'rgba(88, 220, 255, 0.26)');
+          grad.addColorStop(1, 'rgba(40, 110, 190, 0.02)');
+          ctx.fillStyle = grad;
+          ctx.fill();
+        }
+        ctx.strokeStyle = state.shiftHeld ? 'rgba(255, 190, 92, 0.85)' : 'rgba(88, 220, 255, 0.85)';
+      } else if (state.tool === 'uplift') {
+        const isDrop = (state.upliftSubmode === 'basin') !== state.shiftHeld;
+        ctx.strokeStyle = isDrop ? 'rgba(255, 96, 131, 0.88)' : 'rgba(255, 190, 92, 0.9)';
+      } else if (state.tool === 'dam') {
+        const isBreach = (state.damSubmode === 'breach') !== state.shiftHeld;
+        ctx.strokeStyle = isBreach ? 'rgba(255, 96, 131, 0.9)' : 'rgba(235, 240, 255, 0.9)';
+      }
+      ctx.lineWidth = 1.6;
+      ctx.setLineDash([5, 4]);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function renderFrame() {
+    renderTerrainImageData();
+
+    ctx.save();
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = '#040711';
+    ctx.fillRect(0, 0, viewW, viewH);
+
+    // Draw crisp bilinearly scaled 3D-hillshaded terrain slab
+    const [x0, y0] = gridToScreen(0, 0);
+    const drawW = GW * state.camZoom;
+    const drawH = GH * state.camZoom;
+
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(offCanvas, x0, y0, drawW, drawH);
+
+    // Subtle cartographic border around terrain domain
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.22)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x0 + 0.5, y0 + 0.5, drawW - 1, drawH - 1);
+
+    // Vector contour lines (when in Contour mode or Contour overlay enabled)
+    if (state.viewMode === 'contour' || state.showContours) {
+      drawContourLines();
+    }
+
+    // Shimmering Lagrangian stream particles & rainstorm streaks
+    updateAndDrawParticles();
+
+    // Spring markers & active sculpting cursor
+    drawSpringMarkers();
+    drawBrushCursor();
+
+    ctx.restore();
+  }
+
+  // =========================================================================
+  // LIVE TELEMETRY & CURSOR PROBE
+  // =========================================================================
+  const elAge      = document.getElementById('tel-age');
+  const elEroded   = document.getElementById('tel-eroded');
+  const elDelta    = document.getElementById('tel-delta');
+  const elPeak     = document.getElementById('tel-peak');
+  const elFlux     = document.getElementById('tel-flux');
+  const elDepth    = document.getElementById('tel-depth');
+  const elStatus   = document.getElementById('geo-status');
+  const elProbeE   = document.getElementById('probe-elev');
+  const elProbeD   = document.getElementById('probe-depth');
+  const elProbeDH  = document.getElementById('probe-dh');
+  const elProbeOx  = document.getElementById('probe-oxbow');
+
+  function updateTelemetry() {
+    const seaH = state.seaH;
+    let maxH = 0;
+    let maxW = 0;
+    let fluxSum = 0;
+    let deltaCells = 0;
+    let incisedCells = 0;
+
+    for (let i = 0; i < N; i += 2) {
+      const h = bedrock[i] + sediment[i];
+      if (h > maxH) maxH = h;
+      const w = water[i];
+      if (w > maxW) maxW = w;
+      fluxSum += w * speedField[i];
+
+      const dh = h - initH[i];
+      if (dh > 0.004 && h >= seaH - 0.025 && h <= seaH + 0.09) {
+        deltaCells++;
+      } else if (dh < -0.006) {
+        incisedCells++;
+      }
+    }
+
+    state.peakElevM = Math.round(hToMeters(maxH));
+    state.maxChannelM = maxW * ELEV_SCALE * 0.42;
+    state.activeFluxM3s = Math.round(fluxSum * 240);
+    state.deltaPct = (deltaCells / (N * 0.5)) * 100;
+
+    elAge.textContent = `${state.ageKyr.toFixed(1)} kyr`;
+    elEroded.textContent = `${state.totalErodedKm3.toFixed(2)} km³`;
+    elDelta.textContent = `${state.deltaPct.toFixed(1)}%`;
+    elPeak.textContent = `${state.peakElevM.toLocaleString()} m`;
+    elFlux.textContent = `${state.activeFluxM3s.toLocaleString()} m³/s`;
+    elDepth.textContent = `${state.maxChannelM.toFixed(1)} m`;
+    elProbeOx.textContent = String(state.oxbowCount);
+
+    // Dynamic Geomorphic Status Pill
+    elStatus.className = 'status-pill';
+    if (state.stormBoost > 0.35 || (state.pointerDown && state.tool === 'rain')) {
+      elStatus.textContent = 'Flash Flood';
+      elStatus.classList.add('danger');
+    } else if (state.oxbowCount >= 2 && state.preset === 'meander') {
+      elStatus.textContent = 'Oxbow Cutoff';
+      elStatus.classList.add('info');
+    } else if (state.upliftRate > 0.45) {
+      elStatus.textContent = 'Tectonic Uplift';
+      elStatus.classList.add('warn');
+    } else if (state.deltaPct > 2.2) {
+      elStatus.textContent = 'Delta Prograding';
+    } else if (incisedCells > 180) {
+      elStatus.textContent = 'Canyon Incision';
+      elStatus.classList.add('warn');
+    } else {
+      elStatus.textContent = 'Active Watershed';
+    }
+
+    updateAudioDynamics();
+  }
+
+  function updateCursorProbe() {
+    const gx = Math.floor(state.mouseGridX);
+    const gy = Math.floor(state.mouseGridY);
+    if (gx < 0 || gx >= GW || gy < 0 || gy >= GH) {
+      elProbeE.textContent = '—';
+      elProbeD.textContent = '—';
+      elProbeDH.textContent = '—';
+      return;
+    }
+    const i = gy * GW + gx;
+    const h = bedrock[i] + sediment[i] + dam[i];
+    const elevM = Math.round(hToMeters(h));
+    const depthM = h < state.seaH
+      ? Math.round(hToMeters(state.seaH) - elevM)
+      : (water[i] * ELEV_SCALE * 0.42);
+    const dhM = Math.round(((bedrock[i] + sediment[i]) - initH[i]) * ELEV_SCALE);
+
+    elProbeE.textContent = `${elevM}m`;
+    elProbeD.textContent = h < state.seaH ? `${depthM}m sea` : `${depthM.toFixed(1)}m`;
+    elProbeDH.textContent = `${dhM >= 0 ? '+' : ''}${dhM}m`;
+    elProbeDH.style.color = dhM > 4 ? '#58dcff' : (dhM < -4 ? '#ff6083' : '#eef3ff');
+  }
+
+  // =========================================================================
+  // OPTIONAL WEB AUDIO: PROCEDURAL RUSHING MOUNTAIN STREAM & RAINFALL (MUTED BY DEFAULT)
+  // =========================================================================
+  let audioCtx = null;
+  let streamGain = null;
+  let streamFilter = null;
+  let rainGain = null;
+
+  function initAudio() {
+    if (audioCtx) return;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    audioCtx = new AC();
+
+    // Generate 3-second seamless pink/brown noise buffer for organic water sound
+    const bufLen = audioCtx.sampleRate * 3;
+    const noiseBuf = audioCtx.createBuffer(2, bufLen, audioCtx.sampleRate);
+    for (let ch = 0; ch < 2; ch++) {
+      const data = noiseBuf.getChannelData(ch);
+      let b0 = 0, b1 = 0, b2 = 0, b3 = 0;
+      for (let i = 0; i < bufLen; i++) {
+        const white = Math.random() * 2 - 1;
+        b0 = 0.997 * b0 + white * 0.029;
+        b1 = 0.985 * b1 + white * 0.032;
+        b2 = 0.950 * b2 + white * 0.048;
+        b3 = 0.850 * b3 + white * 0.070;
+        data[i] = (b0 + b1 + b2 + b3 + white * 0.04) * 0.5;
+      }
+    }
+
+    // Layer 1: Low-mid rushing river rapids
+    const srcStream = audioCtx.createBufferSource();
+    srcStream.buffer = noiseBuf;
+    srcStream.loop = true;
+
+    streamFilter = audioCtx.createBiquadFilter();
+    streamFilter.type = 'bandpass';
+    streamFilter.frequency.value = 520;
+    streamFilter.Q.value = 0.85;
+
+    streamGain = audioCtx.createGain();
+    streamGain.gain.value = 0.0;
+
+    srcStream.connect(streamFilter);
+    streamFilter.connect(streamGain);
+    streamGain.connect(audioCtx.destination);
+    srcStream.start();
+
+    // Layer 2: Soft high-frequency rainfall shimmer
+    const srcRain = audioCtx.createBufferSource();
+    srcRain.buffer = noiseBuf;
+    srcRain.loop = true;
+
+    const rainFilter = audioCtx.createBiquadFilter();
+    rainFilter.type = 'highpass';
+    rainFilter.frequency.value = 1850;
+
+    rainGain = audioCtx.createGain();
+    rainGain.gain.value = 0.0;
+
+    srcRain.connect(rainFilter);
+    rainFilter.connect(rainGain);
+    rainGain.connect(audioCtx.destination);
+    srcRain.start();
+  }
+
+  function updateAudioDynamics() {
+    if (!audioCtx || !streamGain) return;
+    const now = audioCtx.currentTime;
+    if (!state.audioOn || !state.running) {
+      streamGain.gain.setTargetAtTime(0.0, now, 0.15);
+      rainGain.gain.setTargetAtTime(0.0, now, 0.15);
+      return;
+    }
+    const fluxNorm = Math.min(1.0, state.activeFluxM3s / 6500);
+    const storm = state.stormBoost + (state.pointerDown && state.tool === 'rain' ? 0.6 : 0);
+    const targetStream = 0.05 + fluxNorm * 0.16 + storm * 0.09;
+    const targetRain = Math.min(0.14, state.rainRate * 0.032 + storm * 0.075);
+
+    streamGain.gain.setTargetAtTime(targetStream, now, 0.2);
+    streamFilter.frequency.setTargetAtTime(360 + fluxNorm * 620 + storm * 300, now, 0.25);
+    rainGain.gain.setTargetAtTime(targetRain, now, 0.2);
+  }
+
+  // =========================================================================
+  // UI BINDINGS & INTERACTION
+  // =========================================================================
+  const btnPlay = document.getElementById('btn-play');
+  const btnReset = document.getElementById('btn-reset');
+  const btnFit = document.getElementById('btn-fit');
+  const btnSound = document.getElementById('btn-sound');
+  const btnToggleDrawer = document.getElementById('btn-toggle-drawer');
+  const btnZen = document.getElementById('btn-zen');
+  const btnZenRestore = document.getElementById('btn-zen-restore');
+  const drawer = document.getElementById('drawer');
+
+  const slBrush = document.getElementById('sl-brush');
+  const slRain = document.getElementById('sl-rain');
+  const slErode = document.getElementById('sl-erode');
+  const slCap = document.getElementById('sl-cap');
+  const slSea = document.getElementById('sl-sea');
+  const slUplift = document.getElementById('sl-uplift');
+  const slMeander = document.getElementById('sl-meander');
+  const slSun = document.getElementById('sl-sun');
+
+  const valBrush = document.getElementById('val-brush');
+  const valRain = document.getElementById('val-rain');
+  const valErode = document.getElementById('val-erode');
+  const valCap = document.getElementById('val-cap');
+  const valSea = document.getElementById('val-sea');
+  const valUplift = document.getElementById('val-uplift');
+  const valMeander = document.getElementById('val-meander');
+  const valSun = document.getElementById('val-sun');
+
+  const chkParticles = document.getElementById('chk-particles');
+  const chkContours = document.getElementById('chk-contours');
+  const chkSprings = document.getElementById('chk-springs');
+  const chkOxbow = document.getElementById('chk-oxbow');
+
+  const viewBadge = document.getElementById('view-badge');
+  const activeToolLabel = document.getElementById('active-tool-label');
+  const toolSubmodeWrap = document.getElementById('tool-submode-wrap');
+  const damSubmodeWrap = document.getElementById('dam-submode-wrap');
+  const legendBar = document.getElementById('legend-bar');
+  const legendMin = document.getElementById('legend-min');
+  const legendMax = document.getElementById('legend-max');
+  const legendGrad = document.getElementById('legend-grad');
+  const springListEl = document.getElementById('spring-list');
+
+  const eventBanner = document.getElementById('event-banner');
+  const eventText = document.getElementById('event-text');
+  let bannerTimer = null;
+
+  function showBanner(msg) {
+    eventText.textContent = msg;
+    eventBanner.classList.add('visible');
+    if (bannerTimer) clearTimeout(bannerTimer);
+    bannerTimer = setTimeout(() => eventBanner.classList.remove('visible'), 2600);
+  }
+
+  function syncUI() {
+    slRain.value = state.rainRate.toFixed(2);
+    valRain.textContent = `${state.rainRate.toFixed(2)}×`;
+
+    slErode.value = state.erodibility.toFixed(2);
+    valErode.textContent = `${state.erodibility.toFixed(2)}×`;
+
+    slCap.value = state.sedCapacity.toFixed(2);
+    valCap.textContent = `${state.sedCapacity.toFixed(2)}×`;
+
+    slSea.value = String(state.seaLevelM);
+    valSea.textContent = `${state.seaLevelM >= 0 ? '+' : ''}${state.seaLevelM} m`;
+
+    slUplift.value = state.upliftRate.toFixed(2);
+    valUplift.textContent = `${state.upliftRate.toFixed(2)} mm/yr`;
+
+    slMeander.value = state.meanderStrength.toFixed(2);
+    valMeander.textContent = `${state.meanderStrength.toFixed(2)}×`;
+
+    slBrush.value = String(state.brushRadius);
+    valBrush.textContent = `${state.brushRadius} cells`;
+
+    document.querySelectorAll('#preset-grid .preset-btn').forEach((b) => {
+      b.classList.toggle('active', b.dataset.preset === state.preset);
+    });
+  }
+
+  function selectTool(toolName) {
+    state.tool = toolName;
+    document.querySelectorAll('#tool-grid .tool-btn').forEach((b) => {
+      b.classList.toggle('active', b.dataset.tool === toolName);
+    });
+    const names = {
+      rain: 'Rainstorm',
+      uplift: 'Uplift / Fault',
+      spring: 'River Spring',
+      dam: 'Dam / Levee',
+      inspect: 'Inspect / Pan'
+    };
+    activeToolLabel.textContent = names[toolName] || toolName;
+    toolSubmodeWrap.style.display = toolName === 'uplift' ? 'grid' : 'none';
+    damSubmodeWrap.style.display = toolName === 'dam' ? 'grid' : 'none';
+    canvas.classList.toggle('inspecting', toolName === 'inspect');
+  }
+
+  function selectViewMode(mode) {
+    state.viewMode = mode;
+    document.querySelectorAll('#view-mode-row .seg-btn').forEach((b) => {
+      b.classList.toggle('active', b.dataset.view === mode);
+    });
+    const labels = {
+      satellite: 'Satellite Relief',
+      water: 'Depth & Velocity',
+      heatmap: 'Erosion / Delta',
+      contour: 'Topo Contours'
+    };
+    viewBadge.textContent = labels[mode] || mode;
+
+    if (mode === 'heatmap') {
+      legendBar.classList.add('visible');
+      legendMin.textContent = 'Incised Canyon';
+      legendMax.textContent = 'Deposited Delta';
+      legendGrad.style.background = 'linear-gradient(90deg, #ff265c, #ffa52d 35%, #2c3549 50%, #23c3e1 72%, #96fcff)';
+    } else if (mode === 'water') {
+      legendBar.classList.add('visible');
+      legendMin.textContent = 'Still Pool';
+      legendMax.textContent = 'High Velocity';
+      legendGrad.style.background = 'linear-gradient(90deg, #142c5c, #1a94e6 45%, #58f0ff 78%, #fff4b8)';
+    } else {
+      legendBar.classList.remove('visible');
+    }
+  }
+
+  function renderSpringList() {
+    if (state.springs.length === 0) {
+      springListEl.innerHTML = '<div class="note-small">No active springs. Select tool 3 to place river sources.</div>';
+      return;
+    }
+    springListEl.innerHTML = '';
+    state.springs.forEach((sp, idx) => {
+      const item = document.createElement('div');
+      item.className = 'obj-item';
+
+      const dot = document.createElement('span');
+      dot.className = 'obj-dot';
+
+      const meta = document.createElement('div');
+      meta.className = 'obj-meta';
+      const nm = document.createElement('span');
+      nm.className = 'obj-name';
+      nm.textContent = sp.name;
+      const pos = document.createElement('span');
+      pos.className = 'obj-dist';
+      pos.textContent = `Grid (${sp.x}, ${sp.y}) · ${(sp.rate * 1200).toFixed(0)} m³/s`;
+      meta.appendChild(nm);
+      meta.appendChild(pos);
+
+      const rm = document.createElement('button');
+      rm.className = 'icon-x';
+      rm.textContent = '×';
+      rm.title = 'Remove spring';
+      rm.addEventListener('click', () => {
+        state.springs.splice(idx, 1);
+        renderSpringList();
+      });
+
+      item.appendChild(dot);
+      item.appendChild(meta);
+      item.appendChild(rm);
+      springListEl.appendChild(item);
+    });
+  }
+
+  // Drawer tabs
+  document.querySelectorAll('.drawer-tabs .tab-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const tab = btn.dataset.tab;
+      document.querySelectorAll('.drawer-tabs .tab-btn').forEach((b) => b.classList.toggle('active', b === btn));
+      document.querySelectorAll('.tab-pane').forEach((p) => p.classList.toggle('active', p.id === `tab-${tab}`));
+    });
+  });
+
+  // Tool & submode selectors
+  document.querySelectorAll('#tool-grid .tool-btn').forEach((btn) => {
+    btn.addEventListener('click', () => selectTool(btn.dataset.tool));
+  });
+  document.querySelectorAll('#tool-submode-wrap .seg-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      state.upliftSubmode = btn.dataset.submode;
+      document.querySelectorAll('#tool-submode-wrap .seg-btn').forEach((b) => b.classList.toggle('active', b === btn));
+    });
+  });
+  document.querySelectorAll('#dam-submode-wrap .seg-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      state.damSubmode = btn.dataset.dam;
+      document.querySelectorAll('#dam-submode-wrap .seg-btn').forEach((b) => b.classList.toggle('active', b === btn));
+    });
+  });
+
+  // Presets
+  document.querySelectorAll('#preset-grid .preset-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      loadPreset(btn.dataset.preset);
+      showBanner(`Loaded: ${PRESET_CONFIG[btn.dataset.preset].name}`);
+    });
+  });
+
+  // View modes
+  document.querySelectorAll('#view-mode-row .seg-btn').forEach((btn) => {
+    btn.addEventListener('click', () => selectViewMode(btn.dataset.view));
+  });
+
+  // Sliders
+  slBrush.addEventListener('input', () => {
+    state.brushRadius = parseInt(slBrush.value, 10);
+    valBrush.textContent = `${state.brushRadius} cells`;
+  });
+  slRain.addEventListener('input', () => {
+    state.rainRate = parseFloat(slRain.value);
+    valRain.textContent = `${state.rainRate.toFixed(2)}×`;
+  });
+  slErode.addEventListener('input', () => {
+    state.erodibility = parseFloat(slErode.value);
+    valErode.textContent = `${state.erodibility.toFixed(2)}×`;
+  });
+  slCap.addEventListener('input', () => {
+    state.sedCapacity = parseFloat(slCap.value);
+    valCap.textContent = `${state.sedCapacity.toFixed(2)}×`;
+  });
+  slSea.addEventListener('input', () => {
+    state.seaLevelM = parseInt(slSea.value, 10);
+    state.seaH = metersToH(state.seaLevelM);
+    valSea.textContent = `${state.seaLevelM >= 0 ? '+' : ''}${state.seaLevelM} m`;
+  });
+  slUplift.addEventListener('input', () => {
+    state.upliftRate = parseFloat(slUplift.value);
+    valUplift.textContent = `${state.upliftRate.toFixed(2)} mm/yr`;
+  });
+  slMeander.addEventListener('input', () => {
+    state.meanderStrength = parseFloat(slMeander.value);
+    valMeander.textContent = `${state.meanderStrength.toFixed(2)}×`;
+  });
+  slSun.addEventListener('input', () => {
+    state.sunAzimuth = parseInt(slSun.value, 10);
+    const dirs = ['E', 'SE', 'S', 'SW', 'W', 'NW', 'N', 'NE'];
+    const dirStr = dirs[Math.round(state.sunAzimuth / 45) % 8];
+    valSun.textContent = `${state.sunAzimuth}° ${dirStr}`;
+  });
+
+  // Toggles
+  chkParticles.addEventListener('change', () => { state.showParticles = chkParticles.checked; });
+  chkContours.addEventListener('change', () => { state.showContours = chkContours.checked; });
+  chkSprings.addEventListener('change', () => { state.showSprings = chkSprings.checked; });
+  chkOxbow.addEventListener('change', () => { state.showOxbow = chkOxbow.checked; });
+
+  // Quick event buttons
+  document.getElementById('btn-cloudburst').addEventListener('click', () => {
+    state.stormBoost = 1.4;
+    for (let k = 0; k < 420; k++) {
+      runDroplet(false, -1, -1, 2.2);
+    }
+    for (let i = 0; i < N; i++) {
+      if (bedrock[i] + sediment[i] > state.seaH) {
+        water[i] = Math.min(0.28, water[i] + 0.0085);
+      }
+    }
+    showBanner('⛈ Monsoon cloudburst unleashed across watershed!');
+  });
+
+  document.getElementById('btn-quake').addEventListener('click', () => {
+    // Random tectonic fault rupture across the map
+    const fx = GW * (0.3 + Math.random() * 0.4);
+    const fy = GH * (0.3 + Math.random() * 0.4);
+    const ang = Math.random() * Math.PI;
+    const nx = Math.cos(ang), ny = Math.sin(ang);
+    for (let y = 1; y < GH - 1; y++) {
+      for (let x = 1; x < GW - 1; x++) {
+        const signed = (x - fx) * nx + (y - fy) * ny;
+        const env = Math.exp(-Math.pow(signed / 28, 2));
+        const step = Math.tanh(signed * 0.28) * 0.045 * env;
+        const i = y * GW + x;
+        bedrock[i] = Math.max(0.04, Math.min(0.95, bedrock[i] + step));
+      }
+    }
+    showBanner('⚡ Tectonic fault rupture shifted watershed ridges!');
+  });
+
+  document.getElementById('btn-clear-dams').addEventListener('click', () => {
+    dam.fill(0);
+    showBanner('All concrete dams demolished — reservoirs releasing!');
+  });
+
+  document.getElementById('btn-reset-baseline').addEventListener('click', () => {
+    for (let i = 0; i < N; i++) initH[i] = bedrock[i] + sediment[i];
+    state.totalErodedKm3 = 0;
+    showBanner('Erosion / Deposition Δh baseline reset to current terrain.');
+  });
+
+  document.getElementById('btn-clear-springs').addEventListener('click', () => {
+    state.springs = [];
+    renderSpringList();
+    showBanner('All river springs cleared.');
+  });
+
+  // Transport Bar
+  btnPlay.addEventListener('click', () => {
+    state.running = !state.running;
+    btnPlay.textContent = state.running ? '⏸ Pause' : '▶ Play';
+    btnPlay.classList.toggle('active', state.running);
+    updateAudioDynamics();
+  });
+
+  btnReset.addEventListener('click', () => {
+    loadPreset(state.preset, Math.floor(Math.random() * 100));
+    showBanner(`Terrain regenerated: ${PRESET_CONFIG[state.preset].name}`);
+  });
+
+  document.querySelectorAll('.speed-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      state.speed = parseFloat(btn.dataset.speed);
+      document.querySelectorAll('.speed-btn').forEach((b) => b.classList.toggle('active', b === btn));
+    });
+  });
+
+  btnFit.addEventListener('click', () => {
+    fitCamera();
+  });
+
+  btnSound.addEventListener('click', () => {
+    if (!audioCtx) initAudio();
+    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+    state.audioOn = !state.audioOn;
+    btnSound.textContent = state.audioOn ? '🔊 Audio' : '🔇 Audio';
+    btnSound.classList.toggle('active', state.audioOn);
+    updateAudioDynamics();
+  });
+
+  btnToggleDrawer.addEventListener('click', () => {
+    const collapsed = drawer.classList.toggle('collapsed');
+    btnToggleDrawer.classList.toggle('active', !collapsed);
+  });
+
+  function toggleZenMode() {
+    document.body.classList.toggle('zen-mode');
+  }
+  btnZen.addEventListener('click', toggleZenMode);
+  btnZenRestore.addEventListener('click', toggleZenMode);
+
+  // Canvas Pointer Events (Left-drag sculpt/spring/dam, Right-drag pan, Scroll zoom)
+  canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+  canvas.addEventListener('pointerdown', (e) => {
+    canvas.setPointerCapture(e.pointerId);
+    state.shiftHeld = e.shiftKey;
+    state.mouseCanvasX = e.clientX;
+    state.mouseCanvasY = e.clientY;
+    const [gx, gy] = screenToGrid(e.clientX, e.clientY);
+    state.mouseGridX = gx;
+    state.mouseGridY = gy;
+
+    if (e.button === 2 || e.button === 1 || state.tool === 'inspect') {
+      state.panning = true;
+      state.lastPanX = e.clientX;
+      state.lastPanY = e.clientY;
+      canvas.classList.add('panning');
+      return;
+    }
+
+    if (e.button === 0) {
+      state.pointerDown = true;
+      state.lastDamGX = -1;
+      state.lastDamGY = -1;
+      if (state.tool === 'spring') {
+        placeOrRemoveSpring(gx, gy);
+      } else {
+        applyBrush(gx, gy);
+      }
+    }
+  });
+
+  canvas.addEventListener('pointermove', (e) => {
+    state.shiftHeld = e.shiftKey;
+    state.mouseCanvasX = e.clientX;
+    state.mouseCanvasY = e.clientY;
+
+    if (state.panning) {
+      const dx = e.clientX - state.lastPanX;
+      const dy = e.clientY - state.lastPanY;
+      state.camX -= dx / state.camZoom;
+      state.camY -= dy / state.camZoom;
+      state.lastPanX = e.clientX;
+      state.lastPanY = e.clientY;
+    }
+
+    const [gx, gy] = screenToGrid(e.clientX, e.clientY);
+    state.mouseGridX = gx;
+    state.mouseGridY = gy;
+    updateCursorProbe();
+
+    if (state.pointerDown && !state.panning && state.tool !== 'spring') {
+      applyBrush(gx, gy);
+    }
+  });
+
+  function endPointer() {
+    state.pointerDown = false;
+    state.panning = false;
+    state.lastDamGX = -1;
+    state.lastDamGY = -1;
+    canvas.classList.remove('panning');
+  }
+  canvas.addEventListener('pointerup', endPointer);
+  canvas.addEventListener('pointercancel', endPointer);
+  canvas.addEventListener('pointerleave', () => {
+    if (!state.pointerDown && !state.panning) {
+      state.mouseGridX = -1;
+      state.mouseGridY = -1;
+      updateCursorProbe();
+    }
+  });
+
+  canvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const [gxBefore, gyBefore] = screenToGrid(e.clientX, e.clientY);
+    const factor = e.deltaY < 0 ? 1.14 : 0.88;
+    const minZ = Math.min(viewW / GW, viewH / GH) * 0.7;
+    const maxZ = Math.max(viewW / GW, viewH / GH) * 5.0;
+    state.camZoom = Math.max(minZ, Math.min(maxZ, state.camZoom * factor));
+    const [gxAfter, gyAfter] = screenToGrid(e.clientX, e.clientY);
+    state.camX += gxBefore - gxAfter;
+    state.camY += gyBefore - gyAfter;
+  }, { passive: false });
+
+  // Keyboard shortcuts
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Shift') state.shiftHeld = true;
+    if (e.target.tagName === 'INPUT') return;
+    if (e.code === 'Space') {
+      e.preventDefault();
+      btnPlay.click();
+    } else if (e.key === 'h' || e.key === 'H') {
+      toggleZenMode();
+    } else if (e.key === '1') {
+      selectTool('rain');
+    } else if (e.key === '2') {
+      selectTool('uplift');
+    } else if (e.key === '3') {
+      selectTool('spring');
+    } else if (e.key === '4') {
+      selectTool('dam');
+    } else if (e.key === '5') {
+      selectTool('inspect');
+    } else if (e.key === 'r' || e.key === 'R') {
+      fitCamera();
+    }
+  });
+  window.addEventListener('keyup', (e) => {
+    if (e.key === 'Shift') state.shiftHeld = false;
+  });
+
+  window.addEventListener('resize', resizeCanvas);
+
+  // =========================================================================
+  // MAIN 60FPS ANIMATION LOOP
+  // =========================================================================
+  function stepSimulation() {
+    // Continuous brush application while holding mouse down (for rain & uplift)
+    if (state.pointerDown && !state.panning && (state.tool === 'rain' || state.tool === 'uplift')) {
+      applyBrush(state.mouseGridX, state.mouseGridY);
+    }
+
+    if (!state.running) return;
+
+    const spd = state.speed;
+    const sweSteps = Math.max(1, Math.round(2 * spd));
+    const dropCount = Math.round((150 + 210 * state.rainRate + state.stormBoost * 160) * spd);
+
+    for (let s = 0; s < sweSteps; s++) {
+      stepShallowWater(0.14);
+    }
+
+    for (let d = 0; d < dropCount; d++) {
+      runDroplet(false);
+    }
+
+    stepMeanderAndOxbow();
+
+    if ((state.frameCount & 1) === 0 || spd >= 2) {
+      stepThermalAndTectonics();
+    }
+
+    // Advance geologic clock (kyr) & decay transient storm pulse
+    state.ageKyr += 0.042 * spd;
+    state.stormBoost *= 0.985;
+    if (state.stormBoost < 0.005) state.stormBoost = 0;
+  }
+
+  function loop() {
+    state.frameCount++;
+    stepSimulation();
+    renderFrame();
+
+    if (state.frameCount % 12 === 0) {
+      updateTelemetry();
+    }
+    requestAnimationFrame(loop);
+  }
+
+  // Initialize & Launch
+  resizeCanvas();
+  loadPreset('alpine', 1);
+  selectTool('rain');
+  selectViewMode('satellite');
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

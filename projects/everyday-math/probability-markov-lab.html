@@ -1,0 +1,4253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Stochastic — Galton Board, Monte Carlo, Bayes &amp; Markov Chains</title>
+<style>
+  :root {
+    --bg-deep: #040711;
+    --panel-bg: rgba(9, 13, 24, 0.78);
+    --panel-bg-strong: rgba(8, 12, 22, 0.92);
+    --panel-border: rgba(148, 179, 255, 0.16);
+    --panel-border-hi: rgba(148, 179, 255, 0.36);
+    --text-main: #eef3ff;
+    --text-dim: #9aa9cc;
+    --text-muted: #68789c;
+    --accent-amber: #ffbe5c;
+    --accent-cyan: #58dcff;
+    --accent-mint: #4af2b2;
+    --accent-rose: #ff6083;
+    --accent-violet: #a78bfa;
+    --radius-lg: 14px;
+    --radius-md: 10px;
+    --radius-sm: 7px;
+    --mono: ui-monospace, "Cascadia Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Inter, Helvetica, Arial, sans-serif;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg-deep);
+    color: var(--text-main);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    touch-action: none;
+  }
+
+  #sim-canvas {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    cursor: crosshair;
+  }
+  #sim-canvas.grab { cursor: grab; }
+  #sim-canvas.grabbing { cursor: grabbing; }
+  #sim-canvas.pointer { cursor: pointer; }
+
+  /* HUD Layer */
+  .hud {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 10;
+  }
+  body.zen-mode .hud > :not(.zen-restore) {
+    opacity: 0;
+    pointer-events: none !important;
+  }
+
+  .panel {
+    pointer-events: auto;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-lg);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    transition: opacity 0.25s ease, transform 0.25s ease;
+  }
+
+  /* Top-Left Telemetry */
+  .top-left {
+    position: fixed;
+    top: 14px;
+    left: 14px;
+    width: min(414px, calc(100vw - 364px));
+    min-width: 280px;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .brand-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .brand-title-wrap {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .brand-title {
+    font-size: 16px;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    background: linear-gradient(120deg, #fff5dc 0%, #ffbe5c 42%, #58dcff 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .mode-badge {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 190, 92, 0.42);
+    background: rgba(255, 190, 92, 0.12);
+    color: var(--accent-amber);
+  }
+  .mode-badge.cyan {
+    border-color: rgba(88, 220, 255, 0.42);
+    background: rgba(88, 220, 255, 0.12);
+    color: var(--accent-cyan);
+  }
+  .mode-badge.mint {
+    border-color: rgba(74, 242, 178, 0.42);
+    background: rgba(74, 242, 178, 0.12);
+    color: var(--accent-mint);
+  }
+  .mode-badge.violet {
+    border-color: rgba(167, 139, 250, 0.45);
+    background: rgba(167, 139, 250, 0.14);
+    color: var(--accent-violet);
+  }
+
+  .status-pill {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: rgba(74, 242, 178, 0.14);
+    color: var(--accent-mint);
+    border: 1px solid rgba(74, 242, 178, 0.35);
+    white-space: nowrap;
+  }
+  .status-pill.warn {
+    background: rgba(255, 190, 92, 0.16);
+    color: var(--accent-amber);
+    border-color: rgba(255, 190, 92, 0.4);
+  }
+  .status-pill.cyan {
+    background: rgba(88, 220, 255, 0.16);
+    color: var(--accent-cyan);
+    border-color: rgba(88, 220, 255, 0.42);
+  }
+  .status-pill.rose {
+    background: rgba(255, 96, 131, 0.16);
+    color: var(--accent-rose);
+    border-color: rgba(255, 96, 131, 0.42);
+  }
+
+  .telemetry-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+  }
+
+  .tele-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(148, 179, 255, 0.1);
+    border-radius: var(--radius-sm);
+    padding: 5px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .tele-label {
+    font-size: 9px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .tele-val {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--text-main);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .tele-val.amber { color: var(--accent-amber); }
+  .tele-val.cyan { color: var(--accent-cyan); }
+  .tele-val.mint { color: var(--accent-mint); }
+  .tele-val.rose { color: var(--accent-rose); }
+  .tele-val.violet { color: var(--accent-violet); }
+
+  .formula-strip {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding-top: 6px;
+    border-top: 1px solid rgba(148, 179, 255, 0.1);
+    font-size: 10.5px;
+    color: var(--text-dim);
+    font-family: var(--mono);
+  }
+  .formula-strip strong {
+    color: var(--text-main);
+    font-weight: 600;
+  }
+
+  /* Right Control Drawer (330px) */
+  .drawer {
+    position: fixed;
+    top: 14px;
+    right: 14px;
+    bottom: 14px;
+    width: 330px;
+    max-width: calc(100vw - 28px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: transform 0.25s ease, opacity 0.25s ease;
+  }
+  .drawer.collapsed {
+    transform: translateX(calc(100% + 24px));
+    pointer-events: none;
+  }
+
+  .drawer-tabs {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 4px;
+    padding: 8px 8px 6px;
+    border-bottom: 1px solid var(--panel-border);
+    background: rgba(4, 7, 15, 0.46);
+  }
+
+  .tab-btn {
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    padding: 7px 4px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-align: center;
+    white-space: nowrap;
+  }
+  .tab-btn:hover {
+    color: var(--text-main);
+    background: rgba(255, 255, 255, 0.04);
+  }
+  .tab-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.16);
+    border-color: rgba(88, 220, 255, 0.42);
+  }
+  .tab-btn[data-lab="galton"].active {
+    background: rgba(255, 190, 92, 0.16);
+    border-color: rgba(255, 190, 92, 0.45);
+    color: #ffe3b5;
+  }
+  .tab-btn[data-lab="markov"].active {
+    background: rgba(74, 242, 178, 0.15);
+    border-color: rgba(74, 242, 178, 0.42);
+    color: #b7ffdf;
+  }
+  .tab-btn[data-lab="bayes"].active {
+    background: rgba(167, 139, 250, 0.18);
+    border-color: rgba(167, 139, 250, 0.45);
+    color: #e4d8ff;
+  }
+
+  .drawer-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .drawer-body::-webkit-scrollbar { width: 5px; }
+  .drawer-body::-webkit-scrollbar-thumb {
+    background: rgba(148, 179, 255, 0.22);
+    border-radius: 999px;
+  }
+
+  .tab-pane {
+    display: none;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .tab-pane.active {
+    display: flex;
+  }
+
+  .section {
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(148, 179, 255, 0.11);
+    border-radius: var(--radius-md);
+    padding: 10px 11px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .section-title {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .preset-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .preset-btn {
+    text-align: left;
+    padding: 7px 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(148, 179, 255, 0.14);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-main);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .preset-btn:hover {
+    border-color: rgba(88, 220, 255, 0.45);
+    background: rgba(88, 220, 255, 0.08);
+  }
+  .preset-btn.active {
+    border-color: var(--accent-amber);
+    background: rgba(255, 190, 92, 0.14);
+  }
+  .preset-name {
+    font-size: 11px;
+    font-weight: 700;
+  }
+  .preset-sub {
+    font-size: 9.5px;
+    color: var(--text-muted);
+    line-height: 1.25;
+  }
+
+  /* Sliders */
+  .control-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .control-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+  .control-head .val {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-main);
+    font-weight: 600;
+  }
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 5px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.18);
+    outline: none;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent-cyan);
+    border: 2px solid #08101f;
+    box-shadow: 0 0 10px rgba(88, 220, 255, 0.65);
+    cursor: pointer;
+  }
+  input[type="range"].amber::-webkit-slider-thumb {
+    background: var(--accent-amber);
+    box-shadow: 0 0 10px rgba(255, 190, 92, 0.65);
+  }
+  input[type="range"].mint::-webkit-slider-thumb {
+    background: var(--accent-mint);
+    box-shadow: 0 0 10px rgba(74, 242, 178, 0.65);
+  }
+  input[type="range"].rose::-webkit-slider-thumb {
+    background: var(--accent-rose);
+    box-shadow: 0 0 10px rgba(255, 96, 131, 0.65);
+  }
+  input[type="range"].violet::-webkit-slider-thumb {
+    background: var(--accent-violet);
+    box-shadow: 0 0 10px rgba(167, 139, 250, 0.65);
+  }
+
+  /* Segmented controls */
+  .seg-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(56px, 1fr));
+    gap: 4px;
+  }
+  .seg-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-dim);
+    font-size: 11px;
+    font-weight: 650;
+    padding: 6px 6px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-align: center;
+  }
+  .seg-btn:hover {
+    color: #fff;
+    border-color: rgba(148, 179, 255, 0.35);
+  }
+  .seg-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.18);
+    border-color: var(--accent-cyan);
+  }
+  .seg-btn.active.amber {
+    background: rgba(255, 190, 92, 0.18);
+    border-color: var(--accent-amber);
+    color: #ffdfaa;
+  }
+  .seg-btn.active.violet {
+    background: rgba(167, 139, 250, 0.22);
+    border-color: var(--accent-violet);
+    color: #ede5ff;
+  }
+
+  /* Action buttons */
+  .btn-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .btn-row.tri {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .btn {
+    border: 1px solid rgba(148, 179, 255, 0.22);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-main);
+    font-size: 11px;
+    font-weight: 700;
+    padding: 7px 8px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    white-space: nowrap;
+  }
+  .btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 179, 255, 0.45);
+  }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary {
+    background: linear-gradient(135deg, rgba(88, 220, 255, 0.28), rgba(56, 140, 255, 0.22));
+    border-color: rgba(88, 220, 255, 0.55);
+    color: #e6f9ff;
+  }
+  .btn.amber {
+    background: linear-gradient(135deg, rgba(255, 190, 92, 0.25), rgba(255, 120, 60, 0.2));
+    border-color: rgba(255, 190, 92, 0.55);
+    color: #fff3db;
+  }
+  .btn.mint {
+    background: linear-gradient(135deg, rgba(74, 242, 178, 0.24), rgba(34, 190, 145, 0.2));
+    border-color: rgba(74, 242, 178, 0.52);
+    color: #dcfff0;
+  }
+  .btn.rose {
+    background: rgba(255, 96, 131, 0.16);
+    border-color: rgba(255, 96, 131, 0.46);
+    color: #ffd0db;
+  }
+  .btn.violet {
+    background: linear-gradient(135deg, rgba(167, 139, 250, 0.28), rgba(124, 92, 240, 0.22));
+    border-color: rgba(167, 139, 250, 0.55);
+    color: #efe9ff;
+  }
+
+  /* Toggles */
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11px;
+    color: var(--text-dim);
+    cursor: pointer;
+  }
+  .toggle-row input { display: none; }
+  .switch {
+    width: 34px;
+    height: 18px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.2);
+    border: 1px solid rgba(148, 179, 255, 0.25);
+    position: relative;
+    transition: all 0.18s ease;
+    flex-shrink: 0;
+  }
+  .switch::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #c8d7f5;
+    transition: transform 0.18s ease, background 0.18s ease;
+  }
+  .toggle-row input:checked + .switch {
+    background: rgba(88, 220, 255, 0.32);
+    border-color: var(--accent-cyan);
+  }
+  .toggle-row input:checked + .switch::after {
+    transform: translateX(16px);
+    background: #fff;
+  }
+
+  .note-small {
+    font-size: 10.5px;
+    color: var(--text-muted);
+    line-height: 1.38;
+  }
+  .note-small strong { color: var(--text-dim); }
+
+  /* Markov weight editor */
+  .markov-editor-list {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+  }
+  .state-chip-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .state-chip {
+    border: 1px solid rgba(148, 179, 255, 0.2);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-dim);
+    font-size: 10.5px;
+    font-weight: 700;
+    padding: 4px 8px;
+    border-radius: 999px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    transition: all 0.14s ease;
+  }
+  .state-chip.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.18);
+    border-color: var(--accent-cyan);
+  }
+  .state-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+
+  /* Bayes summary box */
+  .bayes-callout {
+    background: rgba(167, 139, 250, 0.09);
+    border: 1px solid rgba(167, 139, 250, 0.28);
+    border-radius: var(--radius-sm);
+    padding: 8px 9px;
+    font-size: 11px;
+    line-height: 1.42;
+    color: var(--text-dim);
+  }
+  .bayes-callout strong {
+    color: #fff;
+    font-family: var(--mono);
+  }
+
+  /* Bottom Transport Bar */
+  .bottom-bar {
+    position: fixed;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 7px 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: nowrap;
+  }
+
+  .bar-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-main);
+    font-size: 11.5px;
+    font-weight: 650;
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    white-space: nowrap;
+  }
+  .bar-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 179, 255, 0.4);
+  }
+  .bar-btn.active {
+    background: rgba(88, 220, 255, 0.2);
+    border-color: var(--accent-cyan);
+    color: #fff;
+  }
+  .bar-btn.amber-active {
+    background: rgba(255, 190, 92, 0.2);
+    border-color: var(--accent-amber);
+    color: #ffe3b5;
+  }
+
+  .bar-divider {
+    width: 1px;
+    height: 20px;
+    background: rgba(148, 179, 255, 0.16);
+    margin: 0 2px;
+  }
+
+  /* Bottom-left hint pill */
+  .hint-pill {
+    position: fixed;
+    bottom: 14px;
+    left: 14px;
+    padding: 7px 11px;
+    font-size: 11px;
+    color: var(--text-dim);
+    max-width: 318px;
+    line-height: 1.4;
+  }
+  .hint-pill kbd {
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #fff;
+  }
+
+  .zen-restore {
+    position: fixed;
+    bottom: 14px;
+    right: 14px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+  }
+  body.zen-mode .zen-restore {
+    opacity: 0.9;
+    pointer-events: auto;
+  }
+
+  @media (max-width: 960px) {
+    .top-left {
+      width: calc(100vw - 28px);
+      max-width: none;
+    }
+    .drawer {
+      top: auto;
+      bottom: 62px;
+      height: 50vh;
+      width: calc(100vw - 28px);
+    }
+    .hint-pill { display: none; }
+  }
+</style>
+</head>
+<body>
+<canvas id="sim-canvas"></canvas>
+
+<div class="hud">
+  <!-- Top-Left Telemetry Card -->
+  <div class="panel top-left">
+    <div class="brand-row">
+      <div class="brand-title-wrap">
+        <div class="brand-title">Stochastic</div>
+        <span id="lab-badge" class="mode-badge">Galton CLT</span>
+      </div>
+      <span id="status-pill" class="status-pill">Sampling</span>
+    </div>
+
+    <div class="telemetry-grid">
+      <div class="tele-card">
+        <span id="tel-1-label" class="tele-label">Samples N</span>
+        <span id="tel-1-val" class="tele-val amber">0</span>
+      </div>
+      <div class="tele-card">
+        <span id="tel-2-label" class="tele-label">Mean μ</span>
+        <span id="tel-2-val" class="tele-val cyan">0.000</span>
+      </div>
+      <div class="tele-card">
+        <span id="tel-3-label" class="tele-label">Std Dev σ</span>
+        <span id="tel-3-val" class="tele-val mint">0.000</span>
+      </div>
+      <div class="tele-card">
+        <span id="tel-4-label" class="tele-label">Chi-Sq χ²/df</span>
+        <span id="tel-4-val" class="tele-val violet">—</span>
+      </div>
+      <div class="tele-card">
+        <span id="tel-5-label" class="tele-label">Theory μ ± σ</span>
+        <span id="tel-5-val" class="tele-val">6.00 ± 1.73</span>
+      </div>
+      <div class="tele-card">
+        <span id="tel-6-label" class="tele-label">Posterior / Peak</span>
+        <span id="tel-6-val" class="tele-val rose">—</span>
+      </div>
+    </div>
+
+    <div class="formula-strip">
+      <span id="formula-left">B(n, p) → N(np, np(1−p))</span>
+      <span id="formula-right"><strong>p = 0.50</strong></span>
+    </div>
+  </div>
+
+  <!-- Collapsible Right Drawer (330px) -->
+  <div id="control-drawer" class="panel drawer">
+    <div class="drawer-tabs">
+      <button class="tab-btn active" data-lab="galton">1. Galton</button>
+      <button class="tab-btn" data-lab="montecarlo">2. π MC</button>
+      <button class="tab-btn" data-lab="markov">3. Markov</button>
+      <button class="tab-btn" data-lab="bayes">4. Bayes</button>
+    </div>
+
+    <div class="drawer-body">
+      <!-- LAB 1: GALTON BEAN MACHINE -->
+      <div id="pane-galton" class="tab-pane active">
+        <div class="section">
+          <div class="section-title">
+            <span>Central Limit Presets</span>
+            <span>B(n, p)</span>
+          </div>
+          <div class="preset-grid">
+            <button class="preset-btn active" data-galton-preset="fair">
+              <span class="preset-name">Fair Bell Curve</span>
+              <span class="preset-sub">12 rows · p = 0.50</span>
+            </button>
+            <button class="preset-btn" data-galton-preset="skewRight">
+              <span class="preset-name">Right-Skewed</span>
+              <span class="preset-sub">14 rows · p = 0.72</span>
+            </button>
+            <button class="preset-btn" data-galton-preset="rare">
+              <span class="preset-name">Rare Events</span>
+              <span class="preset-sub">18 rows · p = 0.22</span>
+            </button>
+            <button class="preset-btn" data-galton-preset="compact">
+              <span class="preset-name">Pascal Mini</span>
+              <span class="preset-sub">6 rows · p = 0.50</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Board Geometry &amp; Bias</span></div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Peg Rows (n)</span>
+              <span id="val-galton-rows" class="val">12</span>
+            </div>
+            <input id="sl-galton-rows" class="amber" type="range" min="6" max="18" step="1" value="12" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Right Bounce Bias (p)</span>
+              <span id="val-galton-p" class="val">0.50</span>
+            </div>
+            <input id="sl-galton-p" type="range" min="0.15" max="0.85" step="0.01" value="0.50" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Drop Rate (balls / s)</span>
+              <span id="val-galton-rate" class="val">28 /s</span>
+            </div>
+            <input id="sl-galton-rate" class="mint" type="range" min="2" max="80" step="1" value="28" />
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Batch Sampling</span></div>
+          <div class="btn-row tri">
+            <button id="btn-galton-b50" class="btn amber">+50</button>
+            <button id="btn-galton-b500" class="btn primary">+500</button>
+            <button id="btn-galton-b2500" class="btn mint">+2,500</button>
+          </div>
+          <button id="btn-galton-tracer" class="btn">Drop Golden Tracer Ball</button>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Analytical Overlays</span></div>
+          <label class="toggle-row">
+            <span>Gaussian Bell Curve N(μ, σ²)</span>
+            <input id="chk-galton-normal" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Exact Binomial PMF Dots</span>
+            <input id="chk-galton-binom" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>±1σ / ±2σ Confidence Bands</span>
+            <input id="chk-galton-sigma" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <div class="note-small">
+            Each ball makes <strong>n</strong> independent Bernoulli(<strong>p</strong>) bounces. By the <strong>De Moivre–Laplace CLT</strong>, the bin histogram converges smoothly onto the Gaussian bell curve.
+          </div>
+        </div>
+      </div>
+
+      <!-- LAB 2: MONTE CARLO PI & BUFFON'S NEEDLE -->
+      <div id="pane-montecarlo" class="tab-pane">
+        <div class="section">
+          <div class="section-title"><span>Experiment Mode</span></div>
+          <div class="seg-row">
+            <button id="mc-mode-darts" class="seg-btn active">Unit Circle Darts</button>
+            <button id="mc-mode-buffon" class="seg-btn amber">Buffon's Needle</button>
+          </div>
+          <div id="mc-mode-desc" class="note-small">
+            Uniform darts <strong>(x, y) ∈ [0,1]²</strong> land inside the inscribed quarter-circle with probability <strong>π/4</strong>, giving <strong>π̂ = 4·N_in / N</strong>.
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Sampling Engine</span></div>
+          <div class="control-row">
+            <div class="control-head">
+              <span>Sampling Rate (/ s)</span>
+              <span id="val-mc-rate" class="val">160 /s</span>
+            </div>
+            <input id="sl-mc-rate" type="range" min="10" max="1500" step="10" value="160" />
+          </div>
+
+          <div id="mc-buffon-controls" class="control-row" style="display:none;">
+            <div class="control-head">
+              <span>Needle Ratio (L / D)</span>
+              <span id="val-mc-ratio" class="val">0.85</span>
+            </div>
+            <input id="sl-mc-ratio" class="amber" type="range" min="0.30" max="1.00" step="0.05" value="0.85" />
+          </div>
+
+          <div class="btn-row tri">
+            <button id="btn-mc-b100" class="btn amber">+100</button>
+            <button id="btn-mc-b1000" class="btn primary">+1,000</button>
+            <button id="btn-mc-b10000" class="btn mint">+10,000</button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Convergence Diagnostics</span></div>
+          <label class="toggle-row">
+            <span>Show ±1/√N Error Envelope</span>
+            <input id="chk-mc-envelope" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Log-Scale N Axis on Chart</span>
+            <input id="chk-mc-log" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <div class="bayes-callout">
+            True π = <strong>3.14159265</strong><br />
+            Standard error shrinks at <strong>O(1 / √N)</strong>: cutting error by 10× requires 100× more random samples.
+          </div>
+        </div>
+      </div>
+
+      <!-- LAB 3: MARKOV CHAIN STATE MACHINE -->
+      <div id="pane-markov" class="tab-pane">
+        <div class="section">
+          <div class="section-title"><span>Markov Chain Models</span></div>
+          <div class="preset-grid">
+            <button class="preset-btn active" data-markov-preset="weather">
+              <span class="preset-name">Weather Forecast</span>
+              <span class="preset-sub">3-state ergodic chain</span>
+            </button>
+            <button class="preset-btn" data-markov-preset="pagerank">
+              <span class="preset-name">PageRank Web</span>
+              <span class="preset-sub">4-node surfer graph</span>
+            </button>
+            <button class="preset-btn" data-markov-preset="gambler">
+              <span class="preset-name">Gambler's Ruin</span>
+              <span class="preset-sub">Absorbing $0 &amp; $4</span>
+            </button>
+            <button class="preset-btn" data-markov-preset="ehrenfest">
+              <span class="preset-name">Ehrenfest Urn</span>
+              <span class="preset-sub">Thermodynamic diffusion</span>
+            </button>
+          </div>
+          <button id="btn-markov-custom" class="btn violet" style="margin-top:2px;">Custom Editable 3-State Lab</button>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Random Walkers</span></div>
+          <div class="control-row">
+            <div class="control-head">
+              <span>Active Walkers</span>
+              <span id="val-mk-walkers" class="val">45</span>
+            </div>
+            <input id="sl-mk-walkers" class="mint" type="range" min="1" max="120" step="1" value="45" />
+          </div>
+          <div class="control-row">
+            <div class="control-head">
+              <span>Hop Cadence (hops / s)</span>
+              <span id="val-mk-speed" class="val">1.6 /s</span>
+            </div>
+            <input id="sl-mk-speed" type="range" min="0.4" max="5.0" step="0.1" value="1.6" />
+          </div>
+          <div class="btn-row">
+            <button id="btn-mk-step" class="btn primary">Step All +1</button>
+            <button id="btn-mk-burst" class="btn amber">+500 Transitions</button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">
+            <span>Transition Weights P(i → j)</span>
+            <span id="mk-row-sum">Σ = 1.00</span>
+          </div>
+          <div id="mk-state-chips" class="state-chip-row"></div>
+          <div id="mk-weight-sliders" class="markov-editor-list"></div>
+          <div class="note-small">
+            Drag any state node on the canvas to reposition it. Click a node to edit its outgoing weights or inject walkers.
+          </div>
+        </div>
+      </div>
+
+      <!-- LAB 4: BAYESIAN BELIEF UPDATER -->
+      <div id="pane-bayes" class="tab-pane">
+        <div class="section">
+          <div class="section-title"><span>Bayesian Mode</span></div>
+          <div class="seg-row">
+            <button id="bayes-mode-med" class="seg-btn active violet">Medical Test</button>
+            <button id="bayes-mode-coin" class="seg-btn amber">Coin Bias Beta</button>
+          </div>
+        </div>
+
+        <!-- Medical Test Sub-Controls -->
+        <div id="bayes-med-panel" style="display:flex; flex-direction:column; gap:11px;">
+          <div class="section">
+            <div class="section-title"><span>Base Rate Scenarios</span></div>
+            <div class="preset-grid">
+              <button class="preset-btn active" data-med-preset="rare">
+                <span class="preset-name">Base Rate Paradox</span>
+                <span class="preset-sub">1% prior · 95% sens · 5% FP</span>
+              </button>
+              <button class="preset-btn" data-med-preset="ultra">
+                <span class="preset-name">Ultra-Rare Screen</span>
+                <span class="preset-sub">0.2% prior · 99% sens · 2% FP</span>
+              </button>
+              <button class="preset-btn" data-med-preset="clinic">
+                <span class="preset-name">High-Risk Clinic</span>
+                <span class="preset-sub">25% prior · 92% sens · 8% FP</span>
+              </button>
+              <button class="preset-btn" data-med-preset="spam">
+                <span class="preset-name">Spam Classifier</span>
+                <span class="preset-sub">30% prior · 96% sens · 1% FP</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="section">
+            <div class="section-title"><span>Prior &amp; Likelihoods</span></div>
+            <div class="control-row">
+              <div class="control-head">
+                <span>Base Rate Prior P(H)</span>
+                <span id="val-by-prior" class="val">1.0%</span>
+              </div>
+              <input id="sl-by-prior" class="violet" type="range" min="0.1" max="50.0" step="0.1" value="1.0" />
+            </div>
+
+            <div class="control-row">
+              <div class="control-head">
+                <span>Sensitivity P(+ | H)</span>
+                <span id="val-by-sens" class="val">95.0%</span>
+              </div>
+              <input id="sl-by-sens" class="mint" type="range" min="50.0" max="99.9" step="0.1" value="95.0" />
+            </div>
+
+            <div class="control-row">
+              <div class="control-head">
+                <span>False Positive P(+ | ¬H)</span>
+                <span id="val-by-fpr" class="val">5.0%</span>
+              </div>
+              <input id="sl-by-fpr" class="rose" type="range" min="0.1" max="30.0" step="0.1" value="5.0" />
+            </div>
+          </div>
+
+          <div class="section">
+            <div class="section-title"><span>Sequential Diagnostic Tests</span></div>
+            <div class="btn-row">
+              <button id="btn-by-pos" class="btn amber">Test Positive (+)</button>
+              <button id="btn-by-neg" class="btn primary">Test Negative (−)</button>
+            </div>
+            <div class="btn-row">
+              <button id="btn-by-patient" class="btn mint">Sample Patient</button>
+              <button id="btn-by-reset-belief" class="btn">Reset Belief</button>
+            </div>
+            <label class="toggle-row">
+              <span>1,000-Person Frequency Grid</span>
+              <input id="chk-by-dots" type="checkbox" checked />
+              <span class="switch"></span>
+            </label>
+            <div id="by-med-callout" class="bayes-callout">
+              Even with a 95% accurate test, a rare <strong>1.0%</strong> disease produces more false positives than true positives!
+            </div>
+          </div>
+        </div>
+
+        <!-- Coin Bias Beta-Binomial Sub-Controls -->
+        <div id="bayes-coin-panel" style="display:none; flex-direction:column; gap:11px;">
+          <div class="section">
+            <div class="section-title"><span>Prior Beta(α₀, β₀)</span></div>
+            <div class="preset-grid">
+              <button class="preset-btn active" data-coin-preset="uniform">
+                <span class="preset-name">Uniform Flat</span>
+                <span class="preset-sub">Beta(1, 1) — agnostic</span>
+              </button>
+              <button class="preset-btn" data-coin-preset="fair">
+                <span class="preset-name">Fair-Coin Prior</span>
+                <span class="preset-sub">Beta(8, 8) — skeptical</span>
+              </button>
+              <button class="preset-btn" data-coin-preset="jeffreys">
+                <span class="preset-name">Jeffreys Prior</span>
+                <span class="preset-sub">Beta(0.5, 0.5) — U-shaped</span>
+              </button>
+              <button class="preset-btn" data-coin-preset="skew">
+                <span class="preset-name">Tails-Biased</span>
+                <span class="preset-sub">Beta(2, 6) — low θ</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="section">
+            <div class="section-title"><span>Prior &amp; Coin Parameters</span></div>
+            <div class="control-row">
+              <div class="control-head">
+                <span>Prior α₀ (Pseudo-Heads)</span>
+                <span id="val-coin-a" class="val">1.0</span>
+              </div>
+              <input id="sl-coin-a" class="amber" type="range" min="0.5" max="20" step="0.5" value="1" />
+            </div>
+            <div class="control-row">
+              <div class="control-head">
+                <span>Prior β₀ (Pseudo-Tails)</span>
+                <span id="val-coin-b" class="val">1.0</span>
+              </div>
+              <input id="sl-coin-b" type="range" min="0.5" max="20" step="0.5" value="1" />
+            </div>
+            <div class="control-row">
+              <div class="control-head">
+                <span>True Coin Bias (θ_true)</span>
+                <span id="val-coin-true" class="val">0.68</span>
+              </div>
+              <input id="sl-coin-true" class="mint" type="range" min="0.05" max="0.95" step="0.01" value="0.68" />
+            </div>
+            <label class="toggle-row">
+              <span>Reveal True θ Line</span>
+              <input id="chk-coin-reveal" type="checkbox" checked />
+              <span class="switch"></span>
+            </label>
+          </div>
+
+          <div class="section">
+            <div class="section-title"><span>Observe Evidence</span></div>
+            <div class="btn-row tri">
+              <button id="btn-coin-f1" class="btn amber">Flip 1</button>
+              <button id="btn-coin-f10" class="btn primary">Flip +10</button>
+              <button id="btn-coin-f50" class="btn mint">Flip +50</button>
+            </div>
+            <div class="btn-row">
+              <button id="btn-coin-head" class="btn">+1 Head (H)</button>
+              <button id="btn-coin-tail" class="btn">+1 Tail (T)</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom-Left Hints -->
+  <div id="hint-pill" class="panel hint-pill">
+    <kbd>1</kbd>–<kbd>4</kbd> Switch Labs · <kbd>Space</kbd> Pause · <kbd>R</kbd> Reset · <kbd>H</kbd> Cinema
+  </div>
+
+  <!-- Bottom-Center Transport Bar -->
+  <div class="panel bottom-bar">
+    <button id="btn-play" class="bar-btn active">⏸ Pause</button>
+    <button id="btn-step" class="bar-btn">⏭ Step</button>
+    <button id="btn-reset" class="bar-btn">↺ Reset</button>
+    <div class="bar-divider"></div>
+    <button id="btn-speed" class="bar-btn">1×</button>
+    <div class="bar-divider"></div>
+    <button id="btn-audio" class="bar-btn">🔇 Audio</button>
+    <button id="btn-drawer" class="bar-btn active">⚙ Controls</button>
+    <button id="btn-cinema" class="bar-btn">⬚ Cinema</button>
+  </div>
+
+  <!-- Cinema Restore Pill -->
+  <button id="btn-zen-restore" class="panel bar-btn zen-restore">Show HUD (H)</button>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  /* =========================================================================
+     MATH UTILITIES (Gamma, Binomial, Normal, Beta, Stationary Solver)
+     ========================================================================= */
+  const PI = Math.PI;
+  const TAU = Math.PI * 2;
+
+  function lgamma(z) {
+    // Lanczos approximation (accurate to ~1e-12)
+    const g = 7;
+    const p = [
+      0.99999999999980993, 676.5203681218851, -1259.1392167224028,
+      771.32342877765313, -176.61502916214059, 12.507343278686905,
+      -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7
+    ];
+    if (z < 0.5) return Math.log(PI / Math.sin(PI * z)) - lgamma(1 - z);
+    z -= 1;
+    let x = p[0];
+    for (let i = 1; i < g + 2; i++) x += p[i] / (z + i);
+    const t = z + g + 0.5;
+    return 0.5 * Math.log(TAU) + (z + 0.5) * Math.log(t) - t + Math.log(x);
+  }
+
+  function logChoose(n, k) {
+    if (k < 0 || k > n) return -Infinity;
+    return lgamma(n + 1) - lgamma(k + 1) - lgamma(n - k + 1);
+  }
+
+  function binomialPMF(n, k, p) {
+    if (k < 0 || k > n) return 0;
+    if (p <= 0) return k === 0 ? 1 : 0;
+    if (p >= 1) return k === n ? 1 : 0;
+    return Math.exp(logChoose(n, k) + k * Math.log(p) + (n - k) * Math.log(1 - p));
+  }
+
+  function normalPDF(x, mu, sigma) {
+    if (sigma <= 1e-9) return 0;
+    const z = (x - mu) / sigma;
+    return Math.exp(-0.5 * z * z) / (sigma * Math.sqrt(TAU));
+  }
+
+  function betaPDF(x, a, b) {
+    if (x <= 0 || x >= 1) {
+      if (x <= 0 && a < 1) return 25;
+      if (x >= 1 && b < 1) return 25;
+      if (x <= 0 && a === 1) return b;
+      if (x >= 1 && b === 1) return a;
+      return 0;
+    }
+    const logB = lgamma(a) + lgamma(b) - lgamma(a + b);
+    const val = Math.exp((a - 1) * Math.log(x) + (b - 1) * Math.log(1 - x) - logB);
+    return Number.isFinite(val) ? val : 0;
+  }
+
+  function betaCredibleInterval(a, b, alpha = 0.05) {
+    const steps = 400;
+    const dx = 1 / steps;
+    const cdf = new Float64Array(steps + 1);
+    let total = 0;
+    for (let i = 0; i < steps; i++) {
+      const xm = (i + 0.5) * dx;
+      const y = Math.min(betaPDF(xm, a, b), 1e6);
+      total += y * dx;
+      cdf[i + 1] = total;
+    }
+    if (total <= 0) return [0.025, 0.975];
+    const loT = (alpha / 2) * total;
+    const hiT = (1 - alpha / 2) * total;
+    let lo = 0, hi = 1;
+    for (let i = 1; i <= steps; i++) {
+      if (cdf[i] >= loT) {
+        const prev = cdf[i - 1];
+        const frac = (loT - prev) / Math.max(1e-12, cdf[i] - prev);
+        lo = (i - 1 + frac) * dx;
+        break;
+      }
+    }
+    for (let i = 1; i <= steps; i++) {
+      if (cdf[i] >= hiT) {
+        const prev = cdf[i - 1];
+        const frac = (hiT - prev) / Math.max(1e-12, cdf[i] - prev);
+        hi = (i - 1 + frac) * dx;
+        break;
+      }
+    }
+    return [lo, hi];
+  }
+
+  function clamp(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); }
+  function lerp(a, b, t) { return a + (b - a) * t; }
+  function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+  function easeInOutQuad(t) { return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; }
+  function fmtInt(n) { return Math.round(n).toLocaleString('en-US'); }
+
+  /* =========================================================================
+     WEB AUDIO ENGINE (Muted by default, soft pachinko & pentatonic chimes)
+     ========================================================================= */
+  const AudioEngine = {
+    enabled: false,
+    ctx: null,
+    lastTick: 0,
+    lastChime: 0,
+
+    init() {
+      if (!this.ctx) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (AC) this.ctx = new AC();
+      }
+      if (this.ctx && this.ctx.state === 'suspended') {
+        this.ctx.resume().catch(() => {});
+      }
+    },
+
+    toggle() {
+      this.enabled = !this.enabled;
+      if (this.enabled) this.init();
+      return this.enabled;
+    },
+
+    pegTick(rowFrac, colFrac) {
+      if (!this.enabled || !this.ctx) return;
+      const now = this.ctx.currentTime;
+      if (now - this.lastTick < 0.028) return;
+      this.lastTick = now;
+
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      // Soft wooden marimba-like tick pitched gently by row & horizontal position
+      const baseFreq = 340 + colFrac * 260 + rowFrac * 180;
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(baseFreq, now);
+      osc.frequency.exponentialRampToValueAtTime(baseFreq * 0.72, now + 0.045);
+
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.linearRampToValueAtTime(0.045, now + 0.004);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.055);
+
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.06);
+    },
+
+    dartPlink(hit) {
+      if (!this.enabled || !this.ctx) return;
+      const now = this.ctx.currentTime;
+      if (now - this.lastTick < 0.04) return;
+      this.lastTick = now;
+
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sine';
+      const freq = hit ? 680 + Math.random() * 140 : 280 + Math.random() * 60;
+      osc.frequency.setValueAtTime(freq, now);
+      osc.frequency.exponentialRampToValueAtTime(freq * 1.12, now + 0.04);
+
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.linearRampToValueAtTime(hit ? 0.032 : 0.018, now + 0.004);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.06);
+
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.07);
+    },
+
+    stateChime(stateIndex) {
+      if (!this.enabled || !this.ctx) return;
+      const now = this.ctx.currentTime;
+      if (now - this.lastChime < 0.065) return;
+      this.lastChime = now;
+
+      // D minor / Dorian pentatonic notes
+      const notes = [293.66, 349.23, 392.00, 440.00, 523.25, 587.33];
+      const freq = notes[stateIndex % notes.length];
+
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, now);
+
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.linearRampToValueAtTime(0.04, now + 0.008);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.22);
+
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.24);
+    },
+
+    bayesChime(positive) {
+      if (!this.enabled || !this.ctx) return;
+      const now = this.ctx.currentTime;
+      const freqs = positive ? [440, 554.37, 659.25] : [392, 329.63];
+      freqs.forEach((f, idx) => {
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'triangle';
+        const t0 = now + idx * 0.045;
+        osc.frequency.setValueAtTime(f, t0);
+        gain.gain.setValueAtTime(0.0001, t0);
+        gain.gain.linearRampToValueAtTime(0.036, t0 + 0.012);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.28);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(t0);
+        osc.stop(t0 + 0.3);
+      });
+    }
+  };
+
+  /* =========================================================================
+     CANVAS & GLOBAL APPLICATION STATE
+     ========================================================================= */
+  const canvas = document.getElementById('sim-canvas');
+  const ctx = canvas.getContext('2d');
+
+  const App = {
+    lab: 'galton', // 'galton' | 'montecarlo' | 'markov' | 'bayes'
+    paused: false,
+    speedIndex: 1,
+    speeds: [0.5, 1, 2, 5],
+    drawerOpen: true,
+    cinema: false,
+    dpr: 1,
+    W: window.innerWidth,
+    H: window.innerHeight,
+    time: 0,
+    mouseX: -1000,
+    mouseY: -1000,
+    mouseDown: false
+  };
+
+  function resizeCanvas() {
+    App.dpr = Math.min(window.devicePixelRatio || 1, 2);
+    App.W = window.innerWidth;
+    App.H = window.innerHeight;
+    canvas.width = Math.floor(App.W * App.dpr);
+    canvas.height = Math.floor(App.H * App.dpr);
+    ctx.setTransform(App.dpr, 0, 0, App.dpr, 0, 0);
+  }
+
+  function getStageRect() {
+    const narrow = App.W <= 960;
+    const topPad = App.cinema ? 24 : (narrow ? 176 : 24);
+    const leftPad = App.cinema ? 24 : 20;
+    const rightPad = App.cinema ? 24 : (!narrow && App.drawerOpen ? 358 : 24);
+    const bottomPad = App.cinema ? 26 : (narrow && App.drawerOpen ? Math.min(App.H * 0.54, 420) : 72);
+    // For wide screens, keep clear of the top-left telemetry box on the top-left corner,
+    // while letting the main stage center cleanly in the open viewport
+    const x = leftPad;
+    const y = topPad;
+    const w = Math.max(260, App.W - leftPad - rightPad);
+    const h = Math.max(220, App.H - topPad - bottomPad);
+    return { x, y, w, h, narrow };
+  }
+
+  /* =========================================================================
+     LAB 1: GALTON BEAN MACHINE (CENTRAL LIMIT THEOREM)
+     ========================================================================= */
+  const Galton = {
+    rows: 12,
+    p: 0.50,
+    dropRate: 28,
+    showNormal: true,
+    showBinom: true,
+    showSigma: true,
+    bins: [],
+    totalLanded: 0,
+    sumX: 0,
+    sumX2: 0,
+    balls: [],
+    pegFlashes: new Map(), // key "r,c" -> intensity 0..1
+    binFlashes: [],
+    spawnAcc: 0,
+    hoverBin: -1,
+    layout: null,
+
+    init() {
+      this.reset();
+    },
+
+    reset() {
+      this.bins = new Array(this.rows + 1).fill(0);
+      this.binFlashes = new Array(this.rows + 1).fill(0);
+      this.totalLanded = 0;
+      this.sumX = 0;
+      this.sumX2 = 0;
+      this.balls = [];
+      this.pegFlashes.clear();
+      this.spawnAcc = 0;
+    },
+
+    applyPreset(key) {
+      const presets = {
+        fair: { rows: 12, p: 0.50 },
+        skewRight: { rows: 14, p: 0.72 },
+        rare: { rows: 18, p: 0.22 },
+        compact: { rows: 6, p: 0.50 }
+      };
+      const pr = presets[key];
+      if (!pr) return;
+      this.rows = pr.rows;
+      this.p = pr.p;
+      document.getElementById('sl-galton-rows').value = this.rows;
+      document.getElementById('val-galton-rows').textContent = String(this.rows);
+      document.getElementById('sl-galton-p').value = this.p.toFixed(2);
+      document.getElementById('val-galton-p').textContent = this.p.toFixed(2);
+      document.querySelectorAll('[data-galton-preset]').forEach(b => {
+        b.classList.toggle('active', b.dataset.galtonPreset === key);
+      });
+      this.reset();
+    },
+
+    spawnBall(isTracer = false) {
+      if (this.balls.length > 420 && !isTracer) {
+        // Fast-track directly into bin to maintain 60fps while preserving exact stats
+        let k = 0;
+        for (let i = 0; i < this.rows; i++) if (Math.random() < this.p) k++;
+        this.recordLanding(k, false);
+        return;
+      }
+      // Pre-roll Bernoulli path so physics hops cleanly peg-to-peg
+      const path = new Uint8Array(this.rows);
+      for (let i = 0; i < this.rows; i++) {
+        path[i] = Math.random() < this.p ? 1 : 0;
+      }
+      this.balls.push({
+        row: -1, // -1 = funnel drop to row 0
+        col: 0,
+        nextCol: 0,
+        t: 0,
+        dur: isTracer ? 0.17 : (0.115 + Math.random() * 0.025),
+        path,
+        tracer: isTracer,
+        trail: [],
+        hueShift: (Math.random() - 0.5) * 18,
+        done: false
+      });
+    },
+
+    burst(count) {
+      if (count <= 80) {
+        for (let i = 0; i < count; i++) this.spawnBall(false);
+      } else {
+        // Instant statistical burst + 40 visual cascading balls
+        const instant = count - 40;
+        for (let b = 0; b < instant; b++) {
+          let k = 0;
+          for (let r = 0; r < this.rows; r++) if (Math.random() < this.p) k++;
+          this.recordLanding(k, false);
+        }
+        for (let i = 0; i < 40; i++) this.spawnBall(false);
+      }
+      AudioEngine.pegTick(0.5, this.p);
+    },
+
+    recordLanding(k, flash = true) {
+      if (k < 0 || k > this.rows) return;
+      this.bins[k]++;
+      this.totalLanded++;
+      this.sumX += k;
+      this.sumX2 += k * k;
+      if (flash) this.binFlashes[k] = 1.0;
+    },
+
+    computeLayout() {
+      const stage = getStageRect();
+      // Reserve subtle clearance on left for top-left panel when wide
+      const topClear = App.cinema ? 28 : (stage.narrow ? 12 : 138);
+      const cx = stage.x + stage.w * 0.5;
+      const usableW = Math.min(stage.w * 0.92, 760);
+      const topY = stage.y + topClear;
+      const bottomY = stage.y + stage.h - 28;
+      const totalH = Math.max(240, bottomY - topY);
+
+      const boardH = totalH * 0.52;
+      const histTop = topY + boardH + 22;
+      const histH = Math.max(90, bottomY - histTop);
+
+      const nBins = this.rows + 1;
+      const pitchX = Math.min(usableW / Math.max(nBins, 8), 46);
+      const pitchY = boardH / Math.max(this.rows, 6);
+      const pegRadius = clamp(pitchX * 0.14, 2.2, 5.2);
+      const ballRadius = clamp(pitchX * 0.20, 3.0, 6.4);
+
+      this.layout = { cx, topY, bottomY, boardH, histTop, histH, pitchX, pitchY, pegRadius, ballRadius, nBins };
+      return this.layout;
+    },
+
+    pegPos(r, c, L) {
+      return {
+        x: L.cx + (c - r * 0.5) * L.pitchX,
+        y: L.topY + 18 + r * L.pitchY
+      };
+    },
+
+    binCenterX(k, L) {
+      return L.cx + (k - this.rows * 0.5) * L.pitchX;
+    },
+
+    update(dt) {
+      const rate = this.dropRate * App.speeds[App.speedIndex];
+      if (!App.paused) {
+        this.spawnAcc += rate * dt;
+        const toSpawn = Math.min(18, Math.floor(this.spawnAcc));
+        this.spawnAcc -= toSpawn;
+        for (let i = 0; i < toSpawn; i++) this.spawnBall(false);
+      }
+
+      const simDt = App.paused ? 0 : dt * Math.min(App.speeds[App.speedIndex], 3.0);
+      const L = this.computeLayout();
+
+      // Decay flashes
+      for (const [k, v] of this.pegFlashes) {
+        const nv = v - dt * 4.5;
+        if (nv <= 0.01) this.pegFlashes.delete(k);
+        else this.pegFlashes.set(k, nv);
+      }
+      for (let i = 0; i < this.binFlashes.length; i++) {
+        this.binFlashes[i] = Math.max(0, this.binFlashes[i] - dt * 3.8);
+      }
+
+      // Advance balls
+      for (let i = this.balls.length - 1; i >= 0; i--) {
+        const b = this.balls[i];
+        b.t += simDt / b.dur;
+
+        // Compute current screen position for trail
+        const pos = this.ballScreenPos(b, L);
+        if (b.tracer || this.balls.length < 160) {
+          b.trail.push({ x: pos.x, y: pos.y });
+          const maxT = b.tracer ? 26 : 7;
+          if (b.trail.length > maxT) b.trail.shift();
+        }
+
+        if (b.t >= 1) {
+          b.t -= 1;
+          if (b.row === -1) {
+            b.row = 0;
+            b.col = 0;
+            b.nextCol = b.path[0];
+            this.pegFlashes.set('0,0', 1.0);
+            AudioEngine.pegTick(0, 0.5);
+          } else if (b.row < this.rows - 1) {
+            b.row++;
+            b.col = b.nextCol;
+            b.nextCol = b.col + b.path[b.row];
+            this.pegFlashes.set(`${b.row},${b.col}`, 1.0);
+            AudioEngine.pegTick(b.row / this.rows, b.col / Math.max(1, b.row));
+          } else if (b.row === this.rows - 1) {
+            // Drop into final bin
+            b.row = this.rows;
+            b.col = b.nextCol;
+          } else {
+            this.recordLanding(b.col, true);
+            this.balls.splice(i, 1);
+          }
+        }
+      }
+
+      // Hover detection over bins
+      this.hoverBin = -1;
+      if (App.mouseY >= L.histTop - 16 && App.mouseY <= L.bottomY + 14) {
+        const rel = (App.mouseX - L.cx) / L.pitchX + this.rows * 0.5;
+        const idx = Math.round(rel);
+        if (idx >= 0 && idx <= this.rows && Math.abs(rel - idx) < 0.48) {
+          this.hoverBin = idx;
+        }
+      }
+    },
+
+    ballScreenPos(b, L) {
+      const t = clamp(b.t, 0, 1);
+      if (b.row === -1) {
+        const p0 = this.pegPos(0, 0, L);
+        const startY = L.topY - 14;
+        return { x: p0.x, y: lerp(startY, p0.y - L.pegRadius - L.ballRadius, t * t) };
+      }
+      if (b.row < this.rows) {
+        const pA = this.pegPos(b.row, b.col, L);
+        const pB = b.row + 1 < this.rows
+          ? this.pegPos(b.row + 1, b.nextCol, L)
+          : { x: this.binCenterX(b.nextCol, L), y: L.histTop - 4 };
+        const x = lerp(pA.x, pB.x, easeOutCubic(t));
+        // Parabolic bounce hop over peg
+        const arc = -Math.sin(t * PI) * L.pitchY * 0.34;
+        const y = lerp(pA.y - L.pegRadius, pB.y - L.pegRadius, t * t) + arc;
+        return { x, y };
+      }
+      // Settling into bin
+      const bx = this.binCenterX(b.col, L);
+      return { x: bx, y: lerp(L.histTop - 4, L.bottomY - 6, t * t) };
+    },
+
+    draw() {
+      const L = this.layout || this.computeLayout();
+      const n = this.rows;
+      const mu = n * this.p;
+      const sigma = Math.sqrt(n * this.p * (1 - this.p));
+
+      // Funnel mouth
+      const topPeg = this.pegPos(0, 0, L);
+      ctx.save();
+      ctx.strokeStyle = 'rgba(148, 179, 255, 0.28)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(topPeg.x - 24, L.topY - 22);
+      ctx.lineTo(topPeg.x - 7, L.topY - 3);
+      ctx.moveTo(topPeg.x + 24, L.topY - 22);
+      ctx.lineTo(topPeg.x + 7, L.topY - 3);
+      ctx.stroke();
+
+      // Subtle triangular board back-frame
+      const leftCorner = this.pegPos(n - 1, 0, L);
+      const rightCorner = this.pegPos(n - 1, n - 1, L);
+      const frameGrad = ctx.createLinearGradient(L.cx, L.topY, L.cx, L.histTop);
+      frameGrad.addColorStop(0, 'rgba(88, 220, 255, 0.04)');
+      frameGrad.addColorStop(1, 'rgba(255, 190, 92, 0.02)');
+      ctx.fillStyle = frameGrad;
+      ctx.beginPath();
+      ctx.moveTo(topPeg.x, L.topY - 4);
+      ctx.lineTo(rightCorner.x + L.pitchX * 0.85, L.histTop - 2);
+      ctx.lineTo(leftCorner.x - L.pitchX * 0.85, L.histTop - 2);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(148, 179, 255, 0.12)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      // Draw ±1σ and ±2σ confidence shaded columns inside histogram
+      if (this.showSigma && sigma > 0.1) {
+        const x1L = L.cx + (mu - sigma - n * 0.5) * L.pitchX;
+        const x1R = L.cx + (mu + sigma - n * 0.5) * L.pitchX;
+        const x2L = L.cx + (mu - 2 * sigma - n * 0.5) * L.pitchX;
+        const x2R = L.cx + (mu + 2 * sigma - n * 0.5) * L.pitchX;
+        ctx.fillStyle = 'rgba(88, 220, 255, 0.045)';
+        ctx.fillRect(x2L, L.histTop, x2R - x2L, L.histH);
+        ctx.fillStyle = 'rgba(88, 220, 255, 0.075)';
+        ctx.fillRect(x1L, L.histTop, x1R - x1L, L.histH);
+
+        // Mean dashed line
+        const xMu = L.cx + (mu - n * 0.5) * L.pitchX;
+        ctx.setLineDash([4, 4]);
+        ctx.strokeStyle = 'rgba(255, 190, 92, 0.55)';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.moveTo(xMu, L.histTop - 8);
+        ctx.lineTo(xMu, L.bottomY);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        ctx.fillStyle = 'rgba(255, 190, 92, 0.85)';
+        ctx.font = '600 10px ' + getComputedStyle(document.body).getPropertyValue('--mono');
+        ctx.textAlign = 'center';
+        ctx.fillText('μ=' + mu.toFixed(1), xMu, L.histTop - 11);
+      }
+
+      // Draw pegs
+      for (let r = 0; r < n; r++) {
+        for (let c = 0; c <= r; c++) {
+          const p = this.pegPos(r, c, L);
+          const flash = this.pegFlashes.get(`${r},${c}`) || 0;
+          if (flash > 0.01) {
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, L.pegRadius * (1.8 + flash * 1.4), 0, TAU);
+            ctx.fillStyle = `rgba(255, 190, 92, ${flash * 0.32})`;
+            ctx.fill();
+          }
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, L.pegRadius, 0, TAU);
+          ctx.fillStyle = flash > 0.05
+            ? `rgba(255, ${Math.round(210 + 45 * flash)}, ${Math.round(130 + 110 * flash)}, 0.98)`
+            : 'rgba(176, 200, 245, 0.65)';
+          ctx.fill();
+        }
+      }
+
+      // Histogram scaling: normalize to max of empirical freq or theoretical peak
+      let maxTheory = 0;
+      for (let k = 0; k <= n; k++) maxTheory = Math.max(maxTheory, binomialPMF(n, k, this.p));
+      let maxEmp = 0;
+      if (this.totalLanded > 0) {
+        for (let k = 0; k <= n; k++) maxEmp = Math.max(maxEmp, this.bins[k] / this.totalLanded);
+      }
+      const scaleMax = Math.max(maxTheory * 1.18, maxEmp * 1.08, 0.12);
+
+      // Bin walls & histogram bars
+      const barW = Math.max(4, L.pitchX * 0.74);
+      ctx.strokeStyle = 'rgba(148, 179, 255, 0.15)';
+      ctx.lineWidth = 1;
+      for (let k = 0; k <= n + 1; k++) {
+        const wx = L.cx + (k - 0.5 - n * 0.5) * L.pitchX;
+        ctx.beginPath();
+        ctx.moveTo(wx, L.histTop);
+        ctx.lineTo(wx, L.bottomY);
+        ctx.stroke();
+      }
+      // Floor line
+      ctx.strokeStyle = 'rgba(148, 179, 255, 0.32)';
+      ctx.beginPath();
+      ctx.moveTo(L.cx + (-0.5 - n * 0.5) * L.pitchX, L.bottomY);
+      ctx.lineTo(L.cx + (n + 0.5 - n * 0.5) * L.pitchX, L.bottomY);
+      ctx.stroke();
+
+      for (let k = 0; k <= n; k++) {
+        const bx = this.binCenterX(k, L);
+        const freq = this.totalLanded > 0 ? this.bins[k] / this.totalLanded : 0;
+        const h = clamp((freq / scaleMax) * L.histH, 0, L.histH);
+        const flash = this.binFlashes[k] || 0;
+        const hovered = this.hoverBin === k;
+
+        if (h > 0.5) {
+          const g = ctx.createLinearGradient(bx, L.bottomY - h, bx, L.bottomY);
+          if (hovered) {
+            g.addColorStop(0, 'rgba(88, 220, 255, 0.92)');
+            g.addColorStop(1, 'rgba(88, 220, 255, 0.25)');
+          } else {
+            g.addColorStop(0, `rgba(255, ${Math.round(196 + flash * 45)}, ${Math.round(92 + flash * 100)}, 0.88)`);
+            g.addColorStop(1, 'rgba(255, 138, 60, 0.22)');
+          }
+          ctx.fillStyle = g;
+          ctx.fillRect(bx - barW * 0.5, L.bottomY - h, barW, h);
+
+          // Crisp glowing top cap
+          ctx.fillStyle = hovered ? '#aaf0ff' : `rgba(255, 236, 185, ${0.75 + flash * 0.25})`;
+          ctx.fillRect(bx - barW * 0.5, L.bottomY - h, barW, 2.2);
+        }
+
+        // Bin index label
+        if (n <= 14 || k % 2 === 0) {
+          ctx.fillStyle = hovered ? '#ffffff' : 'rgba(148, 170, 210, 0.65)';
+          ctx.font = '10px ' + getComputedStyle(document.body).getPropertyValue('--mono');
+          ctx.textAlign = 'center';
+          ctx.fillText(String(k), bx, L.bottomY + 13);
+        }
+      }
+
+      // Exact Binomial PMF markers
+      if (this.showBinom) {
+        for (let k = 0; k <= n; k++) {
+          const pmf = binomialPMF(n, k, this.p);
+          const bx = this.binCenterX(k, L);
+          const py = L.bottomY - (pmf / scaleMax) * L.histH;
+          ctx.beginPath();
+          ctx.arc(bx, py, 3.2, 0, TAU);
+          ctx.fillStyle = '#4af2b2';
+          ctx.fill();
+          ctx.strokeStyle = '#040711';
+          ctx.lineWidth = 1.2;
+          ctx.stroke();
+        }
+      }
+
+      // Exact Gaussian Normal Bell Curve overlay
+      if (this.showNormal && sigma > 0.05) {
+        ctx.save();
+        ctx.beginPath();
+        const xMinK = -0.6;
+        const xMaxK = n + 0.6;
+        const samples = 140;
+        for (let i = 0; i <= samples; i++) {
+          const kv = lerp(xMinK, xMaxK, i / samples);
+          const pdf = normalPDF(kv, mu, sigma);
+          const px = L.cx + (kv - n * 0.5) * L.pitchX;
+          const py = L.bottomY - (pdf / scaleMax) * L.histH;
+          if (i === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.strokeStyle = '#58dcff';
+        ctx.lineWidth = 2.4;
+        ctx.shadowColor = 'rgba(88, 220, 255, 0.75)';
+        ctx.shadowBlur = 12;
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // Draw falling balls & trails
+      for (let i = 0; i < this.balls.length; i++) {
+        const b = this.balls[i];
+        const pos = this.ballScreenPos(b, L);
+
+        if (b.trail.length > 1) {
+          ctx.beginPath();
+          for (let j = 0; j < b.trail.length; j++) {
+            const pt = b.trail[j];
+            if (j === 0) ctx.moveTo(pt.x, pt.y);
+            else ctx.lineTo(pt.x, pt.y);
+          }
+          ctx.strokeStyle = b.tracer ? 'rgba(255, 220, 110, 0.75)' : 'rgba(255, 190, 92, 0.28)';
+          ctx.lineWidth = b.tracer ? 2.6 : 1.4;
+          ctx.stroke();
+        }
+
+        const r = b.tracer ? L.ballRadius * 1.25 : L.ballRadius;
+        if (b.tracer) {
+          ctx.beginPath();
+          ctx.arc(pos.x, pos.y, r * 2.4, 0, TAU);
+          ctx.fillStyle = 'rgba(255, 210, 95, 0.28)';
+          ctx.fill();
+        }
+        const bg = ctx.createRadialGradient(pos.x - r * 0.3, pos.y - r * 0.3, r * 0.15, pos.x, pos.y, r);
+        if (b.tracer) {
+          bg.addColorStop(0, '#ffffff');
+          bg.addColorStop(0.5, '#ffda6b');
+          bg.addColorStop(1, '#ff8e3c');
+        } else {
+          bg.addColorStop(0, '#fff7e6');
+          bg.addColorStop(0.55, '#ffc46b');
+          bg.addColorStop(1, '#b8762c');
+        }
+        ctx.beginPath();
+        ctx.arc(pos.x, pos.y, r, 0, TAU);
+        ctx.fillStyle = bg;
+        ctx.fill();
+      }
+
+      // Hover tooltip for inspected bin
+      if (this.hoverBin >= 0) {
+        const k = this.hoverBin;
+        const count = this.bins[k];
+        const emp = this.totalLanded > 0 ? (count / this.totalLanded) * 100 : 0;
+        const theo = binomialPMF(n, k, this.p) * 100;
+        const bx = this.binCenterX(k, L);
+        const tx = clamp(bx, 110, App.W - 140);
+        const ty = L.histTop - 44;
+
+        ctx.fillStyle = 'rgba(8, 12, 24, 0.92)';
+        ctx.strokeStyle = 'rgba(88, 220, 255, 0.45)';
+        ctx.lineWidth = 1;
+        roundRect(ctx, tx - 92, ty, 184, 40, 8);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = '#eef3ff';
+        ctx.font = '700 11px ' + getComputedStyle(document.body).getPropertyValue('--mono');
+        ctx.textAlign = 'center';
+        ctx.fillText(`Bin k=${k}  (${fmtInt(count)} balls)`, tx, ty + 15);
+        ctx.fillStyle = '#9aa9cc';
+        ctx.font = '10.5px ' + getComputedStyle(document.body).getPropertyValue('--mono');
+        ctx.fillText(`Emp ${emp.toFixed(1)}% · Theory ${theo.toFixed(1)}%`, tx, ty + 31);
+      }
+
+      ctx.restore();
+    },
+
+    onClick(x, y) {
+      this.spawnBall(true);
+      AudioEngine.pegTick(0.2, 0.5);
+    },
+
+    getTelemetry() {
+      const n = this.rows;
+      const thMu = n * this.p;
+      const thSig = Math.sqrt(n * this.p * (1 - this.p));
+      const N = this.totalLanded;
+      const empMu = N > 0 ? this.sumX / N : 0;
+      const empVar = N > 1 ? Math.max(0, (this.sumX2 / N) - empMu * empMu) : 0;
+      const empSig = Math.sqrt(empVar);
+
+      // Compute reduced chi-square over bins with expected count >= 5
+      let chi2 = 0, validBins = 0;
+      if (N >= 25) {
+        for (let k = 0; k <= n; k++) {
+          const exp = N * binomialPMF(n, k, this.p);
+          if (exp >= 5) {
+            const diff = this.bins[k] - exp;
+            chi2 += (diff * diff) / exp;
+            validBins++;
+          }
+        }
+      }
+      const df = Math.max(1, validBins - 1);
+      const chiRed = validBins >= 2 ? (chi2 / df) : null;
+
+      let status = 'Sampling', statusClass = 'cyan';
+      if (N >= 200 && chiRed !== null && chiRed < 1.5) {
+        status = 'CLT Locked'; statusClass = '';
+      } else if (N === 0) {
+        status = 'Ready'; statusClass = 'warn';
+      }
+
+      return {
+        badge: 'Galton CLT', badgeClass: '',
+        status, statusClass,
+        cards: [
+          ['Samples N', fmtInt(N), 'amber'],
+          ['Sample Mean μ', N > 0 ? empMu.toFixed(3) : '—', 'cyan'],
+          ['Sample Std σ', N > 1 ? empSig.toFixed(3) : '—', 'mint'],
+          ['Chi-Sq χ²/df', chiRed !== null ? chiRed.toFixed(2) : '—', chiRed !== null && chiRed < 1.6 ? 'mint' : 'violet'],
+          ['Theory μ ± σ', `${thMu.toFixed(2)} ± ${thSig.toFixed(2)}`, ''],
+          ['Peak Bin P(k*)', (binomialPMF(n, Math.round(thMu), this.p) * 100).toFixed(1) + '%', 'amber']
+        ],
+        formulaLeft: `B(${n}, ${this.p.toFixed(2)}) → N(${thMu.toFixed(1)}, ${(thSig * thSig).toFixed(2)})`,
+        formulaRight: `<strong>${this.balls.length}</strong> in flight`
+      };
+    }
+  };
+
+  /* =========================================================================
+     LAB 2: MONTE CARLO PI & BUFFON'S NEEDLE
+     ========================================================================= */
+  const MonteCarlo = {
+    mode: 'darts', // 'darts' | 'buffon'
+    rate: 160,
+    needleRatio: 0.85, // L / D
+    showEnvelope: true,
+    logAxis: true,
+    total: 0,
+    hits: 0,
+    darts: [], // kept capped at 4500 for smooth 60fps canvas rendering
+    needles: [], // kept capped at 900
+    ripples: [],
+    history: [], // { n, piEst }
+    spawnAcc: 0,
+    layout: null,
+
+    init() {
+      this.reset();
+    },
+
+    reset() {
+      this.total = 0;
+      this.hits = 0;
+      this.darts = [];
+      this.needles = [];
+      this.ripples = [];
+      this.history = [];
+      this.spawnAcc = 0;
+    },
+
+    sampleOne(xOverride = null, yOverride = null, addRipple = false) {
+      if (this.mode === 'darts') {
+        const x = xOverride !== null ? clamp(xOverride, 0, 1) : Math.random();
+        const y = yOverride !== null ? clamp(yOverride, 0, 1) : Math.random();
+        const inside = (x * x + y * y) <= 1;
+        this.total++;
+        if (inside) this.hits++;
+        if (this.darts.length >= 4500) {
+          // Reservoir-style replacement keeps visual density fresh
+          this.darts[Math.floor(Math.random() * this.darts.length)] = { x, y, inside, age: 0 };
+        } else {
+          this.darts.push({ x, y, inside, age: 0 });
+        }
+        if (addRipple && this.ripples.length < 30) {
+          this.ripples.push({ x, y, inside, t: 0 });
+        }
+        return inside;
+      } else {
+        // Buffon's Needle on 6 parallel floorboards (y in [0, 6], seams at integer y)
+        const lanes = 6;
+        const x = xOverride !== null ? clamp(xOverride, 0.06, 0.94) : (0.06 + Math.random() * 0.88);
+        const y = yOverride !== null ? clamp(yOverride * lanes, 0.4, lanes - 0.4) : (0.45 + Math.random() * (lanes - 0.9));
+        const theta = Math.random() * PI;
+        const halfL = (this.needleRatio * 0.5); // in seam-spacing units
+        const dy = Math.sin(theta) * halfL;
+        const y1 = y - dy;
+        const y2 = y + dy;
+        const cross = Math.floor(y1) !== Math.floor(y2);
+        this.total++;
+        if (cross) this.hits++;
+        const needle = { x, y, theta, halfL, cross, age: 0 };
+        if (this.needles.length >= 850) this.needles.shift();
+        this.needles.push(needle);
+        return cross;
+      }
+    },
+
+    recordHistoryPoint() {
+      const est = this.currentPi();
+      if (est === null) return;
+      const last = this.history[this.history.length - 1];
+      if (!last || this.total - last.n >= Math.max(1, Math.floor(this.total * 0.02))) {
+        this.history.push({ n: this.total, pi: est });
+        if (this.history.length > 360) {
+          // Downsample slightly while keeping endpoints
+          const next = [];
+          for (let i = 0; i < this.history.length; i += 2) next.push(this.history[i]);
+          if (next[next.length - 1] !== this.history[this.history.length - 1]) {
+            next.push(this.history[this.history.length - 1]);
+          }
+          this.history = next;
+        }
+      }
+    },
+
+    burst(count) {
+      let lastHit = true;
+      const stepRecord = Math.max(1, Math.floor(count / 24));
+      for (let i = 0; i < count; i++) {
+        lastHit = this.sampleOne(null, null, i >= count - 6);
+        if (i % stepRecord === 0 || i === count - 1) this.recordHistoryPoint();
+      }
+      AudioEngine.dartPlink(lastHit);
+    },
+
+    currentPi() {
+      if (this.total === 0) return null;
+      if (this.mode === 'darts') {
+        return 4 * (this.hits / this.total);
+      } else {
+        if (this.hits === 0) return null;
+        return (2 * this.needleRatio * this.total) / this.hits;
+      }
+    },
+
+    computeLayout() {
+      const stage = getStageRect();
+      const topClear = App.cinema ? 24 : (stage.narrow ? 12 : 144);
+      const sx = stage.x + 12;
+      const sy = stage.y + topClear;
+      const sw = stage.w - 24;
+      const sh = Math.max(220, stage.h - topClear - 10);
+
+      const sideBySide = sw > 620 && sh < sw * 0.95;
+      let boardRect, chartRect;
+      if (sideBySide) {
+        const sqSize = Math.min(sh - 24, sw * 0.50);
+        const totalBlockW = sqSize + 24 + Math.min(sw - sqSize - 24, 420);
+        const startX = sx + (sw - totalBlockW) * 0.5;
+        const startY = sy + (sh - sqSize) * 0.5;
+        boardRect = { x: startX, y: startY, w: sqSize, h: sqSize };
+        chartRect = {
+          x: startX + sqSize + 24,
+          y: startY,
+          w: totalBlockW - sqSize - 24,
+          h: sqSize
+        };
+      } else {
+        const sqSize = Math.min(sw * 0.9, sh * 0.56);
+        boardRect = { x: sx + (sw - sqSize) * 0.5, y: sy, w: sqSize, h: sqSize };
+        chartRect = {
+          x: sx + 8,
+          y: sy + sqSize + 22,
+          w: sw - 16,
+          h: Math.max(105, sh - sqSize - 26)
+        };
+      }
+      this.layout = { boardRect, chartRect };
+      return this.layout;
+    },
+
+    update(dt) {
+      if (!App.paused) {
+        const effRate = this.rate * App.speeds[App.speedIndex];
+        this.spawnAcc += effRate * dt;
+        const count = Math.min(600, Math.floor(this.spawnAcc));
+        this.spawnAcc -= count;
+        if (count > 0) {
+          let hit = false;
+          for (let i = 0; i < count; i++) {
+            hit = this.sampleOne(null, null, i === count - 1);
+          }
+          this.recordHistoryPoint();
+          if (Math.random() < 0.4) AudioEngine.dartPlink(hit);
+        }
+      }
+
+      for (let i = this.ripples.length - 1; i >= 0; i--) {
+        this.ripples[i].t += dt * 3.0;
+        if (this.ripples[i].t >= 1) this.ripples.splice(i, 1);
+      }
+      for (let i = 0; i < this.needles.length; i++) {
+        this.needles[i].age = Math.min(1, this.needles[i].age + dt * 4.5);
+      }
+    },
+
+    draw() {
+      const L = this.computeLayout();
+      const B = L.boardRect;
+      const C = L.chartRect;
+
+      ctx.save();
+      // Left Board Panel Frame
+      ctx.fillStyle = 'rgba(8, 13, 26, 0.72)';
+      ctx.strokeStyle = 'rgba(148, 179, 255, 0.24)';
+      ctx.lineWidth = 1.4;
+      roundRect(ctx, B.x, B.y, B.w, B.h, 12);
+      ctx.fill();
+      ctx.stroke();
+
+      if (this.mode === 'darts') {
+        this.drawDartsBoard(B);
+      } else {
+        this.drawBuffonBoard(B);
+      }
+
+      this.drawConvergenceChart(C);
+      ctx.restore();
+    },
+
+    drawDartsBoard(B) {
+      ctx.save();
+      roundRect(ctx, B.x, B.y, B.w, B.h, 12);
+      ctx.clip();
+
+      // Subtle quadrant grid
+      ctx.strokeStyle = 'rgba(148, 179, 255, 0.08)';
+      ctx.lineWidth = 1;
+      for (let i = 1; i < 4; i++) {
+        const gx = B.x + (B.w * i) / 4;
+        const gy = B.y + (B.h * i) / 4;
+        ctx.beginPath();
+        ctx.moveTo(gx, B.y); ctx.lineTo(gx, B.y + B.h);
+        ctx.moveTo(B.x, gy); ctx.lineTo(B.x + B.w, gy);
+        ctx.stroke();
+      }
+
+      // Shaded inscribed quarter circle centered at bottom-left (B.x, B.y + B.h)
+      const ox = B.x;
+      const oy = B.y + B.h;
+      const R = B.w;
+
+      const radGrad = ctx.createRadialGradient(ox, oy, R * 0.08, ox, oy, R);
+      radGrad.addColorStop(0, 'rgba(88, 220, 255, 0.14)');
+      radGrad.addColorStop(1, 'rgba(74, 242, 178, 0.04)');
+      ctx.fillStyle = radGrad;
+      ctx.beginPath();
+      ctx.moveTo(ox, oy);
+      ctx.arc(ox, oy, R, -PI / 2, 0, false);
+      ctx.closePath();
+      ctx.fill();
+
+      // Darts
+      for (let i = 0; i < this.darts.length; i++) {
+        const d = this.darts[i];
+        const px = B.x + d.x * B.w;
+        const py = B.y + (1 - d.y) * B.h;
+        ctx.fillStyle = d.inside ? 'rgba(88, 232, 255, 0.82)' : 'rgba(255, 96, 131, 0.72)';
+        ctx.fillRect(px - 1.3, py - 1.3, 2.6, 2.6);
+      }
+
+      // Fresh impact ripples
+      for (let i = 0; i < this.ripples.length; i++) {
+        const rp = this.ripples[i];
+        const px = B.x + rp.x * B.w;
+        const py = B.y + (1 - rp.y) * B.h;
+        ctx.beginPath();
+        ctx.arc(px, py, 3 + rp.t * 14, 0, TAU);
+        ctx.strokeStyle = rp.inside
+          ? `rgba(88, 220, 255, ${(1 - rp.t) * 0.8})`
+          : `rgba(255, 96, 131, ${(1 - rp.t) * 0.8})`;
+        ctx.lineWidth = 1.4;
+        ctx.stroke();
+      }
+
+      // Glowing quarter-circle arc
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(ox, oy, R, -PI / 2, 0, false);
+      ctx.strokeStyle = '#58dcff';
+      ctx.lineWidth = 2.4;
+      ctx.shadowColor = 'rgba(88, 220, 255, 0.85)';
+      ctx.shadowBlur = 14;
+      ctx.stroke();
+      ctx.restore();
+
+      // Labels inside square
+      ctx.font = '600 11px ' + getComputedStyle(document.body).getPropertyValue('--mono');
+      ctx.fillStyle = 'rgba(88, 220, 255, 0.88)';
+      ctx.textAlign = 'left';
+      ctx.fillText('x² + y² ≤ 1  (Area = π/4)', B.x + 12, B.y + B.h - 12);
+      ctx.fillStyle = 'rgba(255, 130, 160, 0.85)';
+      ctx.textAlign = 'right';
+      ctx.fillText('Outside', B.x + B.w - 12, B.y + 20);
+
+      ctx.restore();
+    },
+
+    drawBuffonBoard(B) {
+      ctx.save();
+      roundRect(ctx, B.x, B.y, B.w, B.h, 12);
+      ctx.clip();
+
+      const lanes = 6;
+      const laneH = B.h / lanes;
+
+      // Subtle alternating dark architectural floorboards
+      for (let i = 0; i < lanes; i++) {
+        ctx.fillStyle = i % 2 === 0 ? 'rgba(255, 190, 92, 0.032)' : 'rgba(148, 179, 255, 0.02)';
+        ctx.fillRect(B.x, B.y + i * laneH, B.w, laneH);
+      }
+
+      // Parallel floorboard seam lines
+      for (let i = 1; i < lanes; i++) {
+        const sy = B.y + i * laneH;
+        ctx.strokeStyle = 'rgba(255, 190, 92, 0.42)';
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.moveTo(B.x, sy);
+        ctx.lineTo(B.x + B.w, sy);
+        ctx.stroke();
+      }
+
+      // Needles
+      for (let i = 0; i < this.needles.length; i++) {
+        const nd = this.needles[i];
+        const cx = B.x + nd.x * B.w;
+        const cy = B.y + nd.y * laneH;
+        const halfPx = nd.halfL * laneH;
+        const dx = Math.cos(nd.theta) * halfPx;
+        const dy = Math.sin(nd.theta) * halfPx;
+        const pop = 1 - nd.age;
+
+        ctx.strokeStyle = nd.cross
+          ? `rgba(255, 206, 98, ${0.78 + pop * 0.22})`
+          : `rgba(110, 195, 245, ${0.46 + pop * 0.35})`;
+        ctx.lineWidth = nd.cross ? 2.0 + pop * 1.4 : 1.4;
+        ctx.beginPath();
+        ctx.moveTo(cx - dx, cy - dy);
+        ctx.lineTo(cx + dx, cy + dy);
+        ctx.stroke();
+
+        // Crossing seam highlight dot
+        if (nd.cross) {
+          const yLow = nd.y - Math.sin(nd.theta) * nd.halfL;
+          const seamIdx = Math.ceil(yLow);
+          const sinT = Math.sin(nd.theta);
+          if (Math.abs(sinT) > 1e-4) {
+            const tSeam = (seamIdx - nd.y) / sinT; // in seam units along needle
+            const ix = cx + Math.cos(nd.theta) * tSeam * laneH;
+            const iy = B.y + seamIdx * laneH;
+            ctx.beginPath();
+            ctx.arc(ix, iy, 2.3 + pop * 2.5, 0, TAU);
+            ctx.fillStyle = `rgba(74, 242, 178, ${0.85 + pop * 0.15})`;
+            ctx.fill();
+          }
+        }
+      }
+
+      ctx.font = '600 10.5px ' + getComputedStyle(document.body).getPropertyValue('--mono');
+      ctx.fillStyle = 'rgba(255, 206, 98, 0.88)';
+      ctx.textAlign = 'left';
+      ctx.fillText(`Seam Spacing D · Needle L = ${this.needleRatio.toFixed(2)} D`, B.x + 12, B.y + 20);
+      ctx.restore();
+    },
+
+    drawConvergenceChart(C) {
+      ctx.save();
+      ctx.fillStyle = 'rgba(8, 13, 26, 0.72)';
+      ctx.strokeStyle = 'rgba(148, 179, 255, 0.2)';
+      ctx.lineWidth = 1.2;
+      roundRect(ctx, C.x, C.y, C.w, C.h, 12);
+      ctx.fill();
+      ctx.stroke();
+
+      const padL = 46, padR = 16, padT = 30, padB = 28;
+      const gx = C.x + padL;
+      const gy = C.y + padT;
+      const gw = Math.max(80, C.w - padL - padR);
+      const gh = Math.max(60, C.h - padT - padB);
+
+      // Header
+      const piEst = this.currentPi();
+      ctx.font = '700 11px ' + getComputedStyle(document.body).getPropertyValue('--mono');
+      ctx.fillStyle = '#eef3ff';
+      ctx.textAlign = 'left';
+      ctx.fillText('CONVERGENCE TRACE  π̂(N)', C.x + 14, C.y + 19);
+      ctx.textAlign = 'right';
+      ctx.fillStyle = '#ffbe5c';
+      ctx.fillText(piEst !== null ? `π̂ = ${piEst.toFixed(6)}` : 'π̂ = —', C.x + C.w - 14, C.y + 19);
+
+      const yMin = 2.5, yMax = 3.8;
+      const mapY = (v) => gy + gh - ((clamp(v, yMin, yMax) - yMin) / (yMax - yMin)) * gh;
+      const maxN = Math.max(100, this.total);
+      const mapX = (n) => {
+        if (this.logAxis) {
+          const ln = Math.log10(Math.max(1, n));
+          const lMax = Math.log10(maxN);
+          return gx + (ln / Math.max(1, lMax)) * gw;
+        }
+        return gx + (n / maxN) * gw;
+      };
+
+      // Y gridlines
+      const yTicks = [2.6, 2.9, 3.14159, 3.4, 3.7];
+      ctx.font = '10px ' + getComputedStyle(document.body).getPropertyValue('--mono');
+      ctx.textAlign = 'right';
+      yTicks.forEach(v => {
+        const py = mapY(v);
+        const isPi = Math.abs(v - PI) < 0.001;
+        ctx.strokeStyle = isPi ? 'rgba(255, 190, 92, 0.55)' : 'rgba(148, 179, 255, 0.1)';
+        ctx.lineWidth = isPi ? 1.4 : 1;
+        if (isPi) ctx.setLineDash([5, 4]);
+        ctx.beginPath();
+        ctx.moveTo(gx, py);
+        ctx.lineTo(gx + gw, py);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = isPi ? '#ffbe5c' : 'rgba(154, 169, 204, 0.7)';
+        ctx.fillText(isPi ? 'π' : v.toFixed(1), gx - 7, py + 3.5);
+      });
+
+      // Theoretical ±1/√N (scaled by asymptotic std dev ~1.64 for darts, ~2.1 for Buffon)
+      if (this.showEnvelope) {
+        const cStd = this.mode === 'darts' ? 1.642 : (2.0 / Math.max(0.3, this.needleRatio));
+        ctx.beginPath();
+        const steps = 80;
+        for (let i = 0; i <= steps; i++) {
+          const frac = i / steps;
+          const nv = this.logAxis ? Math.pow(maxN, frac) : Math.max(1, frac * maxN);
+          const err = cStd / Math.sqrt(Math.max(1, nv));
+          const px = gx + frac * gw;
+          const py = mapY(PI + err);
+          if (i === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        for (let i = steps; i >= 0; i--) {
+          const frac = i / steps;
+          const nv = this.logAxis ? Math.pow(maxN, frac) : Math.max(1, frac * maxN);
+          const err = cStd / Math.sqrt(Math.max(1, nv));
+          const px = gx + frac * gw;
+          const py = mapY(PI - err);
+          ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.fillStyle = 'rgba(88, 220, 255, 0.09)';
+        ctx.fill();
+      }
+
+      // Live trace curve
+      if (this.history.length > 1) {
+        ctx.save();
+        ctx.beginPath();
+        for (let i = 0; i < this.history.length; i++) {
+          const pt = this.history[i];
+          const px = mapX(pt.n);
+          const py = mapY(pt.pi);
+          if (i === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.strokeStyle = '#58dcff';
+        ctx.lineWidth = 2.0;
+        ctx.shadowColor = 'rgba(88, 220, 255, 0.7)';
+        ctx.shadowBlur = 8;
+        ctx.stroke();
+
+        // Current endpoint glow dot
+        const last = this.history[this.history.length - 1];
+        const lx = mapX(last.n);
+        const ly = mapY(last.pi);
+        ctx.beginPath();
+        ctx.arc(lx, ly, 4, 0, TAU);
+        ctx.fillStyle = '#ffffff';
+        ctx.fill();
+        ctx.restore();
+      }
+
+      // X axis labels
+      ctx.fillStyle = 'rgba(154, 169, 204, 0.65)';
+      ctx.font = '9.5px ' + getComputedStyle(document.body).getPropertyValue('--mono');
+      ctx.textAlign = 'left';
+      ctx.fillText('N=1', gx, C.y + C.h - 9);
+      ctx.textAlign = 'center';
+      ctx.fillText(this.logAxis ? 'log₁₀(N) Scale' : 'Linear N Scale', gx + gw * 0.5, C.y + C.h - 9);
+      ctx.textAlign = 'right';
+      ctx.fillText('N=' + fmtInt(maxN), gx + gw, C.y + C.h - 9);
+
+      ctx.restore();
+    },
+
+    onClick(x, y) {
+      if (!this.layout) return;
+      const B = this.layout.boardRect;
+      if (x >= B.x && x <= B.x + B.w && y >= B.y && y <= B.y + B.h) {
+        const nx = (x - B.x) / B.w;
+        const ny = this.mode === 'darts' ? (1 - (y - B.y) / B.h) : ((y - B.y) / B.h);
+        const hit = this.sampleOne(nx, ny, true);
+        this.recordHistoryPoint();
+        AudioEngine.dartPlink(hit);
+      }
+    },
+
+    getTelemetry() {
+      const piEst = this.currentPi();
+      const errAbs = piEst !== null ? Math.abs(piEst - PI) : null;
+      const errPct = errAbs !== null ? (errAbs / PI) * 100 : null;
+      const invSqrtN = this.total > 0 ? (1 / Math.sqrt(this.total)) : null;
+      const hitPct = this.total > 0 ? (this.hits / this.total) * 100 : 0;
+
+      let status = 'Sampling', statusClass = 'cyan';
+      if (errPct !== null && errPct < 0.25 && this.total >= 500) {
+        status = 'π Converged'; statusClass = '';
+      } else if (this.total === 0) {
+        status = 'Ready'; statusClass = 'warn';
+      }
+
+      return {
+        badge: this.mode === 'darts' ? 'Monte Carlo π' : "Buffon's Needle",
+        badgeClass: 'cyan',
+        status, statusClass,
+        cards: [
+          ['Samples N', fmtInt(this.total), 'amber'],
+          ['Estimate π̂', piEst !== null ? piEst.toFixed(5) : '—', 'cyan'],
+          ['Error %', errPct !== null ? errPct.toFixed(3) + '%' : '—', errPct !== null && errPct < 0.5 ? 'mint' : 'rose'],
+          ['1 / √N Bound', invSqrtN !== null ? '±' + (invSqrtN * 1.64).toFixed(4) : '—', 'violet'],
+          [this.mode === 'darts' ? 'Inside Circle' : 'Seam Crossings', `${fmtInt(this.hits)} (${hitPct.toFixed(1)}%)`, 'mint'],
+          ['Abs |π̂ − π|', errAbs !== null ? errAbs.toFixed(5) : '—', '']
+        ],
+        formulaLeft: this.mode === 'darts'
+          ? 'π̂ = 4 · N_in / N  (Error ~ 1/√N)'
+          : `π̂ = 2(L/D)·N / N_cross  (L/D=${this.needleRatio.toFixed(2)})`,
+        formulaRight: '<strong>π = 3.14159…</strong>'
+      };
+    }
+  };
+
+  /* =========================================================================
+     LAB 3: INTERACTIVE MARKOV CHAIN STATE MACHINE
+     ========================================================================= */
+  const STATE_PALETTE = ['#ffbe5c', '#58dcff', '#4af2b2', '#a78bfa', '#ff6083'];
+
+  const MARKOV_PRESETS = {
+    weather: {
+      name: 'Weather Forecast',
+      labels: ['Sunny', 'Cloudy', 'Rainy'],
+      colors: ['#ffbe5c', '#58dcff', '#a78bfa'],
+      P: [
+        [0.65, 0.25, 0.10],
+        [0.30, 0.40, 0.30],
+        [0.15, 0.35, 0.50]
+      ]
+    },
+    pagerank: {
+      name: 'PageRank Web',
+      labels: ['Hub', 'Wiki', 'Blog', 'Archive'],
+      colors: ['#ffbe5c', '#58dcff', '#4af2b2', '#ff6083'],
+      P: [
+        [0.10, 0.45, 0.35, 0.10],
+        [0.50, 0.15, 0.20, 0.15],
+        [0.40, 0.35, 0.10, 0.15],
+        [0.65, 0.20, 0.10, 0.05]
+      ]
+    },
+    gambler: {
+      name: "Gambler's Ruin",
+      labels: ['$0 Ruin', '$1', '$2', '$3', '$4 Win'],
+      colors: ['#ff6083', '#a78bfa', '#58dcff', '#ffbe5c', '#4af2b2'],
+      P: [
+        [1.00, 0.00, 0.00, 0.00, 0.00],
+        [0.50, 0.00, 0.50, 0.00, 0.00],
+        [0.00, 0.50, 0.00, 0.50, 0.00],
+        [0.00, 0.00, 0.50, 0.00, 0.50],
+        [0.00, 0.00, 0.00, 0.00, 1.00]
+      ],
+      linearLayout: true
+    },
+    ehrenfest: {
+      name: 'Ehrenfest Urn',
+      labels: ['0 / 3', '1 / 3', '2 / 3', '3 / 3'],
+      colors: ['#ff6083', '#ffbe5c', '#58dcff', '#4af2b2'],
+      P: [
+        [0.00, 1.00, 0.00, 0.00],
+        [0.333, 0.00, 0.667, 0.00],
+        [0.00, 0.667, 0.00, 0.333],
+        [0.00, 0.00, 1.00, 0.00]
+      ],
+      linearLayout: true
+    },
+    custom: {
+      name: 'Custom 3-State',
+      labels: ['State A', 'State B', 'State C'],
+      colors: ['#58dcff', '#ffbe5c', '#4af2b2'],
+      P: [
+        [0.20, 0.55, 0.25],
+        [0.35, 0.25, 0.40],
+        [0.50, 0.30, 0.20]
+      ]
+    }
+  };
+
+  const Markov = {
+    presetKey: 'weather',
+    states: [], // { label, color, nx, ny } normalized in graph box [0..1]
+    P: [],
+    stationary: [],
+    absorbingIndices: [],
+    walkers: [],
+    walkerCount: 45,
+    hopRate: 1.6,
+    visits: [],
+    totalHops: 0,
+    selectedState: 0,
+    dragIndex: -1,
+    hoverIndex: -1,
+    l1History: [],
+    layout: null,
+
+    init() {
+      this.loadPreset('weather');
+    },
+
+    loadPreset(key) {
+      const pr = MARKOV_PRESETS[key] || MARKOV_PRESETS.weather;
+      this.presetKey = key;
+      const n = pr.labels.length;
+      this.P = pr.P.map(row => row.slice());
+      this.states = [];
+      for (let i = 0; i < n; i++) {
+        let nx, ny;
+        if (pr.linearLayout) {
+          nx = 0.12 + (i / Math.max(1, n - 1)) * 0.76;
+          ny = 0.5 + (i % 2 === 0 ? -0.06 : 0.06);
+        } else {
+          const ang = -PI / 2 + (i * TAU) / n;
+          nx = 0.5 + Math.cos(ang) * 0.33;
+          ny = 0.52 + Math.sin(ang) * 0.33;
+        }
+        this.states.push({
+          label: pr.labels[i],
+          color: pr.colors[i] || STATE_PALETTE[i % STATE_PALETTE.length],
+          nx, ny,
+          pulse: 0
+        });
+      }
+      this.selectedState = Math.min(this.selectedState, n - 1);
+      document.querySelectorAll('[data-markov-preset]').forEach(b => {
+        b.classList.toggle('active', b.dataset.markovPreset === key);
+      });
+      this.solveStationary();
+      this.resetWalkers();
+      this.buildWeightEditor();
+    },
+
+    solveStationary() {
+      const n = this.P.length;
+      this.absorbingIndices = [];
+      for (let i = 0; i < n; i++) {
+        if (this.P[i][i] >= 0.999) this.absorbingIndices.push(i);
+      }
+
+      // Lazy damped power iteration v = 0.5*v + 0.5*(v*P) handles periodic chains (Ehrenfest) cleanly!
+      let v = new Array(n).fill(1 / n);
+      if (this.absorbingIndices.length > 0 && this.presetKey === 'gambler') {
+        // Start from middle state $2 to compute exact absorption probabilities
+        v = new Array(n).fill(0);
+        v[Math.floor(n / 2)] = 1;
+      }
+      for (let iter = 0; iter < 600; iter++) {
+        const next = new Array(n).fill(0);
+        for (let i = 0; i < n; i++) {
+          for (let j = 0; j < n; j++) {
+            next[j] += v[i] * this.P[i][j];
+          }
+        }
+        let diff = 0;
+        for (let j = 0; j < n; j++) {
+          const nv = 0.5 * v[j] + 0.5 * next[j];
+          diff += Math.abs(nv - v[j]);
+          v[j] = nv;
+        }
+        if (diff < 1e-10) break;
+      }
+      const sum = v.reduce((a, b) => a + b, 0) || 1;
+      this.stationary = v.map(x => x / sum);
+    },
+
+    resetWalkers() {
+      const n = this.states.length;
+      this.visits = new Array(n).fill(0);
+      this.totalHops = 0;
+      this.l1History = [];
+      this.walkers = [];
+      for (let i = 0; i < this.walkerCount; i++) {
+        const start = this.absorbingIndices.length > 0
+          ? Math.floor(n / 2)
+          : (i % n);
+        this.walkers.push(this.makeWalker(start, Math.random()));
+        this.visits[start]++;
+      }
+    },
+
+    makeWalker(stateIdx, phaseOffset = 0) {
+      return {
+        from: stateIdx,
+        to: stateIdx,
+        t: phaseOffset,
+        moving: false,
+        waitTimer: Math.random() * 0.65,
+        trail: []
+      };
+    },
+
+    syncWalkerCount() {
+      const n = this.states.length;
+      while (this.walkers.length < this.walkerCount) {
+        const s = this.absorbingIndices.length > 0 ? Math.floor(n / 2) : Math.floor(Math.random() * n);
+        this.walkers.push(this.makeWalker(s, 0));
+      }
+      if (this.walkers.length > this.walkerCount) {
+        this.walkers.length = this.walkerCount;
+      }
+    },
+
+    chooseNext(from) {
+      const row = this.P[from];
+      const r = Math.random();
+      let acc = 0;
+      for (let j = 0; j < row.length; j++) {
+        acc += row[j];
+        if (r <= acc) return j;
+      }
+      return row.length - 1;
+    },
+
+    stepAllOnce() {
+      for (let i = 0; i < this.walkers.length; i++) {
+        const w = this.walkers[i];
+        if (!w.moving) {
+          w.to = this.chooseNext(w.from);
+          w.moving = true;
+          w.t = 0;
+          w.trail = [];
+        }
+      }
+    },
+
+    burstTransitions(count) {
+      const n = this.states.length;
+      for (let b = 0; b < count; b++) {
+        const w = this.walkers[b % this.walkers.length];
+        let cur = w.moving ? w.to : w.from;
+        // If absorbing and stuck, respawn in middle occasionally so user can keep observing absorption stats
+        if (this.absorbingIndices.includes(cur) && Math.random() < 0.15) {
+          cur = Math.floor(n / 2);
+        }
+        const nxt = this.chooseNext(cur);
+        w.from = nxt;
+        w.to = nxt;
+        w.moving = false;
+        this.visits[nxt]++;
+        this.totalHops++;
+      }
+      this.recordL1();
+      AudioEngine.stateChime(Math.floor(Math.random() * n));
+    },
+
+    recordL1() {
+      const tot = this.visits.reduce((a, b) => a + b, 0);
+      if (tot === 0) return;
+      let tvd = 0;
+      for (let i = 0; i < this.states.length; i++) {
+        tvd += Math.abs(this.visits[i] / tot - this.stationary[i]);
+      }
+      tvd *= 0.5;
+      this.l1History.push(tvd);
+      if (this.l1History.length > 140) this.l1History.shift();
+    },
+
+    buildWeightEditor() {
+      const chipsEl = document.getElementById('mk-state-chips');
+      const slidersEl = document.getElementById('mk-weight-sliders');
+      if (!chipsEl || !slidersEl) return;
+
+      chipsEl.innerHTML = '';
+      this.states.forEach((st, idx) => {
+        const btn = document.createElement('button');
+        btn.className = 'state-chip' + (idx === this.selectedState ? ' active' : '');
+        btn.innerHTML = `<span class="state-dot" style="background:${st.color}"></span>${st.label}`;
+        btn.onclick = () => {
+          this.selectedState = idx;
+          this.buildWeightEditor();
+        };
+        chipsEl.appendChild(btn);
+      });
+
+      slidersEl.innerHTML = '';
+      const i = this.selectedState;
+      const row = this.P[i];
+      row.forEach((prob, j) => {
+        const wrap = document.createElement('div');
+        wrap.className = 'control-row';
+
+        const head = document.createElement('div');
+        head.className = 'control-head';
+        const lbl = document.createElement('span');
+        lbl.innerHTML = `→ <strong style="color:${this.states[j].color}">${this.states[j].label}</strong>`;
+        const val = document.createElement('span');
+        val.className = 'val';
+        val.textContent = prob.toFixed(2);
+        head.appendChild(lbl);
+        head.appendChild(val);
+
+        const sl = document.createElement('input');
+        sl.type = 'range';
+        sl.min = '0';
+        sl.max = '1';
+        sl.step = '0.01';
+        sl.value = prob.toFixed(2);
+        sl.addEventListener('input', () => {
+          this.setTransitionWeight(i, j, parseFloat(sl.value));
+          this.updateWeightEditorValues();
+        });
+
+        wrap.appendChild(head);
+        wrap.appendChild(sl);
+        slidersEl.appendChild(wrap);
+      });
+      document.getElementById('mk-row-sum').textContent = 'Σ = 1.00';
+    },
+
+    updateWeightEditorValues() {
+      const slidersEl = document.getElementById('mk-weight-sliders');
+      if (!slidersEl) return;
+      const row = this.P[this.selectedState];
+      const rows = slidersEl.querySelectorAll('.control-row');
+      rows.forEach((el, j) => {
+        const val = el.querySelector('.val');
+        const sl = el.querySelector('input');
+        if (val) val.textContent = row[j].toFixed(2);
+        if (sl && document.activeElement !== sl) sl.value = row[j].toFixed(2);
+      });
+    },
+
+    setTransitionWeight(i, j, newVal) {
+      const row = this.P[i];
+      const v = clamp(newVal, 0, 1);
+      const rem = 1 - v;
+      let otherSum = 0;
+      for (let k = 0; k < row.length; k++) if (k !== j) otherSum += row[k];
+      row[j] = v;
+      if (otherSum > 1e-6) {
+        for (let k = 0; k < row.length; k++) {
+          if (k !== j) row[k] = (row[k] / otherSum) * rem;
+        }
+      } else {
+        const share = rem / Math.max(1, row.length - 1);
+        for (let k = 0; k < row.length; k++) if (k !== j) row[k] = share;
+      }
+      this.solveStationary();
+    },
+
+    computeLayout() {
+      const stage = getStageRect();
+      const topClear = App.cinema ? 20 : (stage.narrow ? 12 : 138);
+      const gx = stage.x + 12;
+      const gy = stage.y + topClear;
+      const gw = stage.w - 24;
+      const totalH = Math.max(240, stage.h - topClear - 10);
+
+      const barH = clamp(totalH * 0.27, 108, 155);
+      const graphRect = { x: gx, y: gy, w: gw, h: totalH - barH - 14 };
+      const barRect = { x: gx, y: gy + totalH - barH, w: gw, h: barH };
+      const nodeR = clamp(Math.min(graphRect.w, graphRect.h) * 0.085, 24, 38);
+
+      const nodes = this.states.map(st => ({
+        x: graphRect.x + st.nx * graphRect.w,
+        y: graphRect.y + st.ny * graphRect.h,
+        r: nodeR
+      }));
+
+      this.layout = { graphRect, barRect, nodes, nodeR };
+      return this.layout;
+    },
+
+    edgeCurve(i, j, L) {
+      const A = L.nodes[i];
+      const B = L.nodes[j];
+      if (i === j) {
+        // Self-loop pointing outward from graph center
+        const cx = L.graphRect.x + L.graphRect.w * 0.5;
+        const cy = L.graphRect.y + L.graphRect.h * 0.5;
+        let ang = Math.atan2(A.y - cy, A.x - cx);
+        if (Math.hypot(A.x - cx, A.y - cy) < 12) ang = -PI / 2;
+        const spread = 0.52;
+        const p0 = { x: A.x + Math.cos(ang - spread) * A.r, y: A.y + Math.sin(ang - spread) * A.r };
+        const p2 = { x: A.x + Math.cos(ang + spread) * A.r, y: A.y + Math.sin(ang + spread) * A.r };
+        const loopR = A.r * 2.5;
+        const cp = { x: A.x + Math.cos(ang) * loopR, y: A.y + Math.sin(ang) * loopR };
+        return { p0, cp, p2, self: true };
+      }
+      const dx = B.x - A.x;
+      const dy = B.y - A.y;
+      const dist = Math.max(1, Math.hypot(dx, dy));
+      const ux = dx / dist, uy = dy / dist;
+      const nx = -uy, ny = ux; // perpendicular offset for clean bidirectional arcs
+      const curveOffset = Math.min(46, dist * 0.18);
+      const midX = (A.x + B.x) * 0.5 + nx * curveOffset;
+      const midY = (A.y + B.y) * 0.5 + ny * curveOffset;
+
+      // Trim start/end to node circumference
+      const a0 = Math.atan2(midY - A.y, midX - A.x);
+      const a2 = Math.atan2(midY - B.y, midX - B.x);
+      const p0 = { x: A.x + Math.cos(a0) * (A.r + 2), y: A.y + Math.sin(a0) * (A.r + 2) };
+      const p2 = { x: B.x + Math.cos(a2) * (B.r + 6), y: B.y + Math.sin(a2) * (B.r + 6) };
+      return { p0, cp: { x: midX, y: midY }, p2, self: false };
+    },
+
+    quadPoint(curve, t) {
+      const mt = 1 - t;
+      return {
+        x: mt * mt * curve.p0.x + 2 * mt * t * curve.cp.x + t * t * curve.p2.x,
+        y: mt * mt * curve.p0.y + 2 * mt * t * curve.cp.y + t * t * curve.p2.y
+      };
+    },
+
+    update(dt) {
+      const L = this.computeLayout();
+      const speedMul = App.speeds[App.speedIndex];
+      const hopDur = 1 / Math.max(0.3, this.hopRate * speedMul);
+
+      // Decay node pulses
+      for (let i = 0; i < this.states.length; i++) {
+        this.states[i].pulse = Math.max(0, this.states[i].pulse - dt * 3.5);
+      }
+
+      if (!App.paused) {
+        let hopped = false;
+        for (let i = 0; i < this.walkers.length; i++) {
+          const w = this.walkers[i];
+          if (w.moving) {
+            w.t += dt / Math.max(0.14, hopDur * 0.72);
+            const curve = this.edgeCurve(w.from, w.to, L);
+            const pos = this.quadPoint(curve, easeInOutQuad(clamp(w.t, 0, 1)));
+            w.trail.push(pos);
+            if (w.trail.length > 9) w.trail.shift();
+
+            if (w.t >= 1) {
+              w.from = w.to;
+              w.moving = false;
+              w.t = 0;
+              w.waitTimer = hopDur * (0.15 + Math.random() * 0.45);
+              this.visits[w.from]++;
+              this.totalHops++;
+              this.states[w.from].pulse = 1.0;
+              hopped = true;
+              if (Math.random() < 0.25) AudioEngine.stateChime(w.from);
+            }
+          } else {
+            w.waitTimer -= dt;
+            if (w.waitTimer <= 0) {
+              // If walker is in an absorbing state (Gambler's Ruin), keep it mostly absorbed or recycle softly
+              if (this.absorbingIndices.includes(w.from)) {
+                w.visitsAbsorbed = (w.visitsAbsorbed || 0) + 1;
+                this.visits[w.from]++;
+                this.totalHops++;
+                w.waitTimer = hopDur * 0.9;
+                hopped = true;
+              } else {
+                w.to = this.chooseNext(w.from);
+                w.moving = true;
+                w.t = 0;
+                w.trail = [];
+              }
+            }
+          }
+        }
+        if (hopped && this.totalHops % Math.max(1, Math.floor(this.walkerCount * 0.35)) === 0) {
+          this.recordL1();
+        }
+      }
+
+      // Hover node detection
+      this.hoverIndex = -1;
+      for (let i = 0; i < L.nodes.length; i++) {
+        const nd = L.nodes[i];
+        if (Math.hypot(App.mouseX - nd.x, App.mouseY - nd.y) <= nd.r + 6) {
+          this.hoverIndex = i;
+          break;
+        }
+      }
+      if (this.dragIndex >= 0) canvas.className = 'grabbing';
+      else if (this.hoverIndex >= 0) canvas.className = 'grab';
+      else canvas.className = '';
+    },
+
+    draw() {
+      const L = this.layout || this.computeLayout();
+      const n = this.states.length;
+      const totVisits = Math.max(1, this.visits.reduce((a, b) => a + b, 0));
+
+      ctx.save();
+      // Draw edges
+      for (let i = 0; i < n; i++) {
+        for (let j = 0; j < n; j++) {
+          const prob = this.P[i][j];
+          if (prob <= 0.005) continue;
+          const curve = this.edgeCurve(i, j, L);
+          const isSel = i === this.selectedState;
+          const alpha = isSel ? (0.35 + prob * 0.65) : (0.14 + prob * 0.48);
+
+          ctx.strokeStyle = hexToRgba(this.states[i].color, alpha);
+          ctx.lineWidth = 1.2 + prob * 3.4;
+          ctx.beginPath();
+          ctx.moveTo(curve.p0.x, curve.p0.y);
+          ctx.quadraticCurveTo(curve.cp.x, curve.cp.y, curve.p2.x, curve.p2.y);
+          ctx.stroke();
+
+          // Arrowhead at p2
+          const ang = Math.atan2(curve.p2.y - curve.cp.y, curve.p2.x - curve.cp.x);
+          const ah = 7 + prob * 4;
+          ctx.fillStyle = hexToRgba(this.states[i].color, Math.min(1, alpha + 0.25));
+          ctx.beginPath();
+          ctx.moveTo(curve.p2.x, curve.p2.y);
+          ctx.lineTo(curve.p2.x - Math.cos(ang - 0.42) * ah, curve.p2.y - Math.sin(ang - 0.42) * ah);
+          ctx.lineTo(curve.p2.x - Math.cos(ang + 0.42) * ah, curve.p2.y - Math.sin(ang + 0.42) * ah);
+          ctx.closePath();
+          ctx.fill();
+
+          // Weight label pill along curve midpoint
+          const mid = this.quadPoint(curve, 0.5);
+          ctx.font = '700 9.5px ' + getComputedStyle(document.body).getPropertyValue('--mono');
+          const txt = prob.toFixed(2);
+          const tw = ctx.measureText(txt).width + 8;
+          ctx.fillStyle = 'rgba(5, 9, 19, 0.85)';
+          ctx.strokeStyle = hexToRgba(this.states[i].color, isSel ? 0.65 : 0.28);
+          ctx.lineWidth = 1;
+          roundRect(ctx, mid.x - tw * 0.5, mid.y - 8, tw, 16, 5);
+          ctx.fill();
+          ctx.stroke();
+          ctx.fillStyle = isSel ? '#ffffff' : 'rgba(220, 232, 255, 0.85)';
+          ctx.textAlign = 'center';
+          ctx.fillText(txt, mid.x, mid.y + 3.2);
+        }
+      }
+
+      // Draw walkers
+      for (let i = 0; i < this.walkers.length; i++) {
+        const w = this.walkers[i];
+        let px, py;
+        if (w.moving) {
+          const curve = this.edgeCurve(w.from, w.to, L);
+          const pt = this.quadPoint(curve, easeInOutQuad(clamp(w.t, 0, 1)));
+          px = pt.x; py = pt.y;
+        } else {
+          // Orbit gently around current node
+          const nd = L.nodes[w.from];
+          const orbAng = App.time * 1.4 + i * 2.399;
+          const orbR = nd.r * 0.55;
+          px = nd.x + Math.cos(orbAng) * orbR;
+          py = nd.y + Math.sin(orbAng) * orbR;
+        }
+
+        const col = this.states[w.moving ? w.to : w.from].color;
+        if (w.moving && w.trail.length > 1) {
+          ctx.beginPath();
+          for (let j = 0; j < w.trail.length; j++) {
+            if (j === 0) ctx.moveTo(w.trail[j].x, w.trail[j].y);
+            else ctx.lineTo(w.trail[j].x, w.trail[j].y);
+          }
+          ctx.strokeStyle = hexToRgba(col, 0.45);
+          ctx.lineWidth = 2;
+          ctx.stroke();
+        }
+        ctx.beginPath();
+        ctx.arc(px, py, 3.4, 0, TAU);
+        ctx.fillStyle = '#ffffff';
+        ctx.shadowColor = col;
+        ctx.shadowBlur = 10;
+        ctx.fill();
+        ctx.shadowBlur = 0;
+      }
+
+      // Draw state nodes
+      for (let i = 0; i < n; i++) {
+        const st = this.states[i];
+        const nd = L.nodes[i];
+        const emp = this.visits[i] / totVisits;
+        const isSel = i === this.selectedState;
+        const isHov = i === this.hoverIndex;
+
+        // Outer occupancy halo
+        ctx.beginPath();
+        ctx.arc(nd.x, nd.y, nd.r + 5 + emp * 18 + st.pulse * 6, 0, TAU);
+        ctx.fillStyle = hexToRgba(st.color, 0.08 + emp * 0.14 + st.pulse * 0.12);
+        ctx.fill();
+
+        // Main node circle
+        ctx.beginPath();
+        ctx.arc(nd.x, nd.y, nd.r, 0, TAU);
+        ctx.fillStyle = 'rgba(8, 13, 25, 0.92)';
+        ctx.fill();
+        ctx.lineWidth = isSel ? 3.0 : (isHov ? 2.4 : 1.8);
+        ctx.strokeStyle = st.color;
+        ctx.shadowColor = st.color;
+        ctx.shadowBlur = isSel ? 16 : 8;
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+
+        // Label & live occupancy
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '700 12px ' + getComputedStyle(document.body).getPropertyValue('--sans');
+        ctx.textAlign = 'center';
+        ctx.fillText(st.label, nd.x, nd.y - 2);
+        ctx.fillStyle = st.color;
+        ctx.font = '600 10.5px ' + getComputedStyle(document.body).getPropertyValue('--mono');
+        ctx.fillText((emp * 100).toFixed(1) + '%', nd.x, nd.y + 13);
+      }
+
+      // Bottom Empirical vs Stationary Distribution Panel
+      this.drawStationaryPanel(L.barRect, totVisits);
+      ctx.restore();
+    },
+
+    drawStationaryPanel(R, totVisits) {
+      ctx.save();
+      ctx.fillStyle = 'rgba(8, 13, 26, 0.76)';
+      ctx.strokeStyle = 'rgba(148, 179, 255, 0.2)';
+      ctx.lineWidth = 1.2;
+      roundRect(ctx, R.x, R.y, R.w, R.h, 12);
+      ctx.fill();
+      ctx.stroke();
+
+      const n = this.states.length;
+      const splitW = R.w > 480 ? R.w * 0.68 : R.w;
+
+      // Header
+      ctx.font = '700 10.5px ' + getComputedStyle(document.body).getPropertyValue('--mono');
+      ctx.fillStyle = '#eef3ff';
+      ctx.textAlign = 'left';
+      const title = this.absorbingIndices.length > 0
+        ? 'EMPIRICAL VISITS vs ABSORBING EQUILIBRIUM'
+        : 'EMPIRICAL VISITS vs EXACT STATIONARY π = π P';
+      ctx.fillText(title, R.x + 14, R.y + 18);
+
+      const padT = 28, padB = 22, padL = 16, padR = 16;
+      const areaW = splitW - padL - padR;
+      const areaH = R.h - padT - padB;
+      const slotW = areaW / n;
+      const barW = Math.min(44, slotW * 0.42);
+      const maxP = Math.max(0.45, ...this.stationary, ...this.visits.map(v => v / totVisits)) * 1.15;
+
+      for (let i = 0; i < n; i++) {
+        const st = this.states[i];
+        const emp = this.visits[i] / totVisits;
+        const stat = this.stationary[i];
+        const cx = R.x + padL + (i + 0.5) * slotW;
+        const baseY = R.y + R.h - padB;
+
+        const eh = clamp((emp / maxP) * areaH, 0, areaH);
+        const sh = clamp((stat / maxP) * areaH, 0, areaH);
+
+        // Empirical filled bar
+        const grad = ctx.createLinearGradient(cx, baseY - eh, cx, baseY);
+        grad.addColorStop(0, hexToRgba(st.color, 0.85));
+        grad.addColorStop(1, hexToRgba(st.color, 0.22));
+        ctx.fillStyle = grad;
+        ctx.fillRect(cx - barW * 0.5, baseY - eh, barW, eh);
+
+        // Exact stationary target marker line + diamond
+        const sy = baseY - sh;
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(cx - barW * 0.65, sy);
+        ctx.lineTo(cx + barW * 0.65, sy);
+        ctx.stroke();
+
+        // Values
+        ctx.font = '600 9.5px ' + getComputedStyle(document.body).getPropertyValue('--mono');
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(`π=${(stat * 100).toFixed(1)}%`, cx, Math.min(sy - 5, baseY - eh - 5));
+
+        ctx.fillStyle = st.color;
+        ctx.fillText(st.label, cx, R.y + R.h - 7);
+      }
+
+      // Mini L1 Convergence Sparkline on right portion if wide enough
+      if (R.w > 480) {
+        const sx = R.x + splitW + 6;
+        const sw = R.w - splitW - 20;
+        const sy = R.y + 26;
+        const sh = R.h - 40;
+
+        ctx.strokeStyle = 'rgba(148, 179, 255, 0.14)';
+        ctx.beginPath();
+        ctx.moveTo(sx - 6, R.y + 12);
+        ctx.lineTo(sx - 6, R.y + R.h - 12);
+        ctx.stroke();
+
+        ctx.fillStyle = 'rgba(154, 169, 204, 0.8)';
+        ctx.font = '700 9.5px ' + getComputedStyle(document.body).getPropertyValue('--mono');
+        ctx.textAlign = 'left';
+        ctx.fillText('TV DISTANCE ½‖p̂−π‖₁', sx + 4, R.y + 18);
+
+        if (this.l1History.length > 1) {
+          const maxL1 = Math.max(0.25, ...this.l1History);
+          ctx.beginPath();
+          for (let i = 0; i < this.l1History.length; i++) {
+            const px = sx + 4 + (i / (this.l1History.length - 1)) * (sw - 8);
+            const py = sy + sh - (this.l1History[i] / maxL1) * sh;
+            if (i === 0) ctx.moveTo(px, py);
+            else ctx.lineTo(px, py);
+          }
+          ctx.strokeStyle = '#4af2b2';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+        }
+      }
+      ctx.restore();
+    },
+
+    onPointerDown(x, y) {
+      if (!this.layout) return;
+      for (let i = 0; i < this.layout.nodes.length; i++) {
+        const nd = this.layout.nodes[i];
+        if (Math.hypot(x - nd.x, y - nd.y) <= nd.r + 6) {
+          this.dragIndex = i;
+          this.selectedState = i;
+          this.buildWeightEditor();
+          // Pulse & drop an extra momentary highlight
+          this.states[i].pulse = 1.0;
+          AudioEngine.stateChime(i);
+          return;
+        }
+      }
+    },
+
+    onPointerMove(x, y) {
+      if (this.dragIndex < 0 || !this.layout) return;
+      const G = this.layout.graphRect;
+      const st = this.states[this.dragIndex];
+      st.nx = clamp((x - G.x) / G.w, 0.08, 0.92);
+      st.ny = clamp((y - G.y) / G.h, 0.12, 0.88);
+    },
+
+    onPointerUp() {
+      this.dragIndex = -1;
+    },
+
+    getTelemetry() {
+      const tot = Math.max(1, this.visits.reduce((a, b) => a + b, 0));
+      let tvd = 0;
+      let topIdx = 0;
+      for (let i = 0; i < this.states.length; i++) {
+        tvd += Math.abs(this.visits[i] / tot - this.stationary[i]);
+        if (this.stationary[i] > this.stationary[topIdx]) topIdx = i;
+      }
+      tvd *= 0.5;
+      const absorbing = this.absorbingIndices.length > 0;
+      let status = absorbing ? 'Absorbing' : (tvd < 0.025 && this.totalHops > 200 ? 'Stationary' : 'Mixing');
+      let statusClass = absorbing ? 'warn' : (status === 'Stationary' ? '' : 'cyan');
+
+      // Empirical entropy H = -sum p log2 p
+      let ent = 0;
+      for (let i = 0; i < this.states.length; i++) {
+        const p = this.visits[i] / tot;
+        if (p > 1e-9) ent -= p * Math.log2(p);
+      }
+
+      return {
+        badge: 'Markov Chain', badgeClass: 'mint',
+        status, statusClass,
+        cards: [
+          ['Total Hops N', fmtInt(this.totalHops), 'amber'],
+          ['TV Dist ‖p̂−π‖₁', tvd.toFixed(4), tvd < 0.03 ? 'mint' : 'cyan'],
+          ['Entropy H (bits)', ent.toFixed(3), 'violet'],
+          ['Dominant State', this.states[topIdx] ? this.states[topIdx].label : '—', 'mint'],
+          ['Stationary π*', this.stationary[topIdx] ? (this.stationary[topIdx] * 100).toFixed(1) + '%' : '—', 'cyan'],
+          ['Active Walkers', String(this.walkers.length), '']
+        ],
+        formulaLeft: absorbing ? 'Absorbing Chain (P_ii = 1)' : 'π = π P   (Stationary Eigenvector)',
+        formulaRight: `<strong>${MARKOV_PRESETS[this.presetKey]?.name || 'Custom'}</strong>`
+      };
+    }
+  };
+
+  /* =========================================================================
+     LAB 4: VISUAL BAYESIAN BELIEF UPDATER (MEDICAL TEST & BETA-BINOMIAL)
+     ========================================================================= */
+  const Bayes = {
+    mode: 'medical', // 'medical' | 'coin'
+
+    // Medical test state
+    basePrior: 0.01,
+    currentBelief: 0.01,
+    displayBelief: 0.01,
+    sensitivity: 0.95,
+    fpr: 0.05,
+    showDots: true,
+    testHistory: [], // { result: '+'|'-', post: number }
+    patientFlash: null, // { sick, positive, dotIdx, t }
+
+    // Coin Beta-Binomial state
+    alpha0: 1.0,
+    beta0: 1.0,
+    trueTheta: 0.68,
+    revealTrue: true,
+    heads: 0,
+    tails: 0,
+    coinPips: [], // recent flips animating in
+
+    init() {
+      this.reset();
+    },
+
+    reset() {
+      this.currentBelief = this.basePrior;
+      this.displayBelief = this.basePrior;
+      this.testHistory = [];
+      this.patientFlash = null;
+      this.heads = 0;
+      this.tails = 0;
+      this.coinPips = [];
+      this.updateMedCallout();
+    },
+
+    applyMedPreset(key) {
+      const presets = {
+        rare: { prior: 1.0, sens: 95.0, fpr: 5.0 },
+        ultra: { prior: 0.2, sens: 99.0, fpr: 2.0 },
+        clinic: { prior: 25.0, sens: 92.0, fpr: 8.0 },
+        spam: { prior: 30.0, sens: 96.0, fpr: 1.0 }
+      };
+      const pr = presets[key];
+      if (!pr) return;
+      this.basePrior = pr.prior / 100;
+      this.sensitivity = pr.sens / 100;
+      this.fpr = pr.fpr / 100;
+      document.getElementById('sl-by-prior').value = pr.prior;
+      document.getElementById('val-by-prior').textContent = pr.prior.toFixed(1) + '%';
+      document.getElementById('sl-by-sens').value = pr.sens;
+      document.getElementById('val-by-sens').textContent = pr.sens.toFixed(1) + '%';
+      document.getElementById('sl-by-fpr').value = pr.fpr;
+      document.getElementById('val-by-fpr').textContent = pr.fpr.toFixed(1) + '%';
+      document.querySelectorAll('[data-med-preset]').forEach(b => {
+        b.classList.toggle('active', b.dataset.medPreset === key);
+      });
+      this.reset();
+    },
+
+    applyCoinPreset(key) {
+      const presets = {
+        uniform: { a: 1, b: 1 },
+        fair: { a: 8, b: 8 },
+        jeffreys: { a: 0.5, b: 0.5 },
+        skew: { a: 2, b: 6 }
+      };
+      const pr = presets[key];
+      if (!pr) return;
+      this.alpha0 = pr.a;
+      this.beta0 = pr.b;
+      document.getElementById('sl-coin-a').value = pr.a;
+      document.getElementById('val-coin-a').textContent = pr.a.toFixed(1);
+      document.getElementById('sl-coin-b').value = pr.b;
+      document.getElementById('val-coin-b').textContent = pr.b.toFixed(1);
+      document.querySelectorAll('[data-coin-preset]').forEach(b => {
+        b.classList.toggle('active', b.dataset.coinPreset === key);
+      });
+      this.heads = 0;
+      this.tails = 0;
+      this.coinPips = [];
+    },
+
+    runDiagnosticTest(positive) {
+      const p = this.currentBelief;
+      const sens = this.sensitivity;
+      const fpr = this.fpr;
+      let post;
+      if (positive) {
+        const tp = p * sens;
+        const fp = (1 - p) * fpr;
+        post = tp / Math.max(1e-12, tp + fp);
+      } else {
+        const fn = p * (1 - sens);
+        const tn = (1 - p) * (1 - fpr);
+        post = fn / Math.max(1e-12, fn + tn);
+      }
+      this.currentBelief = post;
+      this.testHistory.push({ result: positive ? '+' : '−', post });
+      if (this.testHistory.length > 14) this.testHistory.shift();
+      this.updateMedCallout();
+      AudioEngine.bayesChime(positive);
+    },
+
+    samplePatient() {
+      const sick = Math.random() < this.currentBelief;
+      const positive = sick ? (Math.random() < this.sensitivity) : (Math.random() < this.fpr);
+      this.patientFlash = { sick, positive, rx: Math.random(), ry: Math.random(), t: 0 };
+      this.runDiagnosticTest(positive);
+    },
+
+    updateMedCallout() {
+      const el = document.getElementById('by-med-callout');
+      if (!el) return;
+      const p = this.currentBelief;
+      const tp = p * this.sensitivity * 1000;
+      const fp = (1 - p) * this.fpr * 1000;
+      const ppv = tp / Math.max(1e-9, tp + fp);
+      el.innerHTML = `Per 1,000 people at current belief <strong>${(p * 100).toFixed(1)}%</strong>: `
+        + `<strong>${tp.toFixed(1)}</strong> True Positives vs <strong>${fp.toFixed(1)}</strong> False Positives → `
+        + `Next P(H|+) = <strong>${(ppv * 100).toFixed(1)}%</strong>.`;
+    },
+
+    flipCoins(count, forced = null) {
+      let lastH = true;
+      for (let i = 0; i < count; i++) {
+        const isHead = forced !== null ? forced : (Math.random() < this.trueTheta);
+        if (isHead) this.heads++;
+        else this.tails++;
+        lastH = isHead;
+        if (i >= count - 12) {
+          this.coinPips.push({ isHead, t: 0, xOff: (Math.random() - 0.5) * 40 });
+          if (this.coinPips.length > 36) this.coinPips.shift();
+        }
+      }
+      AudioEngine.bayesChime(lastH);
+    },
+
+    update(dt) {
+      this.displayBelief = lerp(this.displayBelief, this.currentBelief, Math.min(1, dt * 8));
+      if (this.patientFlash) {
+        this.patientFlash.t += dt * 1.4;
+        if (this.patientFlash.t >= 1) this.patientFlash = null;
+      }
+      for (let i = this.coinPips.length - 1; i >= 0; i--) {
+        this.coinPips[i].t += dt * 2.2;
+        if (this.coinPips[i].t >= 1) this.coinPips.splice(i, 1);
+      }
+    },
+
+    draw() {
+      const stage = getStageRect();
+      const topClear = App.cinema ? 24 : (stage.narrow ? 12 : 144);
+      const rect = {
+        x: stage.x + 16,
+        y: stage.y + topClear,
+        w: stage.w - 32,
+        h: Math.max(240, stage.h - topClear - 12)
+      };
+
+      if (this.mode === 'medical') {
+        this.drawMedicalView(rect);
+      } else {
+        this.drawCoinBetaView(rect);
+      }
+    },
+
+    drawMedicalView(R) {
+      ctx.save();
+      const sideBySide = R.w > 640;
+      const mosaicH = sideBySide ? R.h - 92 : R.h * 0.54;
+      const mosaicW = sideBySide ? Math.min(R.w * 0.54, mosaicH * 1.15) : Math.min(R.w, 460);
+      const rightW = sideBySide ? (R.w - mosaicW - 22) : R.w;
+
+      const M = {
+        x: sideBySide ? R.x : R.x + (R.w - mosaicW) * 0.5,
+        y: R.y,
+        w: mosaicW,
+        h: mosaicH
+      };
+
+      // Visual Mosaic Eikosogram (Unit Probability Square)
+      // Use visually readable minimum width for very rare priors while showing true scale indicator
+      const pTrue = this.displayBelief;
+      const visSplit = clamp(Math.pow(pTrue, 0.58), 0.14, 0.86);
+      const wH = M.w * visSplit;
+      const wNotH = M.w - wH;
+      const hTP = M.h * this.sensitivity;
+      const hFN = M.h - hTP;
+      const hFP = M.h * this.fpr;
+      const hTN = M.h - hFP;
+
+      // Frame
+      ctx.fillStyle = 'rgba(8, 13, 26, 0.78)';
+      ctx.strokeStyle = 'rgba(148, 179, 255, 0.24)';
+      ctx.lineWidth = 1.4;
+      roundRect(ctx, M.x, M.y, M.w, M.h, 12);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.save();
+      roundRect(ctx, M.x, M.y, M.w, M.h, 12);
+      ctx.clip();
+
+      // 4 Probability Quadrants
+      // TP (top-left, amber/gold)
+      ctx.fillStyle = 'rgba(255, 190, 92, 0.34)';
+      ctx.fillRect(M.x, M.y, wH, hTP);
+      // FN (bottom-left, violet)
+      ctx.fillStyle = 'rgba(167, 139, 250, 0.18)';
+      ctx.fillRect(M.x, M.y + hTP, wH, hFN);
+      // FP (top-right, rose)
+      ctx.fillStyle = 'rgba(255, 96, 131, 0.30)';
+      ctx.fillRect(M.x + wH, M.y, wNotH, hFP);
+      // TN (bottom-right, cool teal/slate)
+      ctx.fillStyle = 'rgba(88, 220, 255, 0.08)';
+      ctx.fillRect(M.x + wH, M.y + hFP, wNotH, hTN);
+
+      // 1,000-person natural frequency dot matrix (40 x 25 = 1000)
+      if (this.showDots) {
+        const cols = 40, rows = 25;
+        const nSick = Math.max(1, Math.round(pTrue * 1000));
+        const nTP = Math.round(nSick * this.sensitivity);
+        const nHealthy = 1000 - nSick;
+        const nFP = Math.round(nHealthy * this.fpr);
+
+        // Place dots proportionally inside each quadrant
+        const drawDotsInBox = (bx, by, bw, bh, count, color) => {
+          if (count <= 0 || bw < 6 || bh < 6) return;
+          const aspect = bw / Math.max(1, bh);
+          const c = Math.max(1, Math.round(Math.sqrt(count * aspect)));
+          const r = Math.max(1, Math.ceil(count / c));
+          const sx = bw / (c + 1);
+          const sy = bh / (r + 1);
+          const rad = clamp(Math.min(sx, sy) * 0.32, 1.1, 2.8);
+          ctx.fillStyle = color;
+          let drawn = 0;
+          for (let rr = 0; rr < r && drawn < count; rr++) {
+            for (let cc = 0; cc < c && drawn < count; cc++) {
+              ctx.beginPath();
+              ctx.arc(bx + (cc + 1) * sx, by + (rr + 1) * sy, rad, 0, TAU);
+              ctx.fill();
+              drawn++;
+            }
+          }
+        };
+        drawDotsInBox(M.x + 2, M.y + 2, wH - 4, hTP - 4, nTP, 'rgba(255, 222, 130, 0.92)');
+        drawDotsInBox(M.x + 2, M.y + hTP + 2, wH - 4, hFN - 4, nSick - nTP, 'rgba(186, 160, 255, 0.72)');
+        drawDotsInBox(M.x + wH + 2, M.y + 2, wNotH - 4, hFP - 4, nFP, 'rgba(255, 118, 150, 0.9)');
+        drawDotsInBox(M.x + wH + 2, M.y + hFP + 2, wNotH - 4, hTN - 4, Math.min(360, nHealthy - nFP), 'rgba(88, 220, 255, 0.25)');
+      }
+
+      // Dividing borders
+      ctx.strokeStyle = 'rgba(238, 243, 255, 0.55)';
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(M.x + wH, M.y); ctx.lineTo(M.x + wH, M.y + M.h);
+      ctx.moveTo(M.x, M.y + hTP); ctx.lineTo(M.x + wH, M.y + hTP);
+      ctx.moveTo(M.x + wH, M.y + hFP); ctx.lineTo(M.x + M.w, M.y + hFP);
+      ctx.stroke();
+
+      // Quadrant labels
+      const tpP = pTrue * this.sensitivity;
+      const fnP = pTrue * (1 - this.sensitivity);
+      const fpP = (1 - pTrue) * this.fpr;
+      const tnP = (1 - pTrue) * (1 - this.fpr);
+
+      const drawQuadTag = (cx, cy, title, sub, col) => {
+        ctx.fillStyle = 'rgba(5, 9, 19, 0.82)';
+        roundRect(ctx, cx - 44, cy - 17, 88, 34, 6);
+        ctx.fill();
+        ctx.font = '700 10px ' + getComputedStyle(document.body).getPropertyValue('--mono');
+        ctx.fillStyle = col;
+        ctx.textAlign = 'center';
+        ctx.fillText(title, cx, cy - 3);
+        ctx.fillStyle = '#eef3ff';
+        ctx.fillText(sub, cx, cy + 11);
+      };
+
+      if (hTP > 38) drawQuadTag(M.x + wH * 0.5, M.y + hTP * 0.5, 'TRUE POS', (tpP * 100).toFixed(2) + '%', '#ffbe5c');
+      if (hFN > 38) drawQuadTag(M.x + wH * 0.5, M.y + hTP + hFN * 0.5, 'FALSE NEG', (fnP * 100).toFixed(2) + '%', '#a78bfa');
+      if (hFP > 38) drawQuadTag(M.x + wH + wNotH * 0.5, M.y + hFP * 0.5, 'FALSE POS', (fpP * 100).toFixed(2) + '%', '#ff6083');
+      if (hTN > 44) drawQuadTag(M.x + wH + wNotH * 0.5, M.y + hFP + hTN * 0.5, 'TRUE NEG', (tnP * 100).toFixed(2) + '%', '#58dcff');
+
+      // Patient sample pulse animation
+      if (this.patientFlash) {
+        const pf = this.patientFlash;
+        const px = pf.sick ? (M.x + pf.rx * wH) : (M.x + wH + pf.rx * wNotH);
+        const py = pf.sick
+          ? (pf.positive ? M.y + pf.ry * hTP : M.y + hTP + pf.ry * hFN)
+          : (pf.positive ? M.y + pf.ry * hFP : M.y + hFP + pf.ry * hTN);
+        ctx.beginPath();
+        ctx.arc(px, py, 6 + pf.t * 32, 0, TAU);
+        ctx.strokeStyle = `rgba(255, 255, 255, ${(1 - pf.t) * 0.95})`;
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+      }
+      ctx.restore();
+
+      // Column headers above mosaic
+      ctx.font = '700 10.5px ' + getComputedStyle(document.body).getPropertyValue('--mono');
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#ffbe5c';
+      ctx.fillText(`H: ${(pTrue * 100).toFixed(1)}%`, M.x + wH * 0.5, M.y - 8);
+      ctx.fillStyle = '#58dcff';
+      ctx.fillText(`¬H: ${((1 - pTrue) * 100).toFixed(1)}%`, M.x + wH + wNotH * 0.5, M.y - 8);
+
+      // Right Panel: Posterior Odds Bar & Evidence Focus Breakdown
+      const PPanel = sideBySide
+        ? { x: M.x + M.w + 22, y: R.y, w: rightW, h: mosaicH }
+        : { x: R.x, y: M.y + M.h + 16, w: R.w, h: Math.max(120, R.h - mosaicH - 16) };
+
+      ctx.fillStyle = 'rgba(8, 13, 26, 0.78)';
+      ctx.strokeStyle = 'rgba(148, 179, 255, 0.2)';
+      ctx.lineWidth = 1.2;
+      roundRect(ctx, PPanel.x, PPanel.y, PPanel.w, PPanel.h, 12);
+      ctx.fill();
+      ctx.stroke();
+
+      const ppv = tpP / Math.max(1e-12, tpP + fpP);
+      const npvRisk = fnP / Math.max(1e-12, fnP + tnP);
+
+      ctx.textAlign = 'left';
+      ctx.font = '700 11px ' + getComputedStyle(document.body).getPropertyValue('--mono');
+      ctx.fillStyle = '#eef3ff';
+      ctx.fillText('POSTERIOR SNAP-IN  P(H | E)', PPanel.x + 14, PPanel.y + 22);
+
+      // Big Posterior Ratio Bar for Positive Test: TP / (TP + FP)
+      const bx = PPanel.x + 14;
+      const bw = PPanel.w - 28;
+      let cy = PPanel.y + 42;
+
+      const drawRatioBar = (label, frac, cLeft, cRight, yPos) => {
+        ctx.font = '600 10.5px ' + getComputedStyle(document.body).getPropertyValue('--mono');
+        ctx.fillStyle = '#9aa9cc';
+        ctx.textAlign = 'left';
+        ctx.fillText(label, bx, yPos);
+        ctx.textAlign = 'right';
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText((frac * 100).toFixed(2) + '%', bx + bw, yPos);
+
+        const barY = yPos + 7;
+        const barH = 22;
+        ctx.fillStyle = cRight;
+        roundRect(ctx, bx, barY, bw, barH, 6);
+        ctx.fill();
+
+        if (frac > 0.002) {
+          ctx.fillStyle = cLeft;
+          roundRect(ctx, bx, barY, Math.max(6, bw * frac), barH, 6);
+          ctx.fill();
+        }
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.22)';
+        ctx.lineWidth = 1;
+        roundRect(ctx, bx, barY, bw, barH, 6);
+        ctx.stroke();
+      };
+
+      drawRatioBar('Current Belief P(H)', pTrue, 'rgba(167, 139, 250, 0.85)', 'rgba(255, 255, 255, 0.07)', cy);
+      cy += 48;
+      drawRatioBar('If Next Test Positive: P(H | +) = TP/(TP+FP)', ppv, 'rgba(255, 190, 92, 0.9)', 'rgba(255, 96, 131, 0.42)', cy);
+      cy += 48;
+      drawRatioBar('If Next Test Negative: P(H | −) = FN/(FN+TN)', npvRisk, 'rgba(167, 139, 250, 0.85)', 'rgba(88, 220, 255, 0.22)', cy);
+
+      // Sequential belief trajectory strip at bottom
+      if (sideBySide) {
+        const S = { x: R.x, y: M.y + M.h + 16, w: R.w, h: 74 };
+        ctx.fillStyle = 'rgba(8, 13, 26, 0.78)';
+        ctx.strokeStyle = 'rgba(148, 179, 255, 0.2)';
+        roundRect(ctx, S.x, S.y, S.w, S.h, 12);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.font = '700 10px ' + getComputedStyle(document.body).getPropertyValue('--mono');
+        ctx.fillStyle = '#9aa9cc';
+        ctx.textAlign = 'left';
+        ctx.fillText('SEQUENTIAL EVIDENCE CHAIN (CLICK "TEST POSITIVE" OR "TEST NEGATIVE")', S.x + 14, S.y + 18);
+
+        const pts = [{ label: 'Prior', val: this.basePrior, res: '0' }]
+          .concat(this.testHistory.map((h, i) => ({ label: `T${i + 1}(${h.result})`, val: h.post, res: h.result })));
+        const sx0 = S.x + 28, sx1 = S.x + S.w - 28;
+        const sy0 = S.y + 56, sy1 = S.y + 28;
+
+        ctx.beginPath();
+        pts.forEach((pt, idx) => {
+          const px = pts.length === 1 ? sx0 : lerp(sx0, sx1, idx / (pts.length - 1));
+          const py = lerp(sy0, sy1, pt.val);
+          if (idx === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        });
+        ctx.strokeStyle = '#a78bfa';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        pts.forEach((pt, idx) => {
+          const px = pts.length === 1 ? sx0 : lerp(sx0, sx1, idx / (pts.length - 1));
+          const py = lerp(sy0, sy1, pt.val);
+          ctx.beginPath();
+          ctx.arc(px, py, 4.2, 0, TAU);
+          ctx.fillStyle = pt.res === '+' ? '#ffbe5c' : (pt.res === '−' ? '#58dcff' : '#a78bfa');
+          ctx.fill();
+          if (pts.length <= 9 || idx === 0 || idx === pts.length - 1) {
+            ctx.font = '600 9.5px ' + getComputedStyle(document.body).getPropertyValue('--mono');
+            ctx.fillStyle = '#eef3ff';
+            ctx.textAlign = 'center';
+            ctx.fillText(`${(pt.val * 100).toFixed(1)}%`, px, py - 7);
+          }
+        });
+      }
+
+      ctx.restore();
+    },
+
+    drawCoinBetaView(R) {
+      ctx.save();
+      ctx.fillStyle = 'rgba(8, 13, 26, 0.78)';
+      ctx.strokeStyle = 'rgba(148, 179, 255, 0.22)';
+      ctx.lineWidth = 1.4;
+      roundRect(ctx, R.x, R.y, R.w, R.h, 12);
+      ctx.fill();
+      ctx.stroke();
+
+      const aPost = this.alpha0 + this.heads;
+      const bPost = this.beta0 + this.tails;
+      const postMean = aPost / (aPost + bPost);
+      const [ciLo, ciHi] = betaCredibleInterval(aPost, bPost, 0.05);
+
+      const padL = 52, padR = 26, padT = 44, padB = 48;
+      const gx = R.x + padL;
+      const gy = R.y + padT;
+      const gw = Math.max(120, R.w - padL - padR);
+      const gh = Math.max(100, R.h - padT - padB);
+
+      // Header
+      ctx.font = '700 12px ' + getComputedStyle(document.body).getPropertyValue('--mono');
+      ctx.fillStyle = '#eef3ff';
+      ctx.textAlign = 'left';
+      ctx.fillText(`POSTERIOR DENSITY  Beta(α=${aPost.toFixed(1)}, β=${bPost.toFixed(1)})`, R.x + 18, R.y + 24);
+      ctx.textAlign = 'right';
+      ctx.fillStyle = '#ffbe5c';
+      ctx.fillText(`Observed: ${this.heads} Heads · ${this.tails} Tails`, R.x + R.w - 18, R.y + 24);
+
+      // Sample curves
+      const samples = 220;
+      const priorVals = new Float64Array(samples + 1);
+      const postVals = new Float64Array(samples + 1);
+      let maxY = 2.0;
+      for (let i = 0; i <= samples; i++) {
+        const x = clamp(i / samples, 0.002, 0.998);
+        const p0 = Math.min(betaPDF(x, this.alpha0, this.beta0), 30);
+        const p1 = Math.min(betaPDF(x, aPost, bPost), 30);
+        priorVals[i] = p0;
+        postVals[i] = p1;
+        if (p0 > maxY) maxY = p0;
+        if (p1 > maxY) maxY = p1;
+      }
+      maxY *= 1.14;
+
+      const mapX = (u) => gx + u * gw;
+      const mapY = (v) => gy + gh - (v / maxY) * gh;
+
+      // Grid lines
+      ctx.strokeStyle = 'rgba(148, 179, 255, 0.1)';
+      ctx.lineWidth = 1;
+      for (let t = 0; t <= 10; t++) {
+        const u = t / 10;
+        const px = mapX(u);
+        ctx.beginPath();
+        ctx.moveTo(px, gy); ctx.lineTo(px, gy + gh);
+        ctx.stroke();
+        if (t % 2 === 0) {
+          ctx.fillStyle = 'rgba(154, 169, 204, 0.78)';
+          ctx.font = '10px ' + getComputedStyle(document.body).getPropertyValue('--mono');
+          ctx.textAlign = 'center';
+          ctx.fillText(u.toFixed(1), px, gy + gh + 16);
+        }
+      }
+      ctx.fillStyle = 'rgba(154, 169, 204, 0.72)';
+      ctx.textAlign = 'center';
+      ctx.fillText('Coin Bias Parameter θ = P(Heads)', gx + gw * 0.5, gy + gh + 34);
+
+      // 95% Credible Interval shaded fill under posterior
+      ctx.beginPath();
+      let started = false;
+      for (let i = 0; i <= samples; i++) {
+        const u = i / samples;
+        if (u < ciLo || u > ciHi) continue;
+        const px = mapX(u);
+        const py = mapY(postVals[i]);
+        if (!started) {
+          ctx.moveTo(px, gy + gh);
+          ctx.lineTo(px, py);
+          started = true;
+        } else {
+          ctx.lineTo(px, py);
+        }
+      }
+      if (started) {
+        ctx.lineTo(mapX(ciHi), gy + gh);
+        ctx.closePath();
+        const g = ctx.createLinearGradient(0, gy, 0, gy + gh);
+        g.addColorStop(0, 'rgba(167, 139, 250, 0.42)');
+        g.addColorStop(1, 'rgba(88, 220, 255, 0.06)');
+        ctx.fillStyle = g;
+        ctx.fill();
+      }
+
+      // Prior dashed curve
+      ctx.save();
+      ctx.setLineDash([6, 5]);
+      ctx.beginPath();
+      for (let i = 0; i <= samples; i++) {
+        const px = mapX(i / samples);
+        const py = mapY(priorVals[i]);
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.strokeStyle = 'rgba(148, 179, 255, 0.55)';
+      ctx.lineWidth = 1.8;
+      ctx.stroke();
+      ctx.restore();
+
+      // Posterior glowing curve
+      ctx.save();
+      ctx.beginPath();
+      for (let i = 0; i <= samples; i++) {
+        const px = mapX(i / samples);
+        const py = mapY(postVals[i]);
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.strokeStyle = '#a78bfa';
+      ctx.lineWidth = 2.8;
+      ctx.shadowColor = 'rgba(167, 139, 250, 0.85)';
+      ctx.shadowBlur = 12;
+      ctx.stroke();
+      ctx.restore();
+
+      // Posterior Mean vertical marker
+      const xm = mapX(postMean);
+      ctx.strokeStyle = '#58dcff';
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(xm, gy); ctx.lineTo(xm, gy + gh);
+      ctx.stroke();
+      ctx.fillStyle = '#58dcff';
+      ctx.font = '700 10.5px ' + getComputedStyle(document.body).getPropertyValue('--mono');
+      ctx.textAlign = 'center';
+      ctx.fillText(`E[θ]=${postMean.toFixed(3)}`, clamp(xm, gx + 48, gx + gw - 48), gy + 14);
+
+      // True theta dashed reference
+      if (this.revealTrue) {
+        const xt = mapX(this.trueTheta);
+        ctx.save();
+        ctx.setLineDash([4, 4]);
+        ctx.strokeStyle = '#4af2b2';
+        ctx.lineWidth = 1.8;
+        ctx.beginPath();
+        ctx.moveTo(xt, gy + 18); ctx.lineTo(xt, gy + gh);
+        ctx.stroke();
+        ctx.restore();
+        ctx.fillStyle = '#4af2b2';
+        ctx.fillText(`True θ=${this.trueTheta.toFixed(2)}`, clamp(xt, gx + 48, gx + gw - 48), gy + 30);
+      }
+
+      // Legend
+      ctx.font = '600 10px ' + getComputedStyle(document.body).getPropertyValue('--mono');
+      ctx.textAlign = 'left';
+      ctx.fillStyle = 'rgba(148, 179, 255, 0.8)';
+      ctx.fillText('--- Prior Beta(α₀,β₀)', gx + 10, gy + 14);
+      ctx.fillStyle = '#a78bfa';
+      ctx.fillText(`━━━ Posterior · 95% CI [${ciLo.toFixed(2)}, ${ciHi.toFixed(2)}]`, gx + 10, gy + 29);
+
+      // Flying coin pips
+      for (let i = 0; i < this.coinPips.length; i++) {
+        const pip = this.coinPips[i];
+        const px = mapX(pip.isHead ? 0.82 : 0.18) + pip.xOff;
+        const py = lerp(gy + gh - 12, gy + 40, easeOutCubic(pip.t));
+        const alpha = 1 - pip.t;
+        ctx.beginPath();
+        ctx.arc(px, py, 9, 0, TAU);
+        ctx.fillStyle = pip.isHead ? `rgba(255, 190, 92, ${alpha * 0.85})` : `rgba(88, 220, 255, ${alpha * 0.85})`;
+        ctx.fill();
+        ctx.fillStyle = `rgba(4, 7, 17, ${alpha})`;
+        ctx.font = '800 10px ' + getComputedStyle(document.body).getPropertyValue('--mono');
+        ctx.textAlign = 'center';
+        ctx.fillText(pip.isHead ? 'H' : 'T', px, py + 3.5);
+      }
+
+      ctx.restore();
+    },
+
+    onClick() {
+      if (this.mode === 'medical') this.samplePatient();
+      else this.flipCoins(1);
+    },
+
+    getTelemetry() {
+      if (this.mode === 'medical') {
+        const p = this.currentBelief;
+        const tp = p * this.sensitivity;
+        const fp = (1 - p) * this.fpr;
+        const ppv = tp / Math.max(1e-12, tp + fp);
+        const lrPos = this.sensitivity / Math.max(1e-6, this.fpr);
+        const odds = p / Math.max(1e-9, 1 - p);
+
+        return {
+          badge: 'Bayes Medical', badgeClass: 'violet',
+          status: this.testHistory.length > 0 ? 'Belief Updated' : 'Base Rate Prior',
+          statusClass: this.testHistory.length > 0 ? '' : 'warn',
+          cards: [
+            ['Tests Run N', String(this.testHistory.length), 'amber'],
+            ['Belief P(H|E)', (p * 100).toFixed(2) + '%', 'violet'],
+            ['Next P(H|+)', (ppv * 100).toFixed(1) + '%', 'cyan'],
+            ['Bayes Factor +', lrPos.toFixed(1) + '×', 'mint'],
+            ['Prior P(H)', (this.basePrior * 100).toFixed(1) + '%', ''],
+            ['Posterior Odds', odds >= 1 ? odds.toFixed(1) + ':1' : '1:' + (1 / Math.max(1e-6, odds)).toFixed(1), 'rose']
+          ],
+          formulaLeft: 'P(H|E) = P(E|H)·P(H) / P(E)',
+          formulaRight: `<strong>Sens ${(this.sensitivity * 100).toFixed(0)}% · FP ${(this.fpr * 100).toFixed(1)}%</strong>`
+        };
+      } else {
+        const N = this.heads + this.tails;
+        const a = this.alpha0 + this.heads;
+        const b = this.beta0 + this.tails;
+        const mean = a / (a + b);
+        const std = Math.sqrt((a * b) / ((a + b) * (a + b) * (a + b + 1)));
+        const [lo, hi] = betaCredibleInterval(a, b, 0.05);
+        return {
+          badge: 'Bayes Coin Beta', badgeClass: 'violet',
+          status: N >= 20 ? 'Posterior Sharp' : 'Updating',
+          statusClass: N >= 20 ? '' : 'cyan',
+          cards: [
+            ['Flips N', fmtInt(N), 'amber'],
+            ['Post Mean E[θ]', mean.toFixed(4), 'violet'],
+            ['Post Std σ', std.toFixed(4), 'mint'],
+            ['95% Cred. Int.', `[${lo.toFixed(2)}, ${hi.toFixed(2)}]`, 'cyan'],
+            ['Heads / Tails', `${this.heads}H / ${this.tails}T`, ''],
+            ['MAP Mode', (a > 1 && b > 1) ? ((a - 1) / (a + b - 2)).toFixed(3) : mean.toFixed(3), 'amber']
+          ],
+          formulaLeft: `Beta(${a.toFixed(1)}, ${b.toFixed(1)}) ∝ θ^(α−1)(1−θ)^(β−1)`,
+          formulaRight: `<strong>${this.revealTrue ? 'θ=' + this.trueTheta.toFixed(2) : 'θ=hidden'}</strong>`
+        };
+      }
+    }
+  };
+
+  /* =========================================================================
+     SHARED DRAWING HELPERS & BACKDROP
+     ========================================================================= */
+  function roundRect(c, x, y, w, h, r) {
+    const rr = Math.min(r, w * 0.5, h * 0.5);
+    c.beginPath();
+    c.moveTo(x + rr, y);
+    c.arcTo(x + w, y, x + w, y + h, rr);
+    c.arcTo(x + w, y + h, x, y + h, rr);
+    c.arcTo(x, y + h, x, y, rr);
+    c.arcTo(x, y, x + w, y, rr);
+    c.closePath();
+  }
+
+  function hexToRgba(hex, a) {
+    const clean = hex.replace('#', '');
+    const num = parseInt(clean, 16);
+    const r = (num >> 16) & 255;
+    const g = (num >> 8) & 255;
+    const b = num & 255;
+    return `rgba(${r}, ${g}, ${b}, ${a})`;
+  }
+
+  function drawBackdrop() {
+    ctx.fillStyle = '#040711';
+    ctx.fillRect(0, 0, App.W, App.H);
+
+    // Subtle ambient radial glow keyed to active lab
+    const accentMap = {
+      galton: 'rgba(255, 190, 92, 0.065)',
+      montecarlo: 'rgba(88, 220, 255, 0.065)',
+      markov: 'rgba(74, 242, 178, 0.06)',
+      bayes: 'rgba(167, 139, 250, 0.07)'
+    };
+    const stage = getStageRect();
+    const cx = stage.x + stage.w * 0.5;
+    const cy = stage.y + stage.h * 0.5;
+    const grad = ctx.createRadialGradient(cx, cy, 30, cx, cy, Math.max(App.W, App.H) * 0.65);
+    grad.addColorStop(0, accentMap[App.lab]);
+    grad.addColorStop(1, 'rgba(4, 7, 17, 0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, App.W, App.H);
+
+    // Architectural precision dot grid
+    ctx.fillStyle = 'rgba(148, 179, 255, 0.065)';
+    const step = 36;
+    for (let x = (step / 2); x < App.W; x += step) {
+      for (let y = (step / 2); y < App.H; y += step) {
+        ctx.fillRect(x, y, 1.2, 1.2);
+      }
+    }
+  }
+
+  /* =========================================================================
+     TELEMETRY & UI CONTROLLER
+     ========================================================================= */
+  const HINTS = {
+    galton: '<kbd>Click</kbd> Drop Tracer · <kbd>1</kbd>–<kbd>4</kbd> Labs · <kbd>Space</kbd> Pause · <kbd>H</kbd> Cinema',
+    montecarlo: '<kbd>Click Board</kbd> Toss Dart/Needle · <kbd>1</kbd>–<kbd>4</kbd> Labs · <kbd>Space</kbd> Pause · <kbd>H</kbd> Cinema',
+    markov: '<kbd>Drag Nodes</kbd> Reposition · <kbd>Click Node</kbd> Edit Weights · <kbd>Space</kbd> Pause · <kbd>H</kbd> Cinema',
+    bayes: '<kbd>Click Stage</kbd> Sample / Flip · <kbd>1</kbd>–<kbd>4</kbd> Labs · <kbd>R</kbd> Reset · <kbd>H</kbd> Cinema'
+  };
+
+  function getActiveLab() {
+    if (App.lab === 'galton') return Galton;
+    if (App.lab === 'montecarlo') return MonteCarlo;
+    if (App.lab === 'markov') return Markov;
+    return Bayes;
+  }
+
+  function switchLab(labName) {
+    App.lab = labName;
+    canvas.className = '';
+    document.querySelectorAll('.tab-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.lab === labName);
+    });
+    document.querySelectorAll('.tab-pane').forEach(p => {
+      p.classList.toggle('active', p.id === 'pane-' + labName);
+    });
+    document.getElementById('hint-pill').innerHTML = HINTS[labName];
+    updateTelemetryHUD();
+  }
+
+  function updateTelemetryHUD() {
+    const data = getActiveLab().getTelemetry();
+    const badge = document.getElementById('lab-badge');
+    badge.textContent = data.badge;
+    badge.className = 'mode-badge' + (data.badgeClass ? ' ' + data.badgeClass : '');
+
+    const pill = document.getElementById('status-pill');
+    pill.textContent = App.paused ? 'Paused' : data.status;
+    pill.className = 'status-pill' + (App.paused ? ' warn' : (data.statusClass ? ' ' + data.statusClass : ''));
+
+    for (let i = 0; i < 6; i++) {
+      const [lbl, val, cls] = data.cards[i];
+      document.getElementById(`tel-${i + 1}-label`).textContent = lbl;
+      const vEl = document.getElementById(`tel-${i + 1}-val`);
+      vEl.textContent = val;
+      vEl.className = 'tele-val' + (cls ? ' ' + cls : '');
+    }
+    document.getElementById('formula-left').textContent = data.formulaLeft;
+    document.getElementById('formula-right').innerHTML = data.formulaRight;
+  }
+
+  function togglePause() {
+    App.paused = !App.paused;
+    const btn = document.getElementById('btn-play');
+    btn.textContent = App.paused ? '▶ Play' : '⏸ Pause';
+    btn.classList.toggle('active', !App.paused);
+    updateTelemetryHUD();
+  }
+
+  function stepActiveLab() {
+    if (App.lab === 'galton') Galton.spawnBall(true);
+    else if (App.lab === 'montecarlo') MonteCarlo.burst(25);
+    else if (App.lab === 'markov') Markov.stepAllOnce();
+    else if (App.lab === 'bayes') {
+      if (Bayes.mode === 'medical') Bayes.samplePatient();
+      else Bayes.flipCoins(1);
+    }
+  }
+
+  function resetActiveLab() {
+    if (App.lab === 'galton') Galton.reset();
+    else if (App.lab === 'montecarlo') MonteCarlo.reset();
+    else if (App.lab === 'markov') Markov.resetWalkers();
+    else Bayes.reset();
+    updateTelemetryHUD();
+  }
+
+  function toggleCinema() {
+    App.cinema = !App.cinema;
+    document.body.classList.toggle('zen-mode', App.cinema);
+    document.getElementById('btn-cinema').classList.toggle('active', App.cinema);
+  }
+
+  function toggleDrawer() {
+    App.drawerOpen = !App.drawerOpen;
+    document.getElementById('control-drawer').classList.toggle('collapsed', !App.drawerOpen);
+    document.getElementById('btn-drawer').classList.toggle('active', App.drawerOpen);
+  }
+
+  function bindEvents() {
+    window.addEventListener('resize', resizeCanvas);
+
+    // Drawer Lab Tabs
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => switchLab(btn.dataset.lab));
+    });
+
+    // Transport bar
+    document.getElementById('btn-play').addEventListener('click', togglePause);
+    document.getElementById('btn-step').addEventListener('click', stepActiveLab);
+    document.getElementById('btn-reset').addEventListener('click', resetActiveLab);
+    document.getElementById('btn-speed').addEventListener('click', () => {
+      App.speedIndex = (App.speedIndex + 1) % App.speeds.length;
+      document.getElementById('btn-speed').textContent = App.speeds[App.speedIndex] + '×';
+    });
+    document.getElementById('btn-audio').addEventListener('click', () => {
+      const on = AudioEngine.toggle();
+      const b = document.getElementById('btn-audio');
+      b.textContent = on ? '🔊 Audio' : '🔇 Audio';
+      b.classList.toggle('amber-active', on);
+      if (on) AudioEngine.stateChime(2);
+    });
+    document.getElementById('btn-drawer').addEventListener('click', toggleDrawer);
+    document.getElementById('btn-cinema').addEventListener('click', toggleCinema);
+    document.getElementById('btn-zen-restore').addEventListener('click', toggleCinema);
+
+    // Lab 1: Galton controls
+    document.querySelectorAll('[data-galton-preset]').forEach(btn => {
+      btn.addEventListener('click', () => Galton.applyPreset(btn.dataset.galtonPreset));
+    });
+    document.getElementById('sl-galton-rows').addEventListener('input', e => {
+      Galton.rows = parseInt(e.target.value, 10);
+      document.getElementById('val-galton-rows').textContent = String(Galton.rows);
+      Galton.reset();
+    });
+    document.getElementById('sl-galton-p').addEventListener('input', e => {
+      Galton.p = parseFloat(e.target.value);
+      document.getElementById('val-galton-p').textContent = Galton.p.toFixed(2);
+      Galton.reset();
+    });
+    document.getElementById('sl-galton-rate').addEventListener('input', e => {
+      Galton.dropRate = parseInt(e.target.value, 10);
+      document.getElementById('val-galton-rate').textContent = Galton.dropRate + ' /s';
+    });
+    document.getElementById('btn-galton-b50').addEventListener('click', () => Galton.burst(50));
+    document.getElementById('btn-galton-b500').addEventListener('click', () => Galton.burst(500));
+    document.getElementById('btn-galton-b2500').addEventListener('click', () => Galton.burst(2500));
+    document.getElementById('btn-galton-tracer').addEventListener('click', () => Galton.spawnBall(true));
+    document.getElementById('chk-galton-normal').addEventListener('change', e => { Galton.showNormal = e.target.checked; });
+    document.getElementById('chk-galton-binom').addEventListener('change', e => { Galton.showBinom = e.target.checked; });
+    document.getElementById('chk-galton-sigma').addEventListener('change', e => { Galton.showSigma = e.target.checked; });
+
+    // Lab 2: Monte Carlo controls
+    const setMCMode = (mode) => {
+      MonteCarlo.mode = mode;
+      document.getElementById('mc-mode-darts').classList.toggle('active', mode === 'darts');
+      document.getElementById('mc-mode-buffon').classList.toggle('active', mode === 'buffon');
+      document.getElementById('mc-buffon-controls').style.display = mode === 'buffon' ? 'flex' : 'none';
+      document.getElementById('mc-mode-desc').innerHTML = mode === 'darts'
+        ? 'Uniform darts <strong>(x, y) ∈ [0,1]²</strong> land inside the inscribed quarter-circle with probability <strong>π/4</strong>, giving <strong>π̂ = 4·N_in / N</strong>.'
+        : 'Random needles of length <strong>L</strong> dropped across parallel floorboards spaced <strong>D</strong> apart cross a seam with probability <strong>2L / (πD)</strong>.';
+      MonteCarlo.reset();
+    };
+    document.getElementById('mc-mode-darts').addEventListener('click', () => setMCMode('darts'));
+    document.getElementById('mc-mode-buffon').addEventListener('click', () => setMCMode('buffon'));
+    document.getElementById('sl-mc-rate').addEventListener('input', e => {
+      MonteCarlo.rate = parseInt(e.target.value, 10);
+      document.getElementById('val-mc-rate').textContent = MonteCarlo.rate + ' /s';
+    });
+    document.getElementById('sl-mc-ratio').addEventListener('input', e => {
+      MonteCarlo.needleRatio = parseFloat(e.target.value);
+      document.getElementById('val-mc-ratio').textContent = MonteCarlo.needleRatio.toFixed(2);
+      MonteCarlo.reset();
+    });
+    document.getElementById('btn-mc-b100').addEventListener('click', () => MonteCarlo.burst(100));
+    document.getElementById('btn-mc-b1000').addEventListener('click', () => MonteCarlo.burst(1000));
+    document.getElementById('btn-mc-b10000').addEventListener('click', () => MonteCarlo.burst(10000));
+    document.getElementById('chk-mc-envelope').addEventListener('change', e => { MonteCarlo.showEnvelope = e.target.checked; });
+    document.getElementById('chk-mc-log').addEventListener('change', e => { MonteCarlo.logAxis = e.target.checked; });
+
+    // Lab 3: Markov controls
+    document.querySelectorAll('[data-markov-preset]').forEach(btn => {
+      btn.addEventListener('click', () => Markov.loadPreset(btn.dataset.markovPreset));
+    });
+    document.getElementById('btn-markov-custom').addEventListener('click', () => Markov.loadPreset('custom'));
+    document.getElementById('sl-mk-walkers').addEventListener('input', e => {
+      Markov.walkerCount = parseInt(e.target.value, 10);
+      document.getElementById('val-mk-walkers').textContent = String(Markov.walkerCount);
+      Markov.syncWalkerCount();
+    });
+    document.getElementById('sl-mk-speed').addEventListener('input', e => {
+      Markov.hopRate = parseFloat(e.target.value);
+      document.getElementById('val-mk-speed').textContent = Markov.hopRate.toFixed(1) + ' /s';
+    });
+    document.getElementById('btn-mk-step').addEventListener('click', () => Markov.stepAllOnce());
+    document.getElementById('btn-mk-burst').addEventListener('click', () => Markov.burstTransitions(500));
+
+    // Lab 4: Bayes controls
+    const setBayesMode = (mode) => {
+      Bayes.mode = mode;
+      document.getElementById('bayes-mode-med').classList.toggle('active', mode === 'medical');
+      document.getElementById('bayes-mode-coin').classList.toggle('active', mode === 'coin');
+      document.getElementById('bayes-med-panel').style.display = mode === 'medical' ? 'flex' : 'none';
+      document.getElementById('bayes-coin-panel').style.display = mode === 'coin' ? 'flex' : 'none';
+      updateTelemetryHUD();
+    };
+    document.getElementById('bayes-mode-med').addEventListener('click', () => setBayesMode('medical'));
+    document.getElementById('bayes-mode-coin').addEventListener('click', () => setBayesMode('coin'));
+
+    document.querySelectorAll('[data-med-preset]').forEach(btn => {
+      btn.addEventListener('click', () => Bayes.applyMedPreset(btn.dataset.medPreset));
+    });
+    document.getElementById('sl-by-prior').addEventListener('input', e => {
+      const v = parseFloat(e.target.value);
+      Bayes.basePrior = v / 100;
+      Bayes.currentBelief = Bayes.basePrior;
+      Bayes.testHistory = [];
+      document.getElementById('val-by-prior').textContent = v.toFixed(1) + '%';
+      Bayes.updateMedCallout();
+    });
+    document.getElementById('sl-by-sens').addEventListener('input', e => {
+      const v = parseFloat(e.target.value);
+      Bayes.sensitivity = v / 100;
+      document.getElementById('val-by-sens').textContent = v.toFixed(1) + '%';
+      Bayes.updateMedCallout();
+    });
+    document.getElementById('sl-by-fpr').addEventListener('input', e => {
+      const v = parseFloat(e.target.value);
+      Bayes.fpr = v / 100;
+      document.getElementById('val-by-fpr').textContent = v.toFixed(1) + '%';
+      Bayes.updateMedCallout();
+    });
+    document.getElementById('btn-by-pos').addEventListener('click', () => Bayes.runDiagnosticTest(true));
+    document.getElementById('btn-by-neg').addEventListener('click', () => Bayes.runDiagnosticTest(false));
+    document.getElementById('btn-by-patient').addEventListener('click', () => Bayes.samplePatient());
+    document.getElementById('btn-by-reset-belief').addEventListener('click', () => Bayes.reset());
+    document.getElementById('chk-by-dots').addEventListener('change', e => { Bayes.showDots = e.target.checked; });
+
+    document.querySelectorAll('[data-coin-preset]').forEach(btn => {
+      btn.addEventListener('click', () => Bayes.applyCoinPreset(btn.dataset.coinPreset));
+    });
+    document.getElementById('sl-coin-a').addEventListener('input', e => {
+      Bayes.alpha0 = parseFloat(e.target.value);
+      document.getElementById('val-coin-a').textContent = Bayes.alpha0.toFixed(1);
+    });
+    document.getElementById('sl-coin-b').addEventListener('input', e => {
+      Bayes.beta0 = parseFloat(e.target.value);
+      document.getElementById('val-coin-b').textContent = Bayes.beta0.toFixed(1);
+    });
+    document.getElementById('sl-coin-true').addEventListener('input', e => {
+      Bayes.trueTheta = parseFloat(e.target.value);
+      document.getElementById('val-coin-true').textContent = Bayes.trueTheta.toFixed(2);
+    });
+    document.getElementById('chk-coin-reveal').addEventListener('change', e => { Bayes.revealTrue = e.target.checked; });
+    document.getElementById('btn-coin-f1').addEventListener('click', () => Bayes.flipCoins(1));
+    document.getElementById('btn-coin-f10').addEventListener('click', () => Bayes.flipCoins(10));
+    document.getElementById('btn-coin-f50').addEventListener('click', () => Bayes.flipCoins(50));
+    document.getElementById('btn-coin-head').addEventListener('click', () => Bayes.flipCoins(1, true));
+    document.getElementById('btn-coin-tail').addEventListener('click', () => Bayes.flipCoins(1, false));
+
+    // Canvas Pointer Events
+    canvas.addEventListener('pointerdown', e => {
+      App.mouseX = e.clientX;
+      App.mouseY = e.clientY;
+      App.mouseDown = true;
+      if (App.lab === 'markov') Markov.onPointerDown(e.clientX, e.clientY);
+      else if (App.lab === 'galton') Galton.onClick(e.clientX, e.clientY);
+      else if (App.lab === 'montecarlo') MonteCarlo.onClick(e.clientX, e.clientY);
+      else if (App.lab === 'bayes') Bayes.onClick(e.clientX, e.clientY);
+    });
+    window.addEventListener('pointermove', e => {
+      App.mouseX = e.clientX;
+      App.mouseY = e.clientY;
+      if (App.lab === 'markov') Markov.onPointerMove(e.clientX, e.clientY);
+      else if (App.lab === 'montecarlo' && App.mouseDown) MonteCarlo.onClick(e.clientX, e.clientY);
+    });
+    window.addEventListener('pointerup', () => {
+      App.mouseDown = false;
+      if (App.lab === 'markov') Markov.onPointerUp();
+    });
+
+    // Keyboard Shortcuts
+    window.addEventListener('keydown', e => {
+      if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+      if (e.code === 'Space') { e.preventDefault(); togglePause(); }
+      else if (e.key === 'h' || e.key === 'H') toggleCinema();
+      else if (e.key === 'r' || e.key === 'R') resetActiveLab();
+      else if (e.key === 'm' || e.key === 'M') document.getElementById('btn-audio').click();
+      else if (e.key === '1') switchLab('galton');
+      else if (e.key === '2') switchLab('montecarlo');
+      else if (e.key === '3') switchLab('markov');
+      else if (e.key === '4') switchLab('bayes');
+    });
+  }
+
+  /* =========================================================================
+     MAIN ANIMATION LOOP
+     ========================================================================= */
+  let lastFrame = performance.now();
+  let hudTimer = 0;
+
+  function tick(now) {
+    const dt = Math.min(0.05, (now - lastFrame) / 1000);
+    lastFrame = now;
+    App.time += dt;
+
+    const lab = getActiveLab();
+    lab.update(dt);
+
+    drawBackdrop();
+    lab.draw();
+
+    hudTimer += dt;
+    if (hudTimer >= 0.08) {
+      hudTimer = 0;
+      updateTelemetryHUD();
+    }
+
+    requestAnimationFrame(tick);
+  }
+
+  // Boot
+  resizeCanvas();
+  Galton.init();
+  MonteCarlo.init();
+  Markov.init();
+  Bayes.init();
+  bindEvents();
+  switchLab('galton');
+  requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>

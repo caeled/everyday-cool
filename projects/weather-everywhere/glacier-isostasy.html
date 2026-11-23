@@ -1,0 +1,3278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Cryosphere — Glacial Ice-Sheet Creep, Valley Carving &amp; Isostatic Rebound</title>
+<style>
+  :root {
+    --bg-deep: #040711;
+    --panel-bg: rgba(9, 14, 26, 0.78);
+    --panel-bg-strong: rgba(8, 12, 22, 0.92);
+    --panel-border: rgba(148, 189, 255, 0.17);
+    --panel-border-hi: rgba(148, 199, 255, 0.38);
+    --text-main: #eef4ff;
+    --text-dim: #9ab0d4;
+    --text-muted: #687ea3;
+    --accent-ice: #7ce8ff;
+    --accent-cyan: #58dcff;
+    --accent-amber: #ffbe5c;
+    --accent-magma: #ff7a45;
+    --accent-mint: #4af2b2;
+    --accent-rose: #ff6083;
+    --accent-violet: #a78bfa;
+    --radius-lg: 14px;
+    --radius-md: 10px;
+    --radius-sm: 7px;
+    --mono: ui-monospace, "Cascadia Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Inter, Helvetica, Arial, sans-serif;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg-deep);
+    color: var(--text-main);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    touch-action: none;
+  }
+
+  #sim-canvas {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    cursor: crosshair;
+  }
+
+  /* HUD Layer */
+  .hud {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 10;
+  }
+  body.zen-mode .hud > :not(.zen-restore) {
+    opacity: 0;
+    pointer-events: none !important;
+  }
+
+  .panel {
+    pointer-events: auto;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-lg);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.52), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    transition: opacity 0.25s ease, transform 0.25s ease;
+  }
+
+  /* Top-Left Telemetry Card */
+  .top-left {
+    position: fixed;
+    top: 14px;
+    left: 14px;
+    width: min(416px, calc(100vw - 362px));
+    min-width: 288px;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .brand-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .brand-title-wrap {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .brand-title {
+    font-size: 16px;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    background: linear-gradient(120deg, #f0fbff 0%, #7ce8ff 46%, #ffae5c 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .mode-badge {
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 999px;
+    border: 1px solid rgba(124, 232, 255, 0.38);
+    background: rgba(88, 220, 255, 0.12);
+    color: var(--accent-ice);
+  }
+  .mode-badge.cycle {
+    border-color: rgba(167, 139, 250, 0.45);
+    background: rgba(167, 139, 250, 0.16);
+    color: #d6c8ff;
+  }
+
+  .status-pill {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: rgba(88, 220, 255, 0.15);
+    color: var(--accent-cyan);
+    border: 1px solid rgba(88, 220, 255, 0.38);
+    white-space: nowrap;
+  }
+  .status-pill.eq {
+    background: rgba(74, 242, 178, 0.14);
+    color: var(--accent-mint);
+    border-color: rgba(74, 242, 178, 0.36);
+  }
+  .status-pill.retreat {
+    background: rgba(255, 190, 92, 0.16);
+    color: var(--accent-amber);
+    border-color: rgba(255, 190, 92, 0.42);
+  }
+  .status-pill.surge {
+    background: rgba(255, 96, 131, 0.18);
+    color: var(--accent-rose);
+    border-color: rgba(255, 96, 131, 0.45);
+  }
+
+  .telemetry-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+  }
+
+  .tele-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(148, 189, 255, 0.11);
+    border-radius: var(--radius-sm);
+    padding: 6px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .tele-label {
+    font-size: 9px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .tele-val {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-main);
+  }
+  .tele-val.ice { color: var(--accent-ice); }
+  .tele-val.amber { color: var(--accent-amber); }
+  .tele-val.magma { color: var(--accent-magma); }
+  .tele-val.mint { color: var(--accent-mint); }
+  .tele-val.rose { color: var(--accent-rose); }
+
+  .clock-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding-top: 5px;
+    border-top: 1px solid rgba(148, 189, 255, 0.11);
+    font-size: 10.5px;
+    color: var(--text-dim);
+    font-family: var(--mono);
+  }
+  .clock-row span strong {
+    color: var(--text-main);
+    font-weight: 650;
+  }
+
+  /* Right Control Drawer (330px) */
+  .drawer {
+    position: fixed;
+    top: 14px;
+    right: 14px;
+    bottom: 14px;
+    width: 330px;
+    max-width: calc(100vw - 28px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: transform 0.25s ease, opacity 0.25s ease;
+  }
+  .drawer.collapsed {
+    transform: translateX(calc(100% + 24px));
+    pointer-events: none;
+  }
+
+  .drawer-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+    padding: 8px 8px 6px;
+    border-bottom: 1px solid var(--panel-border);
+    background: rgba(4, 7, 17, 0.42);
+  }
+
+  .tab-btn {
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    padding: 7px 5px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .tab-btn:hover {
+    color: var(--text-main);
+    background: rgba(255, 255, 255, 0.04);
+  }
+  .tab-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.16);
+    border-color: rgba(88, 220, 255, 0.42);
+  }
+
+  .drawer-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 11px 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .drawer-body::-webkit-scrollbar {
+    width: 5px;
+  }
+  .drawer-body::-webkit-scrollbar-thumb {
+    background: rgba(148, 189, 255, 0.22);
+    border-radius: 999px;
+  }
+
+  .tab-pane {
+    display: none;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .tab-pane.active {
+    display: flex;
+  }
+
+  .section {
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(148, 189, 255, 0.11);
+    border-radius: var(--radius-md);
+    padding: 10px 11px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .section-title {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  /* Presets grid */
+  .preset-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .preset-btn {
+    text-align: left;
+    padding: 7px 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(148, 189, 255, 0.14);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-main);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .preset-btn:hover {
+    border-color: rgba(124, 232, 255, 0.45);
+    background: rgba(88, 220, 255, 0.09);
+  }
+  .preset-btn.active {
+    border-color: var(--accent-cyan);
+    background: rgba(88, 220, 255, 0.16);
+  }
+  .preset-name {
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+  .preset-sub {
+    font-size: 9.2px;
+    color: var(--text-muted);
+    line-height: 1.25;
+  }
+
+  /* Sliders */
+  .control-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .control-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11.2px;
+    color: var(--text-dim);
+  }
+  .control-head .val {
+    font-family: var(--mono);
+    font-size: 11.2px;
+    color: var(--text-main);
+    font-weight: 650;
+  }
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 5px;
+    border-radius: 999px;
+    background: rgba(148, 189, 255, 0.18);
+    outline: none;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent-cyan);
+    border: 2px solid #08101f;
+    box-shadow: 0 0 10px rgba(88, 220, 255, 0.65);
+    cursor: pointer;
+  }
+  input[type="range"].thermal {
+    background: linear-gradient(90deg, #38b6ff 0%, #86e3ff 42%, #d8e6f5 62%, #ffbe5c 80%, #ff6060 100%);
+  }
+  input[type="range"].amber::-webkit-slider-thumb {
+    background: var(--accent-amber);
+    box-shadow: 0 0 10px rgba(255, 190, 92, 0.65);
+  }
+  input[type="range"].magma::-webkit-slider-thumb {
+    background: var(--accent-magma);
+    box-shadow: 0 0 10px rgba(255, 122, 69, 0.7);
+  }
+
+  /* Segmented buttons */
+  .seg-row {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 5px;
+  }
+  .seg-btn {
+    border: 1px solid rgba(148, 189, 255, 0.16);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-dim);
+    font-size: 10.8px;
+    font-weight: 650;
+    padding: 6px 6px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-align: center;
+  }
+  .seg-btn:hover {
+    color: #fff;
+    border-color: rgba(148, 189, 255, 0.36);
+  }
+  .seg-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.18);
+    border-color: var(--accent-cyan);
+  }
+  .seg-btn.active.amber {
+    background: rgba(255, 190, 92, 0.18);
+    border-color: var(--accent-amber);
+    color: #ffdfaa;
+  }
+
+  /* Action Buttons */
+  .btn-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .btn {
+    border: 1px solid rgba(148, 189, 255, 0.22);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-main);
+    font-size: 11px;
+    font-weight: 700;
+    padding: 7.5px 9px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+  }
+  .btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 189, 255, 0.45);
+  }
+  .btn:active {
+    transform: scale(0.98);
+  }
+  .btn.ice {
+    background: linear-gradient(135deg, rgba(88, 220, 255, 0.26), rgba(56, 140, 255, 0.22));
+    border-color: rgba(88, 220, 255, 0.55);
+    color: #e6f9ff;
+  }
+  .btn.ice:hover {
+    background: linear-gradient(135deg, rgba(88, 220, 255, 0.38), rgba(56, 140, 255, 0.34));
+  }
+  .btn.melt {
+    background: linear-gradient(135deg, rgba(255, 165, 75, 0.28), rgba(255, 92, 92, 0.22));
+    border-color: rgba(255, 168, 88, 0.56);
+    color: #fff2df;
+  }
+  .btn.melt:hover {
+    background: linear-gradient(135deg, rgba(255, 165, 75, 0.4), rgba(255, 92, 92, 0.34));
+  }
+  .btn.danger {
+    background: rgba(255, 96, 131, 0.14);
+    border-color: rgba(255, 96, 131, 0.4);
+    color: #ffc2d0;
+  }
+
+  /* Toggle switches */
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 11.2px;
+    color: var(--text-dim);
+    cursor: pointer;
+  }
+  .toggle-row input {
+    display: none;
+  }
+  .switch {
+    width: 34px;
+    height: 18px;
+    border-radius: 999px;
+    background: rgba(148, 189, 255, 0.2);
+    border: 1px solid rgba(148, 189, 255, 0.25);
+    position: relative;
+    transition: all 0.18s ease;
+    flex-shrink: 0;
+  }
+  .switch::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #c8d7f5;
+    transition: transform 0.18s ease, background 0.18s ease;
+  }
+  .toggle-row input:checked + .switch {
+    background: rgba(88, 220, 255, 0.32);
+    border-color: var(--accent-cyan);
+  }
+  .toggle-row input:checked + .switch::after {
+    transform: translateX(16px);
+    background: #fff;
+  }
+
+  .legend-box {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 10.5px;
+    color: var(--text-dim);
+    line-height: 1.4;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+  .swatch {
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+    flex-shrink: 0;
+    border: 1px solid rgba(255, 255, 255, 0.22);
+  }
+
+  .note-small {
+    font-size: 10.2px;
+    color: var(--text-muted);
+    line-height: 1.38;
+  }
+  .formula-chip {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: #cfeaff;
+    background: rgba(88, 220, 255, 0.08);
+    border: 1px solid rgba(88, 220, 255, 0.22);
+    border-radius: 6px;
+    padding: 5px 8px;
+    line-height: 1.45;
+  }
+
+  /* Bottom Transport Bar */
+  .bottom-bar {
+    position: fixed;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 7px 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: nowrap;
+  }
+
+  .bar-btn {
+    border: 1px solid rgba(148, 189, 255, 0.16);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-main);
+    font-size: 11.5px;
+    font-weight: 650;
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    white-space: nowrap;
+  }
+  .bar-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 189, 255, 0.42);
+  }
+  .bar-btn.active {
+    background: rgba(88, 220, 255, 0.2);
+    border-color: var(--accent-cyan);
+    color: #fff;
+  }
+
+  .bar-divider {
+    width: 1px;
+    height: 20px;
+    background: rgba(148, 189, 255, 0.16);
+    margin: 0 2px;
+  }
+
+  /* Bottom-left hints */
+  .hint-pill {
+    position: fixed;
+    bottom: 14px;
+    left: 14px;
+    padding: 7px 11px;
+    font-size: 10.8px;
+    color: var(--text-dim);
+    max-width: 318px;
+    line-height: 1.42;
+  }
+  .hint-pill kbd {
+    font-family: var(--mono);
+    font-size: 9.8px;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #fff;
+  }
+
+  /* Toast Banner */
+  .event-banner {
+    position: fixed;
+    top: 84px;
+    left: 50%;
+    transform: translateX(-50%) translateY(-10px);
+    padding: 9px 15px;
+    border-radius: var(--radius-md);
+    background: rgba(8, 16, 30, 0.9);
+    border: 1px solid rgba(88, 220, 255, 0.48);
+    color: #d9f6ff;
+    font-size: 12px;
+    font-weight: 650;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease, transform 0.25s ease;
+    z-index: 20;
+    backdrop-filter: blur(12px);
+    white-space: nowrap;
+  }
+  .event-banner.visible {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+
+  .zen-restore {
+    position: fixed;
+    bottom: 14px;
+    right: 14px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+  }
+  body.zen-mode .zen-restore {
+    opacity: 0.9;
+    pointer-events: auto;
+  }
+
+  @media (max-width: 980px) {
+    .top-left {
+      width: calc(100vw - 28px);
+      max-width: none;
+    }
+    .drawer {
+      top: auto;
+      bottom: 62px;
+      height: 52vh;
+      width: calc(100vw - 28px);
+    }
+    .hint-pill {
+      display: none;
+    }
+  }
+</style>
+</head>
+<body>
+<canvas id="sim-canvas"></canvas>
+
+<div class="hud">
+  <!-- Top-Left Telemetry Card -->
+  <div class="panel top-left">
+    <div class="brand-row">
+      <div class="brand-title-wrap">
+        <div class="brand-title">Cryosphere</div>
+        <span id="mode-badge" class="mode-badge">Glen n=3 + GIA</span>
+      </div>
+      <span id="mass-status" class="status-pill">Advancing</span>
+    </div>
+
+    <div class="telemetry-grid">
+      <div class="tele-card">
+        <span class="tele-label">Elapsed Time</span>
+        <span id="tel-time" class="tele-val">0.0 kyr</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Max Ice Thick</span>
+        <span id="tel-thick" class="tele-val ice">0 m</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Glacier Length</span>
+        <span id="tel-len" class="tele-val">0.0 km</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Crust Deflect</span>
+        <span id="tel-crust" class="tele-val magma">0 m</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">ELA Altitude</span>
+        <span id="tel-ela" class="tele-val amber">2,200 m</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Sea-Level Δ</span>
+        <span id="tel-sl" class="tele-val mint">0.0 m</span>
+      </div>
+    </div>
+
+    <div class="clock-row">
+      <span>Temp ΔT: <strong id="tel-temp">-2.0°C</strong></span>
+      <span>Carved: <strong id="tel-carve">0 m</strong></span>
+      <span>Ice Flow: <strong id="tel-vel" style="color:var(--accent-ice)">0 m/yr</strong></span>
+    </div>
+  </div>
+
+  <!-- Collapsible 330px Right Drawer -->
+  <aside id="drawer" class="panel drawer">
+    <div class="drawer-tabs">
+      <button class="tab-btn active" data-tab="climate">Climate</button>
+      <button class="tab-btn" data-tab="physics">Geodynamics</button>
+      <button class="tab-btn" data-tab="layers">Layers</button>
+    </div>
+
+    <div class="drawer-body">
+      <!-- TAB 1: CLIMATE & PRESETS -->
+      <div id="tab-climate" class="tab-pane active">
+        <div class="section">
+          <div class="section-title"><span>Glaciology Scenarios</span></div>
+          <div class="preset-grid">
+            <button class="preset-btn active" data-preset="alpine">
+              <span class="preset-name">Alpine Glacier</span>
+              <span class="preset-sub">Cirque carving &amp; terminal moraine</span>
+            </button>
+            <button class="preset-btn" data-preset="icesheet">
+              <span class="preset-name">Ice Age Sheet</span>
+              <span class="preset-sub">3 km ice load &amp; 900 m crust sink</span>
+            </button>
+            <button class="preset-btn" data-preset="rebound">
+              <span class="preset-name">Post-Glacial GIA</span>
+              <span class="preset-sub">Fast melt &amp; crustal rebound</span>
+            </button>
+            <button class="preset-btn" data-preset="fjord">
+              <span class="preset-name">Calving Fjord</span>
+              <span class="preset-sub">Tidewater glacier &amp; icebergs</span>
+            </button>
+            <button class="preset-btn" data-preset="milankovitch">
+              <span class="preset-name">Milankovitch</span>
+              <span class="preset-sub">100-kyr orbital ice-age cycles</span>
+            </button>
+            <button class="preset-btn" data-preset="surge">
+              <span class="preset-name">Rapid Surge</span>
+              <span class="preset-sub">High basal meltwater lubrication</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">
+            <span>Climate Forcing</span>
+            <span id="climate-phase" style="font-family:var(--mono); color:var(--accent-ice);">Glacial</span>
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Temp Anomaly (Ice Age ↔ Melt)</span>
+              <span id="val-temp" class="val">-2.5 °C</span>
+            </div>
+            <input id="sl-temp" class="thermal" type="range" min="-10" max="6" step="0.1" value="-2.5" />
+          </div>
+
+          <div class="btn-row">
+            <button id="btn-ice-age" class="btn ice">❄ Ice Age (-8.5°C)</button>
+            <button id="btn-melt-sheet" class="btn melt">☀ Melt Ice Sheet!</button>
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Snowfall / Precipitation</span>
+              <span id="val-precip" class="val">1.15×</span>
+            </div>
+            <input id="sl-precip" type="range" min="0.2" max="2.5" step="0.05" value="1.15" />
+          </div>
+
+          <label class="toggle-row">
+            <span>Milankovitch 100-kyr Orbital Cycle</span>
+            <input id="chk-milankovitch" type="checkbox" />
+            <span class="switch"></span>
+          </label>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Terrain &amp; Ice Brush</span></div>
+          <div class="seg-row" id="brush-mode-row">
+            <button class="seg-btn active" data-brush="raise">▲ Sculpt Peak</button>
+            <button class="seg-btn" data-brush="carve">▼ Carve Valley</button>
+            <button class="seg-btn" data-brush="ice">❄ Drop Ice Sheet</button>
+            <button class="seg-btn" data-brush="melt">☀ Melt Ice</button>
+          </div>
+          <div class="control-row">
+            <div class="control-head">
+              <span>Brush Width</span>
+              <span id="val-brush" class="val">18 km</span>
+            </div>
+            <input id="sl-brush" type="range" min="6" max="42" step="2" value="18" />
+          </div>
+          <p class="note-small">Click &amp; drag directly on the cross-section to raise mountains, excavate fjords, or drop a massive ice load to test mantle flexure.</p>
+        </div>
+      </div>
+
+      <!-- TAB 2: GEODYNAMICS & SOLVER -->
+      <div id="tab-physics" class="tab-pane">
+        <div class="section">
+          <div class="section-title"><span>Ice Rheology &amp; Erosion</span></div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Basal Sliding Lubrication</span>
+              <span id="val-lub" class="val">0.75×</span>
+            </div>
+            <input id="sl-lub" type="range" min="0" max="3" step="0.05" value="0.75" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Glacial Erosion Intensity</span>
+              <span id="val-erode" class="val">1.00×</span>
+            </div>
+            <input id="sl-erode" class="amber" type="range" min="0" max="3" step="0.1" value="1.0" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Sim Speed (kyr / sec)</span>
+              <span id="val-simspeed" class="val">1.2 kyr/s</span>
+            </div>
+            <input id="sl-simspeed" type="range" min="0.1" max="6" step="0.1" value="1.2" />
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Mantle Isostasy (GIA)</span></div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Mantle Viscosity (τ Rebound)</span>
+              <span id="val-visc" class="val">3.8 kyr</span>
+            </div>
+            <input id="sl-visc" class="magma" type="range" min="0.5" max="12" step="0.1" value="3.8" />
+          </div>
+
+          <p class="note-small">Lower τ yields rapid fluid mantle adjustment; higher τ mimics stiff upper mantle (~4–6 kyr rebound like Fennoscandia &amp; Hudson Bay).</p>
+
+          <div class="btn-row">
+            <button id="btn-clear-ice" class="btn danger">Vaporize All Ice</button>
+            <button id="btn-reset-erode" class="btn">Restore Bedrock</button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Coupled Equations</span></div>
+          <div class="formula-chip">
+            Glen Creep: q ∝ H⁵ |∂s/∂x|³ + u_b H<br/>
+            Isostasy: τ·∂w/∂t = w_flex(ρᵢH/ρₘ) − w<br/>
+            Erosion: ∂E/∂t = K_e · |u_b|^1.2
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 3: LAYERS & LEGEND -->
+      <div id="tab-layers" class="tab-pane">
+        <div class="section">
+          <div class="section-title"><span>Visual Overlays</span></div>
+
+          <label class="toggle-row">
+            <span>Internal Ice Flow Vectors</span>
+            <input id="chk-flow" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+
+          <label class="toggle-row">
+            <span>Pre-Glacial Bedrock Ghost Line</span>
+            <input id="chk-ghost" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+
+          <label class="toggle-row">
+            <span>Sea-Level Eustatic Response</span>
+            <input id="chk-eustatic" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+
+          <label class="toggle-row">
+            <span>ELA Line &amp; Precipitation</span>
+            <input id="chk-ela" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+
+          <label class="toggle-row">
+            <span>Mantle Return-Flow Arrows</span>
+            <input id="chk-mantle-flow" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+
+          <label class="toggle-row">
+            <span>Crevasses &amp; Basal Meltwater</span>
+            <input id="chk-crevasse" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Cross-Section Legend</span></div>
+          <div class="legend-box">
+            <div class="legend-item"><span class="swatch" style="background:linear-gradient(180deg,#f2fbff,#55cbff,#1d5fa7)"></span>Glacial Ice Sheet &amp; Firn (ρ ≈ 917 kg/m³)</div>
+            <div class="legend-item"><span class="swatch" style="background:#3ae0df"></span>Overdeepened Glacial Lakes / Tarns</div>
+            <div class="legend-item"><span class="swatch" style="background:#8a7763"></span>Bulldozed Terminal &amp; Ground Moraine</div>
+            <div class="legend-item"><span class="swatch" style="background:linear-gradient(180deg,#526074,#273142)"></span>Elastic Crustal Lithosphere (ρ ≈ 2700)</div>
+            <div class="legend-item"><span class="swatch" style="background:linear-gradient(180deg,#ff8c3a,#a82314)"></span>Viscous Asthenosphere Mantle (ρ ≈ 3300)</div>
+            <div class="legend-item"><span class="swatch" style="background:transparent;border:1.5px dashed #ffbe5c"></span>Pre-Glacial Reference Bedrock</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Event Toast -->
+  <div id="event-banner" class="event-banner"></div>
+
+  <!-- Bottom-Left Hints -->
+  <div class="panel hint-pill">
+    Drag terrain to sculpt peaks or drop ice · <kbd>Space</kbd> Play/Pause · <kbd>R</kbd> Reset · <kbd>H</kbd> Cinema
+  </div>
+
+  <!-- Bottom-Center Transport Bar -->
+  <div class="panel bottom-bar">
+    <button id="btn-play" class="bar-btn active">⏸ Pause</button>
+    <button id="btn-reset" class="bar-btn">↺ Reset</button>
+    <div class="bar-divider"></div>
+    <button class="bar-btn speed-btn" data-speed="0.25">0.25×</button>
+    <button class="bar-btn speed-btn active" data-speed="1">1×</button>
+    <button class="bar-btn speed-btn" data-speed="2">2×</button>
+    <button class="bar-btn speed-btn" data-speed="4">4×</button>
+    <div class="bar-divider"></div>
+    <button id="btn-sound" class="bar-btn">🔇 Audio</button>
+    <button id="btn-toggle-drawer" class="bar-btn active">Controls</button>
+    <button id="btn-zen" class="bar-btn" title="Hide HUD (H)">Cinema</button>
+  </div>
+
+  <button id="btn-zen-restore" class="panel bar-btn zen-restore">Show HUD (H)</button>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // =========================================================================
+  // PHYSICAL & GRID CONSTANTS
+  // =========================================================================
+  const N = 200;               // Horizontal grid nodes
+  const DOMAIN_KM = 240;       // 240 km cross-section from mountain crest to deep ocean
+  const DX_KM = DOMAIN_KM / (N - 1);
+  const DX_M = DX_KM * 1000;   // ~1206 m per cell
+
+  // Densities (kg/m^3)
+  const RHO_ICE = 917;
+  const RHO_WATER = 1028;
+  const RHO_ROCK = 2700;
+  const RHO_MANTLE = 3300;
+  const CRUST_THICK = 1850;    // Visual lithospheric slab thickness (m in world vertical coords)
+
+  // Vertical world viewport bounds (meters)
+  const Z_MIN = -4500;
+  const Z_MAX = 4700;
+
+  // =========================================================================
+  // SIMULATION ARRAYS
+  // =========================================================================
+  const b0 = new Float64Array(N);        // Original pre-glacial bedrock elevation (m)
+  const erosion = new Float64Array(N);   // Cumulative glacial carving depth (m >= 0)
+  const sed = new Float64Array(N);       // Moraine / till sediment thickness (m >= 0)
+  const w = new Float64Array(N);         // Isostatic crustal deflection (m; <0 = depressed)
+  const wPrev = new Float64Array(N);     // Previous deflection for dw/dt mantle flow arrows
+  const dwDt = new Float64Array(N);      // Rate of crustal rebound/subsidence (m/kyr)
+  const wAiry = new Float64Array(N);     // Local Airy hydrostatic target deflection (m)
+  const wEq = new Float64Array(N);       // Regional flexural equilibrium deflection (m)
+
+  const H = new Float64Array(N);         // Ice thickness (m >= 0)
+  const bed = new Float64Array(N);       // Solid bed + moraine surface (m)
+  const surf = new Float64Array(N);      // Ice surface = bed + H (m)
+  const uDef = new Float64Array(N);      // Internal Glen creep velocity (m/yr)
+  const uSlide = new Float64Array(N);    // Basal sliding velocity (m/yr)
+  const strain = new Float64Array(N);    // Longitudinal strain rate for crevasses
+  const basalWater = new Float64Array(N);// Basal meltwater film intensity [0..1]
+  const lakeLvl = new Float64Array(N);   // Proglacial / overdeepened lake water elevation (m)
+
+  // Work buffers
+  const qIce = new Float64Array(N);      // Staggered ice flux at i+1/2 (m^2/yr)
+  const qSed = new Float64Array(N);      // Staggered sediment flux at i+1/2
+  const bTmp = new Float64Array(N);
+
+  // Precomputed 1D Elastic Flexural Green's Function Kernel (gives realistic forebulge!)
+  const FLEX_HALF = 46;
+  const FLEX_ALPHA_CELLS = 24; // ~29 km flexural parameter -> gentle realistic forebulge
+  const flexKernel = new Float64Array(FLEX_HALF * 2 + 1);
+  (() => {
+    let sum = 0;
+    for (let k = -FLEX_HALF; k <= FLEX_HALF; k++) {
+      const r = Math.abs(k) / FLEX_ALPHA_CELLS;
+      // 1D infinite elastic plate on fluid foundation: exp(-r) * (cos r + sin r)
+      const val = Math.exp(-r) * (Math.cos(r) + Math.sin(r));
+      flexKernel[k + FLEX_HALF] = val;
+      sum += val;
+    }
+    for (let i = 0; i < flexKernel.length; i++) flexKernel[i] /= sum;
+  })();
+
+  // =========================================================================
+  // SIMULATION STATE & PARAMETERS
+  // =========================================================================
+  const state = {
+    preset: 'alpine',
+    playing: true,
+    timeKyr: 0,
+    speedMult: 1.0,
+    simSpeedKyrPerSec: 1.2,
+
+    // Climate
+    tempAnomaly: -2.5,      // °C (-10 to +6)
+    precipRate: 1.15,       // multiplier (0.2 to 2.5)
+    milankovitch: false,
+    elaBase: 2250,          // m at 0°C anomaly
+    elaCurrent: 1860,
+
+    // Geodynamics
+    lubrication: 0.75,      // basal sliding factor (0 to 3)
+    mantleTauKyr: 3.8,      // viscous relaxation timescale (kyr)
+    erosionScale: 1.0,      // glacial carving multiplier (0 to 3)
+
+    // Sea level
+    eustaticEnabled: true,
+    seaLevel: 0,            // m relative to interglacial datum
+    refIceVol: 18,          // baseline volume for 0 m sea level (10^3 km^2 slice)
+
+    // Visual layers
+    showFlow: true,
+    showGhost: true,
+    showEla: true,
+    showMantleFlow: true,
+    showCrevasse: true,
+
+    // Interaction brush
+    brushMode: 'raise',     // 'raise' | 'carve' | 'ice' | 'melt'
+    brushRadiusKm: 18,
+    pointerDown: false,
+    pointerX: -999,
+    pointerY: -999,
+    pointerInCanvas: false,
+
+    // Audio
+    soundEnabled: false,
+
+    // Derived telemetry
+    maxIceThick: 0,
+    glacierLengthKm: 0,
+    maxDepression: 0,
+    maxRebound: 0,
+    maxCarved: 0,
+    maxVel: 0,
+    prevIceVol: 0,
+    dVolDt: 0,
+    calvingCooldown: 0,
+    creakCooldown: 0,
+    visualTime: 0
+  };
+
+  // Dynamic visual entities
+  const icebergs = [];
+  const precipParticles = [];
+  const splashParticles = [];
+  const mantleParticles = [];
+  const flowTracers = [];
+  const stars = [];
+
+  // =========================================================================
+  // CANVAS & VIEWPORT GEOMETRY
+  // =========================================================================
+  const canvas = document.getElementById('sim-canvas');
+  const ctx = canvas.getContext('2d', { alpha: false });
+  let W = window.innerWidth;
+  let Hpx = window.innerHeight;
+  let DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+  function resize() {
+    W = window.innerWidth;
+    Hpx = window.innerHeight;
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.floor(W * DPR);
+    canvas.height = Math.floor(Hpx * DPR);
+    canvas.style.width = W + 'px';
+    canvas.style.height = Hpx + 'px';
+    initStars();
+  }
+
+  function xToScreen(i) {
+    return (i / (N - 1)) * W;
+  }
+
+  function screenToIdx(px) {
+    return Math.max(0, Math.min(N - 1, (px / W) * (N - 1)));
+  }
+
+  function zToScreen(z) {
+    // Map [Z_MAX .. Z_MIN] to [topMargin .. bottom]
+    const norm = (Z_MAX - z) / (Z_MAX - Z_MIN);
+    return norm * Hpx;
+  }
+
+  function screenToZ(py) {
+    return Z_MAX - (py / Hpx) * (Z_MAX - Z_MIN);
+  }
+
+  function initStars() {
+    stars.length = 0;
+    const count = Math.min(180, Math.floor((W * Hpx) / 7000));
+    for (let i = 0; i < count; i++) {
+      stars.push({
+        x: Math.random() * W,
+        y: Math.random() * Hpx * 0.44,
+        r: 0.5 + Math.random() * 1.4,
+        phase: Math.random() * Math.PI * 2,
+        twinkle: 0.8 + Math.random() * 2.2
+      });
+    }
+  }
+
+  function initParticles() {
+    precipParticles.length = 0;
+    for (let i = 0; i < 160; i++) {
+      precipParticles.push({
+        x: Math.random(),
+        y: Math.random() * 0.65,
+        vx: 0.012 + Math.random() * 0.025,
+        vy: 0.05 + Math.random() * 0.09,
+        size: 1.0 + Math.random() * 2.1,
+        phase: Math.random() * Math.PI * 2
+      });
+    }
+    mantleParticles.length = 0;
+    for (let i = 0; i < 110; i++) {
+      mantleParticles.push({
+        idx: Math.random() * (N - 1),
+        depthFrac: 0.1 + Math.random() * 0.85,
+        size: 1.5 + Math.random() * 3.0,
+        alpha: 0.25 + Math.random() * 0.55
+      });
+    }
+    flowTracers.length = 0;
+    for (let i = 0; i < 110; i++) {
+      flowTracers.push({
+        idx: Math.random() * (N - 2),
+        relZ: 0.12 + Math.random() * 0.82,
+        life: Math.random()
+      });
+    }
+  }
+
+  // =========================================================================
+  // PROCEDURAL WEB AUDIO (MUTED BY DEFAULT)
+  // =========================================================================
+  let audioCtx = null;
+  let masterGain = null;
+  let windGain = null;
+  let shimmerGain = null;
+
+  function initAudio() {
+    if (audioCtx) return;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    audioCtx = new AC();
+
+    masterGain = audioCtx.createGain();
+    masterGain.gain.value = 0.0001;
+    masterGain.connect(audioCtx.destination);
+
+    // Subtle arctic wind (bandpass-filtered noise)
+    const bufLen = audioCtx.sampleRate * 3;
+    const noiseBuf = audioCtx.createBuffer(1, bufLen, audioCtx.sampleRate);
+    const data = noiseBuf.getChannelData(0);
+    let last = 0;
+    for (let i = 0; i < bufLen; i++) {
+      const white = Math.random() * 2 - 1;
+      last = (last + 0.04 * white) / 1.04;
+      data[i] = last * 3.0;
+    }
+    const noiseSrc = audioCtx.createBufferSource();
+    noiseSrc.buffer = noiseBuf;
+    noiseSrc.loop = true;
+
+    const windFilter = audioCtx.createBiquadFilter();
+    windFilter.type = 'bandpass';
+    windFilter.frequency.value = 420;
+    windFilter.Q.value = 1.6;
+
+    windGain = audioCtx.createGain();
+    windGain.gain.value = 0.06;
+
+    noiseSrc.connect(windFilter);
+    windFilter.connect(windGain);
+    windGain.connect(masterGain);
+    noiseSrc.start();
+
+    // Crystalline icy ambient shimmer chord (D5, A5, E6 soft harmonics)
+    shimmerGain = audioCtx.createGain();
+    shimmerGain.gain.value = 0.032;
+    shimmerGain.connect(masterGain);
+
+    const freqs = [293.66, 440.0, 659.25, 880.0];
+    freqs.forEach((f, idx) => {
+      const osc = audioCtx.createOscillator();
+      osc.type = idx % 2 === 0 ? 'sine' : 'triangle';
+      osc.frequency.value = f;
+      const g = audioCtx.createGain();
+      g.gain.value = 0.25 / (idx + 1);
+
+      const lfo = audioCtx.createOscillator();
+      lfo.frequency.value = 0.11 + idx * 0.05;
+      const lfoG = audioCtx.createGain();
+      lfoG.gain.value = g.gain.value * 0.45;
+      lfo.connect(lfoG);
+      lfoG.connect(g.gain);
+
+      osc.connect(g);
+      g.connect(shimmerGain);
+      osc.start();
+      lfo.start();
+    });
+  }
+
+  function setAudioEnabled(on) {
+    state.soundEnabled = on;
+    const btn = document.getElementById('btn-sound');
+    btn.textContent = on ? '🔊 Audio' : '🔇 Audio';
+    btn.classList.toggle('active', on);
+    if (on) {
+      initAudio();
+      if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+      if (masterGain && audioCtx) {
+        masterGain.gain.cancelScheduledValues(audioCtx.currentTime);
+        masterGain.gain.setTargetAtTime(0.65, audioCtx.currentTime, 0.25);
+      }
+    } else if (masterGain && audioCtx) {
+      masterGain.gain.cancelScheduledValues(audioCtx.currentTime);
+      masterGain.gain.setTargetAtTime(0.0001, audioCtx.currentTime, 0.18);
+    }
+  }
+
+  function playCalvingSound(sizeFactor) {
+    if (!state.soundEnabled || !audioCtx || audioCtx.state !== 'running') return;
+    const now = audioCtx.currentTime;
+    const s = Math.max(0.5, Math.min(1.8, sizeFactor));
+
+    // 1. Crisp crystal fracture chime
+    const chime = audioCtx.createOscillator();
+    chime.type = 'sine';
+    const baseFreq = 980 + Math.random() * 520;
+    chime.frequency.setValueAtTime(baseFreq, now);
+    chime.frequency.exponentialRampToValueAtTime(baseFreq * 0.68, now + 0.32);
+    const cg = audioCtx.createGain();
+    cg.gain.setValueAtTime(0.001, now);
+    cg.gain.linearRampToValueAtTime(0.08 * s, now + 0.012);
+    cg.gain.exponentialRampToValueAtTime(0.0005, now + 0.42);
+    chime.connect(cg);
+    cg.connect(masterGain);
+    chime.start(now);
+    chime.stop(now + 0.45);
+
+    // 2. Low-mid splash thump
+    const thump = audioCtx.createOscillator();
+    thump.type = 'triangle';
+    thump.frequency.setValueAtTime(125 / s, now + 0.04);
+    thump.frequency.exponentialRampToValueAtTime(38, now + 0.45);
+    const tg = audioCtx.createGain();
+    tg.gain.setValueAtTime(0.001, now + 0.04);
+    tg.gain.linearRampToValueAtTime(0.11 * s, now + 0.07);
+    tg.gain.exponentialRampToValueAtTime(0.0008, now + 0.52);
+    thump.connect(tg);
+    tg.connect(masterGain);
+    thump.start(now + 0.04);
+    thump.stop(now + 0.55);
+  }
+
+  function playGlacialCreak() {
+    if (!state.soundEnabled || !audioCtx || audioCtx.state !== 'running') return;
+    const now = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    osc.type = 'sawtooth';
+    const f0 = 140 + Math.random() * 120;
+    osc.frequency.setValueAtTime(f0, now);
+    osc.frequency.exponentialRampToValueAtTime(f0 * 0.62, now + 0.36);
+
+    const filt = audioCtx.createBiquadFilter();
+    filt.type = 'bandpass';
+    filt.frequency.value = 520 + Math.random() * 480;
+    filt.Q.value = 8;
+
+    const g = audioCtx.createGain();
+    g.gain.setValueAtTime(0.0005, now);
+    g.gain.linearRampToValueAtTime(0.032, now + 0.06);
+    g.gain.exponentialRampToValueAtTime(0.0005, now + 0.4);
+
+    osc.connect(filt);
+    filt.connect(g);
+    g.connect(masterGain);
+    osc.start(now);
+    osc.stop(now + 0.42);
+  }
+
+  // =========================================================================
+  // TOAST BANNER
+  // =========================================================================
+  let toastTimer = null;
+  function showToast(msg) {
+    const el = document.getElementById('event-banner');
+    el.textContent = msg;
+    el.classList.add('visible');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove('visible'), 2900);
+  }
+
+  // =========================================================================
+  // TERRAIN PROFILES & PRESETS
+  // =========================================================================
+  function buildTerrain(type) {
+    for (let i = 0; i < N; i++) {
+      const u = i / (N - 1); // 0 (left mountain) -> 1 (right deep ocean)
+      let z = 0;
+
+      if (type === 'alpine') {
+        // Dramatic alpine range on left -> broad glacial valley -> coastal shelf -> ocean
+        const peaks =
+          2950 * Math.exp(-Math.pow((u - 0.11) / 0.13, 2)) +
+          1450 * Math.exp(-Math.pow((u - 0.25) / 0.10, 2)) +
+          420 * Math.sin(u * 26) * Math.exp(-u * 3.5);
+        const shelf = 480 * (1 - 1 / (1 + Math.exp(-(u - 0.64) / 0.07)));
+        const ocean = -1650 / (1 + Math.exp(-(u - 0.72) / 0.055));
+        z = peaks + shelf + ocean - 80;
+      } else if (type === 'continental') {
+        // Broad shield / plateau (like Scandinavia or Laurentide Shield) dipping into coastal sea
+        const shield =
+          1750 * Math.exp(-Math.pow((u - 0.16) / 0.24, 2)) +
+          920 * Math.exp(-Math.pow((u - 0.42) / 0.22, 2)) +
+          160 * Math.sin(u * 18) * Math.exp(-u * 1.4);
+        const ocean = -1700 / (1 + Math.exp(-(u - 0.75) / 0.055));
+        z = shield + ocean + 120;
+      } else if (type === 'fjord') {
+        // Steep coastal mountains plunging straight into a deep ocean trench
+        const range =
+          3050 * Math.exp(-Math.pow((u - 0.14) / 0.15, 2)) +
+          1150 * Math.exp(-Math.pow((u - 0.34) / 0.13, 2)) +
+          220 * Math.sin(u * 24) * Math.exp(-u * 2.5);
+        const trench = -1950 / (1 + Math.exp(-(u - 0.56) / 0.055));
+        z = range + trench + 90;
+      } else if (type === 'surge') {
+        // High perched ice basin with steep outlet valley toward sea
+        const upperBasin =
+          2700 * Math.exp(-Math.pow((u - 0.12) / 0.16, 2)) +
+          1600 * Math.exp(-Math.pow((u - 0.30) / 0.11, 2));
+        const valley = 520 * (1 - 1 / (1 + Math.exp(-(u - 0.65) / 0.06)));
+        const ocean = -1550 / (1 + Math.exp(-(u - 0.73) / 0.05));
+        z = upperBasin + valley + ocean - 120;
+      }
+
+      b0[i] = z;
+      erosion[i] = 0;
+      sed[i] = 0;
+      w[i] = 0;
+      wPrev[i] = 0;
+      dwDt[i] = 0;
+      H[i] = 0;
+      uDef[i] = 0;
+      uSlide[i] = 0;
+      strain[i] = 0;
+      basalWater[i] = 0;
+      lakeLvl[i] = -9999;
+    }
+  }
+
+  function updateDerivedSurfaces() {
+    for (let i = 0; i < N; i++) {
+      bed[i] = b0[i] - erosion[i] + w[i] + sed[i];
+      surf[i] = bed[i] + H[i];
+    }
+  }
+
+  function computeEquilibriumDeflection(instantApply = false) {
+    // Compute local Airy hydrostatic load from ice + sediment - erosion + sea-level change
+    for (let i = 0; i < N; i++) {
+      const baseRock = b0[i] - erosion[i] + w[i];
+      // Water load relative to 0 m datum
+      const waterNow = Math.max(0, state.seaLevel - (baseRock + sed[i] + H[i] * (RHO_ICE / RHO_WATER)));
+      const waterRef = Math.max(0, 0 - b0[i]);
+      const dWater = waterNow - waterRef;
+      // Airy deflection (m): negative = downward into mantle
+      const massLoad = RHO_ICE * H[i] + RHO_ROCK * (sed[i] - erosion[i]) + RHO_WATER * dWater * 0.55;
+      wAiry[i] = -massLoad / RHO_MANTLE;
+    }
+
+    // Convolve with 1D elastic lithospheric flexure kernel (produces realistic forebulge!)
+    for (let i = 0; i < N; i++) {
+      let acc = 0;
+      for (let k = -FLEX_HALF; k <= FLEX_HALF; k++) {
+        let j = i + k;
+        if (j < 0) j = 0;
+        else if (j >= N) j = N - 1;
+        acc += wAiry[j] * flexKernel[k + FLEX_HALF];
+      }
+      wEq[i] = acc;
+      if (instantApply) {
+        w[i] = acc;
+        wPrev[i] = acc;
+        dwDt[i] = 0;
+      }
+    }
+  }
+
+  function computeTotalIceVol() {
+    let vol = 0;
+    for (let i = 0; i < N; i++) {
+      // Count grounded ice (above flotation)
+      vol += H[i] * DX_KM * 0.001; // km^2 slice area
+    }
+    return vol;
+  }
+
+  function updateSeaLevel() {
+    if (!state.eustaticEnabled) {
+      state.seaLevel = 0;
+      return;
+    }
+    const vol = computeTotalIceVol();
+    // Map a ~3 km x 150 km continental ice sheet (~350 km^2 slice) to ~-118 m sea-level drop
+    const rawOffset = -(vol - state.refIceVol) * 0.35;
+    state.seaLevel = Math.max(-135, Math.min(28, rawOffset));
+  }
+
+  function computeLakes() {
+    // 1D depression fill: find spill-sill elevation to the ocean on the right
+    // Run right-to-left keeping track of highest barrier between i and ocean
+    let sill = state.seaLevel;
+    for (let i = N - 1; i >= 0; i--) {
+      const surfaceTop = bed[i] + H[i];
+      if (surfaceTop > sill) {
+        sill = surfaceTop;
+        lakeLvl[i] = -9999;
+      } else if (H[i] < 12 && bed[i] > state.seaLevel + 8 && sill - bed[i] > 18) {
+        lakeLvl[i] = sill;
+      } else {
+        lakeLvl[i] = -9999;
+      }
+    }
+    // Also prevent artificial lake at far left boundary if open
+    for (let i = 0; i < 4; i++) lakeLvl[i] = -9999;
+  }
+
+  function applyPreset(name, announce = true) {
+    state.preset = name;
+    state.timeKyr = 0;
+    icebergs.length = 0;
+    splashParticles.length = 0;
+
+    document.querySelectorAll('.preset-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.preset === name);
+    });
+
+    if (name === 'alpine') {
+      buildTerrain('alpine');
+      state.tempAnomaly = -2.4;
+      state.precipRate = 1.2;
+      state.lubrication = 0.85;
+      state.mantleTauKyr = 3.8;
+      state.erosionScale = 1.25;
+      state.simSpeedKyrPerSec = 1.2;
+      state.milankovitch = false;
+      state.eustaticEnabled = true;
+
+      // Seed active alpine valley glacier
+      for (let i = 0; i < N; i++) {
+        const u = i / (N - 1);
+        if (u > 0.04 && u < 0.34) {
+          const env = Math.sin(((u - 0.04) / 0.30) * Math.PI);
+          H[i] = 520 * Math.pow(env, 0.7);
+        }
+      }
+      computeEquilibriumDeflection(true);
+      updateDerivedSurfaces();
+      state.refIceVol = computeTotalIceVol();
+      if (announce) showToast('Alpine Valley Glacier — Cirque Carving & Terminal Moraine');
+    } else if (name === 'icesheet') {
+      buildTerrain('continental');
+      state.tempAnomaly = -8.6;
+      state.precipRate = 1.55;
+      state.lubrication = 0.7;
+      state.mantleTauKyr = 3.4;
+      state.erosionScale = 1.0;
+      state.simSpeedKyrPerSec = 1.8;
+      state.milankovitch = false;
+      state.eustaticEnabled = true;
+
+      // Seed growing highland ice cap ready to surge to 3+ km & depress crust ~900 m
+      for (let i = 0; i < N; i++) {
+        const u = i / (N - 1);
+        if (u > 0.02 && u < 0.42) {
+          const env = Math.sin(((u - 0.02) / 0.40) * Math.PI);
+          H[i] = 1150 * Math.pow(env, 0.65);
+        }
+      }
+      state.refIceVol = 22;
+      computeEquilibriumDeflection(false);
+      // Partial initial deflection so depression animation is vivid right away
+      for (let i = 0; i < N; i++) w[i] = wEq[i] * 0.45;
+      updateDerivedSurfaces();
+      if (announce) showToast('Ice Age Continental Sheet — Watch 3 km Ice Depress Crust into Mantle');
+    } else if (name === 'rebound') {
+      buildTerrain('continental');
+      state.tempAnomaly = 4.6;
+      state.precipRate = 0.65;
+      state.lubrication = 1.15;
+      state.mantleTauKyr = 3.2;
+      state.erosionScale = 0.9;
+      state.simSpeedKyrPerSec = 1.6;
+      state.milankovitch = false;
+      state.eustaticEnabled = true;
+
+      // Pre-load full 3.1 km Last Glacial Maximum ice sheet + pre-carved basins + full isostatic depression!
+      for (let i = 0; i < N; i++) {
+        const u = i / (N - 1);
+        if (u > 0.01 && u < 0.72) {
+          const dome = Math.pow(Math.sin(((u - 0.01) / 0.71) * Math.PI), 0.55);
+          H[i] = 3150 * dome;
+        }
+        // Pre-carved glacial trough + terminal moraine
+        if (u > 0.20 && u < 0.66) {
+          const c = Math.sin(((u - 0.20) / 0.46) * Math.PI);
+          erosion[i] = 280 * c * c;
+        }
+        if (u > 0.65 && u < 0.75) {
+          const m = Math.sin(((u - 0.65) / 0.10) * Math.PI);
+          sed[i] = 190 * m * m;
+        }
+      }
+      state.refIceVol = 20;
+      updateSeaLevel();
+      computeEquilibriumDeflection(true); // Start fully depressed (~900 m!) so rebound is unmistakable
+      updateDerivedSurfaces();
+      if (announce) showToast('Post-Glacial Rebound — Rapid Melt Triggers Crustal Uplift & Mantle Return Flow');
+    } else if (name === 'fjord') {
+      buildTerrain('fjord');
+      state.tempAnomaly = -5.6;
+      state.precipRate = 1.85;
+      state.lubrication = 1.35;
+      state.mantleTauKyr = 4.0;
+      state.erosionScale = 1.3;
+      state.simSpeedKyrPerSec = 1.0;
+      state.milankovitch = false;
+      state.eustaticEnabled = true;
+
+      // Pre-load glacier reaching right into the deep fjord ocean for immediate calving!
+      for (let i = 0; i < N; i++) {
+        const u = i / (N - 1);
+        if (u > 0.02 && u < 0.61) {
+          const env = Math.pow(Math.sin(((u - 0.02) / 0.59) * Math.PI), 0.5);
+          H[i] = 1480 * env;
+        }
+      }
+      state.refIceVol = 35;
+      updateSeaLevel();
+      computeEquilibriumDeflection(true);
+      updateDerivedSurfaces();
+      // Spawn a couple initial drifting icebergs
+      spawnIceberg(0.64, 340, 260);
+      spawnIceberg(0.75, 240, 190);
+      if (announce) showToast('Tidewater Calving Fjord — Glacier Plunging into Ocean & Calving Icebergs');
+    } else if (name === 'milankovitch') {
+      buildTerrain('continental');
+      state.tempAnomaly = -4.0;
+      state.precipRate = 1.4;
+      state.lubrication = 0.85;
+      state.mantleTauKyr = 3.5;
+      state.erosionScale = 0.9;
+      state.simSpeedKyrPerSec = 3.2;
+      state.milankovitch = true;
+      state.eustaticEnabled = true;
+      for (let i = 0; i < N; i++) {
+        const u = i / (N - 1);
+        if (u > 0.04 && u < 0.40) {
+          H[i] = 900 * Math.sin(((u - 0.04) / 0.36) * Math.PI);
+        }
+      }
+      state.refIceVol = 22;
+      computeEquilibriumDeflection(true);
+      updateDerivedSurfaces();
+      if (announce) showToast('Milankovitch 100-kyr Cycles — Orbital Ice Ages & Interglacial Rebounds');
+    } else if (name === 'surge') {
+      buildTerrain('surge');
+      state.tempAnomaly = -3.8;
+      state.precipRate = 1.5;
+      state.lubrication = 2.65;
+      state.mantleTauKyr = 3.6;
+      state.erosionScale = 1.8;
+      state.simSpeedKyrPerSec = 1.1;
+      state.milankovitch = false;
+      state.eustaticEnabled = true;
+
+      // High thick ice reservoir poised to surge rapidly downhill!
+      for (let i = 0; i < N; i++) {
+        const u = i / (N - 1);
+        if (u > 0.03 && u < 0.35) {
+          const env = Math.pow(Math.sin(((u - 0.03) / 0.32) * Math.PI), 0.55);
+          H[i] = 1950 * env;
+        }
+      }
+      state.refIceVol = 28;
+      computeEquilibriumDeflection(true);
+      updateDerivedSurfaces();
+      if (announce) showToast('Rapid Surge — High Basal Meltwater Lubrication Accelerates Glacial Advance');
+    }
+
+    updateSeaLevel();
+    computeLakes();
+    state.prevIceVol = computeTotalIceVol();
+    syncControlsFromState();
+  }
+
+  // =========================================================================
+  // ICEBERG CALVING
+  // =========================================================================
+  function spawnIceberg(uPos, heightM, widthM) {
+    if (icebergs.length > 22) icebergs.shift();
+    const h = Math.max(90, Math.min(480, heightM));
+    const wMeters = Math.max(120, Math.min(520, widthM));
+    // Faceted polygon shape normalized [-0.5..0.5] x [-0.14..0.86] (12% above water, 88% below!)
+    const topPts = [];
+    const segs = 5;
+    for (let k = 0; k <= segs; k++) {
+      const fx = -0.5 + k / segs;
+      const fy = (k === 0 || k === segs) ? 0.02 : -(0.10 + Math.random() * 0.12);
+      topPts.push([fx, fy]);
+    }
+    const keelPts = [
+      [0.44, 0.25 + Math.random() * 0.12],
+      [0.22, 0.65 + Math.random() * 0.20],
+      [-0.14, 0.72 + Math.random() * 0.16],
+      [-0.42, 0.32 + Math.random() * 0.14]
+    ];
+    icebergs.push({
+      u: uPos,
+      h,
+      wKm: (wMeters / 1000) * 6.5, // slightly exaggerated horizontally for visual readability
+      vx: 0.006 + Math.random() * 0.008,
+      bobPhase: Math.random() * Math.PI * 2,
+      tilt: (Math.random() - 0.5) * 0.14,
+      age: 0,
+      topPts,
+      keelPts
+    });
+
+    // Splash particles
+    const sx = uPos * W;
+    const sy = zToScreen(state.seaLevel);
+    for (let k = 0; k < 14; k++) {
+      splashParticles.push({
+        x: sx + (Math.random() - 0.5) * 18,
+        y: sy,
+        vx: (Math.random() - 0.2) * 55,
+        vy: -35 - Math.random() * 75,
+        life: 1.0,
+        size: 1.5 + Math.random() * 2.5
+      });
+    }
+    playCalvingSound(h / 260);
+  }
+
+  // =========================================================================
+  // COUPLED GLEN'S LAW + EROSION + MORAINE + GIA SOLVER STEP
+  // =========================================================================
+  function stepPhysics(dtKyr) {
+    if (dtKyr <= 0) return;
+
+    // 1. Optional Milankovitch orbital climate forcing (100 kyr + 41 kyr + 23 kyr)
+    if (state.milankovitch) {
+      const t = state.timeKyr;
+      const ecc = Math.sin((2 * Math.PI * t) / 100 - 0.5);
+      const obl = Math.sin((2 * Math.PI * t) / 41 + 0.4);
+      const prec = Math.sin((2 * Math.PI * t) / 23);
+      state.tempAnomaly = Math.max(-9.8, Math.min(5.4, -3.4 - 4.4 * ecc - 1.3 * obl - 0.7 * prec));
+      const slTemp = document.getElementById('sl-temp');
+      const valTemp = document.getElementById('val-temp');
+      slTemp.value = state.tempAnomaly.toFixed(1);
+      valTemp.textContent = (state.tempAnomaly >= 0 ? '+' : '') + state.tempAnomaly.toFixed(1) + ' °C';
+    }
+
+    // 2. ELA from temperature anomaly (lapse rate ~6.5°C/km => ~154 m per °C)
+    state.elaCurrent = state.elaBase + state.tempAnomaly * 165;
+
+    // Sub-step SIA ice PDE for unconditional stability
+    const subSteps = 10;
+    const dtSubKyr = dtKyr / subSteps;
+    const dtYr = dtSubKyr * 1000;
+
+    // Glen creep & sliding physical scaling tuned for 240 km x 3 km realistic ice sheets
+    // q_creep = A_eff * H^5 * |ds/dx|^2 * (-ds/dx)
+    // At H = 2000 m, |ds/dx| = 0.015: H^5 * slope^3 = 3.2e16 * 3.375e-6 = 1.08e11
+    // Want q ~ 1.5e5 m^2/yr (v ~ 75 m/yr) => A_eff ~ 1.4e-6
+    const A_CREEP = 1.65e-6;
+    const C_SLIDE = 2.8e-2;
+    const D_MAX = (0.34 * DX_M * DX_M) / Math.max(dtYr, 1e-4); // strict CFL cap
+
+    let maxVel = 0;
+
+    for (let step = 0; step < subSteps; step++) {
+      updateDerivedSurfaces();
+
+      // Compute staggered fluxes qIce[i] at i + 1/2
+      for (let i = 0; i < N - 1; i++) {
+        const sL = surf[i];
+        const sR = surf[i + 1];
+        const dsdx = (sR - sL) / DX_M;
+        const absSlope = Math.abs(dsdx);
+
+        // Upwind-blended ice thickness prevents dry-bed oscillation while staying smooth
+        const hUp = dsdx < 0 ? H[i] : H[i + 1];
+        const hAvg = 0.5 * (H[i] + H[i + 1]);
+        const hMid = 0.65 * hAvg + 0.35 * hUp;
+
+        if (hMid < 0.5) {
+          qIce[i] = 0;
+          continue;
+        }
+
+        // Temperate / basal meltwater enhancement (stronger for thick ice & warmer climate)
+        const basalMeltBoost = Math.min(1.6, 0.35 + hMid / 1500 + Math.max(0, (state.tempAnomaly + 6) / 14));
+
+        // Glen n=3 internal deformation diffusivity: D_creep ∝ H^5 * |ds/dx|^2
+        const h2 = hMid * hMid;
+        const h5 = h2 * h2 * hMid;
+        const D_creep = A_CREEP * h5 * absSlope * absSlope;
+
+        // Basal sliding diffusivity: D_slide ∝ lub * H^3 * |ds/dx|^2
+        const D_slide = C_SLIDE * state.lubrication * basalMeltBoost * h2 * hMid * absSlope * absSlope * 28.0;
+
+        const D_tot = Math.min(D_MAX, D_creep + D_slide);
+        qIce[i] = -D_tot * dsdx;
+      }
+      qIce[N - 1] = 0;
+
+      // Update H via flux divergence + surface mass balance + submarine calving
+      for (let i = 0; i < N; i++) {
+        const qLeft = i === 0 ? 0 : qIce[i - 1];
+        const qRight = i === N - 1 ? 0 : qIce[i];
+        const dH_flux = -((qRight - qLeft) / DX_M) * dtYr;
+
+        // Surface Mass Balance (m/yr)
+        const zTop = bed[i] + H[i];
+        const dz = zTop - state.elaCurrent;
+        let mb = 0;
+        if (dz > 0) {
+          // Accumulation above ELA, with slight high-elevation precipitation cap
+          const elevFactor = 1.0 - Math.exp(-dz / 520);
+          const dryCap = Math.exp(-Math.max(0, zTop - 3350) / 1400);
+          mb = 2.4 * state.precipRate * elevFactor * dryCap;
+        } else {
+          // Ablation below ELA
+          const warmBoost = 1.0 + 0.075 * Math.max(0, state.tempAnomaly + 2);
+          mb = -0.0048 * Math.abs(dz) * warmBoost;
+          // Extra melt when ice is thin & exposed on warm ground
+          if (state.tempAnomaly > 1.5) {
+            mb -= 0.65 * (state.tempAnomaly - 1.5);
+          }
+        }
+
+        // Prevent snow accumulation directly on open ocean water
+        if (H[i] < 5 && bed[i] < state.seaLevel) {
+          mb = Math.min(mb, -4.0);
+        }
+
+        let newH = H[i] + dH_flux + mb * dtYr;
+
+        // Tidewater submarine melting & Archimedes flotation calving!
+        const waterDepth = state.seaLevel - bed[i];
+        if (waterDepth > 25 && newH > 0) {
+          const floatThick = (RHO_WATER / RHO_ICE) * waterDepth;
+          // Submarine melt proportional to water depth & warmth
+          const subMelt = (0.018 * waterDepth + Math.max(0, state.tempAnomaly + 5) * 0.9) * dtYr;
+          newH -= subMelt;
+
+          // Calve if thinner than flotation criterion or steep deep cliff
+          if (newH > 35 && newH < floatThick * 1.12) {
+            const calveAmt = newH * Math.min(0.85, 0.08 * dtYr + 0.18);
+            newH -= calveAmt;
+            if (step === subSteps - 1 && state.calvingCooldown <= 0 && calveAmt > 18) {
+              spawnIceberg(i / (N - 1) + 0.012, calveAmt * 1.8 + 110, 180 + calveAmt * 1.4);
+              state.calvingCooldown = 0.75 + Math.random() * 0.9;
+            }
+          }
+          // Hard deep-ocean abyssal calving limit
+          if (waterDepth > 900 && newH > 0) {
+            if (step === subSteps - 1 && state.calvingCooldown <= 0 && newH > 80) {
+              spawnIceberg(i / (N - 1) + 0.01, Math.min(420, newH), 260);
+              state.calvingCooldown = 0.9;
+            }
+            newH *= 0.25;
+          }
+        }
+
+        H[i] = newH > 0.2 ? Math.min(4400, newH) : 0;
+      }
+      // Open ocean right boundary drains cleanly
+      H[N - 1] = 0;
+    }
+
+    // 3. Compute cell velocities (creep vs basal sliding), strain rate & basal water
+    updateDerivedSurfaces();
+    for (let i = 0; i < N; i++) {
+      if (H[i] < 3) {
+        uDef[i] = 0;
+        uSlide[i] = 0;
+        basalWater[i] = 0;
+        continue;
+      }
+      const qAvg = i === 0 ? qIce[0] : (i === N - 1 ? qIce[N - 2] : 0.5 * (qIce[i - 1] + qIce[i]));
+      const vTot = qAvg / Math.max(H[i], 10); // m/yr
+      const slideFrac = Math.min(0.85, (state.lubrication * 0.34) / (1 + state.lubrication * 0.34));
+      uSlide[i] = vTot * slideFrac;
+      uDef[i] = vTot * (1 - slideFrac);
+      const speed = Math.abs(vTot);
+      if (speed > maxVel) maxVel = speed;
+
+      // Basal meltwater intensity peaks under sliding temperate ice
+      const nearAblation = surf[i] < state.elaCurrent + 600 ? 1.0 : 0.45;
+      basalWater[i] = Math.min(1, (Math.abs(uSlide[i]) / 120) * (0.4 + 0.5 * state.lubrication) * nearAblation);
+    }
+
+    // Longitudinal strain rate (du/dx > 0 => tensile crevassing!)
+    for (let i = 1; i < N - 1; i++) {
+      const uL = uDef[i - 1] + uSlide[i - 1];
+      const uR = uDef[i + 1] + uSlide[i + 1];
+      const bedCurv = (bed[i + 1] - 2 * bed[i] + bed[i - 1]) / (DX_M * DX_M);
+      strain[i] = (uR - uL) / (2 * DX_M) - bedCurv * 650;
+    }
+
+    // 4. Glacial Bedrock Erosion & Moraine Sediment Bulldozing
+    const dtYrTot = dtKyr * 1000;
+    if (state.erosionScale > 0.001) {
+      const K_ERODE = 3.6e-4 * state.erosionScale; // tuned for vivid ~150-550 m valley/fjord carving
+      for (let i = 2; i < N - 2; i++) {
+        if (H[i] > 25) {
+          const speed = Math.abs(uSlide[i]) + 0.25 * Math.abs(uDef[i]);
+          // Protection factor if buried under very thick till
+          const tillShield = Math.exp(-sed[i] / 180);
+          const dE = K_ERODE * Math.pow(Math.min(speed, 450), 1.15) * tillShield * dtYrTot;
+          const clampedE = Math.min(dE, 18); // safe per-step cap
+          erosion[i] = Math.min(1500, erosion[i] + clampedE);
+          sed[i] += clampedE * 0.85; // eroded bedrock becomes subglacial till
+        }
+      }
+
+      // Advect till down-glacier (bulldozing into Terminal Moraines at ice snout!)
+      for (let i = 0; i < N - 1; i++) {
+        const uMid = 0.5 * (uSlide[i] + uSlide[i + 1]) + 0.2 * (uDef[i] + uDef[i + 1]);
+        const hMid = 0.5 * (H[i] + H[i + 1]);
+        // Bulldoze speed drops to zero outside glacier so sediment piles up right at the snout!
+        const icePush = hMid > 18 ? 1.0 : 0.0;
+        const sedUp = uMid >= 0 ? sed[i] : sed[i + 1];
+        const advFlux = icePush * uMid * 0.42 * sedUp;
+        // Gentle hillslope diffusion (angle of repose for moraines)
+        const diffFlux = -220 * ((bed[i + 1] - bed[i]) / DX_M) * Math.min(1, (sed[i] + sed[i + 1]) / 30);
+        qSed[i] = advFlux + diffFlux;
+      }
+      qSed[N - 1] = 0;
+
+      for (let i = 1; i < N - 1; i++) {
+        const dSed = -((qSed[i] - qSed[i - 1]) / DX_M) * dtYrTot;
+        sed[i] = Math.max(0, Math.min(480, sed[i] + dSed));
+      }
+      // Smooth tiny ripples in erosion slightly so carved U-valleys & cirques look geological
+      for (let i = 1; i < N - 1; i++) {
+        bTmp[i] = erosion[i] + 0.04 * (erosion[i - 1] - 2 * erosion[i] + erosion[i + 1]);
+      }
+      for (let i = 1; i < N - 1; i++) erosion[i] = Math.max(0, bTmp[i]);
+    }
+
+    // 5. Sea-Level Eustatic Response
+    updateSeaLevel();
+
+    // 6. Glacial Isostatic Adjustment (Viscous Asthenosphere Relaxation)
+    computeEquilibriumDeflection(false);
+    const relaxFactor = 1 - Math.exp(-dtKyr / Math.max(0.25, state.mantleTauKyr));
+    for (let i = 0; i < N; i++) {
+      wPrev[i] = w[i];
+      w[i] += (wEq[i] - w[i]) * relaxFactor;
+      dwDt[i] = (w[i] - wPrev[i]) / Math.max(dtKyr, 1e-5); // m / kyr
+    }
+
+    updateDerivedSurfaces();
+    computeLakes();
+
+    // 7. Update time & telemetry metrics
+    state.timeKyr += dtKyr;
+    state.maxVel = maxVel;
+
+    let maxH = 0;
+    let firstIce = -1;
+    let lastIce = -1;
+    let minW = 0;
+    let maxW = 0;
+    let maxE = 0;
+
+    for (let i = 0; i < N; i++) {
+      if (H[i] > maxH) maxH = H[i];
+      if (H[i] > 20) {
+        if (firstIce < 0) firstIce = i;
+        lastIce = i;
+      }
+      if (w[i] < minW) minW = w[i];
+      if (w[i] > maxW) maxW = w[i];
+      if (erosion[i] > maxE) maxE = erosion[i];
+    }
+    state.maxIceThick = maxH;
+    state.glacierLengthKm = firstIce >= 0 ? (lastIce - firstIce + 1) * DX_KM : 0;
+    state.maxDepression = minW;
+    state.maxRebound = maxW;
+    state.maxCarved = maxE;
+
+    const volNow = computeTotalIceVol();
+    state.dVolDt = (volNow - state.prevIceVol) / Math.max(dtKyr, 1e-5);
+    state.prevIceVol = volNow;
+
+    // Occasional subtle glacial creak sound when actively moving/flexing
+    if (state.creakCooldown <= 0 && maxVel > 90 && Math.random() < 0.08) {
+      playGlacialCreak();
+      state.creakCooldown = 2.8 + Math.random() * 4.5;
+    }
+  }
+
+  // =========================================================================
+  // INTERACTIVE CANVAS SCULPTING BRUSH
+  // =========================================================================
+  function applyBrush(dtReal) {
+    if (!state.pointerDown || !state.pointerInCanvas) return;
+    const centerIdx = screenToIdx(state.pointerX);
+    const radiusCells = Math.max(2, state.brushRadiusKm / DX_KM);
+    const iMin = Math.max(1, Math.floor(centerIdx - radiusCells));
+    const iMax = Math.min(N - 2, Math.ceil(centerIdx + radiusCells));
+    const rate = dtReal * 1150; // m/sec peak brush speed
+
+    for (let i = iMin; i <= iMax; i++) {
+      const dist = Math.abs(i - centerIdx) / radiusCells;
+      if (dist >= 1) continue;
+      const kernel = Math.cos(dist * Math.PI * 0.5);
+      const strength = kernel * kernel;
+
+      if (state.brushMode === 'raise') {
+        b0[i] = Math.min(3900, b0[i] + rate * strength);
+      } else if (state.brushMode === 'carve') {
+        b0[i] = Math.max(-2400, b0[i] - rate * strength);
+      } else if (state.brushMode === 'ice') {
+        H[i] = Math.min(3800, H[i] + rate * 1.6 * strength);
+      } else if (state.brushMode === 'melt') {
+        H[i] = Math.max(0, H[i] - rate * 1.9 * strength);
+      }
+    }
+    updateSeaLevel();
+    updateDerivedSurfaces();
+    computeLakes();
+  }
+
+  // =========================================================================
+  // UPDATE VISUAL ENTITIES (ICEBERGS, SNOW, SPLASH, MANTLE, FLOW TRACERS)
+  // =========================================================================
+  function updateVisuals(dtReal) {
+    state.visualTime += dtReal;
+    if (state.calvingCooldown > 0) state.calvingCooldown -= dtReal;
+    if (state.creakCooldown > 0) state.creakCooldown -= dtReal;
+
+    const animScale = state.playing ? Math.min(2.4, 0.55 + 0.45 * state.speedMult) : 0.15;
+
+    // Icebergs drift, bob, and slowly melt in warmer water
+    for (let k = icebergs.length - 1; k >= 0; k--) {
+      const berg = icebergs[k];
+      berg.age += dtReal;
+      berg.u += berg.vx * dtReal * animScale;
+      berg.bobPhase += dtReal * 1.8;
+      const meltRate = Math.max(4, 10 + (state.tempAnomaly + 4) * 3.2);
+      berg.h -= meltRate * dtReal * animScale;
+      if (berg.h < 22 || berg.u > 1.08) {
+        icebergs.splice(k, 1);
+      }
+    }
+
+    // Splash particles
+    for (let k = splashParticles.length - 1; k >= 0; k--) {
+      const p = splashParticles[k];
+      p.x += p.vx * dtReal;
+      p.y += p.vy * dtReal;
+      p.vy += 190 * dtReal;
+      p.life -= dtReal * 1.35;
+      if (p.life <= 0) splashParticles.splice(k, 1);
+    }
+
+    // Snow / Rain precipitation particles
+    for (let k = 0; k < precipParticles.length; k++) {
+      const p = precipParticles[k];
+      p.x += p.vx * dtReal * (0.6 + 0.4 * state.precipRate);
+      p.y += p.vy * dtReal * (0.7 + 0.35 * state.precipRate);
+      if (p.x > 1.02) p.x = -0.02;
+      if (p.y > 0.72) {
+        p.y = -0.02;
+        p.x = Math.random();
+      }
+    }
+
+    // Mantle return-flow tracer particles (move laterally away from depressing zones, toward rebounding zones!)
+    // By continuity: dv_mantle/dx ∝ -dw/dt => v_mantle(x) = -∫ dw/dt dx
+    let cumFlow = 0;
+    for (let i = 0; i < N; i++) {
+      cumFlow += dwDt[i] * DX_KM * 0.004;
+      bTmp[i] = cumFlow; // repurpose bTmp for lateral mantle velocity field
+    }
+    // Remove mean drift so return flow radiates symmetrically outward/inward
+    const meanFlow = bTmp[N - 1] * 0.5;
+    for (let i = 0; i < N; i++) bTmp[i] -= meanFlow;
+
+    for (let k = 0; k < mantleParticles.length; k++) {
+      const mp = mantleParticles[k];
+      const idx = Math.max(0, Math.min(N - 1, Math.floor(mp.idx)));
+      const vLat = Math.max(-28, Math.min(28, bTmp[idx] * 0.35));
+      mp.idx += vLat * dtReal * animScale;
+      if (mp.idx < 1) mp.idx = N - 2;
+      if (mp.idx > N - 2) mp.idx = 1;
+    }
+
+    // Internal glacier flow tracers
+    for (let k = 0; k < flowTracers.length; k++) {
+      const ft = flowTracers[k];
+      const idx = Math.max(0, Math.min(N - 1, Math.floor(ft.idx)));
+      if (H[idx] < 45) {
+        // Respawn inside thick ice
+        let tries = 0;
+        while (tries < 10) {
+          const cand = Math.floor(Math.random() * (N - 2));
+          if (H[cand] > 80) {
+            ft.idx = cand + Math.random();
+            ft.relZ = 0.12 + Math.random() * 0.80;
+            ft.life = 0;
+            break;
+          }
+          tries++;
+        }
+        continue;
+      }
+      // Glen's law vertical velocity profile: u(z) = u_slide + u_def * (1 - (1 - relZ)^4)
+      const glenShape = 1 - Math.pow(1 - ft.relZ, 4);
+      const uLocal = uSlide[idx] + uDef[idx] * glenShape * 1.25;
+      ft.idx += (uLocal / 140) * dtReal * animScale * 3.5;
+      ft.life += dtReal * 0.4;
+      if (ft.idx < 1 || ft.idx >= N - 2 || ft.life > 1.0) {
+        ft.idx = Math.random() * (N - 2);
+        ft.relZ = 0.12 + Math.random() * 0.82;
+        ft.life = 0;
+      }
+    }
+  }
+
+  // =========================================================================
+  // MUSEUM-GRADE CANVAS RENDERER
+  // =========================================================================
+  function render() {
+    ctx.save();
+    ctx.scale(DPR, DPR);
+
+    // 1. Deep Polar Sky Backdrop (#040711 -> horizon atmospheric tint reacting to climate!)
+    const coldness = Math.max(0, Math.min(1, (-state.tempAnomaly + 2) / 11));
+    const warmth = Math.max(0, Math.min(1, (state.tempAnomaly + 1) / 7));
+
+    const skyGrad = ctx.createLinearGradient(0, 0, 0, zToScreen(-400));
+    skyGrad.addColorStop(0, '#040711');
+    skyGrad.addColorStop(0.55, coldness > 0.45 ? '#071226' : '#091426');
+    skyGrad.addColorStop(
+      1,
+      warmth > 0.35
+        ? `rgba(${Math.round(28 + 38 * warmth)}, ${Math.round(42 + 24 * warmth)}, ${Math.round(68 - 10 * warmth)}, 1)`
+        : '#0f223d'
+    );
+    ctx.fillStyle = skyGrad;
+    ctx.fillRect(0, 0, W, Hpx);
+
+    // Stars
+    for (let i = 0; i < stars.length; i++) {
+      const st = stars[i];
+      const alpha = 0.25 + 0.55 * (0.5 + 0.5 * Math.sin(state.visualTime * st.twinkle + st.phase));
+      ctx.fillStyle = `rgba(215, 236, 255, ${alpha.toFixed(3)})`;
+      ctx.fillRect(st.x, st.y, st.r, st.r);
+    }
+
+    // Subtle Polar Aurora Borealis Ribbon (stronger during cold Ice Ages!)
+    if (coldness > 0.15) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'screen';
+      const aurAlpha = (0.08 + 0.16 * coldness);
+      for (let band = 0; band < 2; band++) {
+        ctx.beginPath();
+        const baseY = Hpx * (0.12 + band * 0.06);
+        for (let x = 0; x <= W; x += 24) {
+          const u = x / W;
+          const wave =
+            Math.sin(u * 5.2 + state.visualTime * (0.28 + band * 0.11) + band * 2.1) * 26 +
+            Math.sin(u * 11.4 - state.visualTime * 0.19) * 12;
+          const y = baseY + wave;
+          if (x === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        const aurGrad = ctx.createLinearGradient(0, baseY - 40, 0, baseY + 60);
+        aurGrad.addColorStop(0, 'rgba(60, 255, 195, 0)');
+        aurGrad.addColorStop(0.5, band === 0 ? `rgba(74, 242, 178, ${aurAlpha})` : `rgba(88, 200, 255, ${aurAlpha * 0.85})`);
+        aurGrad.addColorStop(1, 'rgba(130, 110, 255, 0)');
+        ctx.strokeStyle = aurGrad;
+        ctx.lineWidth = 34 - band * 8;
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    // 2. Precipitation (Snow above ELA, soft rain streaks below ELA)
+    if (state.showEla) {
+      const elaY = zToScreen(state.elaCurrent);
+      const count = Math.floor(precipParticles.length * Math.min(1, 0.25 + 0.45 * state.precipRate));
+      for (let i = 0; i < count; i++) {
+        const p = precipParticles[i];
+        const px = p.x * W;
+        const py = p.y * Hpx;
+        const idx = Math.floor(screenToIdx(px));
+        if (py > zToScreen(surf[idx])) continue; // Don't draw inside ground/ice
+
+        if (py < elaY) {
+          // Drifting snowflake
+          const wobble = Math.sin(state.visualTime * 2.5 + p.phase) * 3;
+          ctx.fillStyle = 'rgba(232, 248, 255, 0.62)';
+          ctx.beginPath();
+          ctx.arc(px + wobble, py, p.size * 0.85, 0, Math.PI * 2);
+          ctx.fill();
+        } else {
+          // Subtle rain streak in ablation zone
+          ctx.strokeStyle = 'rgba(130, 195, 255, 0.26)';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(px, py);
+          ctx.lineTo(px + 2, py + 7);
+          ctx.stroke();
+        }
+      }
+    }
+
+    // 3. Ocean Water Volume (drawn behind glacier snout & icebergs, then surface shimmer on top)
+    const slY = zToScreen(state.seaLevel);
+    const oceanGrad = ctx.createLinearGradient(0, slY, 0, zToScreen(-2600));
+    oceanGrad.addColorStop(0, 'rgba(32, 132, 198, 0.82)');
+    oceanGrad.addColorStop(0.28, 'rgba(16, 76, 138, 0.90)');
+    oceanGrad.addColorStop(1, 'rgba(5, 25, 58, 0.96)');
+
+    ctx.beginPath();
+    ctx.moveTo(0, slY);
+    for (let i = 0; i < N; i++) {
+      const x = xToScreen(i);
+      const wave = Math.sin(i * 0.35 + state.visualTime * 2.4) * 1.4;
+      ctx.lineTo(x, slY + wave);
+    }
+    ctx.lineTo(W, Hpx);
+    ctx.lineTo(0, Hpx);
+    ctx.closePath();
+    ctx.fillStyle = oceanGrad;
+    ctx.fill();
+
+    // 4. Overdeepened Proglacial / Cirque Lakes (sparkling glacial-flour turquoise!)
+    drawProglacialLakes();
+
+    // 5. Drifting Icebergs (with submerged Archimedes keel!)
+    drawIcebergs();
+
+    // 6. Glowing Asthenosphere / Viscous Mantle (below flexing Moho)
+    drawMantle();
+
+    // 7. Elastic Flexing Crustal Lithosphere (with warped geological strata!)
+    drawCrust();
+
+    // 8. Bulldozed Glacial Till & Terminal Moraines
+    drawMoraine();
+
+    // 9. Crystalline Layered Glacier / Ice Sheet + Crevasses + Basal Meltwater + Flow Vectors
+    drawGlacier();
+
+    // 10. Ocean Surface Shimmer + Sea-Level Datum Line
+    drawOceanSurfaceOverlay();
+
+    // 11. Pre-Glacial Reference Bedrock Ghost Line
+    if (state.showGhost) {
+      drawPreGlacialGhost();
+    }
+
+    // 12. Equilibrium Line Altitude (ELA) Glowing Reference
+    if (state.showEla) {
+      drawElaOverlay();
+    }
+
+    // 13. Splash Particles
+    for (let i = 0; i < splashParticles.length; i++) {
+      const sp = splashParticles[i];
+      ctx.fillStyle = `rgba(215, 248, 255, ${(sp.life * 0.85).toFixed(3)})`;
+      ctx.beginPath();
+      ctx.arc(sp.x, sp.y, sp.size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // 14. Subtle Elevation & Distance Rulers
+    drawAxes();
+
+    // 15. Interactive Sculpting Brush Reticle
+    if (state.pointerInCanvas) {
+      drawBrushReticle();
+    }
+
+    ctx.restore();
+  }
+
+  function drawProglacialLakes() {
+    let inLake = false;
+    let startI = 0;
+    for (let i = 0; i <= N; i++) {
+      const hasLake = i < N && lakeLvl[i] > -9000;
+      if (hasLake && !inLake) {
+        inLake = true;
+        startI = i;
+      } else if (!hasLake && inLake) {
+        inLake = false;
+        const endI = i - 1;
+        if (endI >= startI) {
+          const lvl = lakeLvl[startI];
+          const topY = zToScreen(lvl);
+          ctx.beginPath();
+          ctx.moveTo(xToScreen(Math.max(0, startI - 1)), topY);
+          ctx.lineTo(xToScreen(Math.min(N - 1, endI + 1)), topY);
+          for (let j = Math.min(N - 1, endI + 1); j >= Math.max(0, startI - 1); j--) {
+            ctx.lineTo(xToScreen(j), zToScreen(bed[j]) + 2);
+          }
+          ctx.closePath();
+          const lg = ctx.createLinearGradient(0, topY, 0, topY + 60);
+          lg.addColorStop(0, 'rgba(84, 240, 232, 0.86)');
+          lg.addColorStop(1, 'rgba(18, 125, 148, 0.94)');
+          ctx.fillStyle = lg;
+          ctx.fill();
+
+          // Shimmer highlight line
+          ctx.strokeStyle = 'rgba(205, 255, 252, 0.75)';
+          ctx.lineWidth = 1.4;
+          ctx.beginPath();
+          ctx.moveTo(xToScreen(startI), topY + 0.5);
+          ctx.lineTo(xToScreen(endI), topY + 0.5);
+          ctx.stroke();
+        }
+      }
+    }
+  }
+
+  function drawIcebergs() {
+    const slY = zToScreen(state.seaLevel);
+    const pxPerM = Hpx / (Z_MAX - Z_MIN);
+    for (let k = 0; k < icebergs.length; k++) {
+      const b = icebergs[k];
+      const cx = b.u * W;
+      const bob = Math.sin(b.bobPhase) * 2.2;
+      const wPx = (b.wKm / DOMAIN_KM) * W;
+      const hPx = b.h * pxPerM;
+
+      ctx.save();
+      ctx.translate(cx, slY + bob);
+      ctx.rotate(b.tilt + Math.sin(b.bobPhase * 0.7) * 0.03);
+
+      // Submerged underwater keel (~88% below waterline!)
+      ctx.beginPath();
+      ctx.moveTo(-wPx * 0.5, 0);
+      ctx.lineTo(wPx * 0.5, 0);
+      for (let p = 0; p < b.keelPts.length; p++) {
+        ctx.lineTo(b.keelPts[p][0] * wPx, b.keelPts[p][1] * hPx);
+      }
+      ctx.closePath();
+      const keelGrad = ctx.createLinearGradient(0, 0, 0, hPx * 0.85);
+      keelGrad.addColorStop(0, 'rgba(120, 224, 255, 0.45)');
+      keelGrad.addColorStop(1, 'rgba(35, 118, 178, 0.25)');
+      ctx.fillStyle = keelGrad;
+      ctx.fill();
+
+      // Above-water sunlit crystalline sail (~12-18% above waterline)
+      ctx.beginPath();
+      ctx.moveTo(-wPx * 0.5, 1);
+      for (let p = 0; p < b.topPts.length; p++) {
+        ctx.lineTo(b.topPts[p][0] * wPx, b.topPts[p][1] * hPx * 1.45);
+      }
+      ctx.lineTo(wPx * 0.5, 1);
+      ctx.closePath();
+      const topGrad = ctx.createLinearGradient(0, -hPx * 0.35, 0, 2);
+      topGrad.addColorStop(0, '#f5fcff');
+      topGrad.addColorStop(1, '#9be8ff');
+      ctx.fillStyle = topGrad;
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+      ctx.lineWidth = 0.8;
+      ctx.stroke();
+
+      ctx.restore();
+    }
+  }
+
+  function drawMantle() {
+    // Upper Moho boundary = b0 - erosion + w - CRUST_THICK
+    ctx.beginPath();
+    ctx.moveTo(0, Hpx);
+    for (let i = 0; i < N; i++) {
+      const mohoZ = b0[i] - erosion[i] + w[i] - CRUST_THICK;
+      ctx.lineTo(xToScreen(i), zToScreen(mohoZ));
+    }
+    ctx.lineTo(W, Hpx);
+    ctx.closePath();
+
+    const mantleTopY = zToScreen(-1200);
+    const mGrad = ctx.createLinearGradient(0, mantleTopY, 0, Hpx);
+    mGrad.addColorStop(0, '#ff8e3c');
+    mGrad.addColorStop(0.24, '#d94518');
+    mGrad.addColorStop(0.62, '#7d1912');
+    mGrad.addColorStop(1, '#26060b');
+    ctx.fillStyle = mGrad;
+    ctx.fill();
+
+    // Glowing thermal asthenosphere convection plumes & particles
+    ctx.save();
+    ctx.clip();
+
+    // Soft convective heat glow waves
+    for (let band = 0; band < 3; band++) {
+      ctx.beginPath();
+      const zBand = -2450 - band * 680;
+      for (let i = 0; i < N; i += 2) {
+        const x = xToScreen(i);
+        const swell = Math.sin(i * 0.09 + state.visualTime * (0.35 + band * 0.12) + band) * 140;
+        const y = zToScreen(zBand + w[i] * 0.5 + swell);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.strokeStyle = band === 0 ? 'rgba(255, 185, 86, 0.22)' : 'rgba(255, 110, 48, 0.15)';
+      ctx.lineWidth = 22 - band * 4;
+      ctx.stroke();
+    }
+
+    // Moving incandescent mantle particles
+    for (let k = 0; k < mantleParticles.length; k++) {
+      const mp = mantleParticles[k];
+      const idx = Math.max(0, Math.min(N - 1, Math.floor(mp.idx)));
+      const mohoZ = b0[idx] - erosion[idx] + w[idx] - CRUST_THICK;
+      const z = mohoZ - mp.depthFrac * (mohoZ - Z_MIN);
+      const px = (mp.idx / (N - 1)) * W;
+      const py = zToScreen(z);
+      ctx.fillStyle = `rgba(255, 198, 108, ${(mp.alpha * 0.65).toFixed(3)})`;
+      ctx.beginPath();
+      ctx.arc(px, py, mp.size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Mantle Return-Flow Directional Arrows (clearly show outward squeezing vs inward rebound!)
+    if (state.showMantleFlow) {
+      let maxAbsFlow = 0.01;
+      for (let i = 0; i < N; i++) {
+        if (Math.abs(bTmp[i]) > maxAbsFlow) maxAbsFlow = Math.abs(bTmp[i]);
+      }
+      const isActive = maxAbsFlow > 0.12;
+      if (isActive) {
+        for (let i = 10; i < N - 10; i += 14) {
+          const flow = bTmp[i];
+          const mag = Math.min(1, Math.abs(flow) / 6.0);
+          if (mag < 0.08) continue;
+          const mohoZ = b0[i] - erosion[i] + w[i] - CRUST_THICK;
+          const zMid = Math.max(Z_MIN + 260, mohoZ - 620);
+          const x = xToScreen(i);
+          const y = zToScreen(zMid);
+          const dir = flow >= 0 ? 1 : -1;
+          const len = 14 + mag * 22;
+
+          ctx.strokeStyle = `rgba(255, 224, 150, ${(0.25 + 0.62 * mag).toFixed(3)})`;
+          ctx.fillStyle = ctx.strokeStyle;
+          ctx.lineWidth = 1.6;
+          ctx.beginPath();
+          ctx.moveTo(x - dir * len * 0.5, y);
+          ctx.lineTo(x + dir * len * 0.5, y);
+          ctx.stroke();
+
+          // Arrowhead
+          ctx.beginPath();
+          ctx.moveTo(x + dir * (len * 0.5 + 4), y);
+          ctx.lineTo(x + dir * (len * 0.5 - 3), y - 3.8);
+          ctx.lineTo(x + dir * (len * 0.5 - 3), y + 3.8);
+          ctx.closePath();
+          ctx.fill();
+        }
+      }
+
+      // Vertical crustal movement arrows right along Moho where flexing strongly
+      for (let i = 16; i < N - 16; i += 22) {
+        const rate = dwDt[i]; // m/kyr
+        if (Math.abs(rate) < 8) continue;
+        const mag = Math.min(1, Math.abs(rate) / 140);
+        const mohoZ = b0[i] - erosion[i] + w[i] - CRUST_THICK;
+        const x = xToScreen(i);
+        const y = zToScreen(mohoZ - 140);
+        const dirY = rate < 0 ? 1 : -1; // down on screen if depressing, up if rebounding!
+        const len = 10 + mag * 14;
+        ctx.strokeStyle = rate > 0
+          ? `rgba(74, 242, 178, ${(0.45 + 0.5 * mag).toFixed(3)})`
+          : `rgba(255, 196, 92, ${(0.45 + 0.5 * mag).toFixed(3)})`;
+        ctx.fillStyle = ctx.strokeStyle;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(x, y - dirY * len * 0.5);
+        ctx.lineTo(x, y + dirY * len * 0.5);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(x, y + dirY * (len * 0.5 + 4));
+        ctx.lineTo(x - 4, y + dirY * (len * 0.5 - 2));
+        ctx.lineTo(x + 4, y + dirY * (len * 0.5 - 2));
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+
+    // Subtle label inside mantle
+    ctx.font = '700 10px ' + getComputedStyle(document.documentElement).getPropertyValue('--sans');
+    ctx.fillStyle = 'rgba(255, 208, 150, 0.42)';
+    ctx.letterSpacing = '0.16em';
+    ctx.fillText('VISCOUS ASTHENOSPHERE MANTLE  (ρ ≈ 3,300 kg/m³)', 24, Hpx - 62);
+
+    ctx.restore();
+
+    // Glowing Moho boundary stroke
+    ctx.beginPath();
+    for (let i = 0; i < N; i++) {
+      const mohoZ = b0[i] - erosion[i] + w[i] - CRUST_THICK;
+      const x = xToScreen(i);
+      const y = zToScreen(mohoZ);
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.strokeStyle = 'rgba(255, 178, 92, 0.72)';
+    ctx.lineWidth = 2.2;
+    ctx.stroke();
+  }
+
+  function drawCrust() {
+    // Solid bedrock polygon between b[i] and moho[i]
+    ctx.beginPath();
+    for (let i = 0; i < N; i++) {
+      const x = xToScreen(i);
+      const y = zToScreen(b0[i] - erosion[i] + w[i]);
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    for (let i = N - 1; i >= 0; i--) {
+      const x = xToScreen(i);
+      const y = zToScreen(b0[i] - erosion[i] + w[i] - CRUST_THICK);
+      ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+
+    const crustGrad = ctx.createLinearGradient(0, zToScreen(3200), 0, zToScreen(-3600));
+    crustGrad.addColorStop(0, '#5a687c');
+    crustGrad.addColorStop(0.32, '#3d495b');
+    crustGrad.addColorStop(0.68, '#283244');
+    crustGrad.addColorStop(1, '#3b242a'); // heated lower lithosphere near Moho
+    ctx.fillStyle = crustGrad;
+    ctx.fill();
+
+    // Clip to crust to draw flexing geological strata bands (makes crustal bending super obvious!)
+    ctx.save();
+    ctx.clip();
+
+    const strataOffsets = [320, 680, 1080, 1480];
+    for (let s = 0; s < strataOffsets.length; s++) {
+      ctx.beginPath();
+      const off = strataOffsets[s];
+      for (let i = 0; i < N; i++) {
+        // Strata follow original pre-erosion geometry + isostatic flexure w[i]
+        const zStrata = b0[i] + w[i] - off;
+        const x = xToScreen(i);
+        const y = zToScreen(zStrata);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.strokeStyle = s === 3
+        ? 'rgba(255, 142, 74, 0.16)'
+        : 'rgba(176, 200, 232, 0.11)';
+      ctx.lineWidth = s === 1 ? 2.2 : 1.3;
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // Crisp bedrock surface ridge outline
+    ctx.beginPath();
+    for (let i = 0; i < N; i++) {
+      const x = xToScreen(i);
+      const y = zToScreen(b0[i] - erosion[i] + w[i]);
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.strokeStyle = 'rgba(182, 206, 235, 0.42)';
+    ctx.lineWidth = 1.3;
+    ctx.stroke();
+  }
+
+  function drawMoraine() {
+    // Draw bulldozed glacial till & terminal moraine ridges sitting atop bedrock
+    let hasAny = false;
+    for (let i = 0; i < N; i++) {
+      if (sed[i] > 4) { hasAny = true; break; }
+    }
+    if (!hasAny) return;
+
+    ctx.beginPath();
+    for (let i = 0; i < N; i++) {
+      const x = xToScreen(i);
+      const y = zToScreen(bed[i]);
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    for (let i = N - 1; i >= 0; i--) {
+      const x = xToScreen(i);
+      const y = zToScreen(b0[i] - erosion[i] + w[i]);
+      ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+
+    const morGrad = ctx.createLinearGradient(0, zToScreen(1800), 0, zToScreen(-1500));
+    morGrad.addColorStop(0, '#a6937c');
+    morGrad.addColorStop(1, '#6e5e4d');
+    ctx.fillStyle = morGrad;
+    ctx.fill();
+
+    // Subtle rocky boulder speckles on thick moraine ridges
+    ctx.fillStyle = 'rgba(230, 214, 192, 0.45)';
+    for (let i = 2; i < N - 2; i += 2) {
+      if (sed[i] > 28) {
+        const x = xToScreen(i);
+        const y = zToScreen(bed[i] - sed[i] * 0.45);
+        ctx.fillRect(x - 1, y - 1, 2.2, 2.2);
+      }
+    }
+  }
+
+  function drawGlacier() {
+    // Draw contiguous ice segments cleanly
+    let inIce = false;
+    let startI = 0;
+
+    for (let i = 0; i <= N; i++) {
+      const hasIce = i < N && H[i] > 2;
+      if (hasIce && !inIce) {
+        inIce = true;
+        startI = i;
+      } else if (!hasIce && inIce) {
+        inIce = false;
+        const endI = i - 1;
+        drawGlacierSegment(startI, endI);
+      }
+    }
+  }
+
+  function drawGlacierSegment(startI, endI) {
+    const i0 = Math.max(0, startI - 1);
+    const i1 = Math.min(N - 1, endI + 1);
+
+    // Find vertical bounds for rich crystalline ice gradient
+    let maxZ = -9999;
+    let minZ = 9999;
+    for (let i = i0; i <= i1; i++) {
+      if (surf[i] > maxZ) maxZ = surf[i];
+      if (bed[i] < minZ) minZ = bed[i];
+    }
+
+    ctx.beginPath();
+    for (let i = i0; i <= i1; i++) {
+      const x = xToScreen(i);
+      const y = zToScreen(surf[i]);
+      if (i === i0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    for (let i = i1; i >= i0; i--) {
+      ctx.lineTo(xToScreen(i), zToScreen(bed[i]));
+    }
+    ctx.closePath();
+
+    const iceGrad = ctx.createLinearGradient(0, zToScreen(maxZ), 0, zToScreen(minZ));
+    iceGrad.addColorStop(0, 'rgba(244, 252, 255, 0.96)');
+    iceGrad.addColorStop(0.18, 'rgba(174, 236, 255, 0.92)');
+    iceGrad.addColorStop(0.55, 'rgba(72, 182, 240, 0.88)');
+    iceGrad.addColorStop(1, 'rgba(22, 82, 152, 0.93)');
+    ctx.fillStyle = iceGrad;
+    ctx.fill();
+
+    // Clip inside ice polygon for internal isochrone layers, flow vectors & crevasses
+    ctx.save();
+    ctx.clip();
+
+    // Internal compressed ice strata / isochrones
+    const fracs = [0.22, 0.45, 0.68, 0.86];
+    for (let f = 0; f < fracs.length; f++) {
+      const frac = fracs[f];
+      ctx.beginPath();
+      for (let i = i0; i <= i1; i++) {
+        const z = bed[i] + H[i] * frac;
+        const x = xToScreen(i);
+        const y = zToScreen(z);
+        if (i === i0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.strokeStyle = f === 3 ? 'rgba(255, 255, 255, 0.34)' : 'rgba(205, 245, 255, 0.16)';
+      ctx.lineWidth = f === 3 ? 1.6 : 1.0;
+      ctx.stroke();
+    }
+
+    // Basal Meltwater Lubrication Film along ice-bed interface
+    if (state.showCrevasse) {
+      for (let i = startI; i < endI; i++) {
+        const bw = basalWater[i];
+        if (bw < 0.08) continue;
+        ctx.strokeStyle = `rgba(82, 248, 255, ${(0.22 + 0.68 * bw).toFixed(3)})`;
+        ctx.lineWidth = 2.0 + bw * 2.8;
+        ctx.beginPath();
+        ctx.moveTo(xToScreen(i), zToScreen(bed[i]) - 1);
+        ctx.lineTo(xToScreen(i + 1), zToScreen(bed[i + 1]) - 1);
+        ctx.stroke();
+      }
+
+      // Tensile Surface Crevasses
+      ctx.strokeStyle = 'rgba(14, 52, 98, 0.68)';
+      ctx.lineWidth = 1.3;
+      for (let i = startI + 1; i < endI - 1; i += 2) {
+        if (H[i] < 95) continue;
+        const st = strain[i];
+        if (st > 0.0025 || (Math.abs(uSlide[i]) > 85 && i % 4 === 0)) {
+          const x = xToScreen(i);
+          const yTop = zToScreen(surf[i]);
+          const depthPx = Math.min(22, Math.max(5, H[i] * 0.012 + st * 420));
+          const lean = (uDef[i] + uSlide[i]) >= 0 ? -2.5 : 2.5;
+          ctx.beginPath();
+          ctx.moveTo(x, yTop);
+          ctx.lineTo(x + lean, yTop + depthPx);
+          ctx.stroke();
+        }
+      }
+    }
+
+    // Internal Ice-Velocity Flow Vectors (Glen's parabolic vertical profile!) + Animated Tracers
+    if (state.showFlow) {
+      // Animated streamlines / ice parcel tracers
+      for (let k = 0; k < flowTracers.length; k++) {
+        const ft = flowTracers[k];
+        if (ft.idx < startI || ft.idx > endI) continue;
+        const idx = Math.floor(ft.idx);
+        if (H[idx] < 60) continue;
+        const z = bed[idx] + H[idx] * ft.relZ;
+        const px = (ft.idx / (N - 1)) * W;
+        const py = zToScreen(z);
+        const fade = Math.sin(ft.life * Math.PI);
+        const dir = (uDef[idx] + uSlide[idx]) >= 0 ? 1 : -1;
+        ctx.strokeStyle = `rgba(255, 255, 255, ${(fade * 0.55).toFixed(3)})`;
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.moveTo(px - dir * 7, py);
+        ctx.lineTo(px + dir * 3, py);
+        ctx.stroke();
+      }
+
+      // Vertical column velocity profile arrows every ~12 cells
+      for (let i = startI + 4; i <= endI - 3; i += 11) {
+        if (H[i] < 180) continue;
+        const vSurf = uSlide[i] + uDef[i] * 1.25;
+        if (Math.abs(vSurf) < 8) continue;
+
+        const levels = [0.22, 0.52, 0.80];
+        for (let lv = 0; lv < levels.length; lv++) {
+          const relZ = levels[lv];
+          const glenShape = 1 - Math.pow(1 - relZ, 4);
+          const uHere = uSlide[i] + uDef[i] * glenShape * 1.25;
+          const dir = uHere >= 0 ? 1 : -1;
+          const len = Math.min(26, 4 + Math.pow(Math.abs(uHere), 0.58) * 1.45);
+          const x = xToScreen(i);
+          const y = zToScreen(bed[i] + H[i] * relZ);
+
+          ctx.strokeStyle = lv === 2 ? 'rgba(255, 255, 255, 0.85)' : 'rgba(190, 245, 255, 0.65)';
+          ctx.fillStyle = ctx.strokeStyle;
+          ctx.lineWidth = 1.3;
+          ctx.beginPath();
+          ctx.moveTo(x, y);
+          ctx.lineTo(x + dir * len, y);
+          ctx.stroke();
+
+          ctx.beginPath();
+          ctx.moveTo(x + dir * (len + 3.5), y);
+          ctx.lineTo(x + dir * (len - 2.5), y - 2.8);
+          ctx.lineTo(x + dir * (len - 2.5), y + 2.8);
+          ctx.closePath();
+          ctx.fill();
+        }
+      }
+    }
+
+    ctx.restore();
+
+    // Bright snowy firn surface highlight above ELA, slightly glossy glacial blue below ELA
+    ctx.beginPath();
+    for (let i = i0; i <= i1; i++) {
+      const x = xToScreen(i);
+      const y = zToScreen(surf[i]);
+      if (i === i0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.strokeStyle = 'rgba(240, 252, 255, 0.9)';
+    ctx.lineWidth = 2.0;
+    ctx.stroke();
+  }
+
+  function drawOceanSurfaceOverlay() {
+    const slY = zToScreen(state.seaLevel);
+    // Find rightmost dry terrain so we highlight the open sea surface cleanly
+    ctx.save();
+    ctx.beginPath();
+    let started = false;
+    for (let i = 0; i < N; i++) {
+      const openWater = surf[i] < state.seaLevel + 5;
+      const x = xToScreen(i);
+      const wave = Math.sin(i * 0.35 + state.visualTime * 2.4) * 1.4;
+      if (openWater) {
+        if (!started) {
+          ctx.moveTo(x, slY + wave);
+          started = true;
+        } else {
+          ctx.lineTo(x, slY + wave);
+        }
+      } else {
+        started = false;
+      }
+    }
+    ctx.strokeStyle = 'rgba(130, 232, 255, 0.78)';
+    ctx.lineWidth = 1.8;
+    ctx.stroke();
+
+    // Reference 0 m datum dashed line when eustatic sea level has shifted noticeably
+    if (Math.abs(state.seaLevel) > 5) {
+      const y0 = zToScreen(0);
+      ctx.setLineDash([4, 5]);
+      ctx.strokeStyle = 'rgba(148, 210, 255, 0.32)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(W * 0.56, y0);
+      ctx.lineTo(W, y0);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.font = '600 10px ' + getComputedStyle(document.documentElement).getPropertyValue('--mono');
+      ctx.fillStyle = 'rgba(165, 224, 255, 0.62)';
+      ctx.textAlign = 'right';
+      ctx.fillText('0m Datum', W - 352, y0 - 4);
+      ctx.fillStyle = '#7ce8ff';
+      const sign = state.seaLevel >= 0 ? '+' : '';
+      ctx.fillText(`Sea Level ${sign}${state.seaLevel.toFixed(0)} m`, W - 352, slY + (state.seaLevel < 0 ? 13 : -6));
+      ctx.textAlign = 'left';
+    }
+    ctx.restore();
+  }
+
+  function drawPreGlacialGhost() {
+    ctx.save();
+    ctx.beginPath();
+    for (let i = 0; i < N; i++) {
+      const x = xToScreen(i);
+      const y = zToScreen(b0[i]);
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.setLineDash([6, 5]);
+    ctx.strokeStyle = 'rgba(255, 198, 96, 0.74)';
+    ctx.lineWidth = 1.6;
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Callout at point of maximum isostatic depression if > 60 m
+    let minW = 0;
+    let minIdx = -1;
+    for (let i = 4; i < N - 10; i++) {
+      if (w[i] < minW) {
+        minW = w[i];
+        minIdx = i;
+      }
+    }
+    if (minIdx >= 0 && minW < -65) {
+      const x = xToScreen(minIdx);
+      const y0 = zToScreen(b0[minIdx]);
+      const yNow = zToScreen(b0[minIdx] - erosion[minIdx] + w[minIdx]);
+      ctx.strokeStyle = 'rgba(255, 190, 92, 0.85)';
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(x, y0);
+      ctx.lineTo(x, yNow);
+      ctx.stroke();
+
+      ctx.fillStyle = 'rgba(10, 15, 28, 0.78)';
+      const lbl = `GIA ${Math.round(minW)} m`;
+      ctx.font = '700 10.5px ' + getComputedStyle(document.documentElement).getPropertyValue('--mono');
+      const tw = ctx.measureText(lbl).width + 12;
+      const bx = Math.min(W - 360 - tw, Math.max(18, x - tw * 0.5));
+      const by = y0 - 22;
+      ctx.fillRect(bx, by, tw, 17);
+      ctx.strokeStyle = 'rgba(255, 190, 92, 0.65)';
+      ctx.strokeRect(bx, by, tw, 17);
+      ctx.fillStyle = '#ffd58a';
+      ctx.fillText(lbl, bx + 6, by + 12);
+    }
+    ctx.restore();
+  }
+
+  function drawElaOverlay() {
+    const y = zToScreen(state.elaCurrent);
+    if (y < 20 || y > Hpx - 60) return;
+
+    ctx.save();
+    ctx.setLineDash([7, 6]);
+    ctx.strokeStyle = 'rgba(124, 232, 255, 0.52)';
+    ctx.lineWidth = 1.25;
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(W, y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Highlight intersection point where ELA crosses glacier surface
+    for (let i = 1; i < N - 1; i++) {
+      if (H[i] > 15 && ((surf[i - 1] >= state.elaCurrent && surf[i] <= state.elaCurrent) ||
+          (surf[i - 1] <= state.elaCurrent && surf[i] >= state.elaCurrent))) {
+        const x = xToScreen(i);
+        ctx.fillStyle = '#fff';
+        ctx.shadowColor = '#58dcff';
+        ctx.shadowBlur = 12;
+        ctx.beginPath();
+        ctx.arc(x, y, 4.2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        break;
+      }
+    }
+
+    // Subtle inline labels on right-center (clear of drawer)
+    const drawerOpen = !document.getElementById('drawer').classList.contains('collapsed') &&
+                       !document.body.classList.contains('zen-mode');
+    const labelX = drawerOpen ? W - 356 : W - 24;
+    ctx.textAlign = 'right';
+    ctx.font = '700 9.5px ' + getComputedStyle(document.documentElement).getPropertyValue('--mono');
+    ctx.fillStyle = 'rgba(165, 240, 255, 0.85)';
+    ctx.fillText(`▲ ACCUMULATION (SNOW) · ELA ${Math.round(state.elaCurrent).toLocaleString()} m`, labelX, y - 6);
+    ctx.fillStyle = 'rgba(255, 198, 118, 0.72)';
+    ctx.fillText('▼ ABLATION (MELT)', labelX, y + 12);
+    ctx.textAlign = 'left';
+    ctx.restore();
+  }
+
+  function drawAxes() {
+    ctx.save();
+    ctx.font = '600 9.5px ' + getComputedStyle(document.documentElement).getPropertyValue('--mono');
+    ctx.fillStyle = 'rgba(154, 176, 212, 0.45)';
+    ctx.strokeStyle = 'rgba(148, 189, 255, 0.14)';
+    ctx.lineWidth = 1;
+
+    const elevTicks = [3000, 2000, 1000, 0, -1000, -2000, -3000];
+    for (let k = 0; k < elevTicks.length; k++) {
+      const z = elevTicks[k];
+      const y = zToScreen(z);
+      if (y < 145 || y > Hpx - 70) continue;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(8, y);
+      ctx.stroke();
+      const txt = z === 0 ? '0 km' : `${z > 0 ? '+' : ''}${(z / 1000).toFixed(0)} km`;
+      ctx.fillText(txt, 11, y + 3);
+    }
+    ctx.restore();
+  }
+
+  function drawBrushReticle() {
+    const rPx = (state.brushRadiusKm / DOMAIN_KM) * W;
+    const colors = {
+      raise: 'rgba(255, 190, 92, 0.8)',
+      carve: 'rgba(255, 96, 131, 0.8)',
+      ice: 'rgba(124, 232, 255, 0.85)',
+      melt: 'rgba(255, 138, 75, 0.85)'
+    };
+    const labels = {
+      raise: '+ Mountain',
+      carve: '− Carve',
+      ice: '+ Ice Load',
+      melt: '− Melt Ice'
+    };
+    const col = colors[state.brushMode];
+
+    ctx.save();
+    ctx.strokeStyle = col;
+    ctx.lineWidth = 1.4;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.arc(state.pointerX, state.pointerY, rPx, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.font = '600 10px ' + getComputedStyle(document.documentElement).getPropertyValue('--mono');
+    ctx.fillStyle = col;
+    ctx.fillText(labels[state.brushMode], state.pointerX + rPx + 6, state.pointerY + 3);
+    ctx.restore();
+  }
+
+  // =========================================================================
+  // TELEMETRY & UI SYNC
+  // =========================================================================
+  function updateTelemetryUI() {
+    document.getElementById('tel-time').textContent = state.timeKyr.toFixed(1) + ' kyr';
+    document.getElementById('tel-thick').textContent = Math.round(state.maxIceThick).toLocaleString() + ' m';
+    document.getElementById('tel-len').textContent = state.glacierLengthKm.toFixed(1) + ' km';
+
+    const crustEl = document.getElementById('tel-crust');
+    const peakDefl = Math.abs(state.maxDepression) >= state.maxRebound ? state.maxDepression : state.maxRebound;
+    const deflSign = peakDefl > 0.5 ? '+' : '';
+    // Determine if rebounding upward
+    let avgDw = 0;
+    for (let i = 5; i < N - 20; i++) avgDw += dwDt[i];
+    avgDw /= (N - 25);
+    const arrow = avgDw > 6 ? ' ↑' : (avgDw < -6 ? ' ↓' : '');
+    crustEl.textContent = `${deflSign}${Math.round(peakDefl)} m${arrow}`;
+    crustEl.className = 'tele-val ' + (avgDw > 6 ? 'mint' : (peakDefl < -80 ? 'magma' : 'amber'));
+
+    document.getElementById('tel-ela').textContent = Math.round(state.elaCurrent).toLocaleString() + ' m';
+
+    const slEl = document.getElementById('tel-sl');
+    const slSign = state.seaLevel >= 0.05 ? '+' : '';
+    slEl.textContent = `${slSign}${state.seaLevel.toFixed(1)} m`;
+    slEl.className = 'tele-val ' + (state.seaLevel < -10 ? 'ice' : (state.seaLevel > 3 ? 'rose' : 'mint'));
+
+    document.getElementById('tel-temp').textContent =
+      (state.tempAnomaly >= 0 ? '+' : '') + state.tempAnomaly.toFixed(1) + '°C';
+    document.getElementById('tel-carve').textContent = Math.round(state.maxCarved) + ' m';
+    document.getElementById('tel-vel').textContent = Math.round(state.maxVel) + ' m/yr';
+
+    // Mass Balance Status Pill
+    const pill = document.getElementById('mass-status');
+    if (state.maxVel > 240 && state.lubrication > 1.8) {
+      pill.textContent = 'Rapid Surge';
+      pill.className = 'status-pill surge';
+    } else if (state.dVolDt > 2.2) {
+      pill.textContent = 'Advancing';
+      pill.className = 'status-pill';
+    } else if (state.dVolDt < -2.2) {
+      pill.textContent = avgDw > 8 ? 'Melt · Rebound' : 'Retreating';
+      pill.className = 'status-pill retreat';
+    } else {
+      pill.textContent = 'Equilibrium';
+      pill.className = 'status-pill eq';
+    }
+
+    const badge = document.getElementById('mode-badge');
+    if (state.milankovitch) {
+      badge.textContent = 'Milankovitch 100k';
+      badge.className = 'mode-badge cycle';
+    } else {
+      badge.textContent = 'Glen n=3 + GIA';
+      badge.className = 'mode-badge';
+    }
+
+    const phaseEl = document.getElementById('climate-phase');
+    if (state.tempAnomaly <= -5.5) {
+      phaseEl.textContent = 'Ice Age';
+      phaseEl.style.color = 'var(--accent-ice)';
+    } else if (state.tempAnomaly < 0.5) {
+      phaseEl.textContent = 'Glacial';
+      phaseEl.style.color = '#a6e9ff';
+    } else {
+      phaseEl.textContent = 'Interglacial Melt';
+      phaseEl.style.color = 'var(--accent-amber)';
+    }
+  }
+
+  function syncControlsFromState() {
+    document.getElementById('sl-temp').value = state.tempAnomaly;
+    document.getElementById('val-temp').textContent =
+      (state.tempAnomaly >= 0 ? '+' : '') + state.tempAnomaly.toFixed(1) + ' °C';
+
+    document.getElementById('sl-precip').value = state.precipRate;
+    document.getElementById('val-precip').textContent = state.precipRate.toFixed(2) + '×';
+
+    document.getElementById('sl-lub').value = state.lubrication;
+    document.getElementById('val-lub').textContent = state.lubrication.toFixed(2) + '×';
+
+    document.getElementById('sl-erode').value = state.erosionScale;
+    document.getElementById('val-erode').textContent = state.erosionScale.toFixed(2) + '×';
+
+    document.getElementById('sl-visc').value = state.mantleTauKyr;
+    document.getElementById('val-visc').textContent = state.mantleTauKyr.toFixed(1) + ' kyr';
+
+    document.getElementById('sl-simspeed').value = state.simSpeedKyrPerSec;
+    document.getElementById('val-simspeed').textContent = state.simSpeedKyrPerSec.toFixed(1) + ' kyr/s';
+
+    document.getElementById('sl-brush').value = state.brushRadiusKm;
+    document.getElementById('val-brush').textContent = state.brushRadiusKm + ' km';
+
+    document.getElementById('chk-milankovitch').checked = state.milankovitch;
+    document.getElementById('chk-flow').checked = state.showFlow;
+    document.getElementById('chk-ghost').checked = state.showGhost;
+    document.getElementById('chk-eustatic').checked = state.eustaticEnabled;
+    document.getElementById('chk-ela').checked = state.showEla;
+    document.getElementById('chk-mantle-flow').checked = state.showMantleFlow;
+    document.getElementById('chk-crevasse').checked = state.showCrevasse;
+  }
+
+  // =========================================================================
+  // EVENT WIRING
+  // =========================================================================
+  function bindEvents() {
+    window.addEventListener('resize', resize);
+
+    // Drawer tabs
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tab = btn.dataset.tab;
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b === btn));
+        document.querySelectorAll('.tab-pane').forEach(p => p.classList.toggle('active', p.id === 'tab-' + tab));
+      });
+    });
+
+    // Presets
+    document.querySelectorAll('.preset-btn').forEach(btn => {
+      btn.addEventListener('click', () => applyPreset(btn.dataset.preset, true));
+    });
+
+    // Sliders
+    document.getElementById('sl-temp').addEventListener('input', e => {
+      state.milankovitch = false;
+      document.getElementById('chk-milankovitch').checked = false;
+      state.tempAnomaly = parseFloat(e.target.value);
+      document.getElementById('val-temp').textContent =
+        (state.tempAnomaly >= 0 ? '+' : '') + state.tempAnomaly.toFixed(1) + ' °C';
+    });
+
+    document.getElementById('sl-precip').addEventListener('input', e => {
+      state.precipRate = parseFloat(e.target.value);
+      document.getElementById('val-precip').textContent = state.precipRate.toFixed(2) + '×';
+    });
+
+    document.getElementById('sl-lub').addEventListener('input', e => {
+      state.lubrication = parseFloat(e.target.value);
+      document.getElementById('val-lub').textContent = state.lubrication.toFixed(2) + '×';
+    });
+
+    document.getElementById('sl-erode').addEventListener('input', e => {
+      state.erosionScale = parseFloat(e.target.value);
+      document.getElementById('val-erode').textContent = state.erosionScale.toFixed(2) + '×';
+    });
+
+    document.getElementById('sl-visc').addEventListener('input', e => {
+      state.mantleTauKyr = parseFloat(e.target.value);
+      document.getElementById('val-visc').textContent = state.mantleTauKyr.toFixed(1) + ' kyr';
+    });
+
+    document.getElementById('sl-simspeed').addEventListener('input', e => {
+      state.simSpeedKyrPerSec = parseFloat(e.target.value);
+      document.getElementById('val-simspeed').textContent = state.simSpeedKyrPerSec.toFixed(1) + ' kyr/s';
+    });
+
+    document.getElementById('sl-brush').addEventListener('input', e => {
+      state.brushRadiusKm = parseInt(e.target.value, 10);
+      document.getElementById('val-brush').textContent = state.brushRadiusKm + ' km';
+    });
+
+    // Quick Climate buttons
+    document.getElementById('btn-ice-age').addEventListener('click', () => {
+      state.milankovitch = false;
+      state.tempAnomaly = -8.5;
+      state.precipRate = Math.max(state.precipRate, 1.45);
+      syncControlsFromState();
+      showToast('Ice Age Triggered (-8.5°C) — Watch Continental Ice Sheet Grow & Depress Crust');
+    });
+
+    document.getElementById('btn-melt-sheet').addEventListener('click', () => {
+      state.milankovitch = false;
+      state.tempAnomaly = 5.0;
+      syncControlsFromState();
+      showToast('Rapid Warming (+5.0°C) — Ice Sheet Melting & Crustal Rebound Initiated!');
+    });
+
+    // Brush mode segmented selector
+    document.querySelectorAll('#brush-mode-row .seg-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        state.brushMode = btn.dataset.brush;
+        document.querySelectorAll('#brush-mode-row .seg-btn').forEach(b => b.classList.toggle('active', b === btn));
+      });
+    });
+
+    // Action buttons
+    document.getElementById('btn-clear-ice').addEventListener('click', () => {
+      H.fill(0);
+      icebergs.length = 0;
+      updateSeaLevel();
+      updateDerivedSurfaces();
+      computeLakes();
+      showToast('All Ice Removed — Watch Pure Viscous Mantle Isostatic Rebound!');
+    });
+
+    document.getElementById('btn-reset-erode').addEventListener('click', () => {
+      erosion.fill(0);
+      sed.fill(0);
+      updateDerivedSurfaces();
+      computeLakes();
+      showToast('Glacial Erosion & Moraine Till Reset to Original Bedrock');
+    });
+
+    // Layer & physics toggles
+    document.getElementById('chk-milankovitch').addEventListener('change', e => {
+      state.milankovitch = e.target.checked;
+      if (state.milankovitch) showToast('Milankovitch 100-kyr Orbital Climate Forcing Active');
+    });
+    document.getElementById('chk-flow').addEventListener('change', e => { state.showFlow = e.target.checked; });
+    document.getElementById('chk-ghost').addEventListener('change', e => { state.showGhost = e.target.checked; });
+    document.getElementById('chk-eustatic').addEventListener('change', e => {
+      state.eustaticEnabled = e.target.checked;
+      updateSeaLevel();
+      computeLakes();
+    });
+    document.getElementById('chk-ela').addEventListener('change', e => { state.showEla = e.target.checked; });
+    document.getElementById('chk-mantle-flow').addEventListener('change', e => { state.showMantleFlow = e.target.checked; });
+    document.getElementById('chk-crevasse').addEventListener('change', e => { state.showCrevasse = e.target.checked; });
+
+    // Bottom transport bar
+    const btnPlay = document.getElementById('btn-play');
+    function togglePlay() {
+      state.playing = !state.playing;
+      btnPlay.textContent = state.playing ? '⏸ Pause' : '▶ Play';
+      btnPlay.classList.toggle('active', state.playing);
+    }
+    btnPlay.addEventListener('click', togglePlay);
+
+    document.getElementById('btn-reset').addEventListener('click', () => applyPreset(state.preset, true));
+
+    document.querySelectorAll('.speed-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        state.speedMult = parseFloat(btn.dataset.speed);
+        document.querySelectorAll('.speed-btn').forEach(b => b.classList.toggle('active', b === btn));
+      });
+    });
+
+    document.getElementById('btn-sound').addEventListener('click', () => {
+      setAudioEnabled(!state.soundEnabled);
+    });
+
+    const drawer = document.getElementById('drawer');
+    const btnDrawer = document.getElementById('btn-toggle-drawer');
+    btnDrawer.addEventListener('click', () => {
+      const collapsed = drawer.classList.toggle('collapsed');
+      btnDrawer.classList.toggle('active', !collapsed);
+    });
+
+    function toggleZen() {
+      document.body.classList.toggle('zen-mode');
+    }
+    document.getElementById('btn-zen').addEventListener('click', toggleZen);
+    document.getElementById('btn-zen-restore').addEventListener('click', toggleZen);
+
+    // Canvas pointer sculpting
+    canvas.addEventListener('pointerdown', e => {
+      if (e.button !== 0) return;
+      state.pointerDown = true;
+      state.pointerInCanvas = true;
+      state.pointerX = e.clientX;
+      state.pointerY = e.clientY;
+      canvas.setPointerCapture(e.pointerId);
+    });
+    canvas.addEventListener('pointermove', e => {
+      state.pointerInCanvas = true;
+      state.pointerX = e.clientX;
+      state.pointerY = e.clientY;
+    });
+    canvas.addEventListener('pointerup', e => {
+      state.pointerDown = false;
+      try { canvas.releasePointerCapture(e.pointerId); } catch (_) {}
+    });
+    canvas.addEventListener('pointerleave', () => {
+      state.pointerInCanvas = false;
+      state.pointerDown = false;
+    });
+
+    // Keyboard shortcuts
+    window.addEventListener('keydown', e => {
+      if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+      if (e.code === 'Space') {
+        e.preventDefault();
+        togglePlay();
+      } else if (e.key === 'r' || e.key === 'R') {
+        applyPreset(state.preset, true);
+      } else if (e.key === 'h' || e.key === 'H') {
+        toggleZen();
+      }
+    });
+  }
+
+  // =========================================================================
+  // MAIN ANIMATION LOOP
+  // =========================================================================
+  let lastTime = performance.now();
+  let uiAccum = 0;
+
+  function frame(now) {
+    const dtReal = Math.min(0.05, Math.max(0.001, (now - lastTime) / 1000));
+    lastTime = now;
+
+    applyBrush(dtReal);
+
+    if (state.playing) {
+      const dtKyr = dtReal * state.simSpeedKyrPerSec * state.speedMult;
+      stepPhysics(dtKyr);
+    }
+
+    updateVisuals(dtReal);
+    render();
+
+    uiAccum += dtReal;
+    if (uiAccum >= 0.08) {
+      uiAccum = 0;
+      updateTelemetryUI();
+    }
+
+    requestAnimationFrame(frame);
+  }
+
+  // Boot
+  resize();
+  initParticles();
+  bindEvents();
+  applyPreset('alpine', false);
+  updateTelemetryUI();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

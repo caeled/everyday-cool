@@ -58,3 +58,19 @@ This checkout can be hosted on any static host. Copy all files and preserve stru
 ## License
 
 Original code, canvas artwork, and helpers: MIT, copyright Steven Powell 2026. Original educational content: CC BY 4.0. Natural Earth: public domain. Open-Meteo forecast data and other external resources retain their own terms. Free reuse and adaptation are welcome under the applicable licenses.
+
+
+## The Earth Science Wave (added 23 November 2026)
+
+Eight interactive earth-science exhibits built by Google Antigravity (Gemini) at Steven Powell's direction, integrated byte-for-byte into this room and audited by Muse — the shipped code driven headlessly, every claim measured, the lesson printed beside each exhibit. They have their own section at the top of `index.html` ("Earth systems" in the rail):
+
+- `earthquake-seismology.html` / `earthquake-seismology-lesson.html` — PREM ray-tracing within ~1% of IASP91; magnitude is a volume knob and the shadow zone wrongly silences P.
+- `tsunami-shoaling.html` / `tsunami-shoaling-lesson.html` — √(g·h) speeds and Green's-law shoaling hold to ~400 m depth, then amplitude saturates near 5 m.
+- `atmosphere-coriolis.html` / `atmosphere-coriolis-lesson.html` — calibrated spherical Coriolis physics; the Ferrel cell blows backwards.
+- `plate-tectonics.html` / `plate-tectonics-lesson.html` — exact stripe symmetry and slab geometry; the Mid-Atlantic rate is ~2.5× too fast and Midway's age is wrong.
+- `glacier-isostasy.html` / `glacier-isostasy-lesson.html` — Airy balance and rebound exact; the advertised forebulge does not exist in the math.
+- `volcano-magma-lab.html` / `volcano-magma-lab-lesson.html` — viscosity engine honest at both ends; VEI is a plume-height lookup with no volume in it.
+- `climate-radiative-lab.html` / `climate-radiative-lab-lesson.html` — equations exact, calibration broken: the "balanced" pre-industrial preset drifts to +32.3 °C.
+- `river-erosion-delta.html` / `river-erosion-delta-lesson.html` — fluvial directions all correct; sediment is created, not conserved, and uplift runs 9× its label.
+
+Reference bank: ~/workspace/your_files/earth-science-four-references_2026-11-23.md (27 sources; 26 curl-verified 200, 1 flagged bot-blocked canonical).

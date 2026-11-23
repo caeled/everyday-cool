@@ -29,3 +29,8 @@ Game-lessons shelf extended (21 November 2026): the shelf in `index.html` grew f
 Astronomy Wave back doors, 23 November 2026: `index.html` gained back doors 75–82 for the Antigravity astronomy-wave lessons in Tonight's Sky (Solar Orrery, Stellar Evolution, Exoplanet Transit, Cosmology Expansion, Eclipse & Tides, Gravitational Lensing, Pulsar Lighthouse, Protoplanetary Disk), verified sequential 1–82, and the section heading count was updated from seventy-four to eighty-two.
 
 Electronics Wave II back doors, 23 November 2026: `index.html` gained back doors 83–91 for the Antigravity Electronics Wave II lessons in Everyday Electronics (Transistor Lab, RLC Resonance, RF Transmission Line, PN Junction, Circuit Sandbox, Logic Gates Lab, Power & PWM, Op-Amp Studio, 555 Timer Lab), verified sequential 1–91, and the section heading count was updated from eighty-two to ninety-one.
+
+
+## Back doors 99–115 — Mathematics, Earth Science, and the completed Biology Wave · 23 November 2026
+
+`index.html` gained seventeen back doors (99–115) in the mixed Antigravity delivery integrated the same day: seven for the Mathematics Wave (Everyday Math), eight for the Earth Science Wave (Weather Everywhere), and two for the completed Biology Wave — Mitosis & Genetics and the Lenia Automata Zoo (Everyday Body). The section heading rose from "Ninety-eight games" to "One hundred fifteen games", verified sequential 1–115 on the page. Each card carries the audit's one-line receipt; the full measurements live in the lessons, in their home rooms.

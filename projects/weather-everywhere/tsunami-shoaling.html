@@ -1,0 +1,3444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Shoaling — Tsunami Generation, Seafloor Bathymetry &amp; Coastal Run-Up</title>
+<style>
+  :root {
+    --bg-deep: #040711;
+    --panel-bg: rgba(9, 13, 24, 0.80);
+    --panel-bg-strong: rgba(8, 12, 22, 0.93);
+    --panel-border: rgba(148, 179, 255, 0.16);
+    --panel-border-hi: rgba(148, 179, 255, 0.36);
+    --text-main: #eef3ff;
+    --text-dim: #9aa9cc;
+    --text-muted: #68789c;
+    --accent-amber: #ffbe5c;
+    --accent-cyan: #58dcff;
+    --accent-mint: #4af2b2;
+    --accent-rose: #ff6083;
+    --accent-violet: #a78bfa;
+    --radius-lg: 14px;
+    --radius-md: 10px;
+    --radius-sm: 7px;
+    --mono: ui-monospace, "Cascadia Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Inter, Helvetica, Arial, sans-serif;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg-deep);
+    color: var(--text-main);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    touch-action: none;
+  }
+
+  #sim-canvas {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    cursor: crosshair;
+  }
+  #sim-canvas.sculpting {
+    cursor: ns-resize;
+  }
+
+  /* HUD Layer */
+  .hud {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 10;
+  }
+  body.zen-mode .hud > :not(.zen-restore) {
+    opacity: 0;
+    pointer-events: none !important;
+  }
+
+  .panel {
+    pointer-events: auto;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-lg);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.52), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    transition: opacity 0.25s ease, transform 0.25s ease;
+  }
+
+  /* Top-Left Telemetry & Live Sensors */
+  .top-left {
+    position: fixed;
+    top: 14px;
+    left: 14px;
+    width: min(420px, calc(100vw - 368px));
+    min-width: 290px;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .brand-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .brand-title-wrap {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .brand-title {
+    font-size: 16px;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    background: linear-gradient(120deg, #e8fbff 0%, #58dcff 48%, #4af2b2 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .mode-badge {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 999px;
+    border: 1px solid rgba(88, 220, 255, 0.4);
+    background: rgba(88, 220, 255, 0.12);
+    color: var(--accent-cyan);
+  }
+
+  .status-pill {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: rgba(74, 242, 178, 0.14);
+    color: var(--accent-mint);
+    border: 1px solid rgba(74, 242, 178, 0.35);
+    white-space: nowrap;
+  }
+  .status-pill.transit {
+    background: rgba(88, 220, 255, 0.15);
+    color: var(--accent-cyan);
+    border-color: rgba(88, 220, 255, 0.42);
+  }
+  .status-pill.warn {
+    background: rgba(255, 190, 92, 0.16);
+    color: var(--accent-amber);
+    border-color: rgba(255, 190, 92, 0.42);
+  }
+  .status-pill.danger {
+    background: rgba(255, 96, 131, 0.2);
+    color: var(--accent-rose);
+    border-color: rgba(255, 96, 131, 0.5);
+  }
+
+  .telemetry-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+  }
+
+  .tele-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(148, 179, 255, 0.1);
+    border-radius: var(--radius-sm);
+    padding: 5px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .tele-label {
+    font-size: 9px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .tele-val {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--text-main);
+    white-space: nowrap;
+  }
+  .tele-val.amber { color: var(--accent-amber); }
+  .tele-val.cyan { color: var(--accent-cyan); }
+  .tele-val.mint { color: var(--accent-mint); }
+  .tele-val.rose { color: var(--accent-rose); }
+
+  /* Live DART & Tide Gauge Oscilloscope */
+  .sensor-box {
+    background: rgba(3, 7, 17, 0.65);
+    border: 1px solid rgba(148, 179, 255, 0.13);
+    border-radius: var(--radius-sm);
+    padding: 6px 8px 5px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .sensor-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 9.5px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+  }
+
+  .sensor-legend {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-family: var(--mono);
+    font-size: 10px;
+  }
+  .leg-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .leg-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+  }
+
+  #sensor-canvas {
+    width: 100%;
+    height: 76px;
+    display: block;
+    border-radius: 4px;
+  }
+
+  .clock-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding-top: 4px;
+    border-top: 1px solid rgba(148, 179, 255, 0.1);
+    font-size: 10.5px;
+    color: var(--text-dim);
+    font-family: var(--mono);
+  }
+  .clock-row span strong {
+    color: var(--text-main);
+    font-weight: 600;
+  }
+
+  /* Right Control Drawer */
+  .drawer {
+    position: fixed;
+    top: 14px;
+    right: 14px;
+    bottom: 14px;
+    width: 330px;
+    max-width: calc(100vw - 28px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: transform 0.25s ease, opacity 0.25s ease;
+  }
+  .drawer.collapsed {
+    transform: translateX(calc(100% + 24px));
+    pointer-events: none;
+  }
+
+  .drawer-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+    padding: 8px 8px 6px;
+    border-bottom: 1px solid var(--panel-border);
+    background: rgba(4, 7, 15, 0.45);
+  }
+
+  .tab-btn {
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    padding: 7px 5px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .tab-btn:hover {
+    color: var(--text-main);
+    background: rgba(255, 255, 255, 0.04);
+  }
+  .tab-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.16);
+    border-color: rgba(88, 220, 255, 0.4);
+  }
+
+  .drawer-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 11px 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .drawer-body::-webkit-scrollbar {
+    width: 5px;
+  }
+  .drawer-body::-webkit-scrollbar-thumb {
+    background: rgba(148, 179, 255, 0.22);
+    border-radius: 999px;
+  }
+
+  .tab-pane {
+    display: none;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .tab-pane.active {
+    display: flex;
+  }
+
+  .section {
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(148, 179, 255, 0.11);
+    border-radius: var(--radius-md);
+    padding: 10px 11px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .section-title {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  /* Presets Grid */
+  .preset-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .preset-btn {
+    text-align: left;
+    padding: 7px 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(148, 179, 255, 0.14);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-main);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .preset-btn:hover {
+    border-color: rgba(88, 220, 255, 0.45);
+    background: rgba(88, 220, 255, 0.08);
+  }
+  .preset-btn.active {
+    border-color: var(--accent-cyan);
+    background: rgba(88, 220, 255, 0.15);
+  }
+  .preset-name {
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.25;
+  }
+  .preset-sub {
+    font-size: 9.5px;
+    color: var(--text-muted);
+    line-height: 1.25;
+  }
+
+  /* Sliders */
+  .control-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .control-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+  .control-head .val {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-main);
+    font-weight: 600;
+  }
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 5px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.18);
+    outline: none;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent-cyan);
+    border: 2px solid #08101f;
+    box-shadow: 0 0 10px rgba(88, 220, 255, 0.65);
+    cursor: pointer;
+  }
+  input[type="range"].amber::-webkit-slider-thumb {
+    background: var(--accent-amber);
+    box-shadow: 0 0 10px rgba(255, 190, 92, 0.65);
+  }
+  input[type="range"].mint::-webkit-slider-thumb {
+    background: var(--accent-mint);
+    box-shadow: 0 0 10px rgba(74, 242, 178, 0.65);
+  }
+
+  /* Segmented Pills */
+  .seg-row {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 5px;
+  }
+  .seg-row.four {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .seg-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-dim);
+    font-size: 11px;
+    font-weight: 650;
+    padding: 6px 6px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-align: center;
+  }
+  .seg-btn:hover {
+    color: #fff;
+    border-color: rgba(148, 179, 255, 0.35);
+  }
+  .seg-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.18);
+    border-color: var(--accent-cyan);
+  }
+  .seg-btn.active.amber {
+    background: rgba(255, 190, 92, 0.18);
+    border-color: var(--accent-amber);
+    color: #ffdfaa;
+  }
+
+  /* Action Buttons */
+  .btn-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .btn {
+    border: 1px solid rgba(148, 179, 255, 0.22);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-main);
+    font-size: 11px;
+    font-weight: 700;
+    padding: 8px 8px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    text-align: center;
+  }
+  .btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 179, 255, 0.45);
+  }
+  .btn:active {
+    transform: scale(0.98);
+  }
+  .btn.primary {
+    background: linear-gradient(135deg, rgba(88, 220, 255, 0.26), rgba(38, 132, 255, 0.22));
+    border-color: rgba(88, 220, 255, 0.55);
+    color: #e6f9ff;
+  }
+  .btn.primary:hover {
+    background: linear-gradient(135deg, rgba(88, 220, 255, 0.38), rgba(38, 132, 255, 0.34));
+  }
+  .btn.amber {
+    background: linear-gradient(135deg, rgba(255, 190, 92, 0.24), rgba(255, 120, 60, 0.2));
+    border-color: rgba(255, 190, 92, 0.55);
+    color: #fff3db;
+  }
+  .btn.rose {
+    background: linear-gradient(135deg, rgba(255, 96, 131, 0.25), rgba(215, 65, 110, 0.2));
+    border-color: rgba(255, 96, 131, 0.52);
+    color: #ffdce5;
+  }
+  .btn.mint {
+    background: linear-gradient(135deg, rgba(74, 242, 178, 0.22), rgba(20, 175, 145, 0.2));
+    border-color: rgba(74, 242, 178, 0.48);
+    color: #d9fff0;
+  }
+
+  /* Toggle Switches */
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11.5px;
+    color: var(--text-dim);
+    cursor: pointer;
+  }
+  .toggle-row input {
+    display: none;
+  }
+  .switch {
+    width: 34px;
+    height: 18px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.2);
+    border: 1px solid rgba(148, 179, 255, 0.25);
+    position: relative;
+    transition: all 0.18s ease;
+    flex-shrink: 0;
+  }
+  .switch::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #c8d7f5;
+    transition: transform 0.18s ease, background 0.18s ease;
+  }
+  .toggle-row input:checked + .switch {
+    background: rgba(88, 220, 255, 0.32);
+    border-color: var(--accent-cyan);
+  }
+  .toggle-row input:checked + .switch::after {
+    transform: translateX(16px);
+    background: #fff;
+  }
+
+  .eq-box {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    line-height: 1.55;
+    color: #cbe3ff;
+    background: rgba(4, 10, 24, 0.65);
+    border: 1px solid rgba(148, 179, 255, 0.14);
+    border-radius: var(--radius-sm);
+    padding: 8px 9px;
+  }
+  .eq-box .hl { color: var(--accent-cyan); font-weight: 700; }
+  .eq-box .am { color: var(--accent-amber); font-weight: 700; }
+  .eq-box .mt { color: var(--accent-mint); font-weight: 700; }
+
+  .note-small {
+    font-size: 10.5px;
+    color: var(--text-muted);
+    line-height: 1.38;
+  }
+
+  /* Bottom Transport Bar */
+  .bottom-bar {
+    position: fixed;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 7px 10px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    flex-wrap: nowrap;
+  }
+
+  .bar-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-main);
+    font-size: 11.5px;
+    font-weight: 650;
+    padding: 6px 9px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    white-space: nowrap;
+  }
+  .bar-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 179, 255, 0.4);
+  }
+  .bar-btn.active {
+    background: rgba(88, 220, 255, 0.2);
+    border-color: var(--accent-cyan);
+    color: #fff;
+  }
+
+  .bar-divider {
+    width: 1px;
+    height: 20px;
+    background: rgba(148, 179, 255, 0.16);
+    margin: 0 2px;
+  }
+
+  /* Bottom-Left Interaction Hints */
+  .hint-pill {
+    position: fixed;
+    bottom: 14px;
+    left: 14px;
+    padding: 7px 11px;
+    font-size: 10.5px;
+    color: var(--text-dim);
+    max-width: 318px;
+    line-height: 1.45;
+  }
+  .hint-pill kbd {
+    font-family: var(--mono);
+    font-size: 9.5px;
+    padding: 1px 4px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #fff;
+  }
+
+  /* Event Alert Banner */
+  .event-banner {
+    position: fixed;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%) translateY(-10px);
+    padding: 8px 15px;
+    border-radius: var(--radius-md);
+    background: rgba(8, 16, 30, 0.88);
+    border: 1px solid rgba(88, 220, 255, 0.48);
+    color: #dcf7ff;
+    font-size: 12px;
+    font-weight: 650;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease, transform 0.25s ease;
+    z-index: 20;
+    backdrop-filter: blur(12px);
+    white-space: nowrap;
+  }
+  .event-banner.visible {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+  .event-banner.warn {
+    background: rgba(24, 15, 7, 0.9);
+    border-color: rgba(255, 190, 92, 0.55);
+    color: #ffe8c2;
+  }
+  .event-banner.danger {
+    background: rgba(26, 8, 16, 0.9);
+    border-color: rgba(255, 96, 131, 0.58);
+    color: #ffd9e2;
+  }
+
+  .zen-restore {
+    position: fixed;
+    bottom: 14px;
+    right: 14px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+  }
+  body.zen-mode .zen-restore {
+    opacity: 0.9;
+    pointer-events: auto;
+  }
+
+  @media (max-width: 960px) {
+    .top-left {
+      width: calc(100vw - 28px);
+      max-width: none;
+    }
+    .drawer {
+      top: auto;
+      bottom: 62px;
+      height: 50vh;
+      width: calc(100vw - 28px);
+    }
+    .hint-pill {
+      display: none;
+    }
+  }
+</style>
+</head>
+<body>
+<canvas id="sim-canvas"></canvas>
+
+<div class="hud">
+  <!-- Top-Left Telemetry & Live Oceanographic Sensors -->
+  <div class="panel top-left">
+    <div class="brand-row">
+      <div class="brand-title-wrap">
+        <div class="brand-title">Shoaling</div>
+        <span class="mode-badge">Saint-Venant SWE</span>
+      </div>
+      <span id="wave-status" class="status-pill transit">Deep Transit</span>
+    </div>
+
+    <div class="telemetry-grid">
+      <div class="tele-card">
+        <span class="tele-label">Wavefront Speed</span>
+        <span id="tel-speed" class="tele-val cyan">713 km/h</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Offshore → Coast</span>
+        <span id="tel-heights" class="tele-val amber">0.0 → 0.0 m</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Shoaling Amp</span>
+        <span id="tel-amp" class="tele-val mint">1.0×</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Max Run-Up</span>
+        <span id="tel-runup" class="tele-val rose">0.0 m</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Wavelength λ</span>
+        <span id="tel-lambda" class="tele-val">—</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Crest Depth h</span>
+        <span id="tel-depth" class="tele-val">4,000 m</span>
+      </div>
+    </div>
+
+    <div class="sensor-box">
+      <div class="sensor-head">
+        <span>Live Wave Gauges η(t)</span>
+        <div class="sensor-legend">
+          <span class="leg-item"><span class="leg-dot" style="background:#58dcff;"></span>DART <span id="val-dart">+0.0m</span></span>
+          <span class="leg-item"><span class="leg-dot" style="background:#ffbe5c;"></span>Shore <span id="val-tide">+0.0m</span></span>
+        </div>
+      </div>
+      <canvas id="sensor-canvas"></canvas>
+    </div>
+
+    <div class="clock-row">
+      <span>Elapsed: <strong id="tel-time">00:00</strong></span>
+      <span>Flood Reach: <strong id="tel-inland" style="color:var(--accent-rose)">0.0 km</strong></span>
+      <span>Surge u: <strong id="tel-u" style="color:var(--accent-cyan)">0.0 m/s</strong></span>
+    </div>
+  </div>
+
+  <!-- Event Alert Banner -->
+  <div id="event-banner" class="event-banner">
+    <span id="event-text">Megathrust Subduction Uplift triggered — tsunami racing shoreward!</span>
+  </div>
+
+  <!-- Right Control Drawer -->
+  <aside id="drawer" class="panel drawer">
+    <div class="drawer-tabs">
+      <button class="tab-btn active" data-tab="scenarios">Triggers</button>
+      <button class="tab-btn" data-tab="bathymetry">Seafloor</button>
+      <button class="tab-btn" data-tab="physics">Physics</button>
+    </div>
+
+    <div class="drawer-body">
+      <!-- TAB 1: SCENARIOS & WAVE TRIGGERS -->
+      <div id="tab-scenarios" class="tab-pane active">
+        <div class="section">
+          <div class="section-title"><span>Tsunami Scenarios</span></div>
+          <div class="preset-grid">
+            <button class="preset-btn active" data-preset="megathrust">
+              <span class="preset-name">Megathrust Subduction</span>
+              <span class="preset-sub">4 km abyss → shelf shoaling</span>
+            </button>
+            <button class="preset-btn" data-preset="drawdown">
+              <span class="preset-name">Drawdown-First Warning</span>
+              <span class="preset-sub">Receding tide before surge</span>
+            </button>
+            <button class="preset-btn" data-preset="defense">
+              <span class="preset-name">Reef &amp; Seawall Defense</span>
+              <span class="preset-sub">Offshore reef + coastal wall</span>
+            </button>
+            <button class="preset-btn" data-preset="landslide">
+              <span class="preset-name">Submarine Landslide</span>
+              <span class="preset-sub">Slope slump mega-tsunami</span>
+            </button>
+            <button class="preset-btn" data-preset="fjord">
+              <span class="preset-name">Steep Fjord Run-Up</span>
+              <span class="preset-sub">Rapid ramp amplification</span>
+            </button>
+            <button class="preset-btn" data-preset="asteroid">
+              <span class="preset-name">Asteroid Splash Ring</span>
+              <span class="preset-sub">Bolide cavity &amp; wave train</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Trigger Wave Source</span><span style="font-family:var(--mono);font-size:9.5px;">Keys 1–4</span></div>
+          <div class="btn-row">
+            <button id="btn-trig-megathrust" class="btn primary">⚡ Megathrust Uplift</button>
+            <button id="btn-trig-landslide" class="btn amber">🏔️ Landslide</button>
+            <button id="btn-trig-asteroid" class="btn rose">☄️ Asteroid Impact</button>
+            <button id="btn-trig-double" class="btn mint">🌊 Double Fault</button>
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Source Magnitude</span>
+              <span id="val-mag" class="val">Mw 9.0 (1.0×)</span>
+            </div>
+            <input id="sl-mag" type="range" min="0.5" max="1.9" step="0.05" value="1.0" class="amber" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Leading Wave Polarity</span>
+            </div>
+            <div class="seg-row">
+              <button class="seg-btn active" data-polarity="crest">Crest-First</button>
+              <button class="seg-btn" data-polarity="drawdown">Drawdown-First</button>
+            </div>
+          </div>
+
+          <button id="btn-calm" class="btn">Calm Ocean Surface (Keep Seafloor)</button>
+        </div>
+      </div>
+
+      <!-- TAB 2: SEAFLOOR SCULPTING & COASTAL DEFENSE -->
+      <div id="tab-bathymetry" class="tab-pane">
+        <div class="section">
+          <div class="section-title"><span>Canvas Sculpt Tool</span></div>
+          <div class="seg-row four">
+            <button class="seg-btn active" data-tool="sculpt">⛰️ Sculpt Seabed</button>
+            <button class="seg-btn" data-tool="reef">🪸 Coral Reef</button>
+            <button class="seg-btn" data-tool="seawall">🧱 Seawall</button>
+            <button class="seg-btn" data-tool="wave">💧 Drop Wave</button>
+          </div>
+          <div class="note-small">
+            Drag directly on the ocean cross-section to shape trenches, seamounts, reefs, or seawalls in real time. Hold <strong style="color:#eef3ff">Right-Click</strong> or <strong style="color:#eef3ff">Shift</strong> to carve downward.
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Brush Width</span>
+              <span id="val-brush" class="val">9.0 km</span>
+            </div>
+            <input id="sl-brush" type="range" min="2" max="24" step="0.5" value="9" />
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Quick Coastal Engineering</span></div>
+          <div class="btn-row">
+            <button id="btn-add-reef" class="btn mint">+ Offshore Reef</button>
+            <button id="btn-add-seawall" class="btn amber">+ Coastal Seawall</button>
+            <button id="btn-add-seamount" class="btn">+ Deep Seamount</button>
+            <button id="btn-reset-bed" class="btn">↺ Default Profile</button>
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Abyssal Depth</span>
+              <span id="val-abyss" class="val">4,000 m</span>
+            </div>
+            <input id="sl-abyss" type="range" min="1500" max="4400" step="100" value="4000" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Bottom Friction c_f</span>
+              <span id="val-fric" class="val">0.0012</span>
+            </div>
+            <input id="sl-fric" type="range" min="0.0003" max="0.012" step="0.0003" value="0.0012" class="mint" />
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 3: PHYSICS & VISUAL LAYERS -->
+      <div id="tab-physics" class="tab-pane">
+        <div class="section">
+          <div class="section-title"><span>Visualization Layers</span></div>
+          <div class="control-row">
+            <div class="control-head">
+              <span>Wave Visual Scale</span>
+              <span id="val-exag" class="val">1.4×</span>
+            </div>
+            <input id="sl-exag" type="range" min="0.8" max="2.6" step="0.1" value="1.4" />
+          </div>
+
+          <label class="toggle-row">
+            <span>Water-Column Velocity Arrows</span>
+            <input id="tog-arrows" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Green's Law Envelope (H ∝ h⁻¹/⁴)</span>
+            <input id="tog-green" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Wavefront Speed Callout</span>
+            <input id="tog-crest-tag" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>DART Buoy &amp; Tide Gauge</span>
+            <input id="tog-sensors" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Breaking Foam &amp; Spray</span>
+            <input id="tog-foam" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Depth Scale &amp; Zone Labels</span>
+            <input id="tog-labels" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Governing Equations</span></div>
+          <div class="eq-box">
+            <div><span class="hl">∂η/∂t + ∂(hu)/∂x = 0</span></div>
+            <div><span class="hl">∂u/∂t + u ∂u/∂x + g ∂η/∂x = −c_f u|u|/h</span></div>
+            <div style="margin-top:5px;border-top:1px solid rgba(148,179,255,0.12);padding-top:5px;">
+              Phase Speed: <span class="am">c = √(g h)</span><br/>
+              Green's Law: <span class="mt">H ∝ h⁻¹/⁴</span> &nbsp;·&nbsp; <span class="mt">λ = c T</span>
+            </div>
+          </div>
+          <div class="note-small">
+            Well-balanced 2nd-order MUSCL finite-volume HLL solver with Audusse hydrostatic reconstruction and wet/dry coastal inundation across 380 cells (100 km cross-section).
+          </div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Bottom-Left Interaction Hints -->
+  <div class="panel hint-pill">
+    <div><strong>Drag ocean/seabed</strong> sculpt seafloor · <strong>Right-drag</strong> carve</div>
+    <div><kbd>1</kbd>–<kbd>4</kbd> Triggers · <kbd>Space</kbd> Pause · <kbd>R</kbd> Reset · <kbd>H</kbd> Cinema</div>
+  </div>
+
+  <!-- Bottom-Center Transport Bar -->
+  <div class="panel bottom-bar">
+    <button id="btn-play" class="bar-btn active">⏸ Pause</button>
+    <button id="btn-reset" class="bar-btn">↺ Reset</button>
+    <div class="bar-divider"></div>
+    <button class="bar-btn speed-btn" data-speed="0.25">0.25×</button>
+    <button class="bar-btn speed-btn" data-speed="0.5">0.5×</button>
+    <button class="bar-btn speed-btn active" data-speed="1">1×</button>
+    <button class="bar-btn speed-btn" data-speed="2">2×</button>
+    <button class="bar-btn speed-btn" data-speed="4">4×</button>
+    <div class="bar-divider"></div>
+    <button id="btn-sound" class="bar-btn">🔇 Audio</button>
+    <button id="btn-toggle-drawer" class="bar-btn active">Controls</button>
+    <button id="btn-zen" class="bar-btn" title="Hide HUD (H)">Cinema</button>
+  </div>
+
+  <button id="btn-zen-restore" class="panel bar-btn zen-restore">Show HUD (H)</button>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // =========================================================================
+  // PHYSICAL CONSTANTS & 1D NONLINEAR SHALLOW-WATER SOLVER (SAINT-VENANT)
+  // =========================================================================
+  const G = 9.81;             // m/s^2
+  const N = 380;              // spatial cells (100 km cross-section)
+  const DOMAIN_L = 100000;    // 100 km in meters
+  const DX = DOMAIN_L / N;    // ~263 m per cell
+  const H_DRY = 1e-4;         // wet/dry cutoff (m)
+  const H_EPS2 = 0.04 * 0.04; // Kurganov-Petrova velocity desingularization
+  const CFL = 0.42;           // conservative CFL for SSP-RK2
+  const BASE_SIM_RATE = 46;   // simulated seconds per real second at 1x speed
+
+  // Sensor cell indices
+  const DART_IDX = 128;       // x = 33.7 km (deep abyssal plain ~4,000 m)
+  const TIDE_IDX = 296;       // x = 77.9 km (nearshore shallow shelf ~16 m)
+
+  // State arrays
+  const zb = new Float64Array(N);        // seafloor / terrain elevation (m, <0 underwater, >0 land)
+  const zbInit = new Float64Array(N);    // initial dry-shore reference for run-up calculation
+  const bedType = new Uint8Array(N);     // 0=normal crust/sand, 1=coral reef, 2=concrete seawall
+  const h = new Float64Array(N);         // water depth (m >= 0)
+  const hu = new Float64Array(N);        // discharge h*u (m^2/s)
+  const uArr = new Float64Array(N);      // cached velocity u (m/s)
+  const etaArr = new Float64Array(N);    // cached free surface zb + h (m)
+  const foam = new Float64Array(N);      // breaking bore / surf foam intensity [0..1]
+  const maxEtaEver = new Float64Array(N);// high-water envelope
+
+  // RK2 scratch arrays
+  const h1 = new Float64Array(N);
+  const hu1 = new Float64Array(N);
+  const dhA = new Float64Array(N);
+  const dhuA = new Float64Array(N);
+  const dhB = new Float64Array(N);
+  const dhuB = new Float64Array(N);
+
+  // MUSCL slope scratch arrays
+  const sEta = new Float64Array(N);
+  const sH = new Float64Array(N);
+  const sU = new Float64Array(N);
+  const uTmp = new Float64Array(N);
+  const etaTmp = new Float64Array(N);
+
+  // Active geophysical source animations
+  const upliftDelta = new Float64Array(N);
+  let upliftRem = 0;
+  let upliftDur = 1;
+  let faultFlash = 0;
+  let faultCenterKm = 16;
+  let doubleFaultTimer = -1;
+
+  // Submarine landslide state
+  const slideState = {
+    active: false,
+    x: 48000,
+    v: 0,
+    width: 6500,
+    height: 115,
+    energy: 1.0,
+    time: 0
+  };
+
+  // Asteroid impact animation state
+  const asteroidState = {
+    active: false,
+    xTarget: 26000,
+    progress: 0,
+    mag: 1.0,
+    impactFlash: 0,
+    impactX: 26000
+  };
+
+  // Spray & sediment particles
+  const particles = [];
+
+  // Sensor history ring buffers
+  const SENSOR_LEN = 220;
+  const dartHist = new Float32Array(SENSOR_LEN);
+  const tideHist = new Float32Array(SENSOR_LEN);
+  let sensorAccum = 0;
+
+  // Telemetry state
+  const telemetry = {
+    simTime: 0,
+    peakOffshore: 0,
+    peakCoastal: 0,
+    maxRunUpElev: 0,
+    maxInlandDistM: 0,
+    maxRunUpIdx: -1,
+    initialShoreIdx: 325,
+    crestIdx: -1,
+    crestSpeedKmh: 713,
+    crestDepthM: 4000,
+    wavelengthKm: 0,
+    maxSurgeU: 0,
+    coastalEnergy: 0,
+    drawdownActive: false,
+    inundationActive: false,
+    shoreEta: 0,
+    dartEta: 0
+  };
+
+  // Simulation settings
+  const state = {
+    playing: true,
+    speed: 1.0,
+    preset: 'megathrust',
+    magnitude: 1.0,
+    polarity: 'crest',     // 'crest' | 'drawdown'
+    tool: 'sculpt',        // 'sculpt' | 'reef' | 'seawall' | 'wave'
+    brushKm: 9.0,
+    abyssDepth: 4000,
+    friction: 0.0012,
+    waveExag: 1.4,
+    showArrows: true,
+    showGreen: true,
+    showCrestTag: true,
+    showSensors: true,
+    showFoam: true,
+    showLabels: true,
+    drawerOpen: true,
+    zenMode: false,
+    audioEnabled: false
+  };
+
+  // =========================================================================
+  // NUMERICAL HELPERS: WELL-BALANCED 2ND-ORDER MUSCL + AUDUSSE + HLL SOLVER
+  // =========================================================================
+  function minmod(a, b) {
+    if (a * b <= 0) return 0;
+    return Math.abs(a) < Math.abs(b) ? a : b;
+  }
+
+  function safeVel(hi, hui) {
+    if (hi <= H_DRY) return 0;
+    const u = (hi * hui) / (hi * hi + H_EPS2);
+    // Physical velocity cap (prevents unphysical spikes on extreme vertical walls)
+    if (u > 65) return 65;
+    if (u < -65) return -65;
+    return u;
+  }
+
+  function computeRHS(hIn, huIn, dhOut, dhuOut) {
+    // 1. Precompute u and eta
+    for (let i = 0; i < N; i++) {
+      const hi = hIn[i] > H_DRY ? hIn[i] : 0;
+      const ui = safeVel(hi, huIn[i]);
+      uTmp[i] = ui;
+      etaTmp[i] = zb[i] + hi;
+      dhOut[i] = 0;
+      dhuOut[i] = 0;
+    }
+
+    // 2. Minmod slopes (drop to 1st order near wet/dry fronts or sharp seawalls for positivity)
+    sEta[0] = 0; sH[0] = 0; sU[0] = 0;
+    sEta[N - 1] = 0; sH[N - 1] = 0; sU[N - 1] = 0;
+    for (let i = 1; i < N - 1; i++) {
+      const hm = hIn[i - 1], hc = hIn[i], hp = hIn[i + 1];
+      if (hm < 0.25 || hc < 0.25 || hp < 0.25 || bedType[i] === 2) {
+        sEta[i] = 0;
+        sH[i] = 0;
+        sU[i] = 0;
+      } else {
+        // Theta=1.2 minmod limiter for crisp wave preservation without overshoot
+        const dEtaL = etaTmp[i] - etaTmp[i - 1];
+        const dEtaR = etaTmp[i + 1] - etaTmp[i];
+        sEta[i] = minmod(dEtaL, dEtaR);
+
+        const dHL = hc - hm;
+        const dHR = hp - hc;
+        sH[i] = minmod(dHL, dHR);
+
+        const dUL = uTmp[i] - uTmp[i - 1];
+        const dUR = uTmp[i + 1] - uTmp[i];
+        sU[i] = minmod(dUL, dUR);
+      }
+    }
+
+    const invDx = 1.0 / DX;
+
+    // 3. Left Open-Ocean Flather Non-Reflecting Boundary (interface -1/2)
+    {
+      const h0 = Math.max(0, hIn[0]);
+      const eta0 = zb[0] + h0;
+      const hRest = Math.max(0.1, -zb[0]);
+      const c0 = Math.sqrt(G * hRest);
+      // Outgoing radiation: u_b = -sqrt(g/h_rest) * (eta0 - 0)
+      const uGhost = -Math.sqrt(G / hRest) * eta0;
+      const hGhost = Math.max(0, hRest + 0.5 * eta0);
+      const huGhost = hGhost * uGhost;
+      const hu0 = h0 * uTmp[0];
+      const fL0 = huGhost, fL1 = huGhost * uGhost + 0.5 * G * hGhost * hGhost;
+      const fR0 = hu0, fR1 = hu0 * uTmp[0] + 0.5 * G * h0 * h0;
+      const sL = Math.min(uGhost - c0, uTmp[0] - Math.sqrt(G * h0));
+      const sR = Math.max(uGhost + c0, uTmp[0] + Math.sqrt(G * h0));
+      let fh, fhu;
+      if (sL >= 0) {
+        fh = fL0; fhu = fL1;
+      } else if (sR <= 0) {
+        fh = fR0; fhu = fR1;
+      } else {
+        const invS = 1.0 / (sR - sL);
+        fh = (sR * fL0 - sL * fR0 + sL * sR * (h0 - hGhost)) * invS;
+        fhu = (sR * fL1 - sL * fR1 + sL * sR * (hu0 - huGhost)) * invS;
+      }
+      dhOut[0] += fh * invDx;
+      dhuOut[0] += fhu * invDx;
+    }
+
+    // 4. Interior Interfaces i + 1/2 (Audusse Hydrostatic Reconstruction + HLL Flux)
+    for (let i = 0; i < N - 1; i++) {
+      // Left state at right edge of cell i
+      let hL = hIn[i] + 0.5 * sH[i];
+      let etaL = etaTmp[i] + 0.5 * sEta[i];
+      let uL = uTmp[i] + 0.5 * sU[i];
+      if (hL < 0) { hL = 0; etaL = zb[i]; uL = 0; }
+      const zbL = etaL - hL;
+
+      // Right state at left edge of cell i+1
+      let hR = hIn[i + 1] - 0.5 * sH[i + 1];
+      let etaR = etaTmp[i + 1] - 0.5 * sEta[i + 1];
+      let uR = uTmp[i + 1] - 0.5 * sU[i + 1];
+      if (hR < 0) { hR = 0; etaR = zb[i + 1]; uR = 0; }
+      const zbR = etaR - hR;
+
+      // Hydrostatic reconstruction
+      const zbStar = zbL > zbR ? zbL : zbR;
+      const hLs = etaL > zbStar ? etaL - zbStar : 0;
+      const hRs = etaR > zbStar ? etaR - zbStar : 0;
+
+      let fh = 0;
+      let fhu = 0;
+      if (hLs > H_DRY || hRs > H_DRY) {
+        const uLs = hLs > H_DRY ? uL : 0;
+        const uRs = hRs > H_DRY ? uR : 0;
+        const huLs = hLs * uLs;
+        const huRs = hRs * uRs;
+        const cL = Math.sqrt(G * hLs);
+        const cR = Math.sqrt(G * hRs);
+
+        const sL = Math.min(uLs - cL, uRs - cR);
+        const sR = Math.max(uLs + cL, uRs + cR);
+
+        const fL0 = huLs;
+        const fL1 = huLs * uLs + 0.5 * G * hLs * hLs;
+        const fR0 = huRs;
+        const fR1 = huRs * uRs + 0.5 * G * hRs * hRs;
+
+        if (sL >= 0) {
+          fh = fL0;
+          fhu = fL1;
+        } else if (sR <= 0) {
+          fh = fR0;
+          fhu = fR1;
+        } else {
+          const invS = 1.0 / (sR - sL);
+          fh = (sR * fL0 - sL * fR0 + sL * sR * (hRs - hLs)) * invS;
+          fhu = (sR * fL1 - sL * fR1 + sL * sR * (huRs - huLs)) * invS;
+        }
+      }
+
+      // Flux contributions
+      dhOut[i] -= fh * invDx;
+      dhOut[i + 1] += fh * invDx;
+      dhuOut[i] -= fhu * invDx;
+      dhuOut[i + 1] += fhu * invDx;
+
+      // Exact well-balanced hydrostatic bed source terms
+      dhuOut[i] += 0.5 * G * (hLs * hLs - hL * hL) * invDx;
+      dhuOut[i + 1] -= 0.5 * G * (hRs * hRs - hR * hR) * invDx;
+    }
+
+    // 5. Centered 2nd-order interior bathymetry source term (for MUSCL well-balancing)
+    for (let i = 1; i < N - 1; i++) {
+      if (sH[i] !== 0 || sEta[i] !== 0) {
+        const hL = Math.max(0, hIn[i] - 0.5 * sH[i]);
+        const hR = Math.max(0, hIn[i] + 0.5 * sH[i]);
+        const zbL = (etaTmp[i] - 0.5 * sEta[i]) - hL;
+        const zbR = (etaTmp[i] + 0.5 * sEta[i]) - hR;
+        dhuOut[i] -= 0.5 * G * (hL + hR) * (zbR - zbL) * invDx;
+      }
+    }
+
+    // 6. Right Boundary: Solid Reflective Inland Wall (interface N-1/2)
+    {
+      const hR = Math.max(0, hIn[N - 1]);
+      dhuOut[N - 1] -= 0.5 * G * hR * hR * invDx;
+    }
+  }
+
+  function applyFrictionAndSanitize(hArr, huArr, dt) {
+    const baseCf = state.friction;
+    for (let i = 0; i < N; i++) {
+      let hi = hArr[i];
+      if (!Number.isFinite(hi) || hi <= H_DRY) {
+        hArr[i] = 0;
+        huArr[i] = 0;
+        continue;
+      }
+      let hui = huArr[i];
+      if (!Number.isFinite(hui)) hui = 0;
+
+      const ui = safeVel(hi, hui);
+      // Higher roughness on coral reefs (bedType=1) and dry coastal city terrain (zb > 0)
+      let cf = baseCf;
+      if (bedType[i] === 1) cf = Math.max(cf * 3.8, 0.015);
+      else if (zb[i] > 0) cf = Math.max(cf * 2.6, 0.0085);
+
+      // Semi-implicit quadratic bottom drag: d(hu)/dt = -cf * |u| * (hu / h)
+      const dragDenom = 1.0 + dt * cf * Math.abs(ui) / Math.max(hi, 0.22);
+      hui /= dragDenom;
+
+      // Gentle viscosity in ultra-thin films to keep dry shoreline crisp
+      if (hi < 0.04) {
+        hui *= Math.max(0, 1.0 - 4.0 * dt);
+      }
+
+      hArr[i] = hi;
+      huArr[i] = hui;
+    }
+  }
+
+  function stepShallowWater(dtTotal) {
+    let rem = dtTotal;
+    let subSteps = 0;
+    const maxSubSteps = 24;
+
+    while (rem > 1e-6 && subSteps < maxSubSteps) {
+      subSteps++;
+      // Compute max wave speed for adaptive CFL
+      let maxSpd = 25.0;
+      for (let i = 0; i < N; i++) {
+        const hi = h[i];
+        if (hi > H_DRY) {
+          const ui = safeVel(hi, hu[i]);
+          const spd = Math.abs(ui) + Math.sqrt(G * hi);
+          if (spd > maxSpd) maxSpd = spd;
+        }
+      }
+      const dtCfl = (CFL * DX) / maxSpd;
+      const dt = rem < dtCfl ? rem : dtCfl;
+
+      // Apply ongoing dynamic tectonic seafloor uplift (dz_b/dt)
+      if (upliftRem > 0) {
+        const stepDur = Math.min(dt, upliftRem);
+        const frac = stepDur / upliftDur;
+        for (let i = 0; i < N; i++) {
+          const dz = upliftDelta[i] * frac;
+          if (dz !== 0) {
+            zb[i] += dz;
+            // Keeping h unchanged lifts water surface eta = zb + h directly!
+          }
+        }
+        upliftRem -= stepDur;
+        if (upliftRem <= 1e-5) upliftRem = 0;
+      }
+
+      // Apply ongoing submarine landslide forcing
+      if (slideState.active) {
+        stepSubmarineLandslide(dt);
+      }
+
+      // SSP-RK2 Stage 1
+      computeRHS(h, hu, dhA, dhuA);
+      for (let i = 0; i < N; i++) {
+        h1[i] = h[i] + dt * dhA[i];
+        hu1[i] = hu[i] + dt * dhuA[i];
+      }
+      applyFrictionAndSanitize(h1, hu1, dt);
+
+      // SSP-RK2 Stage 2
+      computeRHS(h1, hu1, dhB, dhuB);
+      for (let i = 0; i < N; i++) {
+        h[i] = 0.5 * (h[i] + h1[i] + dt * dhB[i]);
+        hu[i] = 0.5 * (hu[i] + hu1[i] + dt * dhuB[i]);
+      }
+      applyFrictionAndSanitize(h, hu, dt * 0.5);
+
+      // Update cached fields, foam/breaking dissipation & telemetry envelopes
+      updateDerivedFields(dt);
+
+      telemetry.simTime += dt;
+      rem -= dt;
+    }
+
+    // Delayed second rupture for Double Fault
+    if (doubleFaultTimer > 0) {
+      doubleFaultTimer -= dtTotal;
+      if (doubleFaultTimer <= 0) {
+        doubleFaultTimer = -1;
+        triggerMegathrust(state.magnitude * 0.92, state.polarity, 24, true);
+        showBanner('Secondary Fault Rupture — interfering tsunami train launched!', 'warn');
+      }
+    }
+  }
+
+  function stepSubmarineLandslide(dt) {
+    const s = slideState;
+    s.time += dt;
+    // Slide accelerates down continental slope (from shelf break ~88km toward abyss ~44km)
+    // Wait: a landslide sliding seaward generates a massive dipole:
+    // huge drawdown over the headscarp + towering rebounding tsunami rushing shoreward!
+    const accel = -0.32; // m/s^2 downslope (leftward)
+    s.v = Math.max(-42, s.v + accel * dt);
+    const prevX = s.x;
+    s.x += s.v * dt;
+
+    const invW2 = 1.0 / (s.width * s.width);
+    const ampScale = 0.24 * s.energy;
+    for (let i = 2; i < N - 2; i++) {
+      const xi = i * DX;
+      const dPrev = xi - prevX;
+      const dCurr = xi - s.x;
+      const gPrev = Math.exp(-dPrev * dPrev * invW2);
+      const gCurr = Math.exp(-dCurr * dCurr * invW2);
+      const dShape = (gCurr - gPrev) * s.height * ampScale;
+      if (Math.abs(dShape) > 1e-4 && h[i] > 2.0) {
+        // Direct water displacement + shoreward rebound push
+        h[i] = Math.max(0.5, h[i] + dShape);
+        // Momentum coupling
+        hu[i] += dShape * s.v * 1.15;
+      }
+    }
+
+    // Spawn underwater sediment plume particles
+    if (Math.random() < 0.7 && particles.length < 240) {
+      const px = s.x + (Math.random() - 0.5) * s.width * 1.2;
+      const idx = Math.max(0, Math.min(N - 1, Math.floor(px / DX)));
+      particles.push({
+        x: px,
+        z: zb[idx] + 4 + Math.random() * 18,
+        vx: s.v * (0.4 + Math.random() * 0.6),
+        vz: 1.5 + Math.random() * 4,
+        life: 1.0,
+        decay: 0.45 + Math.random() * 0.4,
+        size: 2.2 + Math.random() * 3.5,
+        kind: 'sediment'
+      });
+    }
+
+    if (s.x < 24000 || s.time > 120) {
+      s.active = false;
+    }
+  }
+
+  function updateDerivedFields(dt) {
+    let maxU = 0;
+    let coastalE = 0;
+    let shoreMinEta = 0;
+    let runUpActive = false;
+
+    for (let i = 0; i < N; i++) {
+      const hi = h[i];
+      const ui = safeVel(hi, hu[i]);
+      uArr[i] = ui;
+      const etai = zb[i] + hi;
+      etaArr[i] = etai;
+
+      if (hi > 0.15) {
+        const absU = Math.abs(ui);
+        if (absU > maxU) maxU = absU;
+        if (etai > maxEtaEver[i]) maxEtaEver[i] = etai;
+      }
+
+      // Breaking bore & surf foam detection
+      let targetFoam = 0;
+      if (i > 0 && i < N - 1 && hi > 0.08) {
+        const dEtaDx = (etaArr[i + 1] - etaArr[i - 1]) / (2 * DX);
+        const duDx = (uArr[i + 1] - uArr[i - 1]) / (2 * DX);
+        const hLocal = Math.max(1.5, -zb[i]);
+        const breakRatio = zb[i] < 0 ? (etai / hLocal) : (hi > 0.25 ? 0.95 : 0);
+        // Bore front compression (-du/dx) + steepness + shallow breaking
+        const conv = Math.max(0, -duDx * 65);
+        const steep = Math.abs(dEtaDx) * 140;
+        if (breakRatio > 0.24 || conv > 0.22 || (zb[i] > -12 && Math.abs(ui) > 2.4)) {
+          targetFoam = Math.min(1.0, Math.max(conv, steep * 0.7, (breakRatio - 0.18) * 1.6));
+        }
+        // Subtle physical wave-breaking turbulent damping in extreme shallow surf bores
+        if (zb[i] > -45 && breakRatio > 0.65 && Math.abs(ui) > 6) {
+          hu[i] *= Math.max(0.92, 1.0 - 0.035 * dt);
+        }
+      }
+      foam[i] = Math.max(targetFoam, foam[i] * Math.exp(-0.08 * dt));
+
+      // Telemetry tracking: offshore (DART transit zone) vs coastal shelf/shore peaks
+      if (i >= DART_IDX - 14 && i <= DART_IDX + 16 && zb[i] < -1200) {
+        const amp = Math.abs(etai);
+        if (amp > telemetry.peakOffshore && hi > 10) {
+          telemetry.peakOffshore = amp;
+        }
+      }
+      if (i >= Math.floor(N * 0.68) && i < N - 2) {
+        if (hi > 0.12 && etai > telemetry.peakCoastal) {
+          telemetry.peakCoastal = etai;
+        }
+        if (zb[i] < 0 && zb[i] > -45 && etai < shoreMinEta) {
+          shoreMinEta = etai;
+        }
+        if (zbInit[i] > 0.25 && hi > 0.12) {
+          runUpActive = true;
+          if (zbInit[i] > telemetry.maxRunUpElev) {
+            telemetry.maxRunUpElev = zbInit[i];
+            telemetry.maxRunUpIdx = i;
+            telemetry.maxInlandDistM = Math.max(0, (i - telemetry.initialShoreIdx) * DX);
+          }
+        }
+        if (hi > 0.1) {
+          coastalE += (0.5 * hi * ui * ui + 0.5 * G * etai * etai * (zb[i] < 0 ? 1 : 0.4));
+        }
+      }
+
+      // Eject breaking spray particles in shallow surf / overtopping
+      if (state.showFoam && foam[i] > 0.52 && Math.abs(ui) > 3.5 && Math.random() < 0.045 && particles.length < 240) {
+        particles.push({
+          x: i * DX + (Math.random() - 0.5) * DX,
+          z: etai + 0.4,
+          vx: ui * (0.65 + Math.random() * 0.6),
+          vz: 2.5 + Math.random() * 5.5 + foam[i] * 3.5,
+          life: 1.0,
+          decay: 0.9 + Math.random() * 0.7,
+          size: 1.4 + Math.random() * 2.2,
+          kind: 'spray'
+        });
+      }
+    }
+
+    telemetry.maxSurgeU = maxU;
+    telemetry.coastalEnergy = coastalE;
+    telemetry.drawdownActive = shoreMinEta < -0.75;
+    telemetry.inundationActive = runUpActive;
+    telemetry.dartEta = h[DART_IDX] > H_DRY ? etaArr[DART_IDX] : 0;
+    telemetry.shoreEta = h[TIDE_IDX] > H_DRY ? etaArr[TIDE_IDX] : Math.min(0, zb[TIDE_IDX]);
+
+    // Track primary leading shoreward wavefront crest
+    let bestScore = 0.18;
+    let bestIdx = -1;
+    for (let i = 20; i < N - 4; i++) {
+      if (h[i] <= 0.15) continue;
+      const e = etaArr[i];
+      if (e > 0.18) {
+        // Favor the leading shoreward crest with strong amplitude & shoreward velocity
+        const shorewardBoost = uArr[i] > -0.1 ? 1.25 : 0.55;
+        const score = e * shorewardBoost * (1 + 0.35 * (i / N));
+        if (score > bestScore) {
+          bestScore = score;
+          bestIdx = i;
+        }
+      }
+    }
+    telemetry.crestIdx = bestIdx;
+    if (bestIdx >= 0) {
+      const hc = Math.max(0.2, h[bestIdx]);
+      const cLocal = Math.sqrt(G * hc);
+      telemetry.crestSpeedKmh = (cLocal + Math.max(0, uArr[bestIdx])) * 3.6;
+      telemetry.crestDepthM = zb[bestIdx] < 0 ? -zb[bestIdx] : hc;
+
+      // Measure live crest wavelength via full-width at half-maximum (FWHM * 2)
+      const peakVal = etaArr[bestIdx];
+      const halfVal = peakVal * 0.5;
+      let leftI = bestIdx;
+      while (leftI > 2 && etaArr[leftI] > halfVal) leftI--;
+      let rightI = bestIdx;
+      while (rightI < N - 2 && etaArr[rightI] > halfVal) rightI++;
+      const fwhmMeters = Math.max(DX, (rightI - leftI) * DX);
+      telemetry.wavelengthKm = (fwhmMeters * 2.0) / 1000;
+    }
+
+    // Record live DART & Tide Gauge histories
+    sensorAccum += dt;
+    if (sensorAccum >= 3.0) {
+      sensorAccum = 0;
+      dartHist.copyWithin(0, 1);
+      tideHist.copyWithin(0, 1);
+      dartHist[SENSOR_LEN - 1] = telemetry.dartEta;
+      tideHist[SENSOR_LEN - 1] = telemetry.shoreEta;
+    }
+  }
+
+  // =========================================================================
+  // BATHYMETRY GENERATORS & STRUCTURAL BUILDERS
+  // =========================================================================
+  function smoothstep(edge0, edge1, x) {
+    const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
+    return t * t * (3 - 2 * t);
+  }
+
+  function buildBathymetry(profile = 'standard') {
+    const abyss = -state.abyssDepth;
+    for (let i = 0; i < N; i++) {
+      const f = i / (N - 1); // 0 .. 1 across 160 km
+      bedType[i] = 0;
+      let z = abyss;
+
+      if (profile === 'fjord') {
+        // Deep abyssal plain plunging straight into a steep fjord wall & narrow shelf
+        if (f < 0.56) {
+          z = abyss + 120 * Math.sin(f * 14);
+        } else if (f < 0.77) {
+          const s = smoothstep(0.56, 0.77, f);
+          z = abyss * (1 - s) + (-22) * s;
+        } else if (f < 0.82) {
+          const s = (f - 0.77) / 0.05;
+          z = -22 + 22 * s;
+        } else {
+          const s = (f - 0.82) / 0.18;
+          z = 34 * Math.pow(s, 1.15);
+        }
+      } else if (profile === 'landslide') {
+        // Prominent steep continental slope primed for submarine slumping
+        if (f < 0.34) {
+          z = abyss;
+        } else if (f < 0.58) {
+          const s = smoothstep(0.34, 0.58, f);
+          z = abyss * (1 - s) + (-130) * s;
+          // Unstable upper-slope sediment bulge
+          const bulge = Math.exp(-Math.pow((f - 0.51) / 0.04, 2));
+          z += 95 * bulge;
+        } else if (f < 0.81) {
+          const s = (f - 0.58) / 0.23;
+          z = -130 * (1 - s) + 0 * s;
+        } else {
+          const s = (f - 0.81) / 0.19;
+          z = 26 * s + 16 * Math.pow(Math.max(0, s - 0.65) / 0.35, 2);
+        }
+      } else {
+        // Classic Pacific Subduction Margin:
+        // Deep Abyssal Plain (4000m) -> Smooth Continental Slope -> Continental Shelf -> Coastal Plain
+        if (f < 0.34) {
+          // Slight trench depression around f=0.16
+          const trench = -220 * Math.exp(-Math.pow((f - 0.16) / 0.055, 2));
+          z = abyss + trench;
+        } else if (f < 0.63) {
+          const s = smoothstep(0.34, 0.63, f);
+          z = abyss * (1 - s) + (-185) * s;
+        } else if (f < 0.815) {
+          const s = (f - 0.63) / 0.185;
+          // Smooth continental shelf rising to shoreline
+          z = -185 * Math.pow(1 - s, 1.15);
+        } else {
+          const s = (f - 0.815) / 0.185;
+          // Gentle coastal beach + city plain (+1m to +18m) + inland foothill (+38m)
+          z = 18.5 * s + 19 * Math.pow(Math.max(0, s - 0.68) / 0.32, 2);
+        }
+      }
+
+      zb[i] = z;
+      zbInit[i] = z;
+    }
+
+    if (profile === 'defense') {
+      addOffshoreReef(false);
+      addCoastalSeawall(false);
+    }
+
+    findInitialShore();
+    calmOcean(true);
+  }
+
+  function findInitialShore() {
+    let shore = N - 1;
+    for (let i = 0; i < N; i++) {
+      zbInit[i] = zb[i];
+      if (zb[i] >= 0 && shore === N - 1) shore = i;
+    }
+    telemetry.initialShoreIdx = shore;
+  }
+
+  function addOffshoreReef(announce = true) {
+    // Build a broad shallow coral reef bar at f ~ 0.725 (x ~ 116 km) rising to -6 m
+    const center = Math.floor(N * 0.725);
+    const halfW = 14;
+    for (let i = Math.max(2, center - halfW); i <= Math.min(N - 3, center + halfW); i++) {
+      const d = (i - center) / halfW;
+      const shape = Math.cos(d * Math.PI * 0.5);
+      const targetZ = -5.5 - 24 * (1 - shape * shape);
+      if (targetZ > zb[i]) {
+        const prevEta = zb[i] + h[i];
+        zb[i] = targetZ;
+        h[i] = Math.max(0, prevEta - zb[i]);
+        bedType[i] = 1;
+      }
+    }
+    if (announce) showBanner('Offshore Coral Reef constructed — trips & dissipates incoming wave energy!', 'info');
+  }
+
+  function addCoastalSeawall(announce = true) {
+    // Place a reinforced +11.5m concrete seawall right at the coastal shoreline
+    let shoreIdx = Math.floor(N * 0.822);
+    for (let i = Math.floor(N * 0.65); i < N - 12; i++) {
+      if (zb[i] >= 0.4) { shoreIdx = i + 1; break; }
+    }
+    for (let i = shoreIdx - 1; i <= shoreIdx + 2; i++) {
+      if (i >= 2 && i < N - 2) {
+        const wallH = (i === shoreIdx || i === shoreIdx + 1) ? 11.5 : 7.5;
+        const prevEta = zb[i] + h[i];
+        zb[i] = Math.max(zb[i], wallH);
+        h[i] = Math.max(0, prevEta - zb[i]);
+        hu[i] *= 0.2;
+        bedType[i] = 2;
+      }
+    }
+    if (announce) showBanner('Reinforced +11.5 m Coastal Seawall deployed along the beachfront!', 'info');
+  }
+
+  function addDeepSeamount(announce = true) {
+    const center = Math.floor(N * 0.30);
+    const halfW = 24;
+    for (let i = Math.max(4, center - halfW); i <= Math.min(N - 4, center + halfW); i++) {
+      const d = (i - center) / halfW;
+      const mound = 3350 * Math.pow(Math.cos(d * Math.PI * 0.5), 2.2);
+      const prevEta = zb[i] + h[i];
+      zb[i] = Math.min(-180, zb[i] + mound);
+      h[i] = Math.max(0, prevEta - zb[i]);
+    }
+    if (announce) showBanner('Submerged Seamount raised — causes partial reflection & localized shoaling!', 'info');
+  }
+
+  function calmOcean(resetHistory = false) {
+    for (let i = 0; i < N; i++) {
+      h[i] = zb[i] < 0 ? -zb[i] : 0;
+      hu[i] = 0;
+      uArr[i] = 0;
+      etaArr[i] = zb[i] + h[i];
+      foam[i] = 0;
+      maxEtaEver[i] = etaArr[i];
+      upliftDelta[i] = 0;
+    }
+    upliftRem = 0;
+    slideState.active = false;
+    asteroidState.active = false;
+    doubleFaultTimer = -1;
+    particles.length = 0;
+
+    telemetry.peakOffshore = 0;
+    telemetry.peakCoastal = 0;
+    telemetry.maxRunUpElev = 0;
+    telemetry.maxInlandDistM = 0;
+    telemetry.maxRunUpIdx = -1;
+    telemetry.crestIdx = -1;
+    telemetry.wavelengthKm = 0;
+    telemetry.maxSurgeU = 0;
+    telemetry.coastalEnergy = 0;
+    telemetry.drawdownActive = false;
+    telemetry.inundationActive = false;
+
+    if (resetHistory) {
+      telemetry.simTime = 0;
+      dartHist.fill(0);
+      tideHist.fill(0);
+    }
+  }
+
+  // =========================================================================
+  // WAVE TRIGGER MECHANISMS
+  // =========================================================================
+  function triggerMegathrust(mag = state.magnitude, polarity = state.polarity, centerKm = 15, silent = false) {
+    const x0 = centerKm * 1000;
+    const width = 10500; // broad megathrust rupture zone (~21 km half-width)
+    const amp = 4.2 * mag; // splits into ~2.0 m deep-ocean wave -> 8-16+ m coastal shoaling surge!
+
+    upliftDelta.fill(0);
+    for (let i = 4; i < N - 20; i++) {
+      const xi = i * DX;
+      const d = (xi - x0) / width;
+      if (polarity === 'drawdown') {
+        // Asymmetric Okada dip-slip dipole: landward subsidence trough leads, offshore uplift follows!
+        const uplift = amp * 1.25 * Math.exp(-Math.pow(d + 0.52, 2));
+        const subside = -amp * 1.05 * Math.exp(-Math.pow(d - 0.72, 2));
+        upliftDelta[i] = (uplift + subside) * (zb[i] < -100 ? 1 : 0);
+      } else {
+        // Classic megathrust uplift with subtle trailing subsidence
+        const uplift = amp * Math.exp(-d * d);
+        const subside = -amp * 0.18 * Math.exp(-Math.pow(d + 1.25, 2));
+        upliftDelta[i] = (uplift + subside) * (zb[i] < -100 ? 1 : 0);
+      }
+    }
+    upliftDur = 12.0; // 12s realistic rupture rise time
+    upliftRem = upliftDur;
+    faultFlash = 1.0;
+    faultCenterKm = centerKm;
+
+    playImpactThump(0.85 * mag, 42);
+    if (!silent) {
+      const label = polarity === 'drawdown'
+        ? 'Megathrust Dip-Slip (Drawdown-First) — watch the shoreline recede before the surge!'
+        : 'Megathrust Subduction Uplift — tsunami accelerating to ~710 km/h across abyssal plain!';
+      showBanner(label, polarity === 'drawdown' ? 'warn' : 'info');
+    }
+  }
+
+  function triggerLandslide(mag = state.magnitude) {
+    // Place slump near upper continental slope & give an immediate dipole impulse
+    slideState.active = true;
+    slideState.x = 50000;
+    slideState.v = -11.0;
+    slideState.width = 6500;
+    slideState.height = 135;
+    slideState.energy = mag;
+    slideState.time = 0;
+
+    // Initial slump water displacement: sharp trough at headscarp + shoreward/seaward waves
+    const xHead = 54000;
+    for (let i = 10; i < N - 10; i++) {
+      if (h[i] < 10) continue;
+      const d = (i * DX - xHead) / 5200;
+      const dip = -4.5 * mag * Math.exp(-d * d);
+      const crest = 6.2 * mag * Math.exp(-Math.pow(d - 0.85, 2));
+      const dEta = dip + crest;
+      h[i] = Math.max(1.0, h[i] + dEta);
+      hu[i] += h[i] * Math.sqrt(G / Math.max(15, h[i])) * crest * 0.78;
+    }
+
+    playImpactThump(0.75 * mag, 52);
+    showBanner('Submarine Landslide triggered on continental slope — high-amplitude surge incoming!', 'warn');
+  }
+
+  function triggerAsteroid(mag = state.magnitude, targetKm = 25) {
+    asteroidState.active = true;
+    asteroidState.xTarget = Math.max(10000, Math.min(72000, targetKm * 1000));
+    asteroidState.progress = 0;
+    asteroidState.mag = mag;
+    showBanner('Ocean Asteroid Incoming — bolide atmospheric entry detected!', 'danger');
+  }
+
+  function executeAsteroidSplash() {
+    const xImp = asteroidState.xTarget;
+    const mag = asteroidState.mag;
+    const rCav = 6400; // 6.4 km transient cavity radius
+
+    for (let i = 4; i < N - 8; i++) {
+      if (h[i] < 15) continue;
+      const dx = i * DX - xImp;
+      const r = dx / rCav;
+      const r2 = r * r;
+      if (r2 < 12) {
+        // Deep parabolic transient cavity + towering displaced splash rim
+        const cavity = (-5.5 * (1 - 1.55 * r2) + 2.4) * mag * Math.exp(-r2 * 0.78);
+        h[i] = Math.max(2.0, h[i] + cavity);
+        // Strong outward radial splash momentum
+        const uOut = 0.95 * mag * Math.sign(dx) * Math.abs(r) * Math.exp(-r2 * 0.65) * Math.sqrt(G / Math.max(50, h[i])) * 7.5;
+        hu[i] += h[i] * uOut;
+      }
+    }
+
+    // Eject dramatic splash & glowing steam particles
+    const idx = Math.max(0, Math.min(N - 1, Math.floor(xImp / DX)));
+    for (let k = 0; k < 56; k++) {
+      const ang = -Math.PI * (0.12 + Math.random() * 0.76);
+      const spd = 8 + Math.random() * 26 * mag;
+      particles.push({
+        x: xImp + (Math.random() - 0.5) * 3200,
+        z: Math.max(0, etaArr[idx]) + 2,
+        vx: Math.cos(ang) * spd * 24,
+        vz: -Math.sin(ang) * spd * 1.15,
+        life: 1.0,
+        decay: 0.45 + Math.random() * 0.55,
+        size: 2.2 + Math.random() * 3.8,
+        kind: k < 18 ? 'ember' : 'spray'
+      });
+    }
+
+    asteroidState.impactFlash = 1.0;
+    asteroidState.impactX = xImp;
+    playImpactThump(1.0 * mag, 34);
+    showBanner('Bolide Splashdown! Transient ocean cavity excavated — dispersive ring racing ashore!', 'danger');
+  }
+
+  function triggerDoubleFault(mag = state.magnitude) {
+    triggerMegathrust(mag * 0.95, state.polarity, 14, true);
+    doubleFaultTimer = 70; // 70 sim seconds later
+    showBanner('Double Megathrust Fault Sequence — twin ruptures will constructively interfere!', 'warn');
+  }
+
+  function dropLocalWave(xMeters, mag = state.magnitude) {
+    const idx = Math.max(2, Math.min(N - 3, Math.floor(xMeters / DX)));
+    if (zb[idx] >= 0) return;
+    const width = 4800;
+    const amp = 4.6 * mag;
+    for (let i = 2; i < N - 2; i++) {
+      if (h[i] < 2) continue;
+      const d = (i * DX - xMeters) / width;
+      const bell = Math.exp(-d * d);
+      h[i] = Math.max(0.5, h[i] + amp * bell);
+      // Slight shoreward bias
+      hu[i] += h[i] * Math.sqrt(G / Math.max(10, h[i])) * amp * bell * 0.55;
+    }
+    playImpactThump(0.45 * mag, 62);
+  }
+
+  // =========================================================================
+  // PRESET LOADER
+  // =========================================================================
+  function loadPreset(name) {
+    state.preset = name;
+    document.querySelectorAll('.preset-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.preset === name);
+    });
+
+    if (name === 'megathrust') {
+      state.abyssDepth = 4000;
+      state.friction = 0.0012;
+      state.polarity = 'crest';
+      state.magnitude = 1.15;
+      syncSlidersFromState();
+      buildBathymetry('standard');
+      triggerMegathrust(state.magnitude, 'crest', 15);
+    } else if (name === 'drawdown') {
+      state.abyssDepth = 4000;
+      state.friction = 0.0012;
+      state.polarity = 'drawdown';
+      state.magnitude = 1.3;
+      syncSlidersFromState();
+      buildBathymetry('standard');
+      triggerMegathrust(state.magnitude, 'drawdown', 21);
+    } else if (name === 'defense') {
+      state.abyssDepth = 4000;
+      state.friction = 0.0015;
+      state.polarity = 'crest';
+      state.magnitude = 1.2;
+      syncSlidersFromState();
+      buildBathymetry('defense');
+      triggerMegathrust(state.magnitude, 'crest', 15);
+      showBanner('Offshore Reef + Coastal Seawall Defense active — watch wave attenuation!', 'info');
+    } else if (name === 'landslide') {
+      state.abyssDepth = 3800;
+      state.friction = 0.0012;
+      state.polarity = 'crest';
+      state.magnitude = 1.15;
+      syncSlidersFromState();
+      buildBathymetry('landslide');
+      triggerLandslide(state.magnitude);
+    } else if (name === 'fjord') {
+      state.abyssDepth = 4200;
+      state.friction = 0.0010;
+      state.polarity = 'crest';
+      state.magnitude = 1.15;
+      syncSlidersFromState();
+      buildBathymetry('fjord');
+      triggerMegathrust(state.magnitude, 'crest', 16);
+      showBanner('Steep Fjord Margin — extreme abrupt shoaling & towering coastal run-up!', 'warn');
+    } else if (name === 'asteroid') {
+      state.abyssDepth = 4000;
+      state.friction = 0.0012;
+      state.polarity = 'crest';
+      state.magnitude = 1.35;
+      syncSlidersFromState();
+      buildBathymetry('standard');
+      triggerAsteroid(state.magnitude, 24);
+    }
+  }
+
+  // =========================================================================
+  // CANVAS, COORDINATE MAPPING & COASTAL SCENE DATA
+  // =========================================================================
+  const canvas = document.getElementById('sim-canvas');
+  const ctx = canvas.getContext('2d', { alpha: false });
+  const sensorCanvas = document.getElementById('sensor-canvas');
+  const sCtx = sensorCanvas.getContext('2d');
+
+  let W = window.innerWidth;
+  let H = window.innerHeight;
+  let DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+  // Smoothly animated active plotting right edge (keeps coastal city unobstructed when drawer is open!)
+  let plotLeft = 58;
+  let plotRight = W - 354;
+  let targetPlotRight = W - 354;
+  let yMSL = H * 0.45;
+  let depthSpanPx = H * 0.44;
+  const Z_SCALE = 22.0; // smooth log-linear depth scale (m)
+  const LOG_MAX = Math.log(1 + 4500 / Z_SCALE);
+
+  // Procedural starfield & coastal city buildings
+  const stars = Array.from({ length: 85 }, () => ({
+    x: Math.random(),
+    y: Math.random() * 0.42,
+    r: 0.5 + Math.random() * 1.35,
+    twinkle: Math.random() * Math.PI * 2,
+    a: 0.25 + Math.random() * 0.55
+  }));
+
+  const cityBuildings = [
+    { frac: 0.842, w: 12, h: 16, winRows: 3, lighthouse: true },
+    { frac: 0.858, w: 18, h: 24, winRows: 4 },
+    { frac: 0.876, w: 22, h: 38, winRows: 6 },
+    { frac: 0.896, w: 17, h: 29, winRows: 5 },
+    { frac: 0.914, w: 25, h: 52, winRows: 8 },
+    { frac: 0.935, w: 20, h: 42, winRows: 7 },
+    { frac: 0.954, w: 16, h: 26, winRows: 4 },
+    { frac: 0.971, w: 21, h: 33, winRows: 5 }
+  ];
+
+  function resize() {
+    W = window.innerWidth;
+    H = window.innerHeight;
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.floor(W * DPR);
+    canvas.height = Math.floor(H * DPR);
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+
+    const sRect = sensorCanvas.getBoundingClientRect();
+    if (sRect.width > 10) {
+      sensorCanvas.width = Math.floor(sRect.width * DPR);
+      sensorCanvas.height = Math.floor(sRect.height * DPR);
+    }
+
+    updateLayoutBounds(true);
+  }
+
+  function updateLayoutBounds(snap = false) {
+    const isDesktop = W > 960;
+    plotLeft = state.zenMode ? 14 : 58;
+    targetPlotRight = (isDesktop && state.drawerOpen && !state.zenMode) ? (W - 354) : (W - 22);
+    if (targetPlotRight < plotLeft + 260) targetPlotRight = W - 18;
+    if (snap) plotRight = targetPlotRight;
+    else plotRight += (targetPlotRight - plotRight) * 0.14;
+
+    yMSL = H * 0.455;
+    depthSpanPx = H * 0.445;
+  }
+
+  function xToScreen(xMeters) {
+    return plotLeft + (xMeters / DOMAIN_L) * (plotRight - plotLeft);
+  }
+
+  function idxToScreenX(i) {
+    return plotLeft + (i / (N - 1)) * (plotRight - plotLeft);
+  }
+
+  function screenXToIdx(sx) {
+    const f = (sx - plotLeft) / Math.max(1, plotRight - plotLeft);
+    return Math.max(0, Math.min(N - 1, Math.round(f * (N - 1))));
+  }
+
+  function pxPerMeterAbove() {
+    // Base slope matched smoothly to log-linear ocean mapping, scaled by user wave exaggeration
+    const s0 = depthSpanPx / (Z_SCALE * LOG_MAX);
+    return s0 * 1.65 * state.waveExag;
+  }
+
+  // Strictly monotonic C1-like depth/elevation mapping (guaranteed eta >= zb => y(eta) <= y(zb))
+  function zToY(z) {
+    if (z >= 0) {
+      return yMSL - z * pxPerMeterAbove();
+    }
+    const neg = -z;
+    const norm = Math.log(1 + neg / Z_SCALE) / LOG_MAX;
+    return yMSL + depthSpanPx * norm;
+  }
+
+  function yToZ(y) {
+    if (y <= yMSL) {
+      return (yMSL - y) / pxPerMeterAbove();
+    }
+    const frac = Math.min(1.06, (y - yMSL) / Math.max(1, depthSpanPx));
+    return -Z_SCALE * (Math.exp(frac * LOG_MAX) - 1);
+  }
+
+  // =========================================================================
+  // INTERACTIVE SEAFLOOR SCULPTING & CANVAS MOUSE/TOUCH HANDLERS
+  // =========================================================================
+  const pointer = {
+    down: false,
+    button: 0,
+    x: 0,
+    y: 0,
+    hover: false
+  };
+
+  function applySculptAt(sx, sy, isCarve) {
+    const centerIdx = screenXToIdx(sx);
+    const xCenter = centerIdx * DX;
+    const zCursor = Math.max(-4450, Math.min(36, yToZ(sy)));
+
+    if (state.tool === 'wave') {
+      dropLocalWave(xCenter, state.magnitude);
+      pointer.down = false;
+      return;
+    }
+
+    if (state.tool === 'seawall') {
+      const halfCells = 2;
+      const wallZ = isCarve ? -8 : Math.max(4, Math.min(26, zCursor > 2 ? zCursor : 12));
+      for (let i = Math.max(2, centerIdx - halfCells); i <= Math.min(N - 3, centerIdx + halfCells); i++) {
+        const prevEta = zb[i] + h[i];
+        if (isCarve) {
+          zb[i] = Math.min(zb[i], zb[i] - 3.5);
+          bedType[i] = 0;
+        } else {
+          const blend = (i === centerIdx || Math.abs(i - centerIdx) === 1) ? 0.55 : 0.3;
+          zb[i] = zb[i] + (wallZ - zb[i]) * blend;
+          bedType[i] = 2;
+        }
+        h[i] = Math.max(0, prevEta - zb[i]);
+        hu[i] *= 0.4;
+      }
+      return;
+    }
+
+    const radiusM = state.brushKm * 1000;
+    const halfCells = Math.max(2, Math.ceil(radiusM / DX));
+    const isReef = state.tool === 'reef';
+
+    for (let i = Math.max(2, centerIdx - halfCells); i <= Math.min(N - 3, centerIdx + halfCells); i++) {
+      const d = ((i - centerIdx) * DX) / radiusM;
+      if (Math.abs(d) >= 1) continue;
+      const w = 0.5 * (1 + Math.cos(d * Math.PI)); // smooth Hann kernel
+      const prevEta = zb[i] + h[i];
+
+      if (isCarve) {
+        const drop = (zb[i] > -200 ? 18 : 160) * w;
+        zb[i] = Math.max(-4450, zb[i] - drop);
+        if (w > 0.4) bedType[i] = 0;
+      } else if (isReef) {
+        const target = Math.max(-65, Math.min(-3.5, zCursor < -2 ? zCursor : -7));
+        if (target > zb[i]) {
+          zb[i] = zb[i] + (target - zb[i]) * (0.28 * w);
+          if (w > 0.35) bedType[i] = 1;
+        }
+      } else {
+        // Freeform bathymetry sculpting directly toward cursor depth/elevation
+        zb[i] = zb[i] + (zCursor - zb[i]) * (0.26 * w);
+        if (w > 0.55 && bedType[i] === 2) bedType[i] = 0;
+      }
+
+      // Maintain calm surface level when editing bed (no explosive artificial spikes)
+      h[i] = Math.max(0, prevEta - zb[i]);
+      if (h[i] <= H_DRY) hu[i] = 0;
+    }
+  }
+
+  canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+  canvas.addEventListener('pointerdown', e => {
+    canvas.setPointerCapture(e.pointerId);
+    pointer.down = true;
+    pointer.button = e.button;
+    pointer.x = e.clientX;
+    pointer.y = e.clientY;
+    pointer.hover = true;
+    canvas.classList.add('sculpting');
+    applySculptAt(e.clientX, e.clientY, e.button === 2 || e.shiftKey);
+  });
+
+  canvas.addEventListener('pointermove', e => {
+    pointer.x = e.clientX;
+    pointer.y = e.clientY;
+    pointer.hover = true;
+    if (pointer.down) {
+      applySculptAt(e.clientX, e.clientY, pointer.button === 2 || e.shiftKey);
+    }
+  });
+
+  canvas.addEventListener('pointerup', () => {
+    pointer.down = false;
+    canvas.classList.remove('sculpting');
+  });
+
+  canvas.addEventListener('pointerleave', () => {
+    pointer.hover = false;
+    pointer.down = false;
+    canvas.classList.remove('sculpting');
+  });
+
+  // =========================================================================
+  // PROCEDURAL WEB AUDIO ENGINE (MUTED BY DEFAULT)
+  // =========================================================================
+  let audioCtx = null;
+  let masterGain = null;
+  let rumbleOsc = null;
+  let rumbleGain = null;
+  let surfFilter = null;
+  let surfGain = null;
+
+  function initAudio() {
+    if (audioCtx) return;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    audioCtx = new AC();
+
+    masterGain = audioCtx.createGain();
+    masterGain.gain.value = 0.0;
+    masterGain.connect(audioCtx.destination);
+
+    // Deep sub-ocean swell oscillator
+    rumbleOsc = audioCtx.createOscillator();
+    rumbleOsc.type = 'sine';
+    rumbleOsc.frequency.value = 42;
+    rumbleGain = audioCtx.createGain();
+    rumbleGain.gain.value = 0.08;
+    rumbleOsc.connect(rumbleGain);
+    rumbleGain.connect(masterGain);
+    rumbleOsc.start();
+
+    // Brown/pink noise buffer for deep ocean swell & shoaling surf roar
+    const bufSize = audioCtx.sampleRate * 3;
+    const noiseBuf = audioCtx.createBuffer(1, bufSize, audioCtx.sampleRate);
+    const data = noiseBuf.getChannelData(0);
+    let lastOut = 0;
+    for (let i = 0; i < bufSize; i++) {
+      const white = Math.random() * 2 - 1;
+      lastOut = (lastOut + 0.03 * white) / 1.03;
+      data[i] = lastOut * 3.4;
+    }
+
+    const noiseSrc = audioCtx.createBufferSource();
+    noiseSrc.buffer = noiseBuf;
+    noiseSrc.loop = true;
+
+    surfFilter = audioCtx.createBiquadFilter();
+    surfFilter.type = 'lowpass';
+    surfFilter.frequency.value = 95;
+    surfFilter.Q.value = 1.1;
+
+    surfGain = audioCtx.createGain();
+    surfGain.gain.value = 0.14;
+
+    noiseSrc.connect(surfFilter);
+    surfFilter.connect(surfGain);
+    surfGain.connect(masterGain);
+    noiseSrc.start();
+  }
+
+  function setAudioEnabled(enabled) {
+    state.audioEnabled = enabled;
+    const btn = document.getElementById('btn-sound');
+    btn.textContent = enabled ? '🔊 Audio' : '🔇 Audio';
+    btn.classList.toggle('active', enabled);
+
+    if (enabled) {
+      initAudio();
+      if (audioCtx && audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+      if (masterGain && audioCtx) {
+        masterGain.gain.setTargetAtTime(0.42, audioCtx.currentTime, 0.18);
+      }
+    } else if (masterGain && audioCtx) {
+      masterGain.gain.setTargetAtTime(0.0, audioCtx.currentTime, 0.12);
+    }
+  }
+
+  function playImpactThump(intensity = 0.8, freq = 40) {
+    if (!state.audioEnabled || !audioCtx || !masterGain) return;
+    const now = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(freq * 1.9, now);
+    osc.frequency.exponentialRampToValueAtTime(Math.max(20, freq * 0.55), now + 0.85);
+    g.gain.setValueAtTime(0.32 * Math.min(1.4, intensity), now);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.95);
+    osc.connect(g);
+    g.connect(masterGain);
+    osc.start(now);
+    osc.stop(now + 1.0);
+  }
+
+  function updateAudioSoundscape() {
+    if (!state.audioEnabled || !audioCtx || !surfFilter) return;
+    const now = audioCtx.currentTime;
+    // Scale ocean rumble & breaking surf brightness with coastal shoaling energy
+    const energyNorm = Math.min(1.0, Math.sqrt(telemetry.coastalEnergy / 18000));
+    const uNorm = Math.min(1.0, telemetry.maxSurgeU / 18);
+    const freq = 80 + energyNorm * 340 + uNorm * 140;
+    const surfLvl = 0.10 + energyNorm * 0.42 + uNorm * 0.16;
+    const subLvl = 0.05 + energyNorm * 0.24;
+
+    surfFilter.frequency.setTargetAtTime(freq, now, 0.12);
+    surfGain.gain.setTargetAtTime(surfLvl, now, 0.12);
+    rumbleGain.gain.setTargetAtTime(subLvl, now, 0.14);
+    rumbleOsc.frequency.setTargetAtTime(36 + energyNorm * 20, now, 0.16);
+  }
+
+  // =========================================================================
+  // MUSEUM-GRADE CANVAS RENDERER
+  // =========================================================================
+  let visualClock = 0;
+
+  function renderMain(dtReal) {
+    visualClock += dtReal;
+    updateLayoutBounds(false);
+
+    ctx.save();
+    ctx.scale(DPR, DPR);
+
+    // 1. Deep Atmospheric Night-Ocean Sky
+    const skyGrad = ctx.createLinearGradient(0, 0, 0, yMSL + 40);
+    skyGrad.addColorStop(0, '#040711');
+    skyGrad.addColorStop(0.55, '#071022');
+    skyGrad.addColorStop(0.88, '#0b1e39');
+    skyGrad.addColorStop(1, '#102c4d');
+    ctx.fillStyle = skyGrad;
+    ctx.fillRect(0, 0, W, H);
+
+    // Soft moonlit atmospheric horizon glow near the coast
+    const moonX = plotLeft + (plotRight - plotLeft) * 0.86;
+    const moonY = yMSL * 0.34;
+    const horizonGlow = ctx.createRadialGradient(moonX, moonY, 10, moonX, moonY, W * 0.42);
+    horizonGlow.addColorStop(0, 'rgba(88, 220, 255, 0.11)');
+    horizonGlow.addColorStop(0.45, 'rgba(34, 118, 200, 0.05)');
+    horizonGlow.addColorStop(1, 'rgba(4, 7, 17, 0)');
+    ctx.fillStyle = horizonGlow;
+    ctx.fillRect(0, 0, W, yMSL + 80);
+
+    // Subtle stars
+    for (let i = 0; i < stars.length; i++) {
+      const s = stars[i];
+      const alpha = s.a * (0.65 + 0.35 * Math.sin(visualClock * 1.4 + s.twinkle));
+      ctx.fillStyle = `rgba(210, 232, 255, ${alpha.toFixed(3)})`;
+      ctx.beginPath();
+      ctx.arc(s.x * W, s.y * H, s.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Distant crescent moon glow
+    ctx.save();
+    ctx.fillStyle = 'rgba(225, 245, 255, 0.85)';
+    ctx.shadowColor = 'rgba(120, 220, 255, 0.65)';
+    ctx.shadowBlur = 18;
+    ctx.beginPath();
+    ctx.arc(moonX, moonY, 8.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#071226';
+    ctx.shadowBlur = 0;
+    ctx.beginPath();
+    ctx.arc(moonX - 3.8, moonY - 1.5, 7.6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // 2. Subtle Oceanographic Depth Grid & Mean Sea Level Reference
+    renderDepthGrid();
+
+    // 3. Green's Law Theoretical Shoaling Envelope (if enabled & wave active)
+    if (state.showGreen && telemetry.peakOffshore > 0.18) {
+      renderGreensLawEnvelope();
+    }
+
+    // 4. Stylized Coastal City Skyline (behind coastal water run-up so flooding visibly submerges streets!)
+    renderCoastalCity();
+
+    // 5. Ocean Water Body Cross-Section
+    renderOceanWater();
+
+    // 6. Subsurface Water-Column Velocity Arrows (shows full-column tsunami transport!)
+    if (state.showArrows) {
+      renderWaterColumnArrows();
+    }
+
+    // 7. Seafloor Bathymetry, Tectonic Crust, Subduction Fault, Coral Reefs & Seawalls
+    renderSeafloorAndCrust();
+
+    // 8. Animated Submarine Landslide Slump Mass (if active)
+    if (slideState.active) {
+      renderLandslideMass();
+    }
+
+    // 9. Breaking Foam Ribbon, Spray & Sediment Particles
+    if (state.showFoam) {
+      renderFoamAndParticles(dtReal);
+    }
+
+    // 10. Animated Asteroid Bolide & Impact Flash
+    renderAsteroid(dtReal);
+
+    // 11. Oceanographic Sensors: DART Deep-Ocean Buoy & Coastal Tide Gauge
+    if (state.showSensors) {
+      renderOceanSensors();
+    }
+
+    // 12. Max Inland Run-Up Flag & Live Wavefront Speed Callout Tag
+    renderRunUpMarker();
+    if (state.showCrestTag && telemetry.crestIdx >= 0) {
+      renderWavefrontCallout();
+    }
+
+    // 13. Depth Scale Axes & Zone Labels
+    if (state.showLabels) {
+      renderAxesAndZoneLabels();
+    }
+
+    // 14. Interactive Sculpt Brush Cursor Preview
+    if (pointer.hover) {
+      renderCursorPreview();
+    }
+
+    ctx.restore();
+  }
+
+  function renderDepthGrid() {
+    const depths = [0, -50, -200, -1000, -2500, -4000];
+    ctx.save();
+    for (let k = 0; k < depths.length; k++) {
+      const z = depths[k];
+      const y = zToY(z);
+      ctx.beginPath();
+      if (z === 0) {
+        ctx.strokeStyle = 'rgba(88, 220, 255, 0.28)';
+        ctx.setLineDash([6, 5]);
+        ctx.lineWidth = 1.1;
+      } else {
+        ctx.strokeStyle = 'rgba(148, 179, 255, 0.075)';
+        ctx.setLineDash([3, 6]);
+        ctx.lineWidth = 1;
+      }
+      ctx.moveTo(plotLeft, y);
+      ctx.lineTo(W, y);
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
+
+  function renderGreensLawEnvelope() {
+    // H(x) = H_0 * (h_0 / h(x))^(1/4), anchored to measured offshore amplitude at 4000m
+    const h0 = Math.max(1000, state.abyssDepth);
+    const H0 = Math.min(4.5, telemetry.peakOffshore);
+    ctx.save();
+    ctx.beginPath();
+    let started = false;
+    for (let i = 6; i < N - 1; i++) {
+      if (zb[i] >= -3.0) break;
+      const hx = Math.max(4.0, -zb[i]);
+      const hPred = Math.min(28, H0 * Math.pow(h0 / hx, 0.25));
+      const sx = idxToScreenX(i);
+      const sy = zToY(hPred);
+      if (!started) { ctx.moveTo(sx, sy); started = true; }
+      else ctx.lineTo(sx, sy);
+    }
+    ctx.strokeStyle = 'rgba(74, 242, 178, 0.48)';
+    ctx.lineWidth = 1.4;
+    ctx.setLineDash([5, 5]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Label envelope near continental slope
+    const labI = Math.floor(N * 0.63);
+    if (zb[labI] < -5) {
+      const hPred = Math.min(28, H0 * Math.pow(h0 / Math.max(4, -zb[labI]), 0.25));
+      ctx.font = '600 10px ui-monospace, Menlo, Consolas, monospace';
+      ctx.fillStyle = 'rgba(74, 242, 178, 0.78)';
+      ctx.fillText("Green's Law H ∝ h⁻¹/⁴", idxToScreenX(labI) - 42, zToY(hPred) - 7);
+    }
+    ctx.restore();
+  }
+
+  function renderCoastalCity() {
+    ctx.save();
+    for (let b = 0; b < cityBuildings.length; b++) {
+      const bld = cityBuildings[b];
+      const idx = Math.min(N - 3, Math.floor(bld.frac * (N - 1)));
+      if (zb[idx] < -0.5) continue; // if user carved ocean under building, don't float it!
+      const bx = idxToScreenX(idx) - bld.w * 0.5;
+      const baseY = zToY(zb[idx]);
+      const flooded = h[idx] > 0.35;
+
+      // Building silhouette
+      ctx.fillStyle = flooded ? 'rgba(28, 18, 30, 0.92)' : 'rgba(14, 22, 40, 0.94)';
+      ctx.strokeStyle = flooded ? 'rgba(255, 96, 131, 0.55)' : 'rgba(130, 175, 235, 0.26)';
+      ctx.lineWidth = 1;
+      ctx.fillRect(bx, baseY - bld.h, bld.w, bld.h + 4);
+      ctx.strokeRect(bx, baseY - bld.h, bld.w, bld.h + 4);
+
+      if (bld.lighthouse) {
+        // Coastal beacon beam
+        const topX = bx + bld.w * 0.5;
+        const topY = baseY - bld.h;
+        const beamAngle = Math.sin(visualClock * 2.2) * 0.25;
+        ctx.save();
+        ctx.fillStyle = flooded ? 'rgba(255, 96, 131, 0.18)' : 'rgba(255, 220, 130, 0.14)';
+        ctx.beginPath();
+        ctx.moveTo(topX, topY);
+        ctx.lineTo(topX - 65, topY - 12 + beamAngle * 45);
+        ctx.lineTo(topX - 65, topY + 14 + beamAngle * 45);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = flooded ? '#ff6083' : '#ffe28a';
+        ctx.beginPath();
+        ctx.arc(topX, topY, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      } else {
+        // Warm city windows (flicker red-amber if ground floor is flooded!)
+        const cols = Math.max(2, Math.floor((bld.w - 4) / 5));
+        for (let r = 0; r < bld.winRows; r++) {
+          const wy = baseY - bld.h + 4 + r * 6;
+          if (wy > baseY - 3) break;
+          for (let c = 0; c < cols; c++) {
+            const wx = bx + 3 + c * 5;
+            const lit = ((b * 7 + r * 13 + c * 5) % 4) !== 0;
+            if (!lit) continue;
+            if (flooded && r >= bld.winRows - 2) {
+              ctx.fillStyle = 'rgba(255, 96, 131, 0.85)';
+            } else {
+              ctx.fillStyle = ((b + r + c) % 3 === 0) ? 'rgba(130, 225, 255, 0.62)' : 'rgba(255, 212, 132, 0.72)';
+            }
+            ctx.fillRect(wx, wy, 2.6, 3.2);
+          }
+        }
+      }
+    }
+    ctx.restore();
+  }
+
+  function renderOceanWater() {
+    ctx.save();
+    // Build water body polygon from surface eta(x) down to seafloor zb(x)
+    const waterGrad = ctx.createLinearGradient(0, yMSL - 80, 0, zToY(-4200));
+    waterGrad.addColorStop(0.0, 'rgba(66, 228, 255, 0.88)');
+    waterGrad.addColorStop(0.18, 'rgba(18, 148, 216, 0.86)');
+    waterGrad.addColorStop(0.42, 'rgba(11, 74, 142, 0.90)');
+    waterGrad.addColorStop(0.72, 'rgba(7, 34, 78, 0.94)');
+    waterGrad.addColorStop(1.0, 'rgba(3, 14, 38, 0.97)');
+
+    ctx.beginPath();
+    // Extend water cleanly to left canvas edge (x=0) for full-bleed immersion
+    const y0Surf = zToY(etaArr[0]);
+    const y0Bed = zToY(zb[0]);
+    ctx.moveTo(0, y0Surf);
+    for (let i = 0; i < N; i++) {
+      ctx.lineTo(idxToScreenX(i), zToY(etaArr[i]));
+    }
+    // Trace seafloor backward
+    for (let i = N - 1; i >= 0; i--) {
+      ctx.lineTo(idxToScreenX(i), zToY(zb[i]));
+    }
+    ctx.lineTo(0, y0Bed);
+    ctx.closePath();
+    ctx.fillStyle = waterGrad;
+    ctx.fill();
+
+    // Subtle internal pelagic depth contour sheen
+    ctx.beginPath();
+    for (let i = 0; i < N; i++) {
+      if (h[i] <= 0.05) continue;
+      const sx = idxToScreenX(i);
+      const sy = zToY(etaArr[i]);
+      if (i === 0) ctx.moveTo(sx, sy);
+      else ctx.lineTo(sx, sy);
+    }
+    // Glowing cyan-white free-surface crest highlight (only on wet cells)
+    ctx.strokeStyle = 'rgba(155, 244, 255, 0.92)';
+    ctx.lineWidth = 2.2;
+    ctx.shadowColor = 'rgba(88, 220, 255, 0.7)';
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    let drawing = false;
+    for (let i = 0; i < N; i++) {
+      if (h[i] > 0.08) {
+        const sx = idxToScreenX(i);
+        const sy = zToY(etaArr[i]);
+        if (!drawing) { ctx.moveTo(sx, sy); drawing = true; }
+        else ctx.lineTo(sx, sy);
+      } else {
+        drawing = false;
+      }
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function renderWaterColumnArrows() {
+    // Draw glowing velocity arrows from seafloor to surface showing full-column tsunami flow!
+    ctx.save();
+    const colStep = 13;
+    for (let i = 6; i < N - 3; i += colStep) {
+      const hi = h[i];
+      if (hi < 0.25) continue;
+      const ui = uArr[i];
+      const absU = Math.abs(ui);
+      if (absU < 0.03) continue;
+
+      const sx = idxToScreenX(i);
+      const yTop = zToY(etaArr[i]) + 8;
+      const yBot = zToY(zb[i]) - 8;
+      const spanPx = yBot - yTop;
+      if (spanPx < 10) continue;
+
+      // Local seafloor slope causes subtle upward vertical tilt w ~ u * dz_b/dx near bottom
+      const bedSlope = (zb[Math.min(N - 1, i + 1)] - zb[Math.max(0, i - 1)]) / (2 * DX);
+      const numRows = spanPx > 150 ? 5 : spanPx > 75 ? 3 : spanPx > 28 ? 2 : 1;
+
+      // Normalize arrow length smoothly (logarithmic response so both 0.15 m/s deep & 15 m/s coastal are vivid!)
+      const lenPx = Math.min(28, 6 + 9.5 * Math.log1p(absU * 2.2));
+      const dir = ui >= 0 ? 1 : -1;
+      const intensity = Math.min(1, 0.35 + Math.log1p(absU * 1.5) * 0.45);
+      const color = dir > 0
+        ? `rgba(110, 245, 255, ${(intensity * 0.85).toFixed(2)})`
+        : `rgba(255, 178, 92, ${(intensity * 0.85).toFixed(2)})`;
+
+      ctx.strokeStyle = color;
+      ctx.fillStyle = color;
+      ctx.lineWidth = 1.45;
+
+      for (let r = 0; r < numRows; r++) {
+        const frac = numRows === 1 ? 0.5 : (r + 0.5) / numRows;
+        const ay = yTop + frac * spanPx;
+        // Slight kinematic upward tilt when rushing up continental slope
+        const tiltY = -dir * Math.max(-0.45, Math.min(0.45, bedSlope * 18 * frac)) * lenPx;
+        const x1 = sx - dir * lenPx * 0.45;
+        const y1 = ay - tiltY * 0.45;
+        const x2 = sx + dir * lenPx * 0.55;
+        const y2 = ay + tiltY * 0.55;
+
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+
+        // Arrowhead
+        const ang = Math.atan2(y2 - y1, x2 - x1);
+        const hs = 4.2;
+        ctx.beginPath();
+        ctx.moveTo(x2, y2);
+        ctx.lineTo(x2 - hs * Math.cos(ang - 0.52), y2 - hs * Math.sin(ang - 0.52));
+        ctx.lineTo(x2 - hs * Math.cos(ang + 0.52), y2 - hs * Math.sin(ang + 0.52));
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+    ctx.restore();
+  }
+
+  function renderSeafloorAndCrust() {
+    ctx.save();
+
+    // 1. Main Geological Crust Body (extends seamlessly to right edge of viewport behind drawer!)
+    const crustGrad = ctx.createLinearGradient(0, yMSL - 40, 0, H);
+    crustGrad.addColorStop(0.0, '#2a3346');
+    crustGrad.addColorStop(0.28, '#1b2234');
+    crustGrad.addColorStop(0.68, '#111625');
+    crustGrad.addColorStop(1.0, '#080b14');
+
+    ctx.beginPath();
+    ctx.moveTo(0, zToY(zb[0]));
+    for (let i = 0; i < N; i++) {
+      ctx.lineTo(idxToScreenX(i), zToY(zb[i]));
+    }
+    ctx.lineTo(W, zToY(zb[N - 1]));
+    ctx.lineTo(W, H + 4);
+    ctx.lineTo(0, H + 4);
+    ctx.closePath();
+    ctx.fillStyle = crustGrad;
+    ctx.fill();
+
+    // 2. Subtle Sedimentary Strata Layer beneath seafloor
+    ctx.beginPath();
+    ctx.moveTo(0, zToY(zb[0]) + 16);
+    for (let i = 0; i < N; i += 2) {
+      const strataOffset = 14 + 10 * Math.sin(i * 0.055);
+      ctx.lineTo(idxToScreenX(i), zToY(zb[i]) + strataOffset);
+    }
+    ctx.lineTo(W, zToY(zb[N - 1]) + 18);
+    ctx.strokeStyle = 'rgba(135, 165, 220, 0.11)';
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+
+    // 3. Tectonic Subduction Megathrust Fault Line (glows warmly during rupture!)
+    const fx = xToScreen(faultCenterKm * 1000);
+    const fIdx = Math.max(4, Math.min(N - 5, Math.floor((faultCenterKm * 1000) / DX)));
+    const fy = zToY(zb[fIdx]);
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(fx - 45, H);
+    ctx.quadraticCurveTo(fx - 10, fy + 26, fx + 24, fy + 2);
+    const glowAlpha = 0.22 + faultFlash * 0.78;
+    ctx.strokeStyle = faultFlash > 0.05
+      ? `rgba(255, 130, 88, ${glowAlpha.toFixed(2)})`
+      : 'rgba(255, 150, 96, 0.18)';
+    ctx.lineWidth = 1.5 + faultFlash * 3.5;
+    if (faultFlash > 0.05) {
+      ctx.shadowColor = '#ff6b4a';
+      ctx.shadowBlur = 16 * faultFlash;
+    }
+    ctx.stroke();
+    ctx.restore();
+    if (faultFlash > 0) faultFlash = Math.max(0, faultFlash - 0.016);
+
+    // 4. Seafloor Surface Rim (sandy/coastal/coral/concrete color-coded!)
+    ctx.lineWidth = 2.6;
+    for (let i = 0; i < N - 1; i++) {
+      const x1 = idxToScreenX(i), y1 = zToY(zb[i]);
+      const x2 = idxToScreenX(i + 1), y2 = zToY(zb[i + 1]);
+      if (bedType[i] === 1) {
+        // Coral reef bioluminescent amber-teal ridge
+        ctx.strokeStyle = '#3ef0c0';
+        ctx.lineWidth = 3.4;
+      } else if (bedType[i] === 2) {
+        // Reinforced concrete coastal seawall
+        ctx.strokeStyle = '#ffd178';
+        ctx.lineWidth = 4.0;
+      } else if (zb[i] > -4 && zb[i] < 6) {
+        // Coastal beach sand (darkens when wet!)
+        ctx.strokeStyle = h[i] > 0.05 ? '#8f846b' : '#d7be92';
+        ctx.lineWidth = 2.8;
+      } else {
+        ctx.strokeStyle = 'rgba(135, 168, 224, 0.45)';
+        ctx.lineWidth = 2.0;
+      }
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+    }
+
+    // Extra visual detail on Concrete Seawall cells
+    for (let i = 2; i < N - 2; i++) {
+      if (bedType[i] === 2) {
+        const sx = idxToScreenX(i);
+        const sy = zToY(zb[i]);
+        ctx.fillStyle = 'rgba(220, 230, 245, 0.85)';
+        ctx.fillRect(sx - 2, sy, 4.5, Math.max(8, zToY(0) - sy + 6));
+      }
+    }
+
+    ctx.restore();
+  }
+
+  function renderLandslideMass() {
+    const s = slideState;
+    const cx = xToScreen(s.x);
+    const idx = Math.max(1, Math.min(N - 2, Math.floor(s.x / DX)));
+    const cy = zToY(zb[idx]);
+    ctx.save();
+    const rPx = Math.max(14, (s.width / DOMAIN_L) * (plotRight - plotLeft) * 0.9);
+    const grad = ctx.createRadialGradient(cx, cy - 2, 2, cx, cy, rPx);
+    grad.addColorStop(0, 'rgba(255, 176, 92, 0.85)');
+    grad.addColorStop(0.55, 'rgba(168, 118, 76, 0.55)');
+    grad.addColorStop(1, 'rgba(90, 68, 52, 0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy - 3, rPx, 12, -0.25, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function renderFoamAndParticles(dtReal) {
+    ctx.save();
+    // Foaming breaking bore ribbon on top of turbulent crests
+    for (let i = 1; i < N - 1; i++) {
+      const f = foam[i];
+      if (f < 0.16 || h[i] <= 0.06) continue;
+      const sx = idxToScreenX(i);
+      const sy = zToY(etaArr[i]);
+      const thick = 2.5 + f * 6.5;
+      ctx.fillStyle = `rgba(235, 250, 255, ${(Math.min(0.95, f * 0.95)).toFixed(2)})`;
+      ctx.beginPath();
+      ctx.ellipse(sx, sy + 1, Math.max(2.5, (plotRight - plotLeft) / N * 1.4), thick * 0.55, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Update & render airborne spray / asteroid embers / underwater sediment plume
+    for (let k = particles.length - 1; k >= 0; k--) {
+      const p = particles[k];
+      p.life -= p.decay * dtReal;
+      if (p.life <= 0) {
+        particles.splice(k, 1);
+        continue;
+      }
+      if (p.kind === 'sediment') {
+        p.x += p.vx * dtReal * 18;
+        p.z += p.vz * dtReal * 2.5;
+        p.vz -= 2.0 * dtReal;
+      } else {
+        p.x += p.vx * dtReal * 14;
+        p.z += p.vz * dtReal * 2.2;
+        p.vz -= 12.0 * dtReal;
+      }
+
+      const sx = xToScreen(p.x);
+      const sy = zToY(p.z);
+      if (sx < 0 || sx > W || sy < 0 || sy > H) continue;
+
+      if (p.kind === 'ember') {
+        ctx.fillStyle = `rgba(255, 165, 82, ${(p.life * 0.95).toFixed(2)})`;
+      } else if (p.kind === 'sediment') {
+        ctx.fillStyle = `rgba(185, 145, 98, ${(p.life * 0.55).toFixed(2)})`;
+      } else {
+        ctx.fillStyle = `rgba(218, 248, 255, ${(p.life * 0.85).toFixed(2)})`;
+      }
+      ctx.beginPath();
+      ctx.arc(sx, sy, p.size * (0.5 + 0.5 * p.life), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function renderAsteroid(dtReal) {
+    if (asteroidState.active) {
+      asteroidState.progress += dtReal * 1.65;
+      const t = Math.min(1, asteroidState.progress);
+      const tx = xToScreen(asteroidState.xTarget);
+      const ty = zToY(0);
+      const startX = tx - 220;
+      const startY = -30;
+      const cx = startX + (tx - startX) * t;
+      const cy = startY + (ty - startY) * t;
+
+      ctx.save();
+      // Fiery atmospheric entry plasma trail
+      const trailGrad = ctx.createLinearGradient(startX, startY, cx, cy);
+      trailGrad.addColorStop(0, 'rgba(255, 120, 60, 0)');
+      trailGrad.addColorStop(0.6, 'rgba(255, 165, 78, 0.55)');
+      trailGrad.addColorStop(1, 'rgba(255, 245, 210, 0.98)');
+      ctx.strokeStyle = trailGrad;
+      ctx.lineWidth = 6;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(cx - (tx - startX) * 0.28, cy - (ty - startY) * 0.28);
+      ctx.lineTo(cx, cy);
+      ctx.stroke();
+
+      // Glowing bolide core
+      ctx.fillStyle = '#fff9e6';
+      ctx.shadowColor = '#ff9848';
+      ctx.shadowBlur = 20;
+      ctx.beginPath();
+      ctx.arc(cx, cy, 6.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      if (asteroidState.progress >= 1) {
+        asteroidState.active = false;
+        executeAsteroidSplash();
+      }
+    }
+
+    if (asteroidState.impactFlash > 0) {
+      const fx = xToScreen(asteroidState.impactX);
+      const fy = zToY(0);
+      const rad = 28 + (1 - asteroidState.impactFlash) * 145;
+      ctx.save();
+      const fl = ctx.createRadialGradient(fx, fy, 4, fx, fy, rad);
+      fl.addColorStop(0, `rgba(255, 248, 220, ${(asteroidState.impactFlash * 0.92).toFixed(2)})`);
+      fl.addColorStop(0.45, `rgba(88, 220, 255, ${(asteroidState.impactFlash * 0.5).toFixed(2)})`);
+      fl.addColorStop(1, 'rgba(88, 220, 255, 0)');
+      ctx.fillStyle = fl;
+      ctx.beginPath();
+      ctx.arc(fx, fy, rad, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+      asteroidState.impactFlash = Math.max(0, asteroidState.impactFlash - dtReal * 1.6);
+    }
+  }
+
+  function renderOceanSensors() {
+    ctx.save();
+    // 1. DART Deep-Ocean Buoy (x = 40.8 km)
+    const bx = idxToScreenX(DART_IDX);
+    const bySurf = zToY(etaArr[DART_IDX]);
+    const byBed = zToY(zb[DART_IDX]);
+
+    // Acoustic mooring tether & seafloor Bottom Pressure Recorder (BPR)
+    ctx.strokeStyle = 'rgba(88, 220, 255, 0.28)';
+    ctx.setLineDash([3, 4]);
+    ctx.lineWidth = 1.1;
+    ctx.beginPath();
+    ctx.moveTo(bx, bySurf + 5);
+    ctx.lineTo(bx, byBed - 3);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Seafloor BPR unit
+    ctx.fillStyle = '#58dcff';
+    ctx.fillRect(bx - 5, byBed - 5, 10, 5);
+
+    // Floating DART surface buoy
+    ctx.fillStyle = '#ffce5c';
+    ctx.strokeStyle = '#08101f';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.arc(bx, bySurf - 2, 5.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    // Antenna mast + blink
+    ctx.strokeStyle = '#eef3ff';
+    ctx.lineWidth = 1.3;
+    ctx.beginPath();
+    ctx.moveTo(bx, bySurf - 7);
+    ctx.lineTo(bx, bySurf - 17);
+    ctx.stroke();
+    const pulse = 0.5 + 0.5 * Math.sin(visualClock * 5.2);
+    ctx.fillStyle = `rgba(88, 220, 255, ${(0.45 + 0.55 * pulse).toFixed(2)})`;
+    ctx.beginPath();
+    ctx.arc(bx, bySurf - 18, 2.3, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Label
+    ctx.font = '700 9.5px ui-monospace, Menlo, Consolas, monospace';
+    ctx.fillStyle = '#9fe9ff';
+    ctx.textAlign = 'center';
+    ctx.fillText('DART BUOY', bx, bySurf - 24);
+
+    // 2. Coastal Tide Gauge (nearshore shallow shelf)
+    const tx = idxToScreenX(TIDE_IDX);
+    const tySurf = zToY(etaArr[TIDE_IDX]);
+    const tyBed = zToY(zb[TIDE_IDX]);
+    const tyTop = zToY(9);
+
+    ctx.strokeStyle = 'rgba(255, 190, 92, 0.55)';
+    ctx.lineWidth = 2.0;
+    ctx.beginPath();
+    ctx.moveTo(tx, tyBed);
+    ctx.lineTo(tx, tyTop);
+    ctx.stroke();
+
+    ctx.fillStyle = '#ffbe5c';
+    ctx.beginPath();
+    ctx.arc(tx, tyTop, 3.6, 0, Math.PI * 2);
+    ctx.fill();
+    // Live water level tick on piling
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(tx - 4, tySurf - 1, 8, 2);
+
+    ctx.fillStyle = '#ffdf9e';
+    ctx.fillText('TIDE GAUGE', tx, tyTop - 8);
+    ctx.textAlign = 'left';
+    ctx.restore();
+  }
+
+  function renderRunUpMarker() {
+    if (telemetry.maxRunUpIdx < 0 || telemetry.maxRunUpElev < 0.35) return;
+    const rx = idxToScreenX(telemetry.maxRunUpIdx);
+    const ry = zToY(zbInit[telemetry.maxRunUpIdx]);
+    ctx.save();
+    ctx.strokeStyle = '#ff6083';
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(rx, ry);
+    ctx.lineTo(rx, ry - 26);
+    ctx.stroke();
+
+    ctx.fillStyle = '#ff6083';
+    ctx.beginPath();
+    ctx.moveTo(rx, ry - 26);
+    ctx.lineTo(rx + 12, ry - 22);
+    ctx.lineTo(rx, ry - 18);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.font = '700 9.5px ui-monospace, Menlo, Consolas, monospace';
+    ctx.fillStyle = '#ffc7d5';
+    ctx.textAlign = 'center';
+    ctx.fillText(`RUN-UP +${telemetry.maxRunUpElev.toFixed(1)}m`, rx, ry - 31);
+    ctx.textAlign = 'left';
+    ctx.restore();
+  }
+
+  function renderWavefrontCallout() {
+    const i = telemetry.crestIdx;
+    if (i < 6 || i > N - 6) return;
+    const sx = idxToScreenX(i);
+    const sy = zToY(etaArr[i]);
+    const hVal = etaArr[i];
+    if (hVal < 0.25) return;
+
+    const spd = Math.round(telemetry.crestSpeedKmh);
+    const depth = Math.round(telemetry.crestDepthM);
+    const text = `c = ${spd} km/h · H = ${hVal.toFixed(1)}m · h = ${depth.toLocaleString()}m`;
+
+    ctx.save();
+    ctx.font = '700 10.5px ui-monospace, Menlo, Consolas, monospace';
+    const tw = ctx.measureText(text).width + 16;
+    const bx = Math.max(plotLeft + 8, Math.min(plotRight - tw - 8, sx - tw * 0.5));
+    const by = Math.max(18, sy - 42);
+
+    // Connector line to crest
+    ctx.strokeStyle = 'rgba(88, 220, 255, 0.55)';
+    ctx.lineWidth = 1.1;
+    ctx.beginPath();
+    ctx.moveTo(sx, sy - 3);
+    ctx.lineTo(sx, by + 22);
+    ctx.stroke();
+
+    // Pill tag
+    ctx.fillStyle = 'rgba(6, 13, 28, 0.86)';
+    ctx.strokeStyle = hVal > 4.5 ? 'rgba(255, 190, 92, 0.65)' : 'rgba(88, 220, 255, 0.55)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(bx, by, tw, 22, 6);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = hVal > 4.5 ? '#ffe3ad' : '#d5f6ff';
+    ctx.fillText(text, bx + 8, by + 14.5);
+    ctx.restore();
+  }
+
+  function renderAxesAndZoneLabels() {
+    ctx.save();
+    ctx.font = '600 9.5px ui-monospace, Menlo, Consolas, monospace';
+
+    // Left Oceanographic Depth Axis
+    if (!state.zenMode) {
+      const depthTicks = [
+        { z: 20, label: '+20m' },
+        { z: 10, label: '+10m' },
+        { z: 0, label: '0m MSL' },
+        { z: -50, label: '-50m' },
+        { z: -200, label: '-200m' },
+        { z: -1000, label: '-1km' },
+        { z: -2500, label: '-2.5km' },
+        { z: -4000, label: '-4km' }
+      ];
+      ctx.textAlign = 'right';
+      for (let k = 0; k < depthTicks.length; k++) {
+        const y = zToY(depthTicks[k].z);
+        if (y < 24 || y > H - 24) continue;
+        ctx.fillStyle = depthTicks[k].z === 0 ? 'rgba(88, 220, 255, 0.85)' : 'rgba(154, 169, 204, 0.68)';
+        ctx.fillText(depthTicks[k].label, plotLeft - 7, y + 3);
+      }
+    }
+
+    // Bottom Bathymetric Zone Labels
+    ctx.textAlign = 'center';
+    ctx.font = '700 10px system-ui, -apple-system, sans-serif';
+    ctx.fillStyle = 'rgba(170, 198, 245, 0.45)';
+    const labelY = Math.min(H - 68, zToY(-4350) + 18);
+    const zones = [
+      { frac: 0.18, text: 'ABYSSAL PLAIN (~4,000 m)' },
+      { frac: 0.47, text: 'CONTINENTAL SLOPE' },
+      { frac: 0.70, text: 'SHALLOW SHELF' },
+      { frac: 0.90, text: 'COASTAL CITY' }
+    ];
+    for (let z = 0; z < zones.length; z++) {
+      const zx = plotLeft + zones[z].frac * (plotRight - plotLeft);
+      ctx.fillText(zones[z].text, zx, labelY);
+    }
+    ctx.textAlign = 'left';
+    ctx.restore();
+  }
+
+  function renderCursorPreview() {
+    if (pointer.x < plotLeft || pointer.x > plotRight) return;
+    const idx = screenXToIdx(pointer.x);
+    const xKm = (idx * DX / 1000).toFixed(1);
+    const bedZ = zb[idx];
+    const localH = Math.max(0, h[idx]);
+    const localC = localH > 0.1 ? Math.round(Math.sqrt(G * localH) * 3.6) : 0;
+
+    ctx.save();
+    const brushPx = state.tool === 'seawall'
+      ? 10
+      : state.tool === 'wave'
+      ? 18
+      : Math.max(12, (state.brushKm * 1000 / DOMAIN_L) * (plotRight - plotLeft));
+
+    ctx.strokeStyle = state.tool === 'reef'
+      ? 'rgba(74, 242, 178, 0.65)'
+      : state.tool === 'seawall'
+      ? 'rgba(255, 190, 92, 0.75)'
+      : state.tool === 'wave'
+      ? 'rgba(88, 220, 255, 0.8)'
+      : 'rgba(180, 215, 255, 0.48)';
+    ctx.lineWidth = 1.4;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.arc(pointer.x, pointer.y, brushPx, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Live depth/speed tooltip next to cursor
+    const depthTxt = bedZ < 0 ? `Depth ${Math.round(-bedZ).toLocaleString()}m` : `Land +${bedZ.toFixed(1)}m`;
+    const speedTxt = localH > 0.2 ? ` · c=${localC} km/h` : ' · Dry';
+    const info = `${xKm} km · ${depthTxt}${speedTxt}`;
+    ctx.font = '600 10px ui-monospace, Menlo, Consolas, monospace';
+    const tw = ctx.measureText(info).width + 12;
+    const tx = Math.min(plotRight - tw - 6, pointer.x + 14);
+    const ty = Math.max(24, pointer.y - 24);
+    ctx.fillStyle = 'rgba(6, 11, 24, 0.85)';
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.28)';
+    ctx.beginPath();
+    ctx.roundRect(tx, ty, tw, 19, 5);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#dbe9ff';
+    ctx.fillText(info, tx + 6, ty + 13);
+    ctx.restore();
+  }
+
+  // =========================================================================
+  // LIVE DART BUOY & COASTAL TIDE GAUGE OSCILLOSCOPE RENDERER
+  // =========================================================================
+  function renderSensorOscilloscope() {
+    const sw = sensorCanvas.width / DPR;
+    const sh = sensorCanvas.height / DPR;
+    if (sw < 20 || sh < 20) return;
+
+    sCtx.save();
+    sCtx.scale(DPR, DPR);
+    sCtx.clearRect(0, 0, sw, sh);
+
+    // Subtle background & zero-MSL baseline
+    sCtx.fillStyle = 'rgba(3, 8, 20, 0.72)';
+    sCtx.fillRect(0, 0, sw, sh);
+
+    const midY = sh * 0.56;
+    sCtx.strokeStyle = 'rgba(148, 179, 255, 0.16)';
+    sCtx.lineWidth = 1;
+    sCtx.setLineDash([3, 3]);
+    sCtx.beginPath();
+    sCtx.moveTo(0, midY);
+    sCtx.lineTo(sw, midY);
+    sCtx.stroke();
+    sCtx.setLineDash([]);
+
+    // Dynamic auto-scaling so both 1m DART & 14m Tide Gauge traces stay legible
+    let maxDart = 1.5;
+    let maxTide = 4.0;
+    for (let i = 0; i < SENSOR_LEN; i++) {
+      const ad = Math.abs(dartHist[i]);
+      const at = Math.abs(tideHist[i]);
+      if (ad > maxDart) maxDart = ad;
+      if (at > maxTide) maxTide = at;
+    }
+
+    // DART trace (cyan, amplified 2.5x relative to shore scale for deep-ocean visibility)
+    sCtx.beginPath();
+    for (let i = 0; i < SENSOR_LEN; i++) {
+      const x = (i / (SENSOR_LEN - 1)) * sw;
+      const y = midY - (dartHist[i] / (maxDart * 1.25)) * (sh * 0.42);
+      if (i === 0) sCtx.moveTo(x, y);
+      else sCtx.lineTo(x, y);
+    }
+    sCtx.strokeStyle = '#58dcff';
+    sCtx.lineWidth = 1.5;
+    sCtx.stroke();
+
+    // Coastal Tide Gauge trace (amber)
+    sCtx.beginPath();
+    for (let i = 0; i < SENSOR_LEN; i++) {
+      const x = (i / (SENSOR_LEN - 1)) * sw;
+      const y = midY - (tideHist[i] / (maxTide * 1.15)) * (sh * 0.44);
+      if (i === 0) sCtx.moveTo(x, y);
+      else sCtx.lineTo(x, y);
+    }
+    sCtx.strokeStyle = '#ffbe5c';
+    sCtx.lineWidth = 1.75;
+    sCtx.stroke();
+
+    // Scale label
+    sCtx.font = '600 8.5px ui-monospace, Menlo, Consolas, monospace';
+    sCtx.fillStyle = 'rgba(154, 169, 204, 0.55)';
+    sCtx.fillText(`±${maxTide.toFixed(0)}m`, 4, 10);
+    sCtx.fillText('0m', 4, midY - 2);
+
+    sCtx.restore();
+  }
+
+  // =========================================================================
+  // TELEMETRY & HUD UPDATES
+  // =========================================================================
+  const elStatus = document.getElementById('wave-status');
+  const elSpeed = document.getElementById('tel-speed');
+  const elHeights = document.getElementById('tel-heights');
+  const elAmp = document.getElementById('tel-amp');
+  const elRunUp = document.getElementById('tel-runup');
+  const elLambda = document.getElementById('tel-lambda');
+  const elDepth = document.getElementById('tel-depth');
+  const elTime = document.getElementById('tel-time');
+  const elInland = document.getElementById('tel-inland');
+  const elU = document.getElementById('tel-u');
+  const elValDart = document.getElementById('val-dart');
+  const elValTide = document.getElementById('val-tide');
+  const elBanner = document.getElementById('event-banner');
+  const elEventText = document.getElementById('event-text');
+
+  let bannerTimeout = null;
+  function showBanner(msg, level = 'info') {
+    elEventText.textContent = msg;
+    elBanner.className = 'event-banner visible' + (level === 'warn' ? ' warn' : level === 'danger' ? ' danger' : '');
+    if (bannerTimeout) clearTimeout(bannerTimeout);
+    bannerTimeout = setTimeout(() => {
+      elBanner.classList.remove('visible');
+    }, 4800);
+  }
+
+  function updateHUD() {
+    elSpeed.textContent = telemetry.crestIdx >= 0 ? `${Math.round(telemetry.crestSpeedKmh)} km/h` : '—';
+    elHeights.textContent = `${telemetry.peakOffshore.toFixed(1)} → ${telemetry.peakCoastal.toFixed(1)} m`;
+
+    const amp = telemetry.peakOffshore > 0.12 && telemetry.peakCoastal > 0.12
+      ? (telemetry.peakCoastal / telemetry.peakOffshore)
+      : 1.0;
+    elAmp.textContent = `${amp.toFixed(1)}×`;
+
+    elRunUp.textContent = `${telemetry.maxRunUpElev.toFixed(1)} m`;
+    elLambda.textContent = telemetry.wavelengthKm > 0.2 ? `${telemetry.wavelengthKm.toFixed(1)} km` : '—';
+    elDepth.textContent = `${Math.round(telemetry.crestDepthM).toLocaleString()} m`;
+
+    const mins = Math.floor(telemetry.simTime / 60);
+    const secs = Math.floor(telemetry.simTime % 60);
+    elTime.textContent = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    elInland.textContent = `${(telemetry.maxInlandDistM / 1000).toFixed(1)} km`;
+    elU.textContent = `${telemetry.maxSurgeU.toFixed(1)} m/s`;
+
+    const dSign = telemetry.dartEta >= 0 ? '+' : '';
+    const tSign = telemetry.shoreEta >= 0 ? '+' : '';
+    elValDart.textContent = `${dSign}${telemetry.dartEta.toFixed(1)}m`;
+    elValTide.textContent = `${tSign}${telemetry.shoreEta.toFixed(1)}m`;
+
+    // Live oceanographic phase badge
+    if (telemetry.inundationActive) {
+      elStatus.textContent = 'Coastal Run-Up';
+      elStatus.className = 'status-pill danger';
+    } else if (telemetry.drawdownActive) {
+      elStatus.textContent = 'Drawdown Alert';
+      elStatus.className = 'status-pill warn';
+    } else if (telemetry.crestIdx >= 0 && telemetry.crestDepthM < 350) {
+      elStatus.textContent = 'Shoaling Surge';
+      elStatus.className = 'status-pill warn';
+    } else if (telemetry.crestIdx >= 0) {
+      elStatus.textContent = 'Deep Transit';
+      elStatus.className = 'status-pill transit';
+    } else {
+      elStatus.textContent = 'Calm Ocean';
+      elStatus.className = 'status-pill';
+    }
+  }
+
+  // =========================================================================
+  // UI EVENT WIRING
+  // =========================================================================
+  function syncSlidersFromState() {
+    document.getElementById('sl-mag').value = state.magnitude;
+    const mw = (8.4 + state.magnitude * 0.6).toFixed(1);
+    document.getElementById('val-mag').textContent = `Mw ${mw} (${state.magnitude.toFixed(2)}×)`;
+
+    document.getElementById('sl-abyss').value = state.abyssDepth;
+    document.getElementById('val-abyss').textContent = `${Math.round(state.abyssDepth).toLocaleString()} m`;
+
+    document.getElementById('sl-fric').value = state.friction;
+    document.getElementById('val-fric').textContent = state.friction.toFixed(4);
+
+    document.querySelectorAll('[data-polarity]').forEach(b => {
+      b.classList.toggle('active', b.dataset.polarity === state.polarity);
+    });
+  }
+
+  // Drawer tabs
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+    });
+  });
+
+  // Scenario preset buttons
+  document.querySelectorAll('.preset-btn').forEach(btn => {
+    btn.addEventListener('click', () => loadPreset(btn.dataset.preset));
+  });
+
+  // Wave trigger buttons
+  document.getElementById('btn-trig-megathrust').addEventListener('click', () => {
+    triggerMegathrust(state.magnitude, state.polarity, 15);
+  });
+  document.getElementById('btn-trig-landslide').addEventListener('click', () => {
+    triggerLandslide(state.magnitude);
+  });
+  document.getElementById('btn-trig-asteroid').addEventListener('click', () => {
+    triggerAsteroid(state.magnitude, 25);
+  });
+  document.getElementById('btn-trig-double').addEventListener('click', () => {
+    triggerDoubleFault(state.magnitude);
+  });
+  document.getElementById('btn-calm').addEventListener('click', () => {
+    calmOcean(false);
+    showBanner('Ocean surface calmed — sculpted seafloor preserved.', 'info');
+  });
+
+  // Polarity buttons
+  document.querySelectorAll('[data-polarity]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.polarity = btn.dataset.polarity;
+      document.querySelectorAll('[data-polarity]').forEach(b => b.classList.toggle('active', b === btn));
+    });
+  });
+
+  // Sculpt tool buttons
+  document.querySelectorAll('[data-tool]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.tool = btn.dataset.tool;
+      document.querySelectorAll('[data-tool]').forEach(b => b.classList.toggle('active', b === btn));
+    });
+  });
+
+  // Quick coastal engineering buttons
+  document.getElementById('btn-add-reef').addEventListener('click', () => addOffshoreReef(true));
+  document.getElementById('btn-add-seawall').addEventListener('click', () => addCoastalSeawall(true));
+  document.getElementById('btn-add-seamount').addEventListener('click', () => addDeepSeamount(true));
+  document.getElementById('btn-reset-bed').addEventListener('click', () => {
+    buildBathymetry('standard');
+    showBanner('Seafloor restored to default 4,000 m abyssal-to-coastal margin.', 'info');
+  });
+
+  // Sliders
+  document.getElementById('sl-mag').addEventListener('input', e => {
+    state.magnitude = parseFloat(e.target.value);
+    const mw = (8.4 + state.magnitude * 0.6).toFixed(1);
+    document.getElementById('val-mag').textContent = `Mw ${mw} (${state.magnitude.toFixed(2)}×)`;
+  });
+  document.getElementById('sl-brush').addEventListener('input', e => {
+    state.brushKm = parseFloat(e.target.value);
+    document.getElementById('val-brush').textContent = `${state.brushKm.toFixed(1)} km`;
+  });
+  document.getElementById('sl-abyss').addEventListener('input', e => {
+    state.abyssDepth = parseFloat(e.target.value);
+    document.getElementById('val-abyss').textContent = `${Math.round(state.abyssDepth).toLocaleString()} m`;
+    buildBathymetry(state.preset === 'fjord' ? 'fjord' : state.preset === 'defense' ? 'defense' : 'standard');
+  });
+  document.getElementById('sl-fric').addEventListener('input', e => {
+    state.friction = parseFloat(e.target.value);
+    document.getElementById('val-fric').textContent = state.friction.toFixed(4);
+  });
+  document.getElementById('sl-exag').addEventListener('input', e => {
+    state.waveExag = parseFloat(e.target.value);
+    document.getElementById('val-exag').textContent = `${state.waveExag.toFixed(1)}×`;
+  });
+
+  // Visual toggles
+  document.getElementById('tog-arrows').addEventListener('change', e => state.showArrows = e.target.checked);
+  document.getElementById('tog-green').addEventListener('change', e => state.showGreen = e.target.checked);
+  document.getElementById('tog-crest-tag').addEventListener('change', e => state.showCrestTag = e.target.checked);
+  document.getElementById('tog-sensors').addEventListener('change', e => state.showSensors = e.target.checked);
+  document.getElementById('tog-foam').addEventListener('change', e => state.showFoam = e.target.checked);
+  document.getElementById('tog-labels').addEventListener('change', e => state.showLabels = e.target.checked);
+
+  // Transport Bar
+  const btnPlay = document.getElementById('btn-play');
+  function togglePlay() {
+    state.playing = !state.playing;
+    btnPlay.textContent = state.playing ? '⏸ Pause' : '▶ Play';
+    btnPlay.classList.toggle('active', state.playing);
+  }
+  btnPlay.addEventListener('click', togglePlay);
+
+  document.getElementById('btn-reset').addEventListener('click', () => {
+    loadPreset(state.preset);
+  });
+
+  document.querySelectorAll('.speed-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.speed = parseFloat(btn.dataset.speed);
+      document.querySelectorAll('.speed-btn').forEach(b => b.classList.toggle('active', b === btn));
+    });
+  });
+
+  document.getElementById('btn-sound').addEventListener('click', () => {
+    setAudioEnabled(!state.audioEnabled);
+  });
+
+  const drawer = document.getElementById('drawer');
+  const btnToggleDrawer = document.getElementById('btn-toggle-drawer');
+  function toggleDrawer() {
+    state.drawerOpen = !state.drawerOpen;
+    drawer.classList.toggle('collapsed', !state.drawerOpen);
+    btnToggleDrawer.classList.toggle('active', state.drawerOpen);
+  }
+  btnToggleDrawer.addEventListener('click', toggleDrawer);
+
+  function toggleZen() {
+    state.zenMode = !state.zenMode;
+    document.body.classList.toggle('zen-mode', state.zenMode);
+  }
+  document.getElementById('btn-zen').addEventListener('click', toggleZen);
+  document.getElementById('btn-zen-restore').addEventListener('click', toggleZen);
+
+  // Keyboard shortcuts
+  window.addEventListener('keydown', e => {
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+    if (e.code === 'Space') {
+      e.preventDefault();
+      togglePlay();
+    } else if (e.key === 'h' || e.key === 'H') {
+      toggleZen();
+    } else if (e.key === 'r' || e.key === 'R') {
+      loadPreset(state.preset);
+    } else if (e.key === '1') {
+      triggerMegathrust(state.magnitude, state.polarity, 15);
+    } else if (e.key === '2') {
+      triggerLandslide(state.magnitude);
+    } else if (e.key === '3') {
+      triggerAsteroid(state.magnitude, 25);
+    } else if (e.key === '4') {
+      triggerDoubleFault(state.magnitude);
+    }
+  });
+
+  // Expose lightweight diagnostic hook for automated stability testing (no side effects in browser)
+  window.__TSUNAMI_SIM__ = {
+    stepShallowWater,
+    loadPreset,
+    triggerMegathrust,
+    triggerLandslide,
+    triggerAsteroid,
+    executeAsteroidSplash,
+    addOffshoreReef,
+    addCoastalSeawall,
+    h,
+    hu,
+    zb,
+    etaArr,
+    telemetry,
+    N
+  };
+
+  // =========================================================================
+  // MAIN ANIMATION LOOP
+  // =========================================================================
+  window.addEventListener('resize', resize);
+  resize();
+  loadPreset('megathrust');
+
+  let lastTs = performance.now();
+  let hudAccum = 0;
+
+  function loop(ts) {
+    const dtReal = Math.min(0.05, Math.max(0.001, (ts - lastTs) / 1000));
+    lastTs = ts;
+
+    if (state.playing) {
+      const simDt = dtReal * BASE_SIM_RATE * state.speed;
+      stepShallowWater(simDt);
+      updateAudioSoundscape();
+    }
+
+    renderMain(dtReal);
+
+    hudAccum += dtReal;
+    if (hudAccum >= 0.05) {
+      hudAccum = 0;
+      updateHUD();
+      renderSensorOscilloscope();
+    }
+
+    requestAnimationFrame(loop);
+  }
+
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

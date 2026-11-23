@@ -1,0 +1,4114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Seismograph — Earthquake P/S Waves, Core Shadow Zone &amp; Triangulation</title>
+<style>
+  :root {
+    --bg-deep: #040711;
+    --panel-bg: rgba(9, 13, 24, 0.78);
+    --panel-bg-strong: rgba(8, 12, 22, 0.92);
+    --panel-border: rgba(148, 179, 255, 0.16);
+    --panel-border-hi: rgba(148, 179, 255, 0.36);
+    --text-main: #eef3ff;
+    --text-dim: #9aa9cc;
+    --text-muted: #68789c;
+    --accent-cyan: #58dcff;
+    --accent-amber: #ffbe5c;
+    --accent-coral: #ff7a45;
+    --accent-mint: #4af2b2;
+    --accent-rose: #ff6083;
+    --accent-violet: #a78bfa;
+    --radius-lg: 14px;
+    --radius-md: 10px;
+    --radius-sm: 7px;
+    --mono: ui-monospace, "Cascadia Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Inter, Helvetica, Arial, sans-serif;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg-deep);
+    color: var(--text-main);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    touch-action: none;
+  }
+
+  #sim-canvas {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    cursor: crosshair;
+  }
+  #sim-canvas.grabbing {
+    cursor: grabbing;
+  }
+  #sim-canvas.pointer {
+    cursor: pointer;
+  }
+
+  /* HUD Layer */
+  .hud {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 10;
+  }
+  body.zen-mode .hud > :not(.zen-restore) {
+    opacity: 0;
+    pointer-events: none !important;
+  }
+
+  .panel {
+    pointer-events: auto;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-lg);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.52), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    transition: opacity 0.25s ease, transform 0.25s ease;
+  }
+
+  /* Left Column: Telemetry + Live Seismogram */
+  .left-stack {
+    position: fixed;
+    top: 14px;
+    left: 14px;
+    width: min(392px, calc(100vw - 370px));
+    min-width: 288px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    pointer-events: none;
+    z-index: 12;
+  }
+
+  .top-left {
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .brand-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .brand-title-wrap {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .brand-title {
+    font-size: 16px;
+    font-weight: 800;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+    background: linear-gradient(120deg, #e8f8ff 0%, #58dcff 48%, #ff9a52 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .mode-badge {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 999px;
+    border: 1px solid rgba(88, 220, 255, 0.4);
+    background: rgba(88, 220, 255, 0.12);
+    color: var(--accent-cyan);
+  }
+  .mode-badge.tri {
+    border-color: rgba(74, 242, 178, 0.42);
+    background: rgba(74, 242, 178, 0.12);
+    color: var(--accent-mint);
+  }
+
+  .status-pill {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: rgba(74, 242, 178, 0.14);
+    color: var(--accent-mint);
+    border: 1px solid rgba(74, 242, 178, 0.35);
+    white-space: nowrap;
+  }
+  .status-pill.shadow {
+    background: rgba(255, 96, 131, 0.18);
+    color: var(--accent-rose);
+    border-color: rgba(255, 96, 131, 0.48);
+  }
+  .status-pill.pkp {
+    background: rgba(167, 139, 250, 0.18);
+    color: #c9b8ff;
+    border-color: rgba(167, 139, 250, 0.45);
+  }
+  .status-pill.warn {
+    background: rgba(255, 190, 92, 0.16);
+    color: var(--accent-amber);
+    border-color: rgba(255, 190, 92, 0.42);
+  }
+
+  .telemetry-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+  }
+
+  .tele-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(148, 179, 255, 0.1);
+    border-radius: var(--radius-sm);
+    padding: 5px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .tele-label {
+    font-size: 9px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .tele-val {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--text-main);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .tele-val.amber { color: var(--accent-amber); }
+  .tele-val.coral { color: var(--accent-coral); }
+  .tele-val.cyan { color: var(--accent-cyan); }
+  .tele-val.mint { color: var(--accent-mint); }
+  .tele-val.rose { color: var(--accent-rose); }
+  .tele-val.violet { color: var(--accent-violet); }
+
+  .clock-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding-top: 5px;
+    border-top: 1px solid rgba(148, 179, 255, 0.1);
+    font-size: 10.5px;
+    color: var(--text-dim);
+    font-family: var(--mono);
+  }
+  .clock-row strong {
+    color: var(--text-main);
+    font-weight: 600;
+  }
+
+  /* Live 3-Trace Seismogram Card */
+  .seismo-panel {
+    padding: 10px 12px 11px;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+  }
+
+  .seismo-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+  }
+
+  .seismo-lag-tag {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: rgba(255, 190, 92, 0.14);
+    border: 1px solid rgba(255, 190, 92, 0.34);
+    color: var(--accent-amber);
+    text-transform: none;
+    letter-spacing: 0.02em;
+  }
+
+  #seismo-canvas {
+    width: 100%;
+    height: 162px;
+    display: block;
+    border-radius: var(--radius-sm);
+    background: rgba(3, 6, 14, 0.78);
+    border: 1px solid rgba(148, 179, 255, 0.12);
+  }
+
+  .seismo-legend {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 10px;
+    color: var(--text-muted);
+    font-family: var(--mono);
+  }
+  .leg-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .leg-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+
+  /* Right Control Drawer (330px) */
+  .drawer {
+    position: fixed;
+    top: 14px;
+    right: 14px;
+    bottom: 14px;
+    width: 330px;
+    max-width: calc(100vw - 28px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: transform 0.25s ease, opacity 0.25s ease;
+    z-index: 14;
+  }
+  .drawer.collapsed {
+    transform: translateX(calc(100% + 24px));
+    pointer-events: none;
+  }
+
+  .drawer-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+    padding: 8px 8px 6px;
+    border-bottom: 1px solid var(--panel-border);
+    background: rgba(4, 7, 15, 0.42);
+  }
+
+  .tab-btn {
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    padding: 7px 5px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .tab-btn:hover {
+    color: var(--text-main);
+    background: rgba(255, 255, 255, 0.04);
+  }
+  .tab-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.16);
+    border-color: rgba(88, 220, 255, 0.42);
+  }
+
+  .drawer-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 11px 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .drawer-body::-webkit-scrollbar {
+    width: 5px;
+  }
+  .drawer-body::-webkit-scrollbar-thumb {
+    background: rgba(148, 179, 255, 0.22);
+    border-radius: 999px;
+  }
+
+  .tab-pane {
+    display: none;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .tab-pane.active {
+    display: flex;
+  }
+
+  .section {
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(148, 179, 255, 0.11);
+    border-radius: var(--radius-md);
+    padding: 10px 11px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .section-title {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  /* Segmented pills */
+  .seg-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 5px;
+  }
+  .seg-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-dim);
+    font-size: 11px;
+    font-weight: 700;
+    padding: 7px 6px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-align: center;
+  }
+  .seg-btn:hover {
+    color: #fff;
+    border-color: rgba(148, 179, 255, 0.35);
+  }
+  .seg-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.18);
+    border-color: var(--accent-cyan);
+    box-shadow: 0 0 12px rgba(88, 220, 255, 0.15);
+  }
+  .seg-btn.active.mint {
+    background: rgba(74, 242, 178, 0.16);
+    border-color: var(--accent-mint);
+    color: #d7ffef;
+    box-shadow: 0 0 12px rgba(74, 242, 178, 0.15);
+  }
+
+  /* Presets */
+  .preset-list {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .preset-btn {
+    text-align: left;
+    padding: 7px 9px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(148, 179, 255, 0.14);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-main);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .preset-btn:hover {
+    border-color: rgba(88, 220, 255, 0.45);
+    background: rgba(88, 220, 255, 0.08);
+  }
+  .preset-btn.active {
+    border-color: var(--accent-amber);
+    background: rgba(255, 190, 92, 0.13);
+  }
+  .preset-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+  }
+  .preset-name {
+    font-size: 11.5px;
+    font-weight: 700;
+  }
+  .preset-tag {
+    font-family: var(--mono);
+    font-size: 9.5px;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.07);
+    color: var(--text-dim);
+  }
+  .preset-sub {
+    font-size: 9.8px;
+    color: var(--text-muted);
+    line-height: 1.28;
+  }
+
+  /* Sliders */
+  .control-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .control-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11.5px;
+    color: var(--text-dim);
+  }
+  .control-head .val {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--text-main);
+    font-weight: 600;
+  }
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 5px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.18);
+    outline: none;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent-cyan);
+    border: 2px solid #08101f;
+    box-shadow: 0 0 10px rgba(88, 220, 255, 0.65);
+    cursor: pointer;
+  }
+  input[type="range"].amber::-webkit-slider-thumb {
+    background: var(--accent-amber);
+    box-shadow: 0 0 10px rgba(255, 190, 92, 0.65);
+  }
+  input[type="range"].mint::-webkit-slider-thumb {
+    background: var(--accent-mint);
+    box-shadow: 0 0 10px rgba(74, 242, 178, 0.65);
+  }
+
+  /* Action Buttons */
+  .btn-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .btn {
+    border: 1px solid rgba(148, 179, 255, 0.22);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-main);
+    font-size: 11.5px;
+    font-weight: 700;
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+  .btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 179, 255, 0.45);
+  }
+  .btn:active {
+    transform: scale(0.98);
+  }
+  .btn.primary {
+    background: linear-gradient(135deg, rgba(88, 220, 255, 0.28), rgba(56, 140, 255, 0.24));
+    border-color: rgba(88, 220, 255, 0.55);
+    color: #e6f9ff;
+  }
+  .btn.primary:hover {
+    background: linear-gradient(135deg, rgba(88, 220, 255, 0.4), rgba(56, 140, 255, 0.35));
+  }
+  .btn.amber {
+    background: linear-gradient(135deg, rgba(255, 190, 92, 0.28), rgba(255, 110, 56, 0.26));
+    border-color: rgba(255, 175, 82, 0.62);
+    color: #fff4df;
+  }
+  .btn.amber:hover {
+    background: linear-gradient(135deg, rgba(255, 190, 92, 0.42), rgba(255, 110, 56, 0.38));
+  }
+  .btn.mint {
+    background: linear-gradient(135deg, rgba(74, 242, 178, 0.26), rgba(34, 185, 140, 0.24));
+    border-color: rgba(74, 242, 178, 0.56);
+    color: #e4fff5;
+  }
+  .btn.mint:hover {
+    background: linear-gradient(135deg, rgba(74, 242, 178, 0.38), rgba(34, 185, 140, 0.36));
+  }
+
+  /* Toggle switches */
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11.5px;
+    color: var(--text-dim);
+    cursor: pointer;
+    gap: 8px;
+  }
+  .toggle-row input {
+    display: none;
+  }
+  .switch {
+    width: 34px;
+    height: 18px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.2);
+    border: 1px solid rgba(148, 179, 255, 0.25);
+    position: relative;
+    transition: all 0.18s ease;
+    flex-shrink: 0;
+  }
+  .switch::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #c8d7f5;
+    transition: transform 0.18s ease, background 0.18s ease;
+  }
+  .toggle-row input:checked + .switch {
+    background: rgba(88, 220, 255, 0.32);
+    border-color: var(--accent-cyan);
+  }
+  .toggle-row input:checked + .switch::after {
+    transform: translateX(16px);
+    background: #fff;
+  }
+
+  /* PREM chart & layer table */
+  #prem-canvas {
+    width: 100%;
+    height: 165px;
+    display: block;
+    border-radius: var(--radius-sm);
+    background: rgba(3, 6, 14, 0.8);
+    border: 1px solid rgba(148, 179, 255, 0.12);
+  }
+
+  .layer-table {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    font-size: 10.5px;
+  }
+  .layer-row {
+    display: grid;
+    grid-template-columns: 10px 1fr auto;
+    align-items: center;
+    gap: 7px;
+    padding: 5px 7px;
+    border-radius: var(--radius-sm);
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(148, 179, 255, 0.08);
+  }
+  .layer-swatch {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+  }
+  .layer-name {
+    font-weight: 650;
+    color: var(--text-main);
+  }
+  .layer-sub {
+    font-size: 9.5px;
+    color: var(--text-muted);
+  }
+  .layer-vel {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text-dim);
+    text-align: right;
+  }
+
+  .formula-box {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: #cfe4ff;
+    background: rgba(88, 220, 255, 0.07);
+    border: 1px solid rgba(88, 220, 255, 0.22);
+    border-radius: var(--radius-sm);
+    padding: 7px 9px;
+    line-height: 1.45;
+  }
+
+  .note-small {
+    font-size: 10.5px;
+    color: var(--text-muted);
+    line-height: 1.38;
+  }
+
+  /* Bottom Transport Bar */
+  .bottom-bar {
+    position: fixed;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 7px 10px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    flex-wrap: nowrap;
+    z-index: 15;
+  }
+
+  .bar-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-main);
+    font-size: 11.5px;
+    font-weight: 650;
+    padding: 6px 9px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    white-space: nowrap;
+  }
+  .bar-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 179, 255, 0.4);
+  }
+  .bar-btn.active {
+    background: rgba(88, 220, 255, 0.2);
+    border-color: var(--accent-cyan);
+    color: #fff;
+  }
+  .bar-btn.amber {
+    background: rgba(255, 190, 92, 0.15);
+    border-color: rgba(255, 190, 92, 0.45);
+    color: #ffe8c2;
+  }
+  .bar-btn.amber:hover {
+    background: rgba(255, 190, 92, 0.28);
+  }
+
+  .bar-divider {
+    width: 1px;
+    height: 20px;
+    background: rgba(148, 179, 255, 0.16);
+    margin: 0 2px;
+  }
+
+  /* Bottom-left hint pill */
+  .hint-pill {
+    position: fixed;
+    bottom: 14px;
+    left: 14px;
+    padding: 7px 11px;
+    font-size: 10.8px;
+    color: var(--text-dim);
+    max-width: 345px;
+    line-height: 1.4;
+    z-index: 12;
+  }
+  .hint-pill kbd {
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #fff;
+  }
+
+  /* Event Banner */
+  .event-banner {
+    position: fixed;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%) translateY(-10px);
+    padding: 9px 15px;
+    border-radius: var(--radius-md);
+    background: rgba(8, 16, 28, 0.9);
+    border: 1px solid rgba(88, 220, 255, 0.5);
+    color: #dff7ff;
+    font-size: 12px;
+    font-weight: 650;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease, transform 0.25s ease;
+    z-index: 20;
+    backdrop-filter: blur(12px);
+    white-space: nowrap;
+  }
+  .event-banner.visible {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateX(-50%) translateY(0);
+  }
+  .event-banner.mint {
+    background: rgba(8, 24, 22, 0.92);
+    border-color: rgba(74, 242, 178, 0.55);
+    color: #d6ffef;
+  }
+  .event-banner.warn {
+    background: rgba(24, 14, 10, 0.92);
+    border-color: rgba(255, 150, 72, 0.55);
+    color: #ffe5cf;
+  }
+
+  .zen-restore {
+    position: fixed;
+    bottom: 14px;
+    right: 14px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+    z-index: 25;
+  }
+  body.zen-mode .zen-restore {
+    opacity: 0.9;
+    pointer-events: auto;
+  }
+
+  @media (max-width: 1020px) {
+    .left-stack {
+      width: min(340px, calc(100vw - 28px));
+    }
+    .seismo-panel {
+      display: none;
+    }
+    .drawer {
+      top: auto;
+      bottom: 62px;
+      height: 50vh;
+      width: calc(100vw - 28px);
+    }
+    .hint-pill {
+      display: none;
+    }
+  }
+</style>
+</head>
+<body>
+<canvas id="sim-canvas"></canvas>
+
+<div class="hud">
+  <!-- Top-Left Telemetry + Live Seismogram Stack -->
+  <div class="left-stack">
+    <div class="panel top-left">
+      <div class="brand-row">
+        <div class="brand-title-wrap">
+          <div class="brand-title">Seismograph</div>
+          <span id="mode-badge" class="mode-badge">PREM Whole-Earth</span>
+        </div>
+        <span id="shadow-pill" class="status-pill">Direct P &amp; S</span>
+      </div>
+
+      <div class="telemetry-grid">
+        <div class="tele-card">
+          <span class="tele-label">Magnitude</span>
+          <span id="tel-mag" class="tele-val amber">M_w 8.5</span>
+        </div>
+        <div class="tele-card">
+          <span class="tele-label" id="tel-dist-label">Epicentral Dist</span>
+          <span id="tel-dist" class="tele-val cyan">75.0°</span>
+        </div>
+        <div class="tele-card">
+          <span class="tele-label">S − P Lag</span>
+          <span id="tel-lag" class="tele-val coral">09:38</span>
+        </div>
+        <div class="tele-card">
+          <span class="tele-label">Layer Velocity</span>
+          <span id="tel-vel" class="tele-val cyan">12.4 / 6.7 km/s</span>
+        </div>
+        <div class="tele-card">
+          <span class="tele-label">Shadow / Zone</span>
+          <span id="tel-shadow" class="tele-val mint">Direct Mantle</span>
+        </div>
+        <div class="tele-card">
+          <span class="tele-label">Focal Depth</span>
+          <span id="tel-depth" class="tele-val violet">20 km</span>
+        </div>
+      </div>
+
+      <div class="clock-row">
+        <span>Elapsed: <strong id="tel-clock">T+ 00:00</strong></span>
+        <span>Probe: <strong id="tel-probe">Lower Mantle</strong></span>
+      </div>
+    </div>
+
+    <!-- Live 3-Trace / 3-Station Seismogram -->
+    <div class="panel seismo-panel">
+      <div class="seismo-head">
+        <span id="seismo-title">3-Trace Seismogram · STA-GLOBAL</span>
+        <span id="seismo-lag-badge" class="seismo-lag-tag">S − P: 09:38</span>
+      </div>
+      <canvas id="seismo-canvas"></canvas>
+      <div class="seismo-legend" id="seismo-legend">
+        <span class="leg-item"><i class="leg-dot" style="background:var(--accent-cyan)"></i>P-Wave</span>
+        <span class="leg-item"><i class="leg-dot" style="background:var(--accent-coral)"></i>S-Wave</span>
+        <span class="leg-item"><i class="leg-dot" style="background:var(--accent-mint)"></i>Surface R/L</span>
+        <span id="seismo-arrivals" style="color:var(--text-dim)">P 11:42 · S 21:20</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right Control Drawer (330px) -->
+  <aside id="drawer" class="panel drawer">
+    <div class="drawer-tabs">
+      <button class="tab-btn active" data-tab="sim">Quake &amp; Lab</button>
+      <button class="tab-btn" data-tab="waves">Waves &amp; View</button>
+      <button class="tab-btn" data-tab="prem">PREM &amp; Core</button>
+    </div>
+
+    <div class="drawer-body">
+      <!-- TAB 1: QUAKE & LAB -->
+      <div id="tab-sim" class="tab-pane active">
+        <div class="section">
+          <div class="section-title"><span>Seismology Mode</span></div>
+          <div class="seg-row" id="mode-row">
+            <button class="seg-btn active" data-mode="earth">A · Whole-Earth</button>
+            <button class="seg-btn" data-mode="triangulate">B · Triangulation</button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Museum Presets</span></div>
+          <div class="preset-list">
+            <button class="preset-btn active" data-preset="shadow">
+              <div class="preset-top">
+                <span class="preset-name">Global Core Shadow Zone</span>
+                <span class="preset-tag">M8.5 · Mode A</span>
+              </div>
+              <span class="preset-sub">PREM refraction · 104°–140° P &amp; 104°–180° S shadows</span>
+            </button>
+            <button class="preset-btn" data-preset="deep">
+              <div class="preset-top">
+                <span class="preset-name">Deep Focus Trench Quake</span>
+                <span class="preset-tag">600 km · Mode A</span>
+              </div>
+              <span class="preset-sub">Subduction slab focus · muted surface waves</span>
+            </button>
+            <button class="preset-btn" data-preset="antipode">
+              <div class="preset-top">
+                <span class="preset-name">Antipodal PKIKP Core Probe</span>
+                <span class="preset-tag">172° · Mode A</span>
+              </div>
+              <span class="preset-sub">P-rays pierce solid inner core; S-waves blocked</span>
+            </button>
+            <button class="preset-btn" data-preset="triangulation">
+              <div class="preset-top">
+                <span class="preset-name">3-Station Triangulation Challenge</span>
+                <span class="preset-tag">Hidden · Mode B</span>
+              </div>
+              <span class="preset-sub">Measure S−P lag at 3 stations to pinpoint epicenter</span>
+            </button>
+            <button class="preset-btn" data-preset="liquefaction">
+              <div class="preset-top">
+                <span class="preset-name">Fault Rupture &amp; Liquefaction</span>
+                <span class="preset-tag">M7.8 · Mode B</span>
+              </div>
+              <span class="preset-sub">Bilateral strike-slip rupture &amp; basin amplification</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Mode A Actions & Sliders -->
+        <div class="section" id="sec-mode-a">
+          <div class="section-title"><span>Whole-Earth Trigger &amp; Station</span></div>
+          <button id="btn-trigger-quake" class="btn amber">⚡ Trigger M8.0 Quake</button>
+          <div class="btn-row">
+            <button id="btn-pin-shadow" class="btn">Pin → 122° Shadow</button>
+            <button id="btn-pin-antipode" class="btn">Pin → 172° PKIKP</button>
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Moment Magnitude (M_w)</span>
+              <span id="val-mag" class="val">8.5</span>
+            </div>
+            <input id="sl-mag" class="amber" type="range" min="5.0" max="9.5" step="0.1" value="8.5" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Hypocenter Depth</span>
+              <span id="val-depth" class="val">20 km</span>
+            </div>
+            <input id="sl-depth" type="range" min="5" max="660" step="5" value="20" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Station Epicentral Angle (Δ)</span>
+              <span id="val-station-deg" class="val">75.0°</span>
+            </div>
+            <input id="sl-station-deg" class="mint" type="range" min="8" max="180" step="0.5" value="75" />
+          </div>
+        </div>
+
+        <!-- Mode B Actions & Controls -->
+        <div class="section" id="sec-mode-b" style="display:none;">
+          <div class="section-title"><span>Triangulation Controls</span></div>
+          <button id="btn-draw-circles" class="btn mint">🎯 Draw Triangulation Circles</button>
+          <div class="btn-row">
+            <button id="btn-new-hidden" class="btn amber">🎲 New Hidden Quake</button>
+            <button id="btn-reveal-epi" class="btn">👁 Reveal Epicenter</button>
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Regional Quake Magnitude</span>
+              <span id="val-mag-b" class="val">7.2</span>
+            </div>
+            <input id="sl-mag-b" class="amber" type="range" min="4.5" max="8.8" step="0.1" value="7.2" />
+          </div>
+
+          <label class="toggle-row">
+            <span>Challenge Mode (Hide Epicenter)</span>
+            <input id="chk-hidden-epi" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Click Map to Guess Epicenter</span>
+            <input id="chk-guess-mode" type="checkbox" />
+            <span class="switch"></span>
+          </label>
+          <p class="note-small" id="tri-status-note">
+            Drag <strong>STA-1, STA-2, STA-3</strong> anywhere on the map. Wait for P &amp; S rings to pass all 3 stations, then draw triangulation circles!
+          </p>
+        </div>
+      </div>
+
+      <!-- TAB 2: WAVES & VIEW -->
+      <div id="tab-waves" class="tab-pane">
+        <div class="section">
+          <div class="section-title"><span>Seismic Wave Phases</span></div>
+          <label class="toggle-row">
+            <span>P-Waves (Compressional · Cyan)</span>
+            <input id="chk-pwave" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>S-Waves (Shear · Coral-Amber)</span>
+            <input id="chk-swave" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Surface Rayleigh / Love Waves</span>
+            <input id="chk-surf" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Snell-Refracted Ray Paths</span>
+            <input id="chk-rays" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Expanding Curved Wavefronts</span>
+            <input id="chk-fronts" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Core Bounce Hints (ScS / PKiKP)</span>
+            <input id="chk-bounces" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Annotations &amp; Density</span></div>
+          <label class="toggle-row">
+            <span>Shadow Zone Arcs (104°–140° / 180°)</span>
+            <input id="chk-shadow-arcs" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Degree Scale &amp; Layer Labels</span>
+            <input id="chk-labels" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Fault Traces &amp; Liquefaction Basins</span>
+            <input id="chk-basins" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Seismic Ray Density</span>
+              <span id="val-rays" class="val">76 rays</span>
+            </div>
+            <input id="sl-rays" type="range" min="36" max="128" step="4" value="76" />
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 3: PREM & CORE PHYSICS -->
+      <div id="tab-prem" class="tab-pane">
+        <div class="section">
+          <div class="section-title">
+            <span>PREM Velocity Profile</span>
+            <span style="font-family:var(--mono); color:var(--accent-cyan);">km/s vs Depth</span>
+          </div>
+          <canvas id="prem-canvas"></canvas>
+          <p class="note-small">
+            At the <strong>Core-Mantle Boundary (2,891 km)</strong>, P-wave speed plunges from <strong>13.7 → 8.1 km/s</strong>, bending rays sharply inward (<strong>104°–140° P-Shadow</strong>), while S-waves drop to <strong>0 km/s</strong> in the molten outer core (<strong>104°–180° S-Shadow</strong>).
+          </p>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Earth Interior Layers</span></div>
+          <div class="layer-table">
+            <div class="layer-row">
+              <span class="layer-swatch" style="background:#54a8ff"></span>
+              <div><div class="layer-name">Crust</div><div class="layer-sub">0–35 km · Solid Silicate</div></div>
+              <div class="layer-vel">vP 6.2–6.8<br>vS 3.5–3.9</div>
+            </div>
+            <div class="layer-row">
+              <span class="layer-swatch" style="background:#3d5699"></span>
+              <div><div class="layer-name">Upper Mantle</div><div class="layer-sub">35–670 km · Peridotite</div></div>
+              <div class="layer-vel">vP 8.0–10.7<br>vS 4.4–5.9</div>
+            </div>
+            <div class="layer-row">
+              <span class="layer-swatch" style="background:#7a2e46"></span>
+              <div><div class="layer-name">Lower Mantle</div><div class="layer-sub">670–2,891 km · Bridgmanite</div></div>
+              <div class="layer-vel">vP 10.8–13.7<br>vS 6.0–7.3</div>
+            </div>
+            <div class="layer-row">
+              <span class="layer-swatch" style="background:#e85a1c"></span>
+              <div><div class="layer-name">Outer Core (Liquid)</div><div class="layer-sub">2,891–5,150 km · Molten Fe-Ni</div></div>
+              <div class="layer-vel">vP 8.1–10.4<br><span style="color:var(--accent-rose)">vS 0.0 (Liquid)</span></div>
+            </div>
+            <div class="layer-row">
+              <span class="layer-swatch" style="background:#ffd97d"></span>
+              <div><div class="layer-name">Inner Core (Solid)</div><div class="layer-sub">5,150–6,371 km · Crystalline Fe</div></div>
+              <div class="layer-vel">vP 11.0–11.3<br>vS 3.5–3.7</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Snell &amp; Triangulation Math</span></div>
+          <div class="formula-box">
+            p = (r · sin i) / v(r) = const<br>
+            d = Δt_(S−P) · (v_P · v_S) / (v_P − v_S)
+          </div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Event Notification Banner -->
+  <div id="event-banner" class="event-banner">
+    <span id="event-text">Quake triggered!</span>
+  </div>
+
+  <!-- Bottom-Left Hint -->
+  <div id="hint-pill" class="panel hint-pill">
+    <div><strong>Click Earth rim</strong> to trigger quake · <strong>Drag station pin</strong> · <strong>Hover</strong> interior</div>
+    <div><kbd>Space</kbd> Pause · <kbd>Q</kbd> Trigger Quake · <kbd>M</kbd> Switch Mode · <kbd>H</kbd> Cinema</div>
+  </div>
+
+  <!-- Bottom Transport Bar -->
+  <div class="panel bottom-bar">
+    <button id="btn-play" class="bar-btn active">⏸ Pause</button>
+    <button id="btn-reset" class="bar-btn">↺ Reset</button>
+    <div class="bar-divider"></div>
+    <button class="bar-btn speed-btn" data-speed="0.25">0.25×</button>
+    <button class="bar-btn speed-btn" data-speed="0.5">0.5×</button>
+    <button class="bar-btn speed-btn active" data-speed="1">1×</button>
+    <button class="bar-btn speed-btn" data-speed="2">2×</button>
+    <button class="bar-btn speed-btn" data-speed="4">4×</button>
+    <div class="bar-divider"></div>
+    <button id="btn-bar-quake" class="bar-btn amber">⚡ Quake</button>
+    <button id="btn-sound" class="bar-btn">🔇 Audio</button>
+    <button id="btn-toggle-drawer" class="bar-btn active">Controls</button>
+    <button id="btn-zen" class="bar-btn" title="Hide HUD (H)">Cinema</button>
+  </div>
+
+  <button id="btn-zen-restore" class="panel bar-btn zen-restore">Show HUD (H)</button>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // =========================================================================
+  // PHYSICAL CONSTANTS — PREM (Preliminary Reference Earth Model)
+  // =========================================================================
+  const R_EARTH = 6371.0;
+  const R_CRUST = 6336.0;    // 35 km Moho
+  const R_UPPER = 5701.0;    // 670 km Transition Zone base
+  const R_CMB   = 3480.0;    // 2891 km Core-Mantle Boundary
+  const R_ICB   = 1221.5;    // 5149.5 km Inner Core Boundary
+  const V_SURF_GLOBAL = 3.45; // km/s Rayleigh/Love average along crust
+
+  // Regional Crustal Velocities (Mode B Triangulation Lab)
+  const REG_VP = 6.20;        // km/s P-wave
+  const REG_VS = 3.55;        // km/s S-wave
+  const REG_VSURF = 3.05;     // km/s Surface wave
+  const REG_DIST_FACTOR = (REG_VP * REG_VS) / (REG_VP - REG_VS); // ~8.30566 km/s
+
+  // Smooth PCHIP knots for Mantle + Crust matching Dziewonski & Anderson (1981) PREM
+  // Includes the flattened D'' velocity gradient above the CMB (3480-3680 km) that produces the exact ~104° shadow edge!
+  const MANTLE_R  = [3480, 3680, 4000, 4450, 4950, 5400, 5701, 5970, 6180, 6336, 6371];
+  const MANTLE_VP = [13.71, 13.68, 13.28, 12.70, 12.02, 11.30, 10.75, 9.52, 8.50, 7.95, 6.20];
+  const MANTLE_VS = [7.26,  7.25,  7.07,  6.83,  6.53,  6.21,  5.95,  5.22, 4.66, 4.40, 3.55];
+
+  function buildPchipSlopes(xs, ys) {
+    const n = xs.length;
+    const h = new Array(n - 1);
+    const delta = new Array(n - 1);
+    for (let i = 0; i < n - 1; i++) {
+      h[i] = xs[i + 1] - xs[i];
+      delta[i] = (ys[i + 1] - ys[i]) / h[i];
+    }
+    const d = new Array(n).fill(0);
+    d[0] = delta[0];
+    d[n - 1] = delta[n - 2];
+    for (let i = 1; i < n - 1; i++) {
+      if (delta[i - 1] * delta[i] <= 0) {
+        d[i] = 0;
+      } else {
+        const w1 = 2 * h[i] + h[i - 1];
+        const w2 = h[i] + 2 * h[i - 1];
+        d[i] = (w1 + w2) / (w1 / delta[i - 1] + w2 / delta[i]);
+      }
+    }
+    return d;
+  }
+
+  const MANTLE_VP_D = buildPchipSlopes(MANTLE_R, MANTLE_VP);
+  const MANTLE_VS_D = buildPchipSlopes(MANTLE_R, MANTLE_VS);
+
+  function evalPchip(xs, ys, ds, x) {
+    const n = xs.length;
+    if (x <= xs[0]) return { v: ys[0], dv: ds[0] };
+    if (x >= xs[n - 1]) return { v: ys[n - 1], dv: ds[n - 1] };
+    let lo = 0, hi = n - 1;
+    while (hi - lo > 1) {
+      const mid = (lo + hi) >> 1;
+      if (xs[mid] <= x) lo = mid; else hi = mid;
+    }
+    const h = xs[hi] - xs[lo];
+    const t = (x - xs[lo]) / h;
+    const t2 = t * t;
+    const t3 = t2 * t;
+    const h00 = 2 * t3 - 3 * t2 + 1;
+    const h10 = t3 - 2 * t2 + t;
+    const h01 = -2 * t3 + 3 * t2;
+    const h11 = t3 - t2;
+    const v = h00 * ys[lo] + h10 * h * ds[lo] + h01 * ys[hi] + h11 * h * ds[hi];
+
+    const dh00 = 6 * t2 - 6 * t;
+    const dh10 = 3 * t2 - 4 * t + 1;
+    const dh01 = -6 * t2 + 6 * t;
+    const dh11 = 3 * t2 - 2 * t;
+    const dv = (dh00 * ys[lo] + dh10 * h * ds[lo] + dh01 * ys[hi] + dh11 * h * ds[hi]) / h;
+    return { v, dv };
+  }
+
+  // Layer IDs: 0 = Inner Core, 1 = Outer Core (Liquid), 2 = Mantle+Crust
+  function getLayerId(rKm) {
+    if (rKm < R_ICB) return 0;
+    if (rKm < R_CMB) return 1;
+    return 2;
+  }
+
+  function getLayerInfo(rKm) {
+    if (rKm < R_ICB) return { id: 0, name: 'Solid Inner Core', state: 'Solid Fe-Ni' };
+    if (rKm < R_CMB) return { id: 1, name: 'Liquid Outer Core', state: 'Molten Fe-Ni' };
+    if (rKm < R_UPPER) return { id: 2, name: 'Lower Mantle', state: 'Solid Silicate' };
+    if (rKm < R_CRUST) return { id: 2, name: 'Upper Mantle', state: 'Solid Peridotite' };
+    return { id: 2, name: 'Lithosphere / Crust', state: 'Solid Rock' };
+  }
+
+  function premP(rKm, forceLayer = -1) {
+    const lid = forceLayer >= 0 ? forceLayer : getLayerId(rKm);
+    if (lid === 0) {
+      const x = Math.min(1, Math.max(0, rKm / R_ICB));
+      return {
+        v: 11.262 - 0.236 * x * x,
+        dv: -0.472 * x / R_ICB
+      };
+    }
+    if (lid === 1) {
+      const span = R_CMB - R_ICB;
+      const x = Math.min(1, Math.max(0.0001, (rKm - R_ICB) / span));
+      const p = 1.24;
+      return {
+        v: 10.356 - 2.291 * Math.pow(x, p),
+        dv: -2.291 * p * Math.pow(x, p - 1) / span
+      };
+    }
+    return evalPchip(MANTLE_R, MANTLE_VP, MANTLE_VP_D, Math.max(R_CMB, Math.min(R_EARTH, rKm)));
+  }
+
+  function premS(rKm, forceLayer = -1) {
+    const lid = forceLayer >= 0 ? forceLayer : getLayerId(rKm);
+    if (lid === 0) {
+      const x = Math.min(1, Math.max(0, rKm / R_ICB));
+      return {
+        v: 3.668 - 0.163 * x * x,
+        dv: -0.326 * x / R_ICB
+      };
+    }
+    if (lid === 1) {
+      return { v: 0, dv: 0 };
+    }
+    return evalPchip(MANTLE_R, MANTLE_VS, MANTLE_VS_D, Math.max(R_CMB, Math.min(R_EARTH, rKm)));
+  }
+
+  // =========================================================================
+  // EXACT SPHERICAL SNELL RAY TRACER (CARTESIAN HAMILTONIAN RK4 + BOUNDARIES)
+  // Canonical frame: Epicenter at (0, -R_EARTH) (top), Hypocenter at (0, -(R_EARTH - depth))
+  // Angles measured clockwise from top: theta = atan2(x, -y) in [0, pi]
+  // =========================================================================
+  function traceSingleRay(type, takeoffRad, depthKm) {
+    const r0 = Math.max(R_CMB + 50, R_EARTH - depthKm);
+    let x = 0;
+    let y = -r0;
+    let layer = 2; // always starts in crust/mantle
+    const velFn = type === 'P' ? premP : premS;
+    const initV = velFn(r0, layer).v;
+    // takeoffRad = 0 -> straight down (+y); takeoffRad = pi/2 -> horizontal right (+x)
+    let dx = Math.sin(takeoffRad);
+    let dy = Math.cos(takeoffRad);
+    let sx = dx / initV;
+    let sy = dy / initV;
+
+    let t = 0;
+    let enteredCore = false;
+    let enteredInnerCore = false;
+    let bouncedCore = false;
+    let cmbHitPoint = null;
+    let phase = type; // 'P', 'PKP', 'PKIKP', 'PKiKP', 'S', 'ScS'
+
+    const pts = [{ x, y, t, layer, phase }];
+    const dt = 3.2; // seismic seconds per RK4 step
+    const maxTime = type === 'P' ? 1450 : 1850;
+    let sampleAccum = 0;
+    let totalReflections = 0;
+
+    function deriv(px, py, psx, psy, lay) {
+      const r = Math.hypot(px, py);
+      if (r < 1e-4) {
+        const v0 = velFn(0, lay).v;
+        return [v0 * v0 * psx, v0 * v0 * psy, 0, 0];
+      }
+      const { v, dv } = velFn(r, lay);
+      const v2 = v * v;
+      const factor = -dv / (v * r);
+      return [v2 * psx, v2 * psy, factor * px, factor * py];
+    }
+
+    for (let step = 0; step < 650 && t < maxTime; step++) {
+      const rPrev = Math.hypot(x, y);
+      // RK4 step
+      const k1 = deriv(x, y, sx, sy, layer);
+      const k2 = deriv(x + 0.5 * dt * k1[0], y + 0.5 * dt * k1[1], sx + 0.5 * dt * k1[2], sy + 0.5 * dt * k1[3], layer);
+      const k3 = deriv(x + 0.5 * dt * k2[0], y + 0.5 * dt * k2[1], sx + 0.5 * dt * k2[2], sy + 0.5 * dt * k2[3], layer);
+      const k4 = deriv(x + dt * k3[0], y + dt * k3[1], sx + dt * k3[2], sy + dt * k3[3], layer);
+
+      let nx = x + (dt / 6) * (k1[0] + 2 * k2[0] + 2 * k3[0] + k4[0]);
+      let ny = y + (dt / 6) * (k1[1] + 2 * k2[1] + 2 * k3[1] + k4[1]);
+      let nsx = sx + (dt / 6) * (k1[2] + 2 * k2[2] + 2 * k3[2] + k4[2]);
+      let nsy = sy + (dt / 6) * (k1[3] + 2 * k2[3] + 2 * k3[3] + k4[3]);
+      const rNext = Math.hypot(nx, ny);
+
+      // 1) Check Surface Emergence (R >= R_EARTH)
+      if (rNext >= R_EARTH && t > 4) {
+        const f = Math.max(0, Math.min(1, (R_EARTH - rPrev) / Math.max(1e-6, rNext - rPrev)));
+        const ex = x + (nx - x) * f;
+        const ey = y + (ny - y) * f;
+        const er = Math.hypot(ex, ey) || R_EARTH;
+        const fx = (ex / er) * R_EARTH;
+        const fy = (ey / er) * R_EARTH;
+        const ft = t + dt * f;
+        pts.push({ x: fx, y: fy, t: ft, layer, phase });
+        t = ft;
+        x = fx; y = fy;
+        break;
+      }
+
+      // 2) Check Sharp Discontinuities: CMB (3480 km) and ICB (1221.5 km)
+      let crossedBoundary = null;
+      if (layer === 2 && rNext < R_CMB) {
+        crossedBoundary = { rB: R_CMB, targetLayer: 1, dir: -1 };
+      } else if (layer === 1 && rNext > R_CMB) {
+        crossedBoundary = { rB: R_CMB, targetLayer: 2, dir: 1 };
+      } else if (layer === 1 && rNext < R_ICB) {
+        crossedBoundary = { rB: R_ICB, targetLayer: 0, dir: -1 };
+      } else if (layer === 0 && rNext > R_ICB) {
+        crossedBoundary = { rB: R_ICB, targetLayer: 1, dir: 1 };
+      }
+
+      if (crossedBoundary) {
+        const { rB, targetLayer, dir } = crossedBoundary;
+        const denom = rNext - rPrev;
+        const f = Math.abs(denom) > 1e-6 ? Math.max(0, Math.min(1, (rB - rPrev) / denom)) : 0.5;
+        const bx = x + (nx - x) * f;
+        const by = y + (ny - y) * f;
+        const br = Math.hypot(bx, by) || rB;
+        const ux = bx / br; // outward unit normal
+        const uy = by / br;
+        const rx = ux * rB;
+        const ry = uy * rB;
+        const bt = t + dt * f;
+
+        // Incoming unit direction
+        const sMag = Math.hypot(nsx, nsy) || 1;
+        const dix = nsx / sMag;
+        const diy = nsy / sMag;
+        const dn = dix * ux + diy * uy; // normal component
+        const tx = dix - dn * ux;
+        const ty = diy - dn * uy;
+        const sinI1 = Math.hypot(tx, ty);
+
+        pts.push({ x: rx, y: ry, t: bt, layer, phase });
+
+        // S-wave hitting liquid outer core -> blocked + optional ScS bounce!
+        if (type === 'S' && targetLayer === 1) {
+          cmbHitPoint = { x: rx, y: ry, t: bt };
+          bouncedCore = true;
+          // Reflect back into mantle as ScS
+          if (totalReflections >= 1) {
+            t = bt; x = rx; y = ry;
+            break;
+          }
+          totalReflections++;
+          phase = 'ScS';
+          const v1 = velFn(rB, layer).v;
+          const rdx = tx - dn * ux;
+          const rdy = ty - dn * uy;
+          const rdMag = Math.hypot(rdx, rdy) || 1;
+          sx = (rdx / rdMag) / v1;
+          sy = (rdy / rdMag) / v1;
+          x = rx + ux * 0.6;
+          y = ry + uy * 0.6;
+          t = bt;
+          pts.push({ x, y, t, layer, phase });
+          continue;
+        }
+
+        // P-wave Snell refraction / reflection
+        const v1 = velFn(rB, layer).v;
+        const v2 = velFn(rB, targetLayer).v;
+        const sinI2 = (v2 / v1) * sinI1;
+
+        if (sinI2 < 0.998) {
+          // Transmit into targetLayer
+          const cosI2 = Math.sqrt(Math.max(0, 1 - sinI2 * sinI2));
+          const signN = dn < 0 ? -1 : 1;
+          const scaleT = sinI1 > 1e-6 ? (sinI2 / sinI1) : 0;
+          const ndx = tx * scaleT + signN * cosI2 * ux;
+          const ndy = ty * scaleT + signN * cosI2 * uy;
+          const ndMag = Math.hypot(ndx, ndy) || 1;
+          layer = targetLayer;
+          if (layer === 1) {
+            enteredCore = true;
+            if (phase === 'P') phase = 'PKP';
+          } else if (layer === 0) {
+            enteredInnerCore = true;
+            phase = 'PKIKP';
+          }
+          sx = (ndx / ndMag) / v2;
+          sy = (ndy / ndMag) / v2;
+          x = rx + ux * (dir * 0.6);
+          y = ry + uy * (dir * 0.6);
+          t = bt;
+          pts.push({ x, y, t, layer, phase });
+          continue;
+        } else {
+          // Total internal reflection (e.g., PKiKP off ICB or PKKP inside CMB)
+          totalReflections++;
+          if (totalReflections > 1) {
+            t = bt; x = rx; y = ry;
+            break;
+          }
+          if (rB === R_ICB) phase = 'PKiKP';
+          else phase = 'PKKP';
+          const rdx = tx - dn * ux;
+          const rdy = ty - dn * uy;
+          const rdMag = Math.hypot(rdx, rdy) || 1;
+          sx = (rdx / rdMag) / v1;
+          sy = (rdy / rdMag) / v1;
+          x = rx - ux * (dir * 0.6);
+          y = ry - uy * (dir * 0.6);
+          t = bt;
+          pts.push({ x, y, t, layer, phase });
+          continue;
+        }
+      }
+
+      // Normal step — gently renormalize slowness magnitude to 1/v(rNext)
+      const vNow = velFn(rNext, layer).v;
+      const sm = Math.hypot(nsx, nsy) || 1;
+      sx = (nsx / sm) / vNow;
+      sy = (nsy / sm) / vNow;
+      x = nx;
+      y = ny;
+      t += dt;
+
+      sampleAccum++;
+      if (sampleAccum >= 2) {
+        sampleAccum = 0;
+        pts.push({ x, y, t, layer, phase });
+      }
+    }
+
+    const last = pts[pts.length - 1];
+    // Compute signed emergence angle in degrees [0..180]
+    let emergenceDeg = Math.atan2(Math.abs(last.x), -last.y) * (180 / Math.PI);
+    const surfaced = Math.hypot(last.x, last.y) >= R_EARTH - 25;
+
+    return {
+      type,
+      takeoffRad,
+      pts,
+      tEnd: last.t,
+      emergenceDeg,
+      surfaced,
+      enteredCore,
+      enteredInnerCore,
+      bouncedCore,
+      cmbHitPoint,
+      finalPhase: phase
+    };
+  }
+
+  // Interpolate position along a ray at seismic time T
+  function sampleRayAtTime(ray, T) {
+    const pts = ray.pts;
+    if (T <= 0) return { x: pts[0].x, y: pts[0].y, layer: pts[0].layer, phase: pts[0].phase, done: false };
+    const last = pts[pts.length - 1];
+    if (T >= last.t) return { x: last.x, y: last.y, layer: last.layer, phase: last.phase, done: true };
+    // Binary search
+    let lo = 0, hi = pts.length - 1;
+    while (hi - lo > 1) {
+      const mid = (lo + hi) >> 1;
+      if (pts[mid].t <= T) lo = mid; else hi = mid;
+    }
+    const a = pts[lo];
+    const b = pts[hi];
+    const f = (T - a.t) / Math.max(1e-6, b.t - a.t);
+    return {
+      x: a.x + (b.x - a.x) * f,
+      y: a.y + (b.y - a.y) * f,
+      layer: a.layer,
+      phase: b.phase,
+      done: false
+    };
+  }
+
+  // =========================================================================
+  // WEB AUDIO ENGINE (MUTED BY DEFAULT)
+  // Authentic sped-up seismic rumble + pen-needle arrival ticks
+  // =========================================================================
+  class SeismoAudio {
+    constructor() {
+      this.ctx = null;
+      this.enabled = false;
+      this.master = null;
+      this.rumbleGain = null;
+      this.rumbleOsc = null;
+      this.noiseGain = null;
+      this.noiseFilter = null;
+    }
+
+    init() {
+      if (this.ctx) return;
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      this.ctx = new AC();
+      this.master = this.ctx.createGain();
+      this.master.gain.value = 0.0;
+      this.master.connect(this.ctx.destination);
+
+      // Continuous low-frequency seismic rumble bed (filtered brown noise + sub sine)
+      const bufLen = this.ctx.sampleRate * 2;
+      const buf = this.ctx.createBuffer(1, bufLen, this.ctx.sampleRate);
+      const data = buf.getChannelData(0);
+      let lastOut = 0;
+      for (let i = 0; i < bufLen; i++) {
+        const white = Math.random() * 2 - 1;
+        lastOut = (lastOut + 0.025 * white) / 1.025;
+        data[i] = lastOut * 3.5;
+      }
+      const noiseSrc = this.ctx.createBufferSource();
+      noiseSrc.buffer = buf;
+      noiseSrc.loop = true;
+
+      this.noiseFilter = this.ctx.createBiquadFilter();
+      this.noiseFilter.type = 'lowpass';
+      this.noiseFilter.frequency.value = 110;
+      this.noiseFilter.Q.value = 2.0;
+
+      this.noiseGain = this.ctx.createGain();
+      this.noiseGain.gain.value = 0.0;
+
+      noiseSrc.connect(this.noiseFilter);
+      this.noiseFilter.connect(this.noiseGain);
+      this.noiseGain.connect(this.master);
+      noiseSrc.start();
+
+      this.rumbleOsc = this.ctx.createOscillator();
+      this.rumbleOsc.type = 'triangle';
+      this.rumbleOsc.frequency.value = 46;
+      this.rumbleGain = this.ctx.createGain();
+      this.rumbleGain.gain.value = 0.0;
+      this.rumbleOsc.connect(this.rumbleGain);
+      this.rumbleGain.connect(this.master);
+      this.rumbleOsc.start();
+    }
+
+    setEnabled(on) {
+      this.enabled = on;
+      if (on) {
+        this.init();
+        if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
+        if (this.master) {
+          this.master.gain.setTargetAtTime(0.38, this.ctx.currentTime, 0.08);
+        }
+      } else if (this.master && this.ctx) {
+        this.master.gain.setTargetAtTime(0.0, this.ctx.currentTime, 0.06);
+      }
+    }
+
+    updateRumble(energy) {
+      if (!this.enabled || !this.ctx) return;
+      const clamped = Math.min(1, Math.max(0, energy));
+      const now = this.ctx.currentTime;
+      this.noiseGain.gain.setTargetAtTime(clamped * 0.55, now, 0.06);
+      this.noiseFilter.frequency.setTargetAtTime(75 + clamped * 190, now, 0.06);
+      this.rumbleGain.gain.setTargetAtTime(clamped * 0.22, now, 0.06);
+      this.rumbleOsc.frequency.setTargetAtTime(38 + clamped * 28, now, 0.08);
+    }
+
+    playQuakeThump(mag) {
+      if (!this.enabled || !this.ctx) return;
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sine';
+      const baseFreq = Math.max(36, 95 - (mag - 5) * 11);
+      osc.frequency.setValueAtTime(baseFreq * 1.9, now);
+      osc.frequency.exponentialRampToValueAtTime(24, now + 0.55);
+      gain.gain.setValueAtTime(0.001, now);
+      gain.gain.linearRampToValueAtTime(0.45, now + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.65);
+      osc.connect(gain);
+      gain.connect(this.master);
+      osc.start(now);
+      osc.stop(now + 0.7);
+    }
+
+    playArrivalTick(phase) {
+      if (!this.enabled || !this.ctx) return;
+      const now = this.ctx.currentTime;
+      // Mechanical pen-needle tick (short filtered impulse)
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      let freq = 920;
+      let dur = 0.09;
+      let type = 'triangle';
+      if (phase === 'P' || phase === 'PKP' || phase === 'PKIKP') {
+        freq = phase === 'P' ? 980 : 1180;
+        dur = 0.085;
+      } else if (phase === 'S') {
+        freq = 390;
+        dur = 0.14;
+        type = 'sawtooth';
+      } else if (phase === 'Surf') {
+        freq = 195;
+        dur = 0.22;
+        type = 'sine';
+      } else if (phase === 'Lock') {
+        freq = 740;
+        dur = 0.28;
+        type = 'sine';
+      }
+      const flt = this.ctx.createBiquadFilter();
+      flt.type = 'bandpass';
+      flt.frequency.value = freq;
+      flt.Q.value = 3.5;
+
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, now);
+      osc.frequency.exponentialRampToValueAtTime(freq * 0.72, now + dur);
+
+      gain.gain.setValueAtTime(0.001, now);
+      gain.gain.linearRampToValueAtTime(0.32, now + 0.006);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
+
+      osc.connect(flt);
+      flt.connect(gain);
+      gain.connect(this.master);
+      osc.start(now);
+      osc.stop(now + dur + 0.03);
+    }
+  }
+
+  // =========================================================================
+  // DOM REFERENCES
+  // =========================================================================
+  const $ = (id) => document.getElementById(id);
+
+  const canvas = $('sim-canvas');
+  const ctx = canvas.getContext('2d');
+  const seismoCanvas = $('seismo-canvas');
+  const sCtx = seismoCanvas.getContext('2d');
+  const premCanvas = $('prem-canvas');
+  const pCtx = premCanvas.getContext('2d');
+
+  const ui = {
+    modeBadge: $('mode-badge'),
+    shadowPill: $('shadow-pill'),
+    telMag: $('tel-mag'),
+    telDistLabel: $('tel-dist-label'),
+    telDist: $('tel-dist'),
+    telLag: $('tel-lag'),
+    telVel: $('tel-vel'),
+    telShadow: $('tel-shadow'),
+    telDepth: $('tel-depth'),
+    telClock: $('tel-clock'),
+    telProbe: $('tel-probe'),
+    seismoTitle: $('seismo-title'),
+    seismoLagBadge: $('seismo-lag-badge'),
+    seismoArrivals: $('seismo-arrivals'),
+    drawer: $('drawer'),
+    secModeA: $('sec-mode-a'),
+    secModeB: $('sec-mode-b'),
+    btnTriggerQuake: $('btn-trigger-quake'),
+    btnPinShadow: $('btn-pin-shadow'),
+    btnPinAntipode: $('btn-pin-antipode'),
+    slMag: $('sl-mag'),
+    valMag: $('val-mag'),
+    slDepth: $('sl-depth'),
+    valDepth: $('val-depth'),
+    slStationDeg: $('sl-station-deg'),
+    valStationDeg: $('val-station-deg'),
+    btnDrawCircles: $('btn-draw-circles'),
+    btnNewHidden: $('btn-new-hidden'),
+    btnRevealEpi: $('btn-reveal-epi'),
+    slMagB: $('sl-mag-b'),
+    valMagB: $('val-mag-b'),
+    chkHiddenEpi: $('chk-hidden-epi'),
+    chkGuessMode: $('chk-guess-mode'),
+    triStatusNote: $('tri-status-note'),
+    chkPwave: $('chk-pwave'),
+    chkSwave: $('chk-swave'),
+    chkSurf: $('chk-surf'),
+    chkRays: $('chk-rays'),
+    chkFronts: $('chk-fronts'),
+    chkBounces: $('chk-bounces'),
+    chkShadowArcs: $('chk-shadow-arcs'),
+    chkLabels: $('chk-labels'),
+    chkBasins: $('chk-basins'),
+    slRays: $('sl-rays'),
+    valRays: $('val-rays'),
+    eventBanner: $('event-banner'),
+    eventText: $('event-text'),
+    hintPill: $('hint-pill'),
+    btnPlay: $('btn-play'),
+    btnReset: $('btn-reset'),
+    btnBarQuake: $('btn-bar-quake'),
+    btnSound: $('btn-sound'),
+    btnToggleDrawer: $('btn-toggle-drawer'),
+    btnZen: $('btn-zen'),
+    btnZenRestore: $('btn-zen-restore')
+  };
+
+  // =========================================================================
+  // SIMULATION STATE
+  // =========================================================================
+  const audio = new SeismoAudio();
+
+  const state = {
+    mode: 'earth',         // 'earth' (Mode A) | 'triangulate' (Mode B)
+    preset: 'shadow',
+    paused: false,
+    speed: 1.0,
+    drawerOpen: true,
+    zen: false,
+    width: window.innerWidth,
+    height: window.innerHeight,
+    dpr: Math.min(window.devicePixelRatio || 1, 2),
+
+    // Visual overlays
+    showP: true,
+    showS: true,
+    showSurf: true,
+    showRays: true,
+    showFronts: true,
+    showBounces: true,
+    showShadowArcs: true,
+    showLabels: true,
+    showBasins: true,
+    rayCount: 76,
+
+    // Mode A: Whole-Earth Tomography
+    earthTime: 0,          // seismic seconds (0..2200)
+    earthSpeedBase: 38,    // seismic sec per real sec at 1x
+    magA: 8.5,
+    depthKm: 20,
+    quakeAngle: -Math.PI / 2, // top of Earth (12 o'clock)
+    stationOffsetRad: (75 * Math.PI) / 180, // clockwise offset from quakeAngle
+    pRays: [],
+    sRays: [],
+    shadowPStart: 104,
+    shadowPEnd: 141,
+    shadowSStart: 104,
+    stationArrivals: { tP: null, pPhase: 'P', tS: null, tSurf: null, zone: 'Direct Mantle' },
+    firedArrivalsA: { p: false, s: false, surf: false },
+    stationPulseA: 0,
+    quakeFlashA: 0,
+    hoverDepthKm: null,
+
+    // Mode B: 3-Station Triangulation Lab (Map coordinates: 1000 x 640 km)
+    mapW: 1000,
+    mapH: 640,
+    regTime: 0,            // regional seismic seconds (0..260)
+    regSpeedBase: 14,      // seismic sec per real sec at 1x
+    magB: 7.2,
+    epicenter: { x: 465, y: 310 },
+    hiddenEpicenter: true,
+    epicenterRevealed: false,
+    guessMode: false,
+    userGuess: null,
+    liquefactionMode: false,
+    ruptureSegment: { x1: 370, y1: 420, x2: 595, y2: 205, speed: 2.9 },
+    drawCircles: false,
+    circleAnim: 0,
+    stationsB: [
+      { id: 'STA-1', x: 220, y: 175, color: '#58dcff', pulse: 0, firedP: false, firedS: false, firedSurf: false, shake: 0 },
+      { id: 'STA-2', x: 775, y: 205, color: '#ffbe5c', pulse: 0, firedP: false, firedS: false, firedSurf: false, shake: 0 },
+      { id: 'STA-3', x: 540, y: 525, color: '#4af2b2', pulse: 0, firedP: false, firedS: false, firedSurf: false, shake: 0 }
+    ],
+    // Regional geological basins & fault traces (km coordinates)
+    faults: [
+      { name: 'San Gabriel Strike-Slip Fault', pts: [[120, 560], [270, 480], [415, 380], [565, 235], [720, 125], [890, 55]], main: true },
+      { name: 'Sierra Thrust Branch', pts: [[415, 380], [345, 255], [295, 130]], main: false },
+      { name: 'Coastal Rift Splay', pts: [[565, 235], [705, 315], [840, 415]], main: false }
+    ],
+    basins: [
+      { name: 'Alluvial Bay Basin', x: 590, y: 375, rx: 125, ry: 72, rot: -0.25, amp: 2.35 },
+      { name: 'Delta Sediment Valley', x: 300, y: 270, rx: 92, ry: 55, rot: 0.35, amp: 2.0 }
+    ],
+
+    // Interaction
+    draggingPinA: false,
+    draggingStationB: -1,
+    mouseX: -999,
+    mouseY: -999,
+
+    // Stars & core convection seeds
+    stars: [],
+    convectionEddies: [],
+    bannerTimer: 0
+  };
+
+  // Seed stars & outer-core convection filaments
+  for (let i = 0; i < 160; i++) {
+    state.stars.push({
+      x: Math.random(),
+      y: Math.random(),
+      r: 0.4 + Math.random() * 1.35,
+      a: 0.15 + Math.random() * 0.65,
+      tw: Math.random() * Math.PI * 2
+    });
+  }
+  for (let i = 0; i < 28; i++) {
+    state.convectionEddies.push({
+      rFrac: 0.42 + Math.random() * 0.52,
+      ang: Math.random() * Math.PI * 2,
+      span: 0.45 + Math.random() * 0.75,
+      speed: (Math.random() > 0.5 ? 1 : -1) * (0.04 + Math.random() * 0.08),
+      width: 1.2 + Math.random() * 2.4,
+      alpha: 0.08 + Math.random() * 0.16
+    });
+  }
+
+  // =========================================================================
+  // HELPERS
+  // =========================================================================
+  function formatMinSec(sec) {
+    if (sec === null || sec === undefined || !isFinite(sec)) return '—';
+    const s = Math.max(0, Math.round(sec));
+    const m = Math.floor(s / 60);
+    const rem = s % 60;
+    return `${String(m).padStart(2, '0')}:${String(rem).padStart(2, '0')}`;
+  }
+
+  function showBanner(text, tone = '') {
+    ui.eventText.textContent = text;
+    ui.eventBanner.className = 'event-banner visible' + (tone ? ' ' + tone : '');
+    state.bannerTimer = 3.8;
+  }
+
+  function getViewportBounds() {
+    // Optical free area between left HUD stack and right drawer
+    const leftPad = state.zen ? 24 : (state.width > 1020 ? 416 : 24);
+    const rightPad = (state.zen || !state.drawerOpen || state.width <= 1020) ? 24 : 354;
+    const topPad = state.zen ? 28 : 34;
+    const bottomPad = state.zen ? 30 : 78;
+    const availW = Math.max(260, state.width - leftPad - rightPad);
+    const availH = Math.max(260, state.height - topPad - bottomPad);
+    return {
+      left: leftPad,
+      top: topPad,
+      w: availW,
+      h: availH,
+      cx: leftPad + availW * 0.5,
+      cy: topPad + availH * 0.5
+    };
+  }
+
+  function getEarthGeom() {
+    const vp = getViewportBounds();
+    const radius = Math.min(vp.w, vp.h) * 0.415;
+    return { cx: vp.cx, cy: vp.cy, R: Math.max(115, radius) };
+  }
+
+  function getMapGeom() {
+    const vp = getViewportBounds();
+    const padX = 24;
+    const padY = 20;
+    const scale = Math.min((vp.w - padX * 2) / state.mapW, (vp.h - padY * 2) / state.mapH);
+    const drawW = state.mapW * scale;
+    const drawH = state.mapH * scale;
+    return {
+      x0: vp.cx - drawW * 0.5,
+      y0: vp.cy - drawH * 0.5,
+      w: drawW,
+      h: drawH,
+      scale
+    };
+  }
+
+  function mapToScreen(mx, my, geom) {
+    return { x: geom.x0 + mx * geom.scale, y: geom.y0 + my * geom.scale };
+  }
+
+  function screenToMap(sx, sy, geom) {
+    return { x: (sx - geom.x0) / geom.scale, y: (sy - geom.y0) / geom.scale };
+  }
+
+  // =========================================================================
+  // MODE A: COMPUTE RAY FANS & EXACT STATION ARRIVALS
+  // =========================================================================
+  function rebuildEarthRays() {
+    const nP = Math.max(32, Math.round(state.rayCount));
+    const nS = Math.max(28, Math.round(state.rayCount * 0.85));
+    const pRays = [];
+    const sRays = [];
+
+    // Dense sampling of takeoff angles + targeted grazing cluster around exact CMB critical angle!
+    const r0 = Math.max(R_CMB + 50, R_EARTH - state.depthKm);
+    const critP = Math.asin(Math.min(0.95, (premP(r0, 2).v / r0) * (R_CMB / premP(R_CMB, 2).v)));
+    const critS = Math.asin(Math.min(0.95, (premS(r0, 2).v / r0) * (R_CMB / premS(R_CMB, 2).v)));
+
+    const pAngles = [];
+    for (let i = 0; i < nP; i++) {
+      const u = i / (nP - 1);
+      pAngles.push(0.012 + Math.pow(u, 1.05) * (Math.PI * 0.492));
+    }
+    // Add crisp rays right around the CMB critical angle so 104° grazing & 140° PKP caustic are exact
+    for (const delta of [-0.012, -0.005, -0.0015, 0.0006, 0.0022, 0.0055, 0.012, 0.022]) {
+      const a = critP + delta;
+      if (a > 0.01 && a < Math.PI * 0.495) pAngles.push(a);
+    }
+    pAngles.sort((a, b) => a - b);
+    for (const a of pAngles) pRays.push(traceSingleRay('P', a, state.depthKm));
+
+    const sAngles = [];
+    for (let i = 0; i < nS; i++) {
+      const u = i / (nS - 1);
+      sAngles.push(0.016 + Math.pow(u, 1.04) * (Math.PI * 0.492));
+    }
+    for (const delta of [-0.008, -0.002, 0.0008, 0.003, 0.008, 0.016]) {
+      const a = critS + delta;
+      if (a > 0.01 && a < Math.PI * 0.495) sAngles.push(a);
+    }
+    sAngles.sort((a, b) => a - b);
+    for (const a of sAngles) sRays.push(traceSingleRay('S', a, state.depthKm));
+
+    state.pRays = pRays;
+    state.sRays = sRays;
+
+    // Extract actual computed shadow zone boundaries from our real PREM rays!
+    let maxDirectP = 103;
+    let minCoreP = 143;
+    for (const r of pRays) {
+      if (!r.surfaced) continue;
+      if (!r.enteredCore) {
+        if (r.emergenceDeg > maxDirectP) maxDirectP = r.emergenceDeg;
+      } else if (r.finalPhase === 'PKP' || r.finalPhase === 'PKIKP') {
+        if (r.emergenceDeg < minCoreP) minCoreP = r.emergenceDeg;
+      }
+    }
+    let maxDirectS = 103;
+    for (const r of sRays) {
+      if (!r.surfaced || r.bouncedCore) continue;
+      if (r.emergenceDeg > maxDirectS) maxDirectS = r.emergenceDeg;
+    }
+
+    state.shadowPStart = Math.round(maxDirectP);
+    state.shadowPEnd = Math.round(Math.max(maxDirectP + 26, Math.min(148, minCoreP)));
+    state.shadowSStart = Math.round(maxDirectS);
+
+    updateStationArrivalsA();
+  }
+
+  function updateStationArrivalsA() {
+    // Epicentral distance in degrees [0..180]
+    let deg = Math.abs(((state.stationOffsetRad % (Math.PI * 2)) + Math.PI * 3) % (Math.PI * 2) - Math.PI);
+    deg = Math.abs(Math.atan2(Math.sin(state.stationOffsetRad), Math.cos(state.stationOffsetRad))) * (180 / Math.PI);
+
+    // Search surfaced P rays bracketing `deg` (separate direct mantle P vs core PKP/PKIKP)
+    let bestDirectP = null;
+    let bestCoreP = null;
+
+    function interpFromList(list, targetDeg) {
+      let best = null;
+      let bestErr = 999;
+      for (let i = 0; i < list.length - 1; i++) {
+        const a = list[i], b = list[i + 1];
+        if ((a.emergenceDeg <= targetDeg && b.emergenceDeg >= targetDeg) ||
+            (b.emergenceDeg <= targetDeg && a.emergenceDeg >= targetDeg)) {
+          const span = b.emergenceDeg - a.emergenceDeg;
+          const f = Math.abs(span) > 1e-5 ? (targetDeg - a.emergenceDeg) / span : 0.5;
+          const t = a.tEnd + (b.tEnd - a.tEnd) * f;
+          if (!best || t < best.t) {
+            best = { t, phase: f < 0.5 ? a.finalPhase : b.finalPhase };
+          }
+        }
+      }
+      if (!best) {
+        for (const r of list) {
+          const err = Math.abs(r.emergenceDeg - targetDeg);
+          if (err < 3.2 && err < bestErr) {
+            bestErr = err;
+            best = { t: r.tEnd, phase: r.finalPhase };
+          }
+        }
+      }
+      return best;
+    }
+
+    const directPList = state.pRays.filter(r => r.surfaced && !r.enteredCore);
+    const corePList = state.pRays.filter(r => r.surfaced && r.enteredCore && (r.finalPhase === 'PKP' || r.finalPhase === 'PKIKP'));
+    const directSList = state.sRays.filter(r => r.surfaced && !r.bouncedCore);
+
+    if (deg <= state.shadowPStart + 0.8) {
+      bestDirectP = interpFromList(directPList, deg);
+    }
+    if (deg >= state.shadowPEnd - 0.8) {
+      bestCoreP = interpFromList(corePList, deg);
+    }
+
+    let tP = null;
+    let pPhase = 'P';
+    if (bestDirectP) {
+      tP = bestDirectP.t;
+      pPhase = 'P';
+    } else if (bestCoreP) {
+      tP = bestCoreP.t;
+      pPhase = bestCoreP.phase;
+    }
+
+    let tS = null;
+    if (deg <= state.shadowSStart + 0.8) {
+      const sHit = interpFromList(directSList, deg);
+      if (sHit) tS = sHit.t;
+    }
+
+    // Surface Rayleigh/Love arrival along crust circumference
+    const arcKm = (deg * Math.PI / 180) * R_EARTH;
+    // Deep focus quakes still generate weak surface waves starting slightly later
+    const tSurf = (arcKm / V_SURF_GLOBAL) + (state.depthKm / 6.5);
+
+    let zone = 'Direct P & S';
+    let pillClass = '';
+    if (deg > state.shadowPStart && deg < state.shadowPEnd) {
+      zone = `P & S Shadow (${state.shadowPStart}°–${state.shadowPEnd}°)`;
+      pillClass = 'shadow';
+    } else if (deg >= state.shadowPEnd) {
+      zone = `S Shadow · ${pPhase} Core`;
+      pillClass = 'pkp';
+    } else if (deg > state.shadowSStart) {
+      zone = `S-Wave Shadow (>${state.shadowSStart}°)`;
+      pillClass = 'shadow';
+    }
+
+    state.stationArrivals = { deg, tP, pPhase, tS, tSurf, zone, pillClass };
+  }
+
+  function triggerEarthQuake(newAngle = null, announce = true) {
+    if (newAngle !== null) state.quakeAngle = newAngle;
+    state.earthTime = 0;
+    state.quakeFlashA = 1.0;
+    state.stationPulseA = 0;
+    state.firedArrivalsA = { p: false, s: false, surf: false };
+    state.paused = false;
+    updatePlayButton();
+    rebuildEarthRays();
+    audio.playQuakeThump(state.magA);
+    if (announce) {
+      showBanner(`⚡ M_w ${state.magA.toFixed(1)} Earthquake triggered (Depth ${state.depthKm} km) — P, S & Surface waves propagating`, 'warn');
+    }
+  }
+
+  // =========================================================================
+  // MODE B: REGIONAL TRIANGULATION HELPERS
+  // =========================================================================
+  function stationDistB(st) {
+    return Math.hypot(st.x - state.epicenter.x, st.y - state.epicenter.y);
+  }
+
+  function stationBasinAmp(st) {
+    if (!state.showBasins) return 1.0;
+    let amp = 1.0;
+    for (const b of state.basins) {
+      const dx = st.x - b.x;
+      const dy = st.y - b.y;
+      const c = Math.cos(-b.rot), s = Math.sin(-b.rot);
+      const lx = dx * c - dy * s;
+      const ly = dx * s + dy * c;
+      const norm = (lx * lx) / (b.rx * b.rx) + (ly * ly) / (b.ry * b.ry);
+      if (norm < 1.15) {
+        const w = Math.max(0, 1 - norm / 1.15);
+        amp = Math.max(amp, 1 + (b.amp - 1) * w);
+      }
+    }
+    return amp;
+  }
+
+  function triggerRegionalQuake(x, y, keepHidden = false, announce = true) {
+    state.epicenter = {
+      x: Math.max(95, Math.min(state.mapW - 95, x)),
+      y: Math.max(85, Math.min(state.mapH - 85, y))
+    };
+    state.regTime = 0;
+    state.drawCircles = false;
+    state.circleAnim = 0;
+    state.userGuess = null;
+    state.epicenterRevealed = !keepHidden;
+    for (const st of state.stationsB) {
+      st.pulse = 0;
+      st.firedP = false;
+      st.firedS = false;
+      st.firedSurf = false;
+      st.shake = 0;
+    }
+    state.paused = false;
+    updatePlayButton();
+    audio.playQuakeThump(state.magB);
+    if (announce) {
+      if (keepHidden) {
+        showBanner(`🎲 New hidden M_w ${state.magB.toFixed(1)} quake! Watch P & S rings hit all 3 stations, then triangulate.`, '');
+      } else {
+        showBanner(`⚡ Regional M_w ${state.magB.toFixed(1)} rupture at (${Math.round(state.epicenter.x)}, ${Math.round(state.epicenter.y)} km)`, 'warn');
+      }
+    }
+  }
+
+  function randomizeHiddenQuake() {
+    // Pick an epicenter inside the central map region with good geometry to all 3 stations
+    const ex = 260 + Math.random() * 480;
+    const ey = 170 + Math.random() * 300;
+    state.hiddenEpicenter = true;
+    ui.chkHiddenEpi.checked = true;
+    state.liquefactionMode = false;
+    triggerRegionalQuake(ex, ey, true, true);
+  }
+
+  function activateTriangulationCircles() {
+    state.drawCircles = true;
+    state.circleAnim = 0.01;
+    state.epicenterRevealed = true;
+    audio.playArrivalTick('Lock');
+    const d1 = Math.round(stationDistB(state.stationsB[0]));
+    const d2 = Math.round(stationDistB(state.stationsB[1]));
+    const d3 = Math.round(stationDistB(state.stationsB[2]));
+    showBanner(`🎯 Triangulation Locked! Radii d₁=${d1} km · d₂=${d2} km · d₃=${d3} km intersect on the Epicenter!`, 'mint');
+  }
+
+  // =========================================================================
+  // PRESETS
+  // =========================================================================
+  function setMode(mode, skipReset = false) {
+    state.mode = mode;
+    document.querySelectorAll('#mode-row .seg-btn').forEach(b => {
+      const isA = b.dataset.mode === 'earth';
+      b.classList.toggle('active', b.dataset.mode === mode);
+      b.classList.toggle('mint', !isA && b.dataset.mode === mode);
+    });
+    ui.secModeA.style.display = mode === 'earth' ? 'flex' : 'none';
+    ui.secModeB.style.display = mode === 'triangulate' ? 'flex' : 'none';
+
+    if (mode === 'earth') {
+      ui.modeBadge.textContent = 'PREM Whole-Earth';
+      ui.modeBadge.className = 'mode-badge';
+      ui.telDistLabel.textContent = 'Epicentral Dist';
+      ui.hintPill.innerHTML = `
+        <div><strong>Click Earth rim</strong> to trigger quake · <strong>Drag station pin</strong> · <strong>Hover</strong> interior</div>
+        <div><kbd>Space</kbd> Pause · <kbd>Q</kbd> Trigger Quake · <kbd>M</kbd> Switch Mode · <kbd>H</kbd> Cinema</div>`;
+      if (!skipReset) triggerEarthQuake(null, false);
+    } else {
+      ui.modeBadge.textContent = 'Triangulation Lab';
+      ui.modeBadge.className = 'mode-badge tri';
+      ui.telDistLabel.textContent = 'Nearest Station';
+      ui.hintPill.innerHTML = `
+        <div><strong>Drag STA-1/2/3</strong> · <strong>Click map</strong> to trigger or guess · <kbd>T</kbd> Draw Circles</div>
+        <div><kbd>Space</kbd> Pause · <kbd>Q</kbd> New Quake · <kbd>M</kbd> Switch Mode · <kbd>H</kbd> Cinema</div>`;
+      if (!skipReset) triggerRegionalQuake(state.epicenter.x, state.epicenter.y, state.hiddenEpicenter, false);
+    }
+    syncUIValues();
+  }
+
+  function applyPreset(name) {
+    state.preset = name;
+    document.querySelectorAll('.preset-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.preset === name);
+    });
+
+    if (name === 'shadow') {
+      state.magA = 8.5;
+      state.depthKm = 20;
+      state.quakeAngle = -Math.PI / 2;
+      state.stationOffsetRad = (75 * Math.PI) / 180;
+      state.showP = true; state.showS = true; state.showSurf = true;
+      state.showRays = true; state.showFronts = true; state.showShadowArcs = true;
+      setMode('earth', true);
+      triggerEarthQuake(-Math.PI / 2, false);
+      showBanner('Global Core Shadow Zone (M_w 8.5) — Drag the station pin into 104°–140° to see P & S vanish!', '');
+    } else if (name === 'deep') {
+      state.magA = 8.2;
+      state.depthKm = 600;
+      state.quakeAngle = -Math.PI / 2;
+      state.stationOffsetRad = (96 * Math.PI) / 180;
+      state.showP = true; state.showS = true; state.showSurf = true;
+      state.showRays = true; state.showFronts = true; state.showShadowArcs = true;
+      setMode('earth', true);
+      triggerEarthQuake(-Math.PI / 2, false);
+      showBanner('Deep Focus Trench Quake (600 km) — Wadati-Benioff subduction slab with suppressed surface waves!', 'warn');
+    } else if (name === 'antipode') {
+      state.magA = 8.8;
+      state.depthKm = 35;
+      state.quakeAngle = -Math.PI / 2;
+      state.stationOffsetRad = (172 * Math.PI) / 180;
+      state.showP = true; state.showS = true; state.showSurf = true;
+      state.showRays = true; state.showFronts = true; state.showShadowArcs = true;
+      setMode('earth', true);
+      triggerEarthQuake(-Math.PI / 2, false);
+      showBanner('Antipodal PKIKP Core Probe (172°) — S-waves blocked by liquid outer core; PKIKP pierces the solid inner core!', '');
+    } else if (name === 'triangulation') {
+      state.magB = 7.2;
+      state.hiddenEpicenter = true;
+      state.guessMode = false;
+      state.liquefactionMode = false;
+      state.stationsB[0].x = 210; state.stationsB[0].y = 175;
+      state.stationsB[1].x = 785; state.stationsB[1].y = 195;
+      state.stationsB[2].x = 535; state.stationsB[2].y = 535;
+      setMode('triangulate', true);
+      triggerRegionalQuake(455, 315, true, false);
+      showBanner('3-Station Triangulation Challenge — Watch P & S rings cross STA-1/2/3, then click 🎯 Draw Triangulation Circles!', 'mint');
+    } else if (name === 'liquefaction') {
+      state.magB = 7.8;
+      state.hiddenEpicenter = false;
+      state.guessMode = false;
+      state.liquefactionMode = true;
+      state.showBasins = true;
+      state.stationsB[0].x = 305; state.stationsB[0].y = 268; // Inside Delta Sediment Valley!
+      state.stationsB[1].x = 595; state.stationsB[1].y = 372; // Inside Alluvial Bay Basin!
+      state.stationsB[2].x = 755; state.stationsB[2].y = 185; // Bedrock station for comparison
+      setMode('triangulate', true);
+      triggerRegionalQuake(485, 315, false, false);
+      showBanner('Fault Rupture & Liquefaction (M_w 7.8) — Bilateral fault rupture amplifies shaking inside soft sediment basins!', 'warn');
+    }
+    syncUIValues();
+  }
+
+  function syncUIValues() {
+    ui.slMag.value = state.magA;
+    ui.valMag.textContent = state.magA.toFixed(1);
+    ui.btnTriggerQuake.textContent = `⚡ Trigger M${state.magA.toFixed(1)} Quake`;
+    ui.slDepth.value = state.depthKm;
+    ui.valDepth.textContent = `${state.depthKm} km`;
+    const deg = Math.abs(Math.atan2(Math.sin(state.stationOffsetRad), Math.cos(state.stationOffsetRad))) * 180 / Math.PI;
+    ui.slStationDeg.value = deg.toFixed(1);
+    ui.valStationDeg.textContent = `${deg.toFixed(1)}°`;
+
+    ui.slMagB.value = state.magB;
+    ui.valMagB.textContent = state.magB.toFixed(1);
+    ui.chkHiddenEpi.checked = state.hiddenEpicenter;
+    ui.chkGuessMode.checked = state.guessMode;
+
+    ui.chkPwave.checked = state.showP;
+    ui.chkSwave.checked = state.showS;
+    ui.chkSurf.checked = state.showSurf;
+    ui.chkRays.checked = state.showRays;
+    ui.chkFronts.checked = state.showFronts;
+    ui.chkBounces.checked = state.showBounces;
+    ui.chkShadowArcs.checked = state.showShadowArcs;
+    ui.chkLabels.checked = state.showLabels;
+    ui.chkBasins.checked = state.showBasins;
+    ui.slRays.value = state.rayCount;
+    ui.valRays.textContent = `${state.rayCount} rays`;
+  }
+
+  function updatePlayButton() {
+    ui.btnPlay.textContent = state.paused ? '▶ Play' : '⏸ Pause';
+    ui.btnPlay.classList.toggle('active', !state.paused);
+  }
+
+  // =========================================================================
+  // SYNTHETIC SEISMOGRAM WAVEFORM GENERATOR
+  // =========================================================================
+  function wavePacket(t, t0, freq, decay, amp, phaseOffset = 0) {
+    const dt = t - t0;
+    if (dt < 0 || dt > decay * 7.5) return 0;
+    // Fast ramp-in + realistic coda decay with slight dispersion
+    const env = (1 - Math.exp(-dt / Math.max(0.8, decay * 0.14))) * Math.exp(-dt / decay);
+    const carrier = Math.sin(dt * freq + phaseOffset) * 0.68
+                  + Math.sin(dt * freq * 1.67 + phaseOffset * 1.4) * 0.24
+                  + Math.sin(dt * freq * 0.53 - phaseOffset) * 0.16;
+    return amp * env * carrier;
+  }
+
+  // Evaluate synthetic 3-channel ground motion for Mode A at seismic time `t`
+  function evalEarthSeismogram(t) {
+    const arr = state.stationArrivals;
+    const magScale = Math.pow(1.42, state.magA - 7.5);
+    const depthSurfFactor = Math.exp(-state.depthKm / 260); // Deep focus suppresses surface waves!
+    // Microseismic background noise
+    const bgZ = 0.025 * Math.sin(t * 0.73) * Math.cos(t * 0.31);
+    const bgN = 0.022 * Math.sin(t * 0.61 + 1.1) * Math.cos(t * 0.27);
+    const bgE = 0.022 * Math.sin(t * 0.54 + 2.3) * Math.cos(t * 0.35);
+
+    let pZ = 0, pN = 0;
+    if (arr.tP !== null) {
+      const pAmp = (arr.pPhase === 'P' ? 0.52 : 0.38) * Math.min(1.45, magScale);
+      pZ = wavePacket(t, arr.tP, 0.55, 34, pAmp, 0.2);
+      pN = wavePacket(t, arr.tP + 2, 0.48, 30, pAmp * 0.42, 1.3);
+    }
+
+    let sN = 0, sE = 0, sZ = 0;
+    if (arr.tS !== null) {
+      const sAmp = 0.88 * Math.min(1.45, magScale);
+      sN = wavePacket(t, arr.tS, 0.30, 52, sAmp, 0.7);
+      sE = wavePacket(t, arr.tS + 1.5, 0.28, 56, sAmp * 0.82, 2.1);
+      sZ = wavePacket(t, arr.tS + 2, 0.31, 44, sAmp * 0.28, 1.1);
+    }
+
+    let surfZ = 0, surfN = 0, surfE = 0;
+    if (arr.tSurf !== null) {
+      const surfAmp = 1.02 * Math.min(1.35, magScale) * (0.18 + 0.82 * depthSurfFactor);
+      surfE = wavePacket(t, arr.tSurf, 0.16, 110, surfAmp, 0.4); // Love wave leads slightly
+      surfZ = wavePacket(t, arr.tSurf + 24, 0.135, 130, surfAmp * 0.92, 1.6); // Rayleigh wave
+      surfN = wavePacket(t, arr.tSurf + 24, 0.145, 125, surfAmp * 0.74, 2.8);
+    }
+
+    return {
+      z: Math.max(-1.2, Math.min(1.2, bgZ + pZ + sZ + surfZ)),
+      n: Math.max(-1.2, Math.min(1.2, bgN + pN + sN + surfN)),
+      e: Math.max(-1.2, Math.min(1.2, bgE + sE + surfE))
+    };
+  }
+
+  // Evaluate synthetic seismogram for one regional station in Mode B at time `t`
+  function evalRegSeismogram(st, t) {
+    const dist = stationDistB(st);
+    const tP = dist / REG_VP;
+    const tS = dist / REG_VS;
+    const tSurf = dist / REG_VSURF;
+    const atten = 1 / (1 + dist / 460);
+    const magScale = Math.pow(1.38, state.magB - 6.8);
+    const basinAmp = state.liquefactionMode ? stationBasinAmp(st) : 1.0;
+
+    const bg = 0.022 * Math.sin(t * 2.1 + st.x * 0.03) * Math.cos(t * 0.9);
+    const p = wavePacket(t, tP, 3.6, 5.2, 0.48 * atten * magScale, 0.3);
+    const s = wavePacket(t, tS, 2.0, 9.5, 0.95 * atten * magScale * basinAmp, 1.2);
+    const surf = wavePacket(t, tSurf, 1.15, 16.0, 0.78 * atten * magScale * basinAmp, 2.4);
+
+    // Extra sub-event pulse for bilateral fault rupture preset
+    let extra = 0;
+    if (state.liquefactionMode) {
+      extra = wavePacket(t, tS + 7.5, 1.6, 12.0, 0.45 * atten * basinAmp, 0.8);
+    }
+
+    return {
+      val: Math.max(-1.25, Math.min(1.25, bg + p + s + surf + extra)),
+      tP, tS, tSurf, dist, basinAmp
+    };
+  }
+
+  // =========================================================================
+  // DRAWING: LIVE SEISMOGRAM PANEL (3-TRACE MODE A / 3-STATION MODE B)
+  // =========================================================================
+  function resizeSubCanvas(el, cssH) {
+    const rect = el.getBoundingClientRect();
+    const w = Math.max(100, Math.round(rect.width));
+    const h = cssH || Math.max(80, Math.round(rect.height));
+    const dpr = state.dpr;
+    if (el.width !== Math.round(w * dpr) || el.height !== Math.round(h * dpr)) {
+      el.width = Math.round(w * dpr);
+      el.height = Math.round(h * dpr);
+    }
+    return { w, h, dpr };
+  }
+
+  function drawSeismogram() {
+    if (state.zen || state.width <= 1020) return;
+    const { w, h, dpr } = resizeSubCanvas(seismoCanvas, 162);
+    sCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    sCtx.clearRect(0, 0, w, h);
+
+    // Background grid
+    sCtx.strokeStyle = 'rgba(148, 179, 255, 0.07)';
+    sCtx.lineWidth = 1;
+    const cols = 8;
+    for (let i = 1; i < cols; i++) {
+      const gx = (w / cols) * i;
+      sCtx.beginPath(); sCtx.moveTo(gx, 0); sCtx.lineTo(gx, h); sCtx.stroke();
+    }
+
+    const rowH = h / 3;
+    for (let r = 0; r < 3; r++) {
+      const cy = rowH * (r + 0.5);
+      sCtx.strokeStyle = 'rgba(148, 179, 255, 0.12)';
+      sCtx.beginPath(); sCtx.moveTo(0, cy); sCtx.lineTo(w, cy); sCtx.stroke();
+      if (r > 0) {
+        sCtx.strokeStyle = 'rgba(148, 179, 255, 0.08)';
+        sCtx.beginPath(); sCtx.moveTo(0, rowH * r); sCtx.lineTo(w, rowH * r); sCtx.stroke();
+      }
+    }
+
+    if (state.mode === 'earth') {
+      const arr = state.stationArrivals;
+      // Time window adapts cleanly to the station's epicentral distance (0..tMax)
+      const tMax = Math.max(1200, (arr.tSurf || 1800) + 420);
+      const tNow = Math.min(tMax, state.earthTime);
+      const padL = 44;
+      const plotW = w - padL - 8;
+      const tToX = (t) => padL + (t / tMax) * plotW;
+
+      // Shade S - P lag region if both P and S exist
+      if (arr.tP !== null && arr.tS !== null && tNow >= arr.tP) {
+        const x1 = tToX(arr.tP);
+        const x2 = tToX(Math.min(tNow, arr.tS));
+        sCtx.fillStyle = 'rgba(255, 190, 92, 0.08)';
+        sCtx.fillRect(x1, 0, Math.max(0, x2 - x1), h);
+      }
+
+      // Draw arrival vertical flags
+      const markers = [];
+      if (arr.tP !== null) markers.push({ t: arr.tP, label: arr.pPhase, color: arr.pPhase === 'P' ? '#58dcff' : '#a78bfa' });
+      if (arr.tS !== null) markers.push({ t: arr.tS, label: 'S', color: '#ff7a45' });
+      if (arr.tSurf !== null && arr.tSurf < tMax) markers.push({ t: arr.tSurf, label: 'R/L', color: '#4af2b2' });
+
+      for (const m of markers) {
+        const mx = tToX(m.t);
+        const reached = tNow >= m.t;
+        sCtx.save();
+        sCtx.strokeStyle = reached ? m.color : 'rgba(148,179,255,0.22)';
+        sCtx.setLineDash(reached ? [] : [3, 3]);
+        sCtx.lineWidth = reached ? 1.2 : 1;
+        sCtx.beginPath(); sCtx.moveTo(mx, 2); sCtx.lineTo(mx, h - 2); sCtx.stroke();
+        sCtx.setLineDash([]);
+        sCtx.fillStyle = reached ? m.color : 'rgba(154,169,204,0.5)';
+        sCtx.font = '700 9px ui-monospace, monospace';
+        sCtx.fillText(m.label, Math.min(w - 24, mx + 3), 10);
+        sCtx.restore();
+      }
+
+      // Draw 3 traces: Z (Vertical / P-dominant), N-S (Radial / S-dominant), E-W (Transverse / Love-S)
+      const channels = [
+        { key: 'z', label: 'Z-VERT', color: '#58dcff' },
+        { key: 'n', label: 'N-RAD',  color: '#ff9052' },
+        { key: 'e', label: 'E-TRN',  color: '#4af2b2' }
+      ];
+
+      const samples = 210;
+      const maxX = tToX(tNow);
+
+      channels.forEach((ch, idx) => {
+        const cy = rowH * (idx + 0.5);
+        const ampPx = rowH * 0.4;
+
+        // Channel label
+        sCtx.fillStyle = ch.color;
+        sCtx.font = '700 9px ui-monospace, monospace';
+        sCtx.fillText(ch.label, 5, cy + 3);
+
+        sCtx.beginPath();
+        let lastX = padL, lastY = cy;
+        for (let i = 0; i <= samples; i++) {
+          const tt = (i / samples) * tNow;
+          const xx = tToX(tt);
+          const v = evalEarthSeismogram(tt)[ch.key];
+          const yy = cy - v * ampPx;
+          if (i === 0) sCtx.moveTo(xx, yy);
+          else sCtx.lineTo(xx, yy);
+          lastX = xx; lastY = yy;
+        }
+        sCtx.strokeStyle = ch.color;
+        sCtx.lineWidth = 1.25;
+        sCtx.stroke();
+
+        // Live glowing stylus tip
+        sCtx.fillStyle = '#ffffff';
+        sCtx.beginPath();
+        sCtx.arc(lastX, lastY, 2.2, 0, Math.PI * 2);
+        sCtx.fill();
+      });
+
+      // Current sweep cursor line
+      sCtx.strokeStyle = 'rgba(255,255,255,0.22)';
+      sCtx.lineWidth = 1;
+      sCtx.beginPath(); sCtx.moveTo(maxX, 0); sCtx.lineTo(maxX, h); sCtx.stroke();
+
+      // Update seismogram panel headers
+      ui.seismoTitle.textContent = `3-Trace Seismogram · STA (${arr.deg.toFixed(1)}°)`;
+      if (arr.tP !== null && arr.tS !== null) {
+        ui.seismoLagBadge.textContent = `S − P: ${formatMinSec(arr.tS - arr.tP)}`;
+        ui.seismoArrivals.textContent = `${arr.pPhase} ${formatMinSec(arr.tP)} · S ${formatMinSec(arr.tS)}`;
+      } else if (arr.tP !== null && arr.tS === null) {
+        ui.seismoLagBadge.textContent = `S Shadow (Liquid Core)`;
+        ui.seismoArrivals.textContent = `${arr.pPhase} ${formatMinSec(arr.tP)} · S NONE`;
+      } else {
+        ui.seismoLagBadge.textContent = `P & S Shadow Zone`;
+        ui.seismoArrivals.textContent = `P NONE · S NONE · R/L ${formatMinSec(arr.tSurf)}`;
+      }
+    } else {
+      // Mode B: 3-Station Seismograms (STA-1, STA-2, STA-3)
+      const tMax = 210;
+      const tNow = Math.min(tMax, state.regTime);
+      const padL = 44;
+      const plotW = w - padL - 8;
+      const tToX = (t) => padL + (t / tMax) * plotW;
+
+      const samples = 210;
+      let summaryParts = [];
+
+      state.stationsB.forEach((st, idx) => {
+        const yTop = rowH * idx;
+        const cy = rowH * (idx + 0.5);
+        const ampPx = rowH * 0.4;
+        const dist = stationDistB(st);
+        const tP = dist / REG_VP;
+        const tS = dist / REG_VS;
+        const lag = tS - tP;
+
+        // Shade S - P interval
+        if (tNow >= tP) {
+          const x1 = tToX(Math.min(tMax, tP));
+          const x2 = tToX(Math.min(tMax, Math.min(tNow, tS)));
+          sCtx.fillStyle = 'rgba(255, 190, 92, 0.12)';
+          sCtx.fillRect(x1, yTop + 2, Math.max(0, x2 - x1), rowH - 4);
+        }
+
+        // P and S markers
+        if (tP < tMax) {
+          const xp = tToX(tP);
+          sCtx.strokeStyle = tNow >= tP ? '#58dcff' : 'rgba(88,220,255,0.22)';
+          sCtx.lineWidth = 1.1;
+          sCtx.beginPath(); sCtx.moveTo(xp, yTop + 2); sCtx.lineTo(xp, yTop + rowH - 2); sCtx.stroke();
+        }
+        if (tS < tMax) {
+          const xs = tToX(tS);
+          sCtx.strokeStyle = tNow >= tS ? '#ff7a45' : 'rgba(255,122,69,0.22)';
+          sCtx.lineWidth = 1.1;
+          sCtx.beginPath(); sCtx.moveTo(xs, yTop + 2); sCtx.lineTo(xs, yTop + rowH - 2); sCtx.stroke();
+        }
+
+        // Station label
+        sCtx.fillStyle = st.color;
+        sCtx.font = '700 9.5px ui-monospace, monospace';
+        sCtx.fillText(st.id, 5, cy - 2);
+        sCtx.fillStyle = 'rgba(154,169,204,0.8)';
+        sCtx.font = '600 8.5px ui-monospace, monospace';
+        sCtx.fillText(tNow >= tS ? `Δ${lag.toFixed(1)}s` : (tNow >= tP ? 'P hit' : 'wait'), 5, cy + 10);
+
+        // Waveform trace
+        sCtx.beginPath();
+        let lastX = padL, lastY = cy;
+        for (let i = 0; i <= samples; i++) {
+          const tt = (i / samples) * tNow;
+          const xx = tToX(tt);
+          const v = evalRegSeismogram(st, tt).val;
+          const yy = cy - v * ampPx;
+          if (i === 0) sCtx.moveTo(xx, yy);
+          else sCtx.lineTo(xx, yy);
+          lastX = xx; lastY = yy;
+        }
+        sCtx.strokeStyle = st.color;
+        sCtx.lineWidth = 1.25;
+        sCtx.stroke();
+
+        sCtx.fillStyle = '#fff';
+        sCtx.beginPath();
+        sCtx.arc(lastX, lastY, 2.2, 0, Math.PI * 2);
+        sCtx.fill();
+
+        if (tNow >= tS) {
+          summaryParts.push(`${st.id[4]}:${Math.round(dist)}km`);
+        }
+      });
+
+      const allRecorded = state.stationsB.every(st => state.regTime >= stationDistB(st) / REG_VS);
+      ui.seismoTitle.textContent = '3-Station Seismograms (STA-1/2/3)';
+      ui.seismoLagBadge.textContent = allRecorded ? '3/3 S−P Ready' : 'Recording...';
+      ui.seismoArrivals.textContent = summaryParts.length ? summaryParts.join(' · ') : 'Awaiting S-wave arrivals';
+    }
+  }
+
+  // =========================================================================
+  // DRAWING: PREM VELOCITY PROFILE CHART (INSIDE TAB 3)
+  // =========================================================================
+  function drawPremChart() {
+    if (!ui.drawer.classList.contains('collapsed') && $('tab-prem').classList.contains('active')) {
+      const { w, h, dpr } = resizeSubCanvas(premCanvas, 165);
+      pCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      pCtx.clearRect(0, 0, w, h);
+
+      const padL = 32, padR = 10, padT = 14, padB = 22;
+      const pw = w - padL - padR;
+      const ph = h - padT - padB;
+      const depthToX = (d) => padL + (d / R_EARTH) * pw;
+      const velToY = (v) => padT + ph * (1 - v / 15.0);
+
+      // Layer shaded columns
+      const zones = [
+        { d0: 0, d1: 670, fill: 'rgba(61, 86, 153, 0.16)', lbl: 'UM' },
+        { d0: 670, d1: 2891, fill: 'rgba(122, 46, 70, 0.18)', lbl: 'Lower Mantle' },
+        { d0: 2891, d1: 5149.5, fill: 'rgba(232, 90, 28, 0.22)', lbl: 'Liquid Core' },
+        { d0: 5149.5, d1: 6371, fill: 'rgba(255, 217, 125, 0.20)', lbl: 'IC' }
+      ];
+      for (const z of zones) {
+        const x0 = depthToX(z.d0), x1 = depthToX(z.d1);
+        pCtx.fillStyle = z.fill;
+        pCtx.fillRect(x0, padT, x1 - x0, ph);
+        pCtx.fillStyle = 'rgba(200, 215, 245, 0.55)';
+        pCtx.font = '600 8.5px ui-monospace, monospace';
+        pCtx.fillText(z.lbl, x0 + 3, padT + 10);
+      }
+
+      // Horizontal velocity grid
+      pCtx.strokeStyle = 'rgba(148,179,255,0.12)';
+      pCtx.lineWidth = 1;
+      for (let v = 0; v <= 15; v += 5) {
+        const y = velToY(v);
+        pCtx.beginPath(); pCtx.moveTo(padL, y); pCtx.lineTo(w - padR, y); pCtx.stroke();
+        pCtx.fillStyle = 'rgba(154,169,204,0.75)';
+        pCtx.font = '600 9px ui-monospace, monospace';
+        pCtx.fillText(`${v}`, 8, y + 3);
+      }
+
+      // CMB & ICB vertical dashed lines
+      [2891, 5149.5].forEach(d => {
+        const x = depthToX(d);
+        pCtx.strokeStyle = 'rgba(255, 190, 92, 0.45)';
+        pCtx.setLineDash([3, 3]);
+        pCtx.beginPath(); pCtx.moveTo(x, padT); pCtx.lineTo(x, padT + ph); pCtx.stroke();
+        pCtx.setLineDash([]);
+      });
+
+      // Plot v_P curve (cyan)
+      pCtx.beginPath();
+      for (let i = 0; i <= 180; i++) {
+        const depth = (i / 180) * R_EARTH;
+        const rKm = R_EARTH - depth;
+        const v = premP(rKm).v;
+        const x = depthToX(depth);
+        const y = velToY(v);
+        if (i === 0) pCtx.moveTo(x, y);
+        else pCtx.lineTo(x, y);
+      }
+      pCtx.strokeStyle = '#58dcff';
+      pCtx.lineWidth = 2;
+      pCtx.stroke();
+
+      // Plot v_S curve (coral-amber)
+      pCtx.beginPath();
+      for (let i = 0; i <= 180; i++) {
+        const depth = (i / 180) * R_EARTH;
+        const rKm = R_EARTH - depth;
+        const v = premS(rKm).v;
+        const x = depthToX(depth);
+        const y = velToY(v);
+        if (i === 0) pCtx.moveTo(x, y);
+        else pCtx.lineTo(x, y);
+      }
+      pCtx.strokeStyle = '#ff7a45';
+      pCtx.lineWidth = 2;
+      pCtx.stroke();
+
+      // Live hover depth indicator
+      if (state.hoverDepthKm !== null) {
+        const hx = depthToX(state.hoverDepthKm);
+        pCtx.strokeStyle = 'rgba(255,255,255,0.75)';
+        pCtx.lineWidth = 1;
+        pCtx.beginPath(); pCtx.moveTo(hx, padT); pCtx.lineTo(hx, padT + ph); pCtx.stroke();
+      }
+
+      // X-axis depth labels
+      pCtx.fillStyle = 'rgba(154,169,204,0.8)';
+      pCtx.font = '600 9px ui-monospace, monospace';
+      pCtx.fillText('0 km', padL, h - 6);
+      pCtx.fillText('2891 CMB', depthToX(2891) - 20, h - 6);
+      pCtx.fillText('6371', w - padR - 24, h - 6);
+
+      // Legend tags
+      pCtx.fillStyle = '#58dcff';
+      pCtx.fillText('vP', padL + 6, velToY(13.2));
+      pCtx.fillStyle = '#ff7a45';
+      pCtx.fillText('vS=0', depthToX(3500), velToY(1.2));
+    }
+  }
+
+  // =========================================================================
+  // DRAWING: MODE A — WHOLE-EARTH INTERIOR TOMOGRAPHY & SHADOW ZONES
+  // =========================================================================
+  function drawModeA(nowSec) {
+    const { cx, cy, R } = getEarthGeom();
+    const scale = R / R_EARTH; // px per km
+    const rOuterCore = R_CMB * scale;
+    const rInnerCore = R_ICB * scale;
+    const rUpperMantle = R_UPPER * scale;
+    const rCrust = R_CRUST * scale;
+
+    // 1. Atmospheric Planetary Halo
+    const halo = ctx.createRadialGradient(cx, cy, R * 0.94, cx, cy, R * 1.24);
+    halo.addColorStop(0, 'rgba(64, 155, 255, 0.24)');
+    halo.addColorStop(0.45, 'rgba(35, 92, 200, 0.08)');
+    halo.addColorStop(1, 'rgba(4, 7, 17, 0)');
+    ctx.fillStyle = halo;
+    ctx.beginPath();
+    ctx.arc(cx, cy, R * 1.24, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 2. Earth Cross-Section Layers
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, R, 0, Math.PI * 2);
+    ctx.clip();
+
+    // Crust & Lithosphere base
+    ctx.fillStyle = '#254c7a';
+    ctx.fillRect(cx - R, cy - R, R * 2, R * 2);
+
+    // Upper Mantle
+    const umGrad = ctx.createRadialGradient(cx, cy, rUpperMantle, cx, cy, rCrust);
+    umGrad.addColorStop(0, '#212647');
+    umGrad.addColorStop(0.65, '#1d2d52');
+    umGrad.addColorStop(1, '#264673');
+    ctx.fillStyle = umGrad;
+    ctx.beginPath();
+    ctx.arc(cx, cy, rCrust, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Lower Mantle (warm silicate glow toward CMB)
+    const lmGrad = ctx.createRadialGradient(cx, cy, rOuterCore * 0.95, cx, cy, rUpperMantle);
+    lmGrad.addColorStop(0, '#5a1f2d');
+    lmGrad.addColorStop(0.32, '#3a1829');
+    lmGrad.addColorStop(0.72, '#22172e');
+    lmGrad.addColorStop(1, '#1a1e38');
+    ctx.fillStyle = lmGrad;
+    ctx.beginPath();
+    ctx.arc(cx, cy, rUpperMantle, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Liquid Iron Outer Core
+    const ocGrad = ctx.createRadialGradient(cx, cy, rInnerCore * 0.9, cx, cy, rOuterCore);
+    ocGrad.addColorStop(0, '#ff9138');
+    ocGrad.addColorStop(0.38, '#d94d1a');
+    ocGrad.addColorStop(0.82, '#8c2212');
+    ocGrad.addColorStop(1, '#5c120d');
+    ctx.fillStyle = ocGrad;
+    ctx.beginPath();
+    ctx.arc(cx, cy, rOuterCore, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Subtle animated molten iron convection eddies inside Liquid Outer Core
+    ctx.save();
+    for (const e of state.convectionEddies) {
+      const rr = rInnerCore + (rOuterCore - rInnerCore) * e.rFrac;
+      const a0 = e.ang + nowSec * e.speed;
+      ctx.strokeStyle = `rgba(255, 195, 110, ${e.alpha})`;
+      ctx.lineWidth = e.width;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.arc(cx, cy, rr, a0, a0 + e.span);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // Solid Inner Core (crystalline incandescent Fe-Ni)
+    const icGrad = ctx.createRadialGradient(cx - rInnerCore * 0.2, cy - rInnerCore * 0.2, rInnerCore * 0.05, cx, cy, rInnerCore);
+    icGrad.addColorStop(0, '#fffbe8');
+    icGrad.addColorStop(0.48, '#ffdf88');
+    icGrad.addColorStop(0.85, '#ffaa44');
+    icGrad.addColorStop(1, '#e67822');
+    ctx.fillStyle = icGrad;
+    ctx.beginPath();
+    ctx.arc(cx, cy, rInnerCore, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Layer Boundary Rings
+    // 670 km Transition Zone
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.20)';
+    ctx.setLineDash([4, 5]);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(cx, cy, rUpperMantle, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // CMB (Core-Mantle Boundary, 2891 km)
+    ctx.strokeStyle = 'rgba(255, 165, 86, 0.65)';
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.arc(cx, cy, rOuterCore, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // ICB (Inner Core Boundary, 5150 km)
+    ctx.strokeStyle = 'rgba(255, 245, 200, 0.75)';
+    ctx.lineWidth = 1.25;
+    ctx.beginPath();
+    ctx.arc(cx, cy, rInnerCore, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // 3. SEISMIC RAYS & EXPANDING WAVEFRONTS (Rotated to current quakeAngle)
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(state.quakeAngle + Math.PI / 2); // canonical (0, -R) aligns to quakeAngle!
+
+    const T = state.earthTime;
+
+    // Helper to draw a ray path up to time T for side = +1 or -1
+    function drawRayTrace(ray, side, color, lineWidth, alpha, stopAtCmb = false) {
+      const pts = ray.pts;
+      if (pts.length < 2) return;
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x * side * scale, pts[0].y * scale);
+      for (let i = 1; i < pts.length; i++) {
+        const prev = pts[i - 1];
+        const cur = pts[i];
+        if (stopAtCmb && cur.phase === 'ScS') break;
+        if (cur.t <= T) {
+          ctx.lineTo(cur.x * side * scale, cur.y * scale);
+        } else {
+          const f = (T - prev.t) / Math.max(1e-6, cur.t - prev.t);
+          if (f > 0) {
+            const ix = prev.x + (cur.x - prev.x) * f;
+            const iy = prev.y + (cur.y - prev.y) * f;
+            ctx.lineTo(ix * side * scale, iy * scale);
+          }
+          break;
+        }
+      }
+      ctx.strokeStyle = color;
+      ctx.globalAlpha = alpha;
+      ctx.lineWidth = lineWidth;
+      ctx.stroke();
+    }
+
+    // 3a. Snell-Refracted Ray Paths
+    if (state.showRays && T > 0.5) {
+      // Draw S-rays first (underneath P-rays)
+      if (state.showS) {
+        const sStep = Math.max(1, Math.floor(state.sRays.length / 26));
+        for (let i = 0; i < state.sRays.length; i += sStep) {
+          const ray = state.sRays[i];
+          const isBounce = ray.bouncedCore;
+          for (const side of [1, -1]) {
+            drawRayTrace(ray, side, '#ff7a45', 1.15, isBounce ? 0.34 : 0.42, true);
+            // Optional faint ScS core reflection bounce
+            if (isBounce && state.showBounces && ray.cmbHitPoint && T > ray.cmbHitPoint.t) {
+              ctx.save();
+              ctx.setLineDash([3, 4]);
+              drawRayTrace(ray, side, '#ffbe5c', 0.9, 0.24, false);
+              ctx.restore();
+            }
+          }
+        }
+      }
+
+      // Draw P-rays (direct cyan + core PKP/PKIKP ice-violet)
+      if (state.showP) {
+        const pStep = Math.max(1, Math.floor(state.pRays.length / 30));
+        for (let i = 0; i < state.pRays.length; i += pStep) {
+          const ray = state.pRays[i];
+          const isCore = ray.enteredCore;
+          const col = ray.enteredInnerCore ? '#b29cff' : (isCore ? '#75c4ff' : '#58dcff');
+          const alpha = isCore ? 0.54 : 0.46;
+          for (const side of [1, -1]) {
+            drawRayTrace(ray, side, col, isCore ? 1.25 : 1.1, alpha, false);
+          }
+        }
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    // 3b. CMB S-Wave Absorption Sparks (visually shows S-waves dying at Liquid Outer Core!)
+    if (state.showS && T > 10) {
+      for (const ray of state.sRays) {
+        if (!ray.cmbHitPoint) continue;
+        const dtHit = T - ray.cmbHitPoint.t;
+        if (dtHit >= 0 && dtHit < 140) {
+          const fade = Math.max(0, 1 - dtHit / 140);
+          for (const side of [1, -1]) {
+            const hx = ray.cmbHitPoint.x * side * scale;
+            const hy = ray.cmbHitPoint.y * scale;
+            ctx.fillStyle = `rgba(255, 130, 70, ${fade * 0.65})`;
+            ctx.beginPath();
+            ctx.arc(hx, hy, 2.0 + fade * 2.5, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+      }
+    }
+
+    // 3c. Expanding Curved Wavefronts (True Snell-Refracted Isochrones!)
+    function drawWavefrontBranch(rays, color, glowColor, lineWidth, skipPredicate) {
+      for (const side of [1, -1]) {
+        ctx.save();
+        ctx.strokeStyle = color;
+        ctx.shadowColor = glowColor;
+        ctx.shadowBlur = 12;
+        ctx.lineWidth = lineWidth;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.beginPath();
+        let penDown = false;
+        let prevX = 0, prevY = 0;
+        for (let i = 0; i < rays.length; i++) {
+          const ray = rays[i];
+          if (skipPredicate(ray, T)) {
+            penDown = false;
+            continue;
+          }
+          const pos = sampleRayAtTime(ray, T);
+          if (pos.done) {
+            penDown = false;
+            continue;
+          }
+          const px = pos.x * side * scale;
+          const py = pos.y * scale;
+          if (!penDown) {
+            ctx.moveTo(px, py);
+            penDown = true;
+          } else {
+            // Break if discontinuity jump across shadow/caustic > 0.14*R
+            const jump = Math.hypot(px - prevX, py - prevY);
+            if (jump > R * 0.14) {
+              ctx.moveTo(px, py);
+            } else {
+              ctx.lineTo(px, py);
+            }
+          }
+          prevX = px; prevY = py;
+        }
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    if (state.showFronts && T > 1) {
+      // Direct S-Wavefront (vanishes cleanly as center hits CMB!)
+      if (state.showS) {
+        drawWavefrontBranch(
+          state.sRays,
+          '#ff8a4c',
+          'rgba(255, 122, 69, 0.9)',
+          3.0,
+          (ray, t) => ray.cmbHitPoint && t >= ray.cmbHitPoint.t
+        );
+      }
+
+      // Direct Mantle P-Wavefront (electric cyan)
+      if (state.showP) {
+        const directP = state.pRays.filter(r => !r.enteredCore);
+        const coreP = state.pRays.filter(r => r.enteredCore);
+        drawWavefrontBranch(directP, '#58dcff', 'rgba(88, 220, 255, 0.95)', 3.2, () => false);
+        // Core-Transmitted PKP / PKIKP Wavefront (luminous ice-violet-cyan)
+        drawWavefrontBranch(coreP, '#96e4ff', 'rgba(138, 195, 255, 0.95)', 3.0, () => false);
+      }
+    }
+
+    // 3d. Hypocenter Starburst inside Earth
+    const hypoY = -(R_EARTH - state.depthKm) * scale;
+    const flash = Math.max(0.25, state.quakeFlashA);
+    const hGlow = ctx.createRadialGradient(0, hypoY, 1, 0, hypoY, 16 + flash * 18);
+    hGlow.addColorStop(0, '#ffffff');
+    hGlow.addColorStop(0.28, 'rgba(255, 200, 95, 0.92)');
+    hGlow.addColorStop(0.65, 'rgba(255, 95, 65, 0.35)');
+    hGlow.addColorStop(1, 'rgba(255, 95, 65, 0)');
+    ctx.fillStyle = hGlow;
+    ctx.beginPath();
+    ctx.arc(0, hypoY, 16 + flash * 18, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Expanding epicenter shock ring
+    if (T < 90) {
+      const sr = (T / 90) * R * 0.24;
+      ctx.strokeStyle = `rgba(255, 220, 140, ${(1 - T / 90) * 0.7})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(0, hypoY, sr, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    ctx.restore(); // end quakeAngle rotation
+    ctx.restore(); // end Earth clip
+
+    // 4. Crisp Outer Earth Rim
+    ctx.strokeStyle = 'rgba(115, 190, 255, 0.72)';
+    ctx.lineWidth = 2.0;
+    ctx.beginPath();
+    ctx.arc(cx, cy, R, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // 5. Surface Rayleigh / Love Waves sweeping along the perimeter crust!
+    if (state.showSurf && state.earthTime > 2) {
+      const surfDeg = ((state.earthTime * V_SURF_GLOBAL) / R_EARTH) * (180 / Math.PI);
+      const depthSurfFactor = 0.22 + 0.78 * Math.exp(-state.depthKm / 260);
+      if (surfDeg < 210) {
+        const headRad = Math.min(Math.PI, (surfDeg * Math.PI) / 180);
+        const tailRad = Math.max(0, headRad - 0.26);
+        for (const side of [1, -1]) {
+          // Animated undulating surface ripple along crust rim
+          ctx.save();
+          ctx.strokeStyle = '#4af2b2';
+          ctx.shadowColor = 'rgba(74, 242, 178, 0.9)';
+          ctx.shadowBlur = 10;
+          ctx.lineWidth = 2.4 * depthSurfFactor + 0.8;
+          ctx.beginPath();
+          const steps = 36;
+          for (let i = 0; i <= steps; i++) {
+            const f = i / steps;
+            const aOffset = tailRad + (headRad - tailRad) * f;
+            const ang = state.quakeAngle + side * aOffset;
+            const env = Math.sin(f * Math.PI);
+            const ripple = Math.sin(f * 26 - nowSec * 14) * 5.2 * env * depthSurfFactor;
+            const rr = R + 2 + ripple;
+            const px = cx + Math.cos(ang) * rr;
+            const py = cy + Math.sin(ang) * rr;
+            if (i === 0) ctx.moveTo(px, py);
+            else ctx.lineTo(px, py);
+          }
+          ctx.stroke();
+
+          // Leading mint crest dot
+          if (surfDeg <= 180) {
+            const hAng = state.quakeAngle + side * headRad;
+            ctx.fillStyle = '#eafff6';
+            ctx.beginPath();
+            ctx.arc(cx + Math.cos(hAng) * (R + 2), cy + Math.sin(hAng) * (R + 2), 3.6, 0, Math.PI * 2);
+            ctx.fill();
+          }
+          ctx.restore();
+        }
+      }
+    }
+
+    // 6. Shadow Zone Arcs & Angular Degree Scale around Earth's Rim
+    if (state.showShadowArcs) {
+      const p0 = (state.shadowPStart * Math.PI) / 180;
+      const p1 = (state.shadowPEnd * Math.PI) / 180;
+      const s0 = (state.shadowSStart * Math.PI) / 180;
+
+      // S-Wave Shadow Zone outer arc (104° to 180° on both sides)
+      const rSArc = R + 22;
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255, 122, 69, 0.34)';
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.arc(cx, cy, rSArc, state.quakeAngle + s0, state.quakeAngle + Math.PI * 2 - s0);
+      ctx.stroke();
+
+      // P-Wave Shadow Zone arcs (104° to 140° on each side)
+      const rPArc = R + 13;
+      ctx.strokeStyle = 'rgba(255, 96, 131, 0.72)';
+      ctx.lineWidth = 4.5;
+      for (const side of [1, -1]) {
+        ctx.beginPath();
+        if (side === 1) ctx.arc(cx, cy, rPArc, state.quakeAngle + p0, state.quakeAngle + p1);
+        else ctx.arc(cx, cy, rPArc, state.quakeAngle - p1, state.quakeAngle - p0);
+        ctx.stroke();
+      }
+
+      // PKP / PKIKP Core Emergence Arc (141° to 180° on both sides)
+      ctx.strokeStyle = 'rgba(167, 139, 250, 0.55)';
+      ctx.lineWidth = 3.5;
+      ctx.beginPath();
+      ctx.arc(cx, cy, rPArc, state.quakeAngle + p1, state.quakeAngle + Math.PI * 2 - p1);
+      ctx.stroke();
+
+      // Callout labels for Shadow Zones
+      if (state.showLabels) {
+        const midP = (p0 + p1) * 0.5;
+        for (const side of [1, -1]) {
+          const ang = state.quakeAngle + side * midP;
+          const lx = cx + Math.cos(ang) * (R + 40);
+          const ly = cy + Math.sin(ang) * (R + 40);
+          ctx.fillStyle = 'rgba(255, 122, 152, 0.92)';
+          ctx.font = '700 10px ui-monospace, monospace';
+          ctx.textAlign = Math.cos(ang) >= 0 ? 'left' : 'right';
+          ctx.fillText(`P-SHADOW`, lx, ly - 2);
+          ctx.fillStyle = 'rgba(154, 169, 204, 0.8)';
+          ctx.font = '600 9px ui-monospace, monospace';
+          ctx.fillText(`${state.shadowPStart}°–${state.shadowPEnd}°`, lx, ly + 9);
+        }
+
+        // Antipode S-Shadow + PKIKP label
+        const antiAng = state.quakeAngle + Math.PI;
+        const ax = cx + Math.cos(antiAng) * (R + 40);
+        const ay = cy + Math.sin(antiAng) * (R + 40);
+        ctx.textAlign = 'center';
+        ctx.fillStyle = 'rgba(255, 168, 118, 0.92)';
+        ctx.font = '700 10px ui-monospace, monospace';
+        ctx.fillText(`S-WAVE SHADOW (${state.shadowSStart}°–180°) · PKIKP CORE ZONE`, ax, ay + 4);
+      }
+      ctx.restore();
+    }
+
+    // 7. Degree Ticks & Interior Layer Labels
+    if (state.showLabels) {
+      ctx.save();
+      const keyDegs = [0, 30, 60, 90, state.shadowPStart, state.shadowPEnd, 180];
+      for (let d = 0; d <= 180; d += 10) {
+        const isKey = keyDegs.includes(d);
+        const rad = (d * Math.PI) / 180;
+        const sides = (d === 0 || d === 180) ? [1] : [1, -1];
+        for (const side of sides) {
+          const ang = state.quakeAngle + side * rad;
+          const rIn = R + 2;
+          const rOut = R + (isKey ? 9 : 5);
+          ctx.strokeStyle = isKey ? 'rgba(220, 235, 255, 0.55)' : 'rgba(148, 179, 255, 0.22)';
+          ctx.lineWidth = isKey ? 1.2 : 0.8;
+          ctx.beginPath();
+          ctx.moveTo(cx + Math.cos(ang) * rIn, cy + Math.sin(ang) * rIn);
+          ctx.lineTo(cx + Math.cos(ang) * rOut, cy + Math.sin(ang) * rOut);
+          ctx.stroke();
+
+          if (isKey && (d === 0 || d === 30 || d === 60 || d === 90 || d === 180)) {
+            const tx = cx + Math.cos(ang) * (R + 24);
+            const ty = cy + Math.sin(ang) * (R + 24);
+            ctx.fillStyle = d === 0 ? '#ffbe5c' : 'rgba(170, 190, 230, 0.72)';
+            ctx.font = d === 0 ? '700 10.5px ui-monospace, monospace' : '600 9.5px ui-monospace, monospace';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(d === 0 ? '0° EPICENTER' : `${d}°`, tx, ty);
+          }
+        }
+      }
+
+      // Subtle interior layer labels (positioned cleanly at lower-left diagonal)
+      const labelAng = Math.PI * 0.72;
+      const drawLayerTag = (rPx, text, color) => {
+        const lx = cx + Math.cos(labelAng) * rPx;
+        const ly = cy + Math.sin(labelAng) * rPx;
+        ctx.fillStyle = color;
+        ctx.font = '700 9.5px system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(text, lx, ly);
+      };
+      ctx.fillStyle = 'rgba(40, 22, 5, 0.82)';
+      ctx.font = '800 9.5px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('SOLID INNER', cx, cy - 5);
+      ctx.fillText('CORE', cx, cy + 7);
+
+      drawLayerTag((rInnerCore + rOuterCore) * 0.54, 'LIQUID OUTER CORE', 'rgba(255, 224, 185, 0.88)');
+      drawLayerTag((rOuterCore + rUpperMantle) * 0.52, 'LOWER MANTLE', 'rgba(218, 195, 235, 0.72)');
+      ctx.restore();
+    }
+
+    // 8. Draggable Seismic Station Pin on Earth's Rim
+    const stAng = state.quakeAngle + state.stationOffsetRad;
+    const sx = cx + Math.cos(stAng) * R;
+    const sy = cy + Math.sin(stAng) * R;
+
+    // Arrival pulse ring around station pin
+    if (state.stationPulseA > 0.01) {
+      ctx.strokeStyle = `rgba(74, 242, 178, ${state.stationPulseA * 0.85})`;
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.arc(sx, sy, 10 + (1 - state.stationPulseA) * 32, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    // Station triangle icon oriented outward
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.rotate(stAng + Math.PI / 2);
+    ctx.shadowColor = 'rgba(74, 242, 178, 0.9)';
+    ctx.shadowBlur = 12;
+    ctx.fillStyle = '#4af2b2';
+    ctx.strokeStyle = '#041218';
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    ctx.moveTo(0, -13);
+    ctx.lineTo(9, 4);
+    ctx.lineTo(-9, 4);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+
+    // Station callout badge
+    const bx = cx + Math.cos(stAng) * (R + 36);
+    const by = cy + Math.sin(stAng) * (R + 36);
+    const arr = state.stationArrivals;
+    ctx.save();
+    ctx.font = '700 10.5px ui-monospace, monospace';
+    const badgeTxt = `STA ${arr.deg.toFixed(1)}°`;
+    const tw = ctx.measureText(badgeTxt).width + 14;
+    ctx.fillStyle = 'rgba(7, 16, 26, 0.88)';
+    ctx.strokeStyle = 'rgba(74, 242, 178, 0.65)';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.roundRect(bx - tw * 0.5, by - 11, tw, 22, 6);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#d6ffef';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(badgeTxt, bx, by);
+    ctx.restore();
+  }
+
+  // =========================================================================
+  // DRAWING: MODE B — 3-STATION EPICENTER TRIANGULATION LAB
+  // =========================================================================
+  function drawModeB(nowSec) {
+    const g = getMapGeom();
+    const { x0, y0, w, h, scale } = g;
+
+    // 1. Sleek Topographic Regional Map Card Backdrop
+    ctx.save();
+    ctx.fillStyle = 'rgba(8, 14, 28, 0.88)';
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.22)';
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.roundRect(x0, y0, w, h, 14);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.roundRect(x0, y0, w, h, 14);
+    ctx.clip();
+
+    // Subtle elevation contour bands
+    const topoGrad = ctx.createRadialGradient(x0 + w * 0.25, y0 + h * 0.25, 20, x0 + w * 0.5, y0 + h * 0.5, w * 0.78);
+    topoGrad.addColorStop(0, 'rgba(30, 52, 92, 0.30)');
+    topoGrad.addColorStop(0.55, 'rgba(12, 22, 44, 0.16)');
+    topoGrad.addColorStop(1, 'rgba(5, 10, 22, 0.35)');
+    ctx.fillStyle = topoGrad;
+    ctx.fillRect(x0, y0, w, h);
+
+    // 100 km Coordinate Grid
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.08)';
+    ctx.lineWidth = 1;
+    for (let km = 100; km < state.mapW; km += 100) {
+      const sx = x0 + km * scale;
+      ctx.beginPath(); ctx.moveTo(sx, y0); ctx.lineTo(sx, y0 + h); ctx.stroke();
+    }
+    for (let km = 100; km < state.mapH; km += 100) {
+      const sy = y0 + km * scale;
+      ctx.beginPath(); ctx.moveTo(x0, sy); ctx.lineTo(x0 + w, sy); ctx.stroke();
+    }
+
+    // Topographic contour ellipses
+    ctx.strokeStyle = 'rgba(120, 165, 230, 0.07)';
+    ctx.lineWidth = 1;
+    for (let k = 1; k <= 5; k++) {
+      ctx.beginPath();
+      ctx.ellipse(x0 + 230 * scale, y0 + 185 * scale, k * 65 * scale, k * 42 * scale, -0.35, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.ellipse(x0 + 790 * scale, y0 + 490 * scale, k * 70 * scale, k * 46 * scale, 0.25, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    // 2. Alluvial Sedimentary Liquefaction Basins
+    if (state.showBasins) {
+      for (const b of state.basins) {
+        const sc = mapToScreen(b.x, b.y, g);
+        const distToBasin = Math.hypot(b.x - state.epicenter.x, b.y - state.epicenter.y);
+        const sArr = distToBasin / REG_VS;
+        const shaking = state.liquefactionMode && state.regTime >= sArr && state.regTime < sArr + 65;
+        const pulse = shaking ? (0.5 + 0.5 * Math.sin(nowSec * 14)) * Math.max(0, 1 - (state.regTime - sArr) / 65) : 0;
+
+        ctx.save();
+        ctx.translate(sc.x, sc.y);
+        ctx.rotate(b.rot);
+        ctx.fillStyle = shaking
+          ? `rgba(255, 118, 72, ${0.14 + pulse * 0.22})`
+          : 'rgba(88, 190, 220, 0.08)';
+        ctx.strokeStyle = shaking
+          ? `rgba(255, 155, 88, ${0.55 + pulse * 0.4})`
+          : 'rgba(88, 190, 220, 0.26)';
+        ctx.setLineDash([5, 4]);
+        ctx.lineWidth = shaking ? 1.8 : 1.1;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, b.rx * scale, b.ry * scale, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        if (state.showLabels) {
+          ctx.rotate(-b.rot);
+          ctx.fillStyle = shaking ? '#ffd0a6' : 'rgba(140, 195, 230, 0.65)';
+          ctx.font = '700 9.5px ui-monospace, monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText(b.name.toUpperCase(), 0, -4);
+          ctx.font = '600 8.5px ui-monospace, monospace';
+          ctx.fillText(shaking ? `⚠ LIQUEFACTION (${b.amp.toFixed(1)}× AMP)` : `Soft Basin (${b.amp.toFixed(1)}× amp)`, 0, 8);
+        }
+        ctx.restore();
+      }
+    }
+
+    // 3. Tectonic Fault Traces
+    if (state.showBasins) {
+      for (const f of state.faults) {
+        ctx.save();
+        ctx.beginPath();
+        f.pts.forEach((p, idx) => {
+          const sp = mapToScreen(p[0], p[1], g);
+          if (idx === 0) ctx.moveTo(sp.x, sp.y);
+          else ctx.lineTo(sp.x, sp.y);
+        });
+        ctx.strokeStyle = f.main ? 'rgba(255, 110, 76, 0.48)' : 'rgba(255, 145, 95, 0.25)';
+        ctx.lineWidth = f.main ? 2.2 : 1.3;
+        ctx.setLineDash(f.main ? [] : [6, 5]);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // Highlight bilateral rupture zip along main fault in Liquefaction preset
+      if (state.liquefactionMode && state.regTime > 0) {
+        const ep = mapToScreen(state.epicenter.x, state.epicenter.y, g);
+        const seg = state.ruptureSegment;
+        const p1 = mapToScreen(seg.x1, seg.y1, g);
+        const p2 = mapToScreen(seg.x2, seg.y2, g);
+        const frac = Math.min(1, state.regTime / 28);
+        ctx.save();
+        ctx.strokeStyle = '#ffbe5c';
+        ctx.shadowColor = 'rgba(255, 150, 60, 0.9)';
+        ctx.shadowBlur = 12;
+        ctx.lineWidth = 3.5;
+        ctx.beginPath();
+        ctx.moveTo(ep.x + (p1.x - ep.x) * frac, ep.y + (p1.y - ep.y) * frac);
+        ctx.lineTo(ep.x + (p2.x - ep.x) * frac, ep.y + (p2.y - ep.y) * frac);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    // 4. Expanding Circular Seismic Rings (P, S, Surface)
+    const epScreen = mapToScreen(state.epicenter.x, state.epicenter.y, g);
+    const t = state.regTime;
+    const ringsVisible = !state.hiddenEpicenter || state.epicenterRevealed || true;
+    // Wait: in Hidden Challenge mode, still draw faint expanding waves?
+    // If you see concentric circles centered on the hidden epicenter, you could visually spot the center immediately—
+    // Wait: the prompt says:
+    // "Watch circular P-wave (fast) and S-wave (slow) rings expand outward across all 3 stations, recording live 3-station seismograms; click 'Draw Triangulation Circles' to watch the three S − P distance circles intersect directly on the exact Epicenter!"
+    // YES! Watching the glowing cyan P-wave & coral-amber S-wave rings sweep across all 3 stations is essential and fun! We hide the epicenter crosshair/label until revealed/triangulated, while still rendering the gorgeous expanding P, S, and Surface wave rings!
+    if (ringsVisible && t > 0) {
+      const rP = t * REG_VP * scale;
+      const rS = t * REG_VS * scale;
+      const rSurf = t * REG_VSURF * scale;
+
+      if (state.showP && rP < w * 1.45) {
+        ctx.save();
+        ctx.strokeStyle = 'rgba(88, 220, 255, 0.85)';
+        ctx.shadowColor = 'rgba(88, 220, 255, 0.85)';
+        ctx.shadowBlur = 12;
+        ctx.lineWidth = 2.6;
+        ctx.beginPath();
+        ctx.arc(epScreen.x, epScreen.y, rP, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Trailing faint P-wave ripple
+        if (rP > 14) {
+          ctx.strokeStyle = 'rgba(88, 220, 255, 0.22)';
+          ctx.shadowBlur = 0;
+          ctx.lineWidth = 6;
+          ctx.beginPath();
+          ctx.arc(epScreen.x, epScreen.y, rP - 5, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+
+      if (state.showS && rS < w * 1.45) {
+        ctx.save();
+        ctx.strokeStyle = 'rgba(255, 122, 69, 0.90)';
+        ctx.shadowColor = 'rgba(255, 122, 69, 0.90)';
+        ctx.shadowBlur = 14;
+        ctx.lineWidth = 3.2;
+        ctx.beginPath();
+        ctx.arc(epScreen.x, epScreen.y, rS, 0, Math.PI * 2);
+        ctx.stroke();
+
+        if (rS > 16) {
+          ctx.strokeStyle = 'rgba(255, 145, 76, 0.22)';
+          ctx.shadowBlur = 0;
+          ctx.lineWidth = 8;
+          ctx.beginPath();
+          ctx.arc(epScreen.x, epScreen.y, rS - 6, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+
+      if (state.showSurf && rSurf < w * 1.45) {
+        ctx.save();
+        ctx.strokeStyle = 'rgba(74, 242, 178, 0.55)';
+        ctx.setLineDash([7, 5]);
+        ctx.lineWidth = 2.0;
+        ctx.beginPath();
+        ctx.arc(epScreen.x, epScreen.y, rSurf, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    // 5. Triangulation S - P Distance Circles!
+    if (state.drawCircles) {
+      const ease = 1 - Math.pow(1 - Math.min(1, state.circleAnim), 3);
+      state.stationsB.forEach((st) => {
+        const sp = mapToScreen(st.x, st.y, g);
+        const trueDistKm = stationDistB(st);
+        const radPx = trueDistKm * scale * ease;
+
+        ctx.save();
+        // Translucent fill ring
+        ctx.strokeStyle = st.color;
+        ctx.shadowColor = st.color;
+        ctx.shadowBlur = 10;
+        ctx.lineWidth = 2.2;
+        ctx.beginPath();
+        ctx.arc(sp.x, sp.y, radPx, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Radius vector line toward epicenter
+        if (ease > 0.3) {
+          ctx.setLineDash([4, 4]);
+          ctx.shadowBlur = 0;
+          ctx.globalAlpha = 0.55 * ease;
+          ctx.lineWidth = 1.2;
+          ctx.beginPath();
+          ctx.moveTo(sp.x, sp.y);
+          ctx.lineTo(sp.x + (epScreen.x - sp.x) * ease, sp.y + (epScreen.y - sp.y) * ease);
+          ctx.stroke();
+          ctx.setLineDash([]);
+
+          // Midpoint distance label
+          const mx = (sp.x + epScreen.x) * 0.5;
+          const my = (sp.y + epScreen.y) * 0.5;
+          ctx.globalAlpha = ease;
+          ctx.fillStyle = 'rgba(6, 12, 24, 0.88)';
+          ctx.beginPath();
+          ctx.roundRect(mx - 31, my - 9, 62, 18, 5);
+          ctx.fill();
+          ctx.fillStyle = st.color;
+          ctx.font = '700 9.5px ui-monospace, monospace';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(`d=${Math.round(trueDistKm)}km`, mx, my);
+        }
+        ctx.restore();
+      });
+    }
+
+    // 6. User Guess Pin (if Guess Mode was used)
+    if (state.userGuess) {
+      const gp = mapToScreen(state.userGuess.x, state.userGuess.y, g);
+      const errKm = Math.round(Math.hypot(state.userGuess.x - state.epicenter.x, state.userGuess.y - state.epicenter.y));
+      ctx.save();
+      ctx.strokeStyle = '#ffbe5c';
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      ctx.moveTo(gp.x - 8, gp.y - 8); ctx.lineTo(gp.x + 8, gp.y + 8);
+      ctx.moveTo(gp.x + 8, gp.y - 8); ctx.lineTo(gp.x - 8, gp.y + 8);
+      ctx.stroke();
+      ctx.fillStyle = '#ffbe5c';
+      ctx.font = '700 10px ui-monospace, monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(`GUESS (${errKm} km err)`, gp.x, gp.y - 13);
+      ctx.restore();
+    }
+
+    // 7. Epicenter Star / Target Reticle (shown if revealed or not hidden)
+    if (state.epicenterRevealed || !state.hiddenEpicenter) {
+      ctx.save();
+      const pulse = 1 + 0.14 * Math.sin(nowSec * 6);
+      const eg = ctx.createRadialGradient(epScreen.x, epScreen.y, 1, epScreen.x, epScreen.y, 24 * pulse);
+      eg.addColorStop(0, '#ffffff');
+      eg.addColorStop(0.3, 'rgba(255, 110, 88, 0.92)');
+      eg.addColorStop(1, 'rgba(255, 96, 131, 0)');
+      ctx.fillStyle = eg;
+      ctx.beginPath();
+      ctx.arc(epScreen.x, epScreen.y, 24 * pulse, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Rotating precision reticle when triangulated
+      ctx.strokeStyle = state.drawCircles ? '#4af2b2' : '#ff6083';
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      ctx.arc(epScreen.x, epScreen.y, 13, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(epScreen.x - 19, epScreen.y); ctx.lineTo(epScreen.x - 8, epScreen.y);
+      ctx.moveTo(epScreen.x + 8, epScreen.y); ctx.lineTo(epScreen.x + 19, epScreen.y);
+      ctx.moveTo(epScreen.x, epScreen.y - 19); ctx.lineTo(epScreen.x, epScreen.y - 8);
+      ctx.moveTo(epScreen.x, epScreen.y + 8); ctx.lineTo(epScreen.x, epScreen.y + 19);
+      ctx.stroke();
+
+      ctx.fillStyle = state.drawCircles ? '#d6ffef' : '#ffd6df';
+      ctx.font = '800 10px ui-monospace, monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(state.drawCircles ? '★ EPICENTER LOCKED' : '★ EPICENTER', epScreen.x, epScreen.y - 22);
+      ctx.restore();
+    }
+
+    // 8. Three Draggable Seismograph Stations (STA-1, STA-2, STA-3)
+    state.stationsB.forEach((st) => {
+      const sp = mapToScreen(st.x, st.y, g);
+      const dist = stationDistB(st);
+      const tP = dist / REG_VP;
+      const tS = dist / REG_VS;
+      const lag = tS - tP;
+      const sArrived = state.regTime >= tS;
+      const pArrived = state.regTime >= tP;
+
+      // Live ground shaking jitter on station icon
+      const jx = st.shake * (Math.random() - 0.5) * 6;
+      const jy = st.shake * (Math.random() - 0.5) * 6;
+      const px = sp.x + jx;
+      const py = sp.y + jy;
+
+      if (st.pulse > 0.01) {
+        ctx.strokeStyle = st.color;
+        ctx.globalAlpha = st.pulse * 0.85;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(px, py, 10 + (1 - st.pulse) * 26, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+
+      // Station triangle marker
+      ctx.save();
+      ctx.shadowColor = st.color;
+      ctx.shadowBlur = 12;
+      ctx.fillStyle = st.color;
+      ctx.strokeStyle = '#040914';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(px, py - 11);
+      ctx.lineTo(px + 10, py + 8);
+      ctx.lineTo(px - 10, py + 8);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+
+      // Station telemetry pill beneath triangle
+      const lbl = sArrived ? `${st.id} · Δ${lag.toFixed(1)}s` : (pArrived ? `${st.id} · P hit` : `${st.id}`);
+      ctx.save();
+      ctx.font = '700 10px ui-monospace, monospace';
+      const tw = ctx.measureText(lbl).width + 12;
+      ctx.fillStyle = 'rgba(6, 11, 22, 0.88)';
+      ctx.strokeStyle = st.color;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(px - tw * 0.5, py + 13, tw, 19, 5);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#eef3ff';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(lbl, px, py + 22.5);
+      ctx.restore();
+    });
+
+    // 9. Scale Bar & Map Legend inside Map Frame
+    const barKm = 200;
+    const barPx = barKm * scale;
+    ctx.save();
+    ctx.fillStyle = 'rgba(5, 9, 18, 0.72)';
+    ctx.beginPath();
+    ctx.roundRect(x0 + 14, y0 + h - 38, barPx + 24, 24, 6);
+    ctx.fill();
+    ctx.strokeStyle = '#eef3ff';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x0 + 24, y0 + h - 22);
+    ctx.lineTo(x0 + 24 + barPx, y0 + h - 22);
+    ctx.moveTo(x0 + 24, y0 + h - 27); ctx.lineTo(x0 + 24, y0 + h - 19);
+    ctx.moveTo(x0 + 24 + barPx, y0 + h - 27); ctx.lineTo(x0 + 24 + barPx, y0 + h - 19);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(210, 225, 255, 0.9)';
+    ctx.font = '700 9.5px ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('200 km', x0 + 24 + barPx * 0.5, y0 + h - 27);
+
+    // Top-right velocity legend inside map
+    ctx.textAlign = 'right';
+    ctx.fillStyle = 'rgba(88, 220, 255, 0.9)';
+    ctx.fillText(`v_P = ${REG_VP.toFixed(2)} km/s`, x0 + w - 14, y0 + 20);
+    ctx.fillStyle = 'rgba(255, 122, 69, 0.9)';
+    ctx.fillText(`v_S = ${REG_VS.toFixed(2)} km/s`, x0 + w - 14, y0 + 34);
+    ctx.restore();
+
+    ctx.restore(); // end map clip
+  }
+
+  // =========================================================================
+  // TELEMETRY & AUDIO UPDATE
+  // =========================================================================
+  function updateTelemetry() {
+    if (state.mode === 'earth') {
+      const arr = state.stationArrivals;
+      ui.telMag.textContent = `M_w ${state.magA.toFixed(1)}`;
+      ui.telDist.textContent = `${arr.deg.toFixed(1)}°`;
+      ui.telDepth.textContent = `${state.depthKm} km`;
+      ui.telClock.textContent = `T+ ${formatMinSec(state.earthTime)}`;
+
+      if (arr.tP !== null && arr.tS !== null) {
+        ui.telLag.textContent = formatMinSec(arr.tS - arr.tP);
+      } else if (arr.tP !== null) {
+        ui.telLag.textContent = 'No Direct S';
+      } else {
+        ui.telLag.textContent = 'Shadow Zone';
+      }
+
+      // Layer Velocity readout (either from hovered depth or deepest active P-wavefront!)
+      let probeR = R_EARTH - state.depthKm;
+      if (state.hoverDepthKm !== null) {
+        probeR = R_EARTH - state.hoverDepthKm;
+      } else if (state.pRays.length > 0) {
+        // Sample the deepest active ray (vertical core probe ray 0)
+        const sample = sampleRayAtTime(state.pRays[0], state.earthTime);
+        probeR = Math.hypot(sample.x, sample.y);
+      }
+      const lInfo = getLayerInfo(probeR);
+      const vp = premP(probeR).v;
+      const vs = premS(probeR).v;
+      ui.telVel.textContent = vs > 0.01 ? `${vp.toFixed(1)} / ${vs.toFixed(1)} km/s` : `${vp.toFixed(1)} / 0 (Liq)`;
+      ui.telProbe.textContent = state.hoverDepthKm !== null
+        ? `${lInfo.name} (${Math.round(state.hoverDepthKm)} km)`
+        : lInfo.name;
+
+      ui.telShadow.textContent = arr.zone;
+      ui.telShadow.className = 'tele-val ' + (arr.pillClass === 'shadow' ? 'rose' : (arr.pillClass === 'pkp' ? 'violet' : 'mint'));
+      ui.shadowPill.textContent = arr.zone;
+      ui.shadowPill.className = 'status-pill' + (arr.pillClass ? ' ' + arr.pillClass : '');
+    } else {
+      ui.telMag.textContent = `M_w ${state.magB.toFixed(1)}`;
+      const dists = state.stationsB.map(st => stationDistB(st));
+      const minD = Math.min(...dists);
+      const minLag = minD / REG_VS - minD / REG_VP;
+      ui.telDist.textContent = `${Math.round(minD)} km`;
+      ui.telLag.textContent = `${minLag.toFixed(1)} s`;
+      ui.telVel.textContent = `${REG_VP.toFixed(1)} / ${REG_VS.toFixed(2)} km/s`;
+      ui.telDepth.textContent = state.liquefactionMode ? '12 km (Fault)' : '15 km (Crust)';
+      ui.telClock.textContent = `T+ ${state.regTime.toFixed(1)} s`;
+      ui.telProbe.textContent = state.liquefactionMode ? 'Strike-Slip + Basins' : 'Regional Crust';
+
+      const readyCount = state.stationsB.filter(st => state.regTime >= stationDistB(st) / REG_VS).length;
+      if (state.drawCircles) {
+        ui.telShadow.textContent = 'Triangulated!';
+        ui.telShadow.className = 'tele-val mint';
+        ui.shadowPill.textContent = 'Epicenter Locked';
+        ui.shadowPill.className = 'status-pill';
+      } else if (readyCount === 3) {
+        ui.telShadow.textContent = '3/3 Ready';
+        ui.telShadow.className = 'tele-val amber';
+        ui.shadowPill.textContent = 'Ready to Triangulate';
+        ui.shadowPill.className = 'status-pill warn';
+      } else {
+        ui.telShadow.textContent = `${readyCount}/3 Stations`;
+        ui.telShadow.className = 'tele-val cyan';
+        ui.shadowPill.textContent = state.hiddenEpicenter && !state.epicenterRevealed ? 'Hidden Epicenter' : 'Waves Expanding';
+        ui.shadowPill.className = 'status-pill pkp';
+      }
+    }
+  }
+
+  // =========================================================================
+  // MAIN SIMULATION & RENDER LOOP
+  // =========================================================================
+  let lastFrameTime = performance.now();
+
+  function step(now) {
+    const dtReal = Math.min(0.05, (now - lastFrameTime) / 1000);
+    lastFrameTime = now;
+    const nowSec = now * 0.001;
+
+    // Fade banner
+    if (state.bannerTimer > 0) {
+      state.bannerTimer -= dtReal;
+      if (state.bannerTimer <= 0) {
+        ui.eventBanner.classList.remove('visible');
+      }
+    }
+
+    // Advance simulation clock
+    let liveEnergy = 0;
+    if (!state.paused) {
+      if (state.mode === 'earth') {
+        const prevT = state.earthTime;
+        state.earthTime += dtReal * state.earthSpeedBase * state.speed;
+        if (state.earthTime > 2600) state.earthTime = 2600;
+        state.quakeFlashA = Math.max(0, state.quakeFlashA - dtReal * 1.4);
+        state.stationPulseA = Math.max(0, state.stationPulseA - dtReal * 1.1);
+
+        // Check wave arrival triggers at Global Station Pin
+        const arr = state.stationArrivals;
+        if (arr.tP !== null && !state.firedArrivalsA.p && prevT < arr.tP && state.earthTime >= arr.tP) {
+          state.firedArrivalsA.p = true;
+          state.stationPulseA = 1.0;
+          audio.playArrivalTick(arr.pPhase);
+        }
+        if (arr.tS !== null && !state.firedArrivalsA.s && prevT < arr.tS && state.earthTime >= arr.tS) {
+          state.firedArrivalsA.s = true;
+          state.stationPulseA = 1.0;
+          audio.playArrivalTick('S');
+        }
+        if (arr.tSurf !== null && !state.firedArrivalsA.surf && prevT < arr.tSurf && state.earthTime >= arr.tSurf) {
+          state.firedArrivalsA.surf = true;
+          state.stationPulseA = 1.0;
+          audio.playArrivalTick('Surf');
+        }
+
+        const sig = evalEarthSeismogram(state.earthTime);
+        liveEnergy = Math.min(1, (Math.abs(sig.z) + Math.abs(sig.n) + Math.abs(sig.e)) * 0.55);
+      } else {
+        const prevT = state.regTime;
+        state.regTime += dtReal * state.regSpeedBase * state.speed;
+        if (state.regTime > 240) state.regTime = 240;
+
+        if (state.drawCircles && state.circleAnim < 1) {
+          state.circleAnim = Math.min(1, state.circleAnim + dtReal * 1.35);
+        }
+
+        for (const st of state.stationsB) {
+          const dist = stationDistB(st);
+          const tP = dist / REG_VP;
+          const tS = dist / REG_VS;
+          const tSurf = dist / REG_VSURF;
+          st.pulse = Math.max(0, st.pulse - dtReal * 1.2);
+          if (!st.firedP && prevT < tP && state.regTime >= tP) {
+            st.firedP = true; st.pulse = 1.0; audio.playArrivalTick('P');
+          }
+          if (!st.firedS && prevT < tS && state.regTime >= tS) {
+            st.firedS = true; st.pulse = 1.0; audio.playArrivalTick('S');
+          }
+          if (!st.firedSurf && prevT < tSurf && state.regTime >= tSurf) {
+            st.firedSurf = true; st.pulse = 0.85; audio.playArrivalTick('Surf');
+          }
+          const sig = evalRegSeismogram(st, state.regTime);
+          st.shake = Math.abs(sig.val);
+          liveEnergy = Math.max(liveEnergy, st.shake);
+        }
+      }
+    }
+
+    audio.updateRumble(state.paused ? 0 : liveEnergy);
+
+    // Clear & draw deep space backdrop
+    ctx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
+    ctx.fillStyle = '#040711';
+    ctx.fillRect(0, 0, state.width, state.height);
+
+    // Subtle background vignette & starfield
+    const bgGrad = ctx.createRadialGradient(state.width * 0.55, state.height * 0.5, 40, state.width * 0.55, state.height * 0.5, Math.max(state.width, state.height) * 0.72);
+    bgGrad.addColorStop(0, 'rgba(16, 28, 56, 0.36)');
+    bgGrad.addColorStop(1, 'rgba(4, 7, 17, 0)');
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, state.width, state.height);
+
+    for (const st of state.stars) {
+      const a = st.a * (0.7 + 0.3 * Math.sin(nowSec * 1.3 + st.tw));
+      ctx.fillStyle = `rgba(195, 220, 255, ${a})`;
+      ctx.beginPath();
+      ctx.arc(st.x * state.width, st.y * state.height, st.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    if (state.mode === 'earth') {
+      drawModeA(nowSec);
+    } else {
+      drawModeB(nowSec);
+    }
+
+    drawSeismogram();
+    drawPremChart();
+    updateTelemetry();
+
+    requestAnimationFrame(step);
+  }
+
+  // =========================================================================
+  // CANVAS POINTER INTERACTION
+  // =========================================================================
+  function getPointerPos(e) {
+    const rect = canvas.getBoundingClientRect();
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  }
+
+  canvas.addEventListener('pointerdown', (e) => {
+    const { x, y } = getPointerPos(e);
+    canvas.setPointerCapture(e.pointerId);
+
+    if (state.mode === 'earth') {
+      const { cx, cy, R } = getEarthGeom();
+      const stAng = state.quakeAngle + state.stationOffsetRad;
+      const sx = cx + Math.cos(stAng) * R;
+      const sy = cy + Math.sin(stAng) * R;
+
+      // Check if grabbing the Station Pin (generous hit radius 28px)
+      if (Math.hypot(x - sx, y - sy) < 30) {
+        state.draggingPinA = true;
+        canvas.classList.add('grabbing');
+        return;
+      }
+
+      // Otherwise clicking on or near Earth's surface triggers a new earthquake at that angle!
+      const distC = Math.hypot(x - cx, y - cy);
+      if (distC > R * 0.2 && distC < R * 1.35) {
+        const clickAng = Math.atan2(y - cy, x - cx);
+        triggerEarthQuake(clickAng, true);
+      }
+    } else {
+      const g = getMapGeom();
+      // Check if grabbing one of the 3 stations
+      for (let i = 0; i < state.stationsB.length; i++) {
+        const sp = mapToScreen(state.stationsB[i].x, state.stationsB[i].y, g);
+        if (Math.hypot(x - sp.x, y - sp.y) < 26) {
+          state.draggingStationB = i;
+          canvas.classList.add('grabbing');
+          return;
+        }
+      }
+
+      // Check if inside regional map bounds
+      const mp = screenToMap(x, y, g);
+      if (mp.x >= 0 && mp.x <= state.mapW && mp.y >= 0 && mp.y <= state.mapH) {
+        if (state.guessMode && state.hiddenEpicenter && !state.epicenterRevealed) {
+          state.userGuess = { x: mp.x, y: mp.y };
+          const errKm = Math.round(Math.hypot(mp.x - state.epicenter.x, mp.y - state.epicenter.y));
+          state.epicenterRevealed = true;
+          state.drawCircles = true;
+          state.circleAnim = 0.01;
+          audio.playArrivalTick('Lock');
+          const verdict = errKm < 28 ? '🎯 Bullseye!' : (errKm < 70 ? 'Close!' : 'Check the 3 circles!');
+          showBanner(`Your Guess: ${errKm} km from true epicenter — ${verdict}`, errKm < 50 ? 'mint' : 'warn');
+        } else {
+          state.hiddenEpicenter = false;
+          ui.chkHiddenEpi.checked = false;
+          triggerRegionalQuake(mp.x, mp.y, false, true);
+        }
+      }
+    }
+  });
+
+  canvas.addEventListener('pointermove', (e) => {
+    const { x, y } = getPointerPos(e);
+    state.mouseX = x;
+    state.mouseY = y;
+
+    if (state.mode === 'earth') {
+      const { cx, cy, R } = getEarthGeom();
+      if (state.draggingPinA) {
+        const ang = Math.atan2(y - cy, x - cx);
+        state.stationOffsetRad = ang - state.quakeAngle;
+        updateStationArrivalsA();
+        // Reset arrival flags if station moved ahead of wavefront
+        const arr = state.stationArrivals;
+        state.firedArrivalsA.p = arr.tP !== null && state.earthTime >= arr.tP;
+        state.firedArrivalsA.s = arr.tS !== null && state.earthTime >= arr.tS;
+        state.firedArrivalsA.surf = arr.tSurf !== null && state.earthTime >= arr.tSurf;
+        syncUIValues();
+        return;
+      }
+
+      const distC = Math.hypot(x - cx, y - cy);
+      if (distC <= R) {
+        state.hoverDepthKm = Math.max(0, R_EARTH * (1 - distC / R));
+      } else {
+        state.hoverDepthKm = null;
+      }
+
+      const stAng = state.quakeAngle + state.stationOffsetRad;
+      const sx = cx + Math.cos(stAng) * R;
+      const sy = cy + Math.sin(stAng) * R;
+      canvas.classList.toggle('pointer', Math.hypot(x - sx, y - sy) < 30);
+    } else {
+      const g = getMapGeom();
+      if (state.draggingStationB >= 0) {
+        const mp = screenToMap(x, y, g);
+        const st = state.stationsB[state.draggingStationB];
+        st.x = Math.max(45, Math.min(state.mapW - 45, mp.x));
+        st.y = Math.max(45, Math.min(state.mapH - 45, mp.y));
+        const dist = stationDistB(st);
+        st.firedP = state.regTime >= dist / REG_VP;
+        st.firedS = state.regTime >= dist / REG_VS;
+        st.firedSurf = state.regTime >= dist / REG_VSURF;
+        return;
+      }
+
+      let nearStation = false;
+      for (const st of state.stationsB) {
+        const sp = mapToScreen(st.x, st.y, g);
+        if (Math.hypot(x - sp.x, y - sp.y) < 26) nearStation = true;
+      }
+      canvas.classList.toggle('pointer', nearStation);
+    }
+  });
+
+  function endDrag() {
+    state.draggingPinA = false;
+    state.draggingStationB = -1;
+    canvas.classList.remove('grabbing');
+  }
+  canvas.addEventListener('pointerup', endDrag);
+  canvas.addEventListener('pointercancel', endDrag);
+  canvas.addEventListener('pointerleave', () => {
+    state.hoverDepthKm = null;
+  });
+
+  // =========================================================================
+  // UI EVENT WIRING
+  // =========================================================================
+  // Drawer Tabs
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      $('tab-' + btn.dataset.tab).classList.add('active');
+    });
+  });
+
+  // Mode Switcher
+  document.querySelectorAll('#mode-row .seg-btn').forEach(btn => {
+    btn.addEventListener('click', () => setMode(btn.dataset.mode));
+  });
+
+  // Presets
+  document.querySelectorAll('.preset-btn').forEach(btn => {
+    btn.addEventListener('click', () => applyPreset(btn.dataset.preset));
+  });
+
+  // Mode A controls
+  ui.btnTriggerQuake.addEventListener('click', () => triggerEarthQuake(null, true));
+  ui.btnPinShadow.addEventListener('click', () => {
+    state.stationOffsetRad = (122 * Math.PI) / 180;
+    updateStationArrivalsA();
+    syncUIValues();
+    showBanner('Station Pin moved to 122° — Inside the 104°–140° P & S Shadow Zone!', 'warn');
+  });
+  ui.btnPinAntipode.addEventListener('click', () => {
+    state.stationOffsetRad = (172 * Math.PI) / 180;
+    updateStationArrivalsA();
+    syncUIValues();
+    showBanner('Station Pin moved to 172° — S-Waves blocked by liquid outer core; PKIKP pierces inner core!', '');
+  });
+
+  ui.slMag.addEventListener('input', () => {
+    state.magA = parseFloat(ui.slMag.value);
+    syncUIValues();
+  });
+  ui.slDepth.addEventListener('input', () => {
+    state.depthKm = parseInt(ui.slDepth.value, 10);
+    syncUIValues();
+    rebuildEarthRays();
+  });
+  ui.slStationDeg.addEventListener('input', () => {
+    const deg = parseFloat(ui.slStationDeg.value);
+    const sign = state.stationOffsetRad < 0 ? -1 : 1;
+    state.stationOffsetRad = sign * (deg * Math.PI) / 180;
+    updateStationArrivalsA();
+    syncUIValues();
+  });
+
+  // Mode B controls
+  ui.btnDrawCircles.addEventListener('click', activateTriangulationCircles);
+  ui.btnNewHidden.addEventListener('click', randomizeHiddenQuake);
+  ui.btnRevealEpi.addEventListener('click', () => {
+    state.epicenterRevealed = !state.epicenterRevealed;
+    if (state.epicenterRevealed) {
+      showBanner(`👁 True Epicenter revealed at (${Math.round(state.epicenter.x)} km, ${Math.round(state.epicenter.y)} km)`, '');
+    }
+  });
+  ui.slMagB.addEventListener('input', () => {
+    state.magB = parseFloat(ui.slMagB.value);
+    syncUIValues();
+  });
+  ui.chkHiddenEpi.addEventListener('change', () => {
+    state.hiddenEpicenter = ui.chkHiddenEpi.checked;
+    if (state.hiddenEpicenter) state.epicenterRevealed = false;
+  });
+  ui.chkGuessMode.addEventListener('change', () => {
+    state.guessMode = ui.chkGuessMode.checked;
+    if (state.guessMode) {
+      showBanner('Guess Mode ON — Click anywhere on the map to place your Epicenter guess!', '');
+    }
+  });
+
+  // Waves & View Toggles
+  ui.chkPwave.addEventListener('change', () => { state.showP = ui.chkPwave.checked; });
+  ui.chkSwave.addEventListener('change', () => { state.showS = ui.chkSwave.checked; });
+  ui.chkSurf.addEventListener('change', () => { state.showSurf = ui.chkSurf.checked; });
+  ui.chkRays.addEventListener('change', () => { state.showRays = ui.chkRays.checked; });
+  ui.chkFronts.addEventListener('change', () => { state.showFronts = ui.chkFronts.checked; });
+  ui.chkBounces.addEventListener('change', () => { state.showBounces = ui.chkBounces.checked; });
+  ui.chkShadowArcs.addEventListener('change', () => { state.showShadowArcs = ui.chkShadowArcs.checked; });
+  ui.chkLabels.addEventListener('change', () => { state.showLabels = ui.chkLabels.checked; });
+  ui.chkBasins.addEventListener('change', () => { state.showBasins = ui.chkBasins.checked; });
+  ui.slRays.addEventListener('input', () => {
+    state.rayCount = parseInt(ui.slRays.value, 10);
+    syncUIValues();
+    rebuildEarthRays();
+  });
+
+  // Transport Bar
+  ui.btnPlay.addEventListener('click', () => {
+    state.paused = !state.paused;
+    updatePlayButton();
+  });
+  ui.btnReset.addEventListener('click', () => {
+    if (state.mode === 'earth') triggerEarthQuake(null, false);
+    else triggerRegionalQuake(state.epicenter.x, state.epicenter.y, state.hiddenEpicenter, false);
+  });
+  ui.btnBarQuake.addEventListener('click', () => {
+    if (state.mode === 'earth') triggerEarthQuake(null, true);
+    else randomizeHiddenQuake();
+  });
+  document.querySelectorAll('.speed-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.speed = parseFloat(btn.dataset.speed);
+      document.querySelectorAll('.speed-btn').forEach(b => b.classList.toggle('active', b === btn));
+    });
+  });
+
+  // Audio Toggle (Muted by default)
+  ui.btnSound.addEventListener('click', () => {
+    const next = !audio.enabled;
+    audio.setEnabled(next);
+    ui.btnSound.textContent = next ? '🔊 Audio' : '🔇 Audio';
+    ui.btnSound.classList.toggle('active', next);
+  });
+
+  // Drawer Toggle
+  ui.btnToggleDrawer.addEventListener('click', () => {
+    state.drawerOpen = !state.drawerOpen;
+    ui.drawer.classList.toggle('collapsed', !state.drawerOpen);
+    ui.btnToggleDrawer.classList.toggle('active', state.drawerOpen);
+  });
+
+  // Cinema (Zen) Mode
+  function toggleZen() {
+    state.zen = !state.zen;
+    document.body.classList.toggle('zen-mode', state.zen);
+  }
+  ui.btnZen.addEventListener('click', toggleZen);
+  ui.btnZenRestore.addEventListener('click', toggleZen);
+
+  // Keyboard Shortcuts
+  window.addEventListener('keydown', (e) => {
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+    const k = e.key.toLowerCase();
+    if (k === ' ') {
+      e.preventDefault();
+      state.paused = !state.paused;
+      updatePlayButton();
+    } else if (k === 'h') {
+      toggleZen();
+    } else if (k === 'r') {
+      if (state.mode === 'earth') triggerEarthQuake(null, false);
+      else triggerRegionalQuake(state.epicenter.x, state.epicenter.y, state.hiddenEpicenter, false);
+    } else if (k === 'q') {
+      if (state.mode === 'earth') triggerEarthQuake(null, true);
+      else randomizeHiddenQuake();
+    } else if (k === 'm') {
+      setMode(state.mode === 'earth' ? 'triangulate' : 'earth');
+    } else if (k === 't' && state.mode === 'triangulate') {
+      activateTriangulationCircles();
+    }
+  });
+
+  // High-DPI Resize Handling
+  function handleResize() {
+    state.width = window.innerWidth;
+    state.height = window.innerHeight;
+    state.dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.round(state.width * state.dpr);
+    canvas.height = Math.round(state.height * state.dpr);
+  }
+  window.addEventListener('resize', handleResize);
+  handleResize();
+
+  // Initialize with Global Core Shadow Zone preset
+  applyPreset('shadow');
+  requestAnimationFrame(step);
+})();
+</script>
+</body>
+</html>

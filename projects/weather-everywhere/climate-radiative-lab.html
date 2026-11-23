@@ -1,0 +1,961 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Albedo — Radiative Forcing, Greenhouse Photons &amp; Climate Feedbacks</title>
+<style>
+  :root {
+    --bg-deep: #040711;
+    --panel-bg: rgba(9, 14, 28, 0.80);
+    --panel-border: rgba(145, 180, 255, 0.16);
+    --text-main: #edf3ff;
+    --text-dim: #9aaad0;
+    --text-muted: #68789e;
+    --cyan: #5ce1ff;
+    --amber: #ffbf5e;
+    --mint: #4cf2b2;
+    --rose: #ff6488;
+    --violet: #b08cff;
+    --radius-lg: 14px;
+    --radius-md: 10px;
+    --radius-sm: 7px;
+    --mono: ui-monospace, "Cascadia Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Inter, Helvetica, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    width: 100%; height: 100%; overflow: hidden;
+    background: var(--bg-deep); color: var(--text-main);
+    font-family: var(--sans); -webkit-font-smoothing: antialiased;
+    user-select: none; touch-action: none;
+  }
+  #sim-canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  .hud { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
+  body.zen-mode .hud > :not(.zen-restore) { opacity: 0; pointer-events: none !important; }
+  .panel {
+    pointer-events: auto; background: var(--panel-bg);
+    border: 1px solid var(--panel-border); border-radius: var(--radius-lg);
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    transition: opacity 0.25s ease, transform 0.25s ease;
+  }
+  .top-left {
+    position: fixed; top: 14px; left: 14px;
+    width: min(415px, calc(100vw - 365px)); min-width: 280px;
+    padding: 12px 14px; display: flex; flex-direction: column; gap: 9px;
+  }
+  .brand-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .brand-title {
+    font-size: 15px; font-weight: 800; letter-spacing: 0.11em; text-transform: uppercase;
+    background: linear-gradient(120deg, #fff5dc 0%, #ffbf5e 45%, #5ce1ff 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .status-pill {
+    font-size: 10px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;
+    padding: 3px 9px; border-radius: 999px;
+    background: rgba(76, 242, 178, 0.15); color: var(--mint);
+    border: 1px solid rgba(76, 242, 178, 0.38); white-space: nowrap;
+  }
+  .status-pill.warm { background: rgba(255, 191, 94, 0.16); color: var(--amber); border-color: rgba(255, 191, 94, 0.45); }
+  .status-pill.hot  { background: rgba(255, 100, 136, 0.18); color: var(--rose); border-color: rgba(255, 100, 136, 0.48); }
+  .status-pill.cold { background: rgba(92, 225, 255, 0.16); color: var(--cyan); border-color: rgba(92, 225, 255, 0.45); }
+
+  .tele-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
+  .tele-card {
+    background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(145, 180, 255, 0.1);
+    border-radius: var(--radius-sm); padding: 5px 7px; display: flex; flex-direction: column; gap: 1px;
+  }
+  .tele-lbl { font-size: 9px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+  .tele-val { font-family: var(--mono); font-size: 12.5px; font-weight: 700; color: var(--text-main); }
+
+  #history-canvas {
+    width: 100%; height: 76px; border-radius: var(--radius-sm);
+    background: rgba(3, 6, 15, 0.8); border: 1px solid rgba(145, 180, 255, 0.14); display: block;
+  }
+  .budget-row {
+    display: flex; justify-content: space-between; font-family: var(--mono);
+    font-size: 10.5px; color: var(--text-dim);
+  }
+  .budget-row strong { color: #fff; }
+
+  .drawer {
+    position: fixed; top: 14px; right: 14px; bottom: 14px;
+    width: 332px; max-width: calc(100vw - 28px);
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  .drawer.collapsed { transform: translateX(calc(100% + 26px)); pointer-events: none; }
+  .drawer-tabs {
+    display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px;
+    padding: 8px 8px 6px; border-bottom: 1px solid var(--panel-border);
+    background: rgba(4, 7, 16, 0.45);
+  }
+  .tab-btn {
+    border: 1px solid transparent; background: transparent; color: var(--text-dim);
+    font-size: 11.5px; font-weight: 700; padding: 7px 6px; border-radius: var(--radius-sm);
+    cursor: pointer; transition: all 0.14s ease;
+  }
+  .tab-btn:hover { color: #fff; background: rgba(255, 255, 255, 0.04); }
+  .tab-btn.active { color: #fff; background: rgba(92, 225, 255, 0.16); border-color: rgba(92, 225, 255, 0.42); }
+  .drawer-body { flex: 1; overflow-y: auto; padding: 11px 12px 16px; display: flex; flex-direction: column; gap: 11px; }
+  .drawer-body::-webkit-scrollbar { width: 5px; }
+  .drawer-body::-webkit-scrollbar-thumb { background: rgba(145, 180, 255, 0.24); border-radius: 999px; }
+  .tab-pane { display: none; flex-direction: column; gap: 11px; }
+  .tab-pane.active { display: flex; }
+
+  .section {
+    background: rgba(255, 255, 255, 0.025); border: 1px solid rgba(145, 180, 255, 0.11);
+    border-radius: var(--radius-md); padding: 10px 11px; display: flex; flex-direction: column; gap: 8px;
+  }
+  .section-title {
+    font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--text-dim); display: flex; justify-content: space-between; align-items: center;
+  }
+  .preset-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+  .preset-btn {
+    text-align: left; padding: 6px 8px; border-radius: var(--radius-sm);
+    border: 1px solid rgba(145, 180, 255, 0.15); background: rgba(255, 255, 255, 0.03);
+    color: var(--text-main); cursor: pointer; display: flex; flex-direction: column; gap: 1px;
+    transition: all 0.14s ease;
+  }
+  .preset-btn:hover { border-color: rgba(255, 191, 94, 0.48); background: rgba(255, 191, 94, 0.08); }
+  .preset-btn.active { border-color: var(--amber); background: rgba(255, 191, 94, 0.15); }
+  .preset-name { font-size: 11px; font-weight: 750; }
+  .preset-sub { font-size: 9.5px; color: var(--text-muted); }
+
+  .control-row { display: flex; flex-direction: column; gap: 4px; }
+  .control-head { display: flex; justify-content: space-between; align-items: center; font-size: 11.5px; color: var(--text-dim); }
+  .control-head .val { font-family: var(--mono); font-size: 11.5px; color: var(--text-main); font-weight: 650; }
+  input[type="range"] {
+    -webkit-appearance: none; appearance: none; width: 100%; height: 5px;
+    border-radius: 999px; background: rgba(145, 180, 255, 0.2); outline: none; cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none; width: 14px; height: 14px; border-radius: 50%;
+    background: var(--cyan); border: 2px solid #081120; box-shadow: 0 0 10px rgba(92, 225, 255, 0.65); cursor: pointer;
+  }
+  input[type="range"].amber::-webkit-slider-thumb { background: var(--amber); box-shadow: 0 0 10px rgba(255, 191, 94, 0.65); }
+
+  .toggle-row { display: flex; align-items: center; justify-content: space-between; font-size: 11.5px; color: var(--text-dim); cursor: pointer; }
+  .toggle-row input { display: none; }
+  .switch {
+    width: 34px; height: 18px; border-radius: 999px; background: rgba(145, 180, 255, 0.2);
+    border: 1px solid rgba(145, 180, 255, 0.25); position: relative; transition: all 0.18s ease; flex-shrink: 0;
+  }
+  .switch::after {
+    content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px;
+    border-radius: 50%; background: #c8d7f5; transition: transform 0.18s ease, background 0.18s ease;
+  }
+  .toggle-row input:checked + .switch { background: rgba(92, 225, 255, 0.32); border-color: var(--cyan); }
+  .toggle-row input:checked + .switch::after { transform: translateX(16px); background: #fff; }
+
+  .btn-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .btn {
+    border: 1px solid rgba(145, 180, 255, 0.22); background: rgba(255, 255, 255, 0.05);
+    color: var(--text-main); font-size: 11.5px; font-weight: 700; padding: 8px 10px;
+    border-radius: var(--radius-sm); cursor: pointer; transition: all 0.14s ease;
+  }
+  .btn:hover { background: rgba(255, 255, 255, 0.1); border-color: rgba(145, 180, 255, 0.45); }
+  .btn.amber { background: linear-gradient(135deg, rgba(255, 191, 94, 0.26), rgba(255, 118, 66, 0.22)); border-color: rgba(255, 191, 94, 0.55); color: #fff4df; }
+  .btn.primary { background: linear-gradient(135deg, rgba(92, 225, 255, 0.26), rgba(88, 120, 255, 0.24)); border-color: rgba(92, 225, 255, 0.55); color: #eafaff; }
+
+  .note-small { font-size: 10.5px; color: var(--text-muted); line-height: 1.38; }
+
+  .bottom-bar {
+    position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%);
+    padding: 7px 10px; display: flex; align-items: center; gap: 6px;
+  }
+  .bar-btn {
+    border: 1px solid rgba(145, 180, 255, 0.16); background: rgba(255, 255, 255, 0.04);
+    color: var(--text-main); font-size: 11.5px; font-weight: 650; padding: 6px 10px;
+    border-radius: var(--radius-sm); cursor: pointer; transition: all 0.14s ease; white-space: nowrap;
+  }
+  .bar-btn:hover { background: rgba(255, 255, 255, 0.1); border-color: rgba(145, 180, 255, 0.42); }
+  .bar-btn.active { background: rgba(92, 225, 255, 0.2); border-color: var(--cyan); color: #fff; }
+  .bar-divider { width: 1px; height: 20px; background: rgba(145, 180, 255, 0.16); margin: 0 2px; }
+
+  .hint-pill {
+    position: fixed; bottom: 14px; left: 14px; padding: 7px 11px;
+    font-size: 11px; color: var(--text-dim); max-width: 300px; line-height: 1.4;
+  }
+  .hint-pill kbd {
+    font-family: var(--mono); font-size: 10px; padding: 1px 5px; border-radius: 4px;
+    background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.18); color: #fff;
+  }
+  .zen-restore { position: fixed; bottom: 14px; right: 14px; opacity: 0; pointer-events: none; }
+  body.zen-mode .zen-restore { opacity: 0.9; pointer-events: auto; }
+  @media (max-width: 920px) {
+    .top-left { width: calc(100vw - 28px); max-width: none; }
+    .drawer { top: auto; bottom: 62px; height: 48vh; width: calc(100vw - 28px); }
+    .hint-pill { display: none; }
+  }
+</style>
+</head>
+<body>
+<canvas id="sim-canvas"></canvas>
+
+<div class="hud">
+  <div class="panel top-left">
+    <div class="brand-row">
+      <div class="brand-title">Albedo · Climate Lab</div>
+      <span id="status-pill" class="status-pill">Balanced Equilibrium</span>
+    </div>
+
+    <div class="tele-grid">
+      <div class="tele-card">
+        <span class="tele-lbl">Global Temp</span>
+        <span id="tel-temp" class="tele-val" style="color:var(--amber)">14.0 °C</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-lbl">Imbalance</span>
+        <span id="tel-imb" class="tele-val" style="color:var(--mint)">+0.0 W/m²</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-lbl">Albedo (α)</span>
+        <span id="tel-alb" class="tele-val" style="color:var(--cyan)">0.30</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-lbl">CO₂ Level</span>
+        <span id="tel-co2" class="tele-val">280 ppm</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-lbl">Polar Ice</span>
+        <span id="tel-ice" class="tele-val" style="color:#bfefff">28%</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-lbl">IR Trapped</span>
+        <span id="tel-ghg" class="tele-val" style="color:var(--rose)">77%</span>
+      </div>
+    </div>
+
+    <canvas id="history-canvas" width="380" height="76"></canvas>
+
+    <div class="budget-row">
+      <span>Solar In: <strong id="tel-sw">239 W/m²</strong></span>
+      <span>IR Out: <strong id="tel-lw">239 W/m²</strong></span>
+      <span>Year: <strong id="tel-yr">0</strong></span>
+    </div>
+  </div>
+
+  <aside id="drawer" class="panel drawer">
+    <div class="drawer-tabs">
+      <button class="tab-btn active" data-tab="scenarios">Scenarios &amp; Forcing</button>
+      <button class="tab-btn" data-tab="feedbacks">Feedbacks &amp; View</button>
+    </div>
+
+    <div class="drawer-body">
+      <div id="tab-scenarios" class="tab-pane active">
+        <div class="section">
+          <div class="section-title"><span>Climate Regimes</span></div>
+          <div class="preset-grid">
+            <button class="preset-btn active" data-preset="preind">
+              <span class="preset-name">Pre-Industrial</span>
+              <span class="preset-sub">280 ppm · ~14 °C</span>
+            </button>
+            <button class="preset-btn" data-preset="modern">
+              <span class="preset-name">Modern Earth</span>
+              <span class="preset-sub">425 ppm warming</span>
+            </button>
+            <button class="preset-btn" data-preset="highco2">
+              <span class="preset-name">High Emissions</span>
+              <span class="preset-sub">850 ppm + ice melt</span>
+            </button>
+            <button class="preset-btn" data-preset="snowball">
+              <span class="preset-name">Snowball Earth</span>
+              <span class="preset-sub">Ice-albedo tipping!</span>
+            </button>
+            <button class="preset-btn" data-preset="barerock">
+              <span class="preset-name">No Atmosphere</span>
+              <span class="preset-sub">0 ppm · -18 °C bare</span>
+            </button>
+            <button class="preset-btn" data-preset="venus">
+              <span class="preset-name">Runaway Venus</span>
+              <span class="preset-sub">Extreme IR trapping</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Radiative Controls</span></div>
+          <div class="control-row">
+            <div class="control-head"><span>Atmospheric CO₂</span><span id="val-co2" class="val">280 ppm</span></div>
+            <input id="sl-co2" class="amber" type="range" min="0" max="2000" step="5" value="280" />
+          </div>
+          <div class="control-row">
+            <div class="control-head"><span>Solar Luminosity</span><span id="val-sun" class="val">100%</span></div>
+            <input id="sl-sun" type="range" min="75" max="135" step="1" value="100" />
+          </div>
+          <div class="control-row">
+            <div class="control-head"><span>Cloud Cover</span><span id="val-cloud" class="val">50%</span></div>
+            <input id="sl-cloud" type="range" min="0" max="100" step="2" value="50" />
+          </div>
+          <div class="control-row">
+            <div class="control-head"><span>Stratospheric Aerosols</span><span id="val-aero" class="val">0%</span></div>
+            <input id="sl-aero" type="range" min="0" max="100" step="2" value="0" />
+          </div>
+          <div class="btn-row">
+            <button id="btn-volcano" class="btn primary">🌋 Pinatubo Eruption</button>
+            <button id="btn-pulse-co2" class="btn amber">🏭 +200 ppm Pulse</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="tab-feedbacks" class="tab-pane">
+        <div class="section">
+          <div class="section-title"><span>Climate Feedback Loops</span></div>
+          <label class="toggle-row">
+            <span>Ice–Albedo Feedback (Tipping Point)</span>
+            <input id="chk-icefb" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Water Vapor Amplification (H₂O)</span>
+            <input id="chk-h2ofb" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Permafrost Methane Release (&gt;17°C)</span>
+            <input id="chk-ch4fb" type="checkbox" />
+            <span class="switch"></span>
+          </label>
+          <p class="note-small">
+            <strong>Solar Shortwave (gold)</strong> bounces off polar ice &amp; clouds. <strong>Thermal Infrared (crimson)</strong> rises from warm ocean/land and is intercepted &amp; isotropically re-emitted by glowing CO₂ / H₂O molecules!
+          </p>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Visual Overlays</span></div>
+          <label class="toggle-row">
+            <span>Show Greenhouse Molecules</span>
+            <input id="chk-mols" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Show Atmospheric Layers</span>
+            <input id="chk-layers" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <div class="control-row">
+            <div class="control-head"><span>Photon Flux Visual Density</span><span id="val-flux" class="val">1.0×</span></div>
+            <input id="sl-flux" type="range" min="0.4" max="2.0" step="0.1" value="1.0" />
+          </div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <div class="panel hint-pill">
+    <div><strong style="color:#ffdf85">Gold</strong> = Solar SW · <strong style="color:#ff6e88">Crimson</strong> = Thermal IR · <strong>Click sky</strong> to inject CO₂</div>
+    <div><kbd>Space</kbd> Pause · <kbd>V</kbd> Volcano Aerosol · <kbd>H</kbd> Cinema</div>
+  </div>
+
+  <div class="panel bottom-bar">
+    <button id="btn-play" class="bar-btn active">⏸ Pause</button>
+    <button id="btn-reset" class="bar-btn">↺ Reset</button>
+    <div class="bar-divider"></div>
+    <button id="btn-sound" class="bar-btn">🔇 Audio</button>
+    <button id="btn-toggle-drawer" class="bar-btn active">Controls</button>
+    <button id="btn-zen" class="bar-btn">Cinema</button>
+  </div>
+  <button id="btn-zen-restore" class="panel bar-btn zen-restore">Show HUD (H)</button>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  const SIGMA = 5.670374e-8;
+  const S0 = 1361; // W/m^2
+
+  const canvas = document.getElementById('sim-canvas');
+  const ctx = canvas.getContext('2d', { alpha: false });
+  const histCanvas = document.getElementById('history-canvas');
+  const hCtx = histCanvas.getContext('2d');
+
+  let W = window.innerWidth, H = window.innerHeight, DPR = Math.min(window.devicePixelRatio || 1, 2);
+  function resize() {
+    W = window.innerWidth; H = window.innerHeight;
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.floor(W * DPR); canvas.height = Math.floor(H * DPR);
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  }
+
+  const audio = {
+    enabled: false, ctx: null,
+    toggle() {
+      this.enabled = !this.enabled;
+      if (this.enabled && !this.ctx) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (AC) this.ctx = new AC();
+      }
+      if (this.enabled && this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
+      return this.enabled;
+    },
+    chime(freq = 360, dur = 0.16) {
+      if (!this.enabled || !this.ctx) return;
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator(), g = this.ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, now);
+      osc.frequency.exponentialRampToValueAtTime(freq * 0.72, now + dur);
+      g.gain.setValueAtTime(0.045, now);
+      g.gain.exponentialRampToValueAtTime(0.0008, now + dur);
+      osc.connect(g); g.connect(this.ctx.destination);
+      osc.start(now); osc.stop(now + dur);
+    }
+  };
+
+  const state = {
+    paused: false,
+    preset: 'preind',
+    co2: 280,        // ppm
+    sunPct: 100,     // %
+    cloudPct: 50,    // %
+    aerosolPct: 0,   // % (decays slowly after volcano)
+    iceFeedback: true,
+    h2oFeedback: true,
+    ch4Feedback: false,
+    showMols: true,
+    showLayers: true,
+    fluxDensity: 1.0,
+
+    // Dynamic state variables
+    tempK: 287.15,   // 14.0 C
+    iceFrac: 0.28,   // 0..1
+    ch4Extra: 0,     // ppm-eq
+    albedo: 0.30,
+    epsIR: 0.77,
+    swAbs: 239,
+    lwOut: 239,
+    imbalance: 0,
+    simYear: 0,
+    history: []
+  };
+
+  const stars = Array.from({ length: 120 }, () => ({
+    x: Math.random(), y: Math.random() * 0.42, r: 0.6 + Math.random() * 1.4, a: 0.25 + Math.random() * 0.7
+  }));
+
+  let photons = [];
+  let ghgMols = [];
+  let clouds = [];
+  let flashes = [];
+
+  function rebuildAtmosphereEntities() {
+    // Greenhouse molecules floating in troposphere
+    const count = Math.min(95, Math.round((state.co2 + state.ch4Extra) / 14) + (state.h2oFeedback && state.co2 > 0 ? 12 : 0));
+    while (ghgMols.length < count) {
+      ghgMols.push({
+        x: Math.random() * W,
+        y: H * (0.36 + Math.random() * 0.34),
+        vx: (Math.random() - 0.5) * 18,
+        vy: (Math.random() - 0.5) * 6,
+        type: Math.random() < 0.72 ? 'CO2' : (Math.random() < 0.65 ? 'H2O' : 'CH4'),
+        excite: 0,
+        phase: Math.random() * Math.PI * 2
+      });
+    }
+    if (ghgMols.length > count) ghgMols.length = count;
+
+    const cCount = Math.round(state.cloudPct / 10);
+    while (clouds.length < cCount) {
+      clouds.push({
+        x: Math.random() * W,
+        y: H * (0.42 + Math.random() * 0.14),
+        w: 75 + Math.random() * 85,
+        h: 24 + Math.random() * 16,
+        vx: 10 + Math.random() * 14
+      });
+    }
+    if (clouds.length > cCount) clouds.length = cCount;
+  }
+
+  function stepClimateODE(dt) {
+    const T = state.tempK;
+    const tempC = T - 273.15;
+
+    // 1) Ice-albedo smooth sigmoid response
+    const targetIce = state.iceFeedback
+      ? 1 / (1 + Math.exp((tempC - 4.0) * 0.17))
+      : 0.28;
+    state.iceFrac += (targetIce - state.iceFrac) * Math.min(1, dt * 0.85);
+
+    // 2) Permafrost methane feedback above 17 C
+    if (state.ch4Feedback && tempC > 17) {
+      state.ch4Extra = Math.min(600, state.ch4Extra + (tempC - 17) * 4.5 * dt);
+    } else {
+      state.ch4Extra = Math.max(0, state.ch4Extra - 12 * dt);
+    }
+
+    // Volcanic aerosol slow stratospheric decay
+    if (state.aerosolPct > 0.1) {
+      state.aerosolPct = Math.max(0, state.aerosolPct - dt * 1.4);
+      document.getElementById('sl-aero').value = Math.round(state.aerosolPct);
+      document.getElementById('val-aero').textContent = `${Math.round(state.aerosolPct)}%`;
+    }
+
+    // 3) Planetary Albedo
+    const surfAlbedo = 0.08 + state.iceFrac * 0.54; // dark ocean 0.08 -> snowball ice 0.62
+    const cloudAlbedo = (state.cloudPct / 100) * 0.22;
+    const aeroAlbedo = (state.aerosolPct / 100) * 0.16;
+    state.albedo = Math.min(0.76, Math.max(0.06, surfAlbedo * (1 - cloudAlbedo) + cloudAlbedo + aeroAlbedo));
+
+    // 4) Greenhouse IR Trapping Fraction (logarithmic CO2 forcing + H2O feedback)
+    const effCO2 = state.co2 + state.ch4Extra;
+    let eps = 0;
+    if (effCO2 > 1 || state.cloudPct > 0) {
+      // Calibrated so CO2=280 ppm, cloud=50%, T=14C => eps ~ 0.774 (balanced!)
+      const co2Term = effCO2 > 0 ? 0.56 + 0.056 * Math.log(Math.max(1, effCO2) / 280) : 0;
+      const h2oTerm = (state.h2oFeedback && effCO2 > 0) ? 0.14 + Math.max(-0.08, Math.min(0.16, (tempC - 14) * 0.0055)) : (effCO2 > 0 ? 0.14 : 0);
+      const cldTerm = (state.cloudPct / 100) * 0.145;
+      eps = Math.max(0, Math.min(0.985, co2Term + h2oTerm + cldTerm));
+    }
+    state.epsIR = eps;
+
+    // 5) 1-Layer Radiative Energy Balance:
+    //    SW_absorbed = (S0/4) * (sunPct/100) * (1 - albedo)
+    //    LW_outgoing = (1 - eps/2) * sigma * T^4  (with calibrated effective emissivity factor)
+    const swIn = (S0 / 4) * (state.sunPct / 100) * (1 - state.albedo);
+    const lwOut = (1 - eps * 0.502) * SIGMA * Math.pow(T, 4);
+    state.swAbs = swIn;
+    state.lwOut = lwOut;
+    state.imbalance = swIn - lwOut;
+
+    // Thermal inertia integration
+    const dT = (state.imbalance / 18.0) * dt;
+    state.tempK = Math.max(185, Math.min(740, state.tempK + dT));
+    state.simYear += dt * 4.5;
+
+    if (state.history.length === 0 || state.simYear - state.history[state.history.length - 1].y > 1.2) {
+      state.history.push({ y: state.simYear, tc: state.tempK - 273.15, imb: state.imbalance });
+      if (state.history.length > 160) state.history.shift();
+    }
+  }
+
+  function stepVisuals(dt) {
+    rebuildAtmosphereEntities();
+    const surfY = H * 0.78;
+    const stratY = H * 0.24;
+
+    // Move molecules & clouds
+    for (const m of ghgMols) {
+      m.x = (m.x + m.vx * dt + W) % W;
+      m.y += m.vy * dt;
+      if (m.y < H * 0.32 || m.y > surfY - 28) m.vy *= -1;
+      m.excite = Math.max(0, m.excite - dt * 2.2);
+    }
+    for (const c of clouds) {
+      c.x += c.vx * dt;
+      if (c.x - c.w > W) c.x = -c.w;
+    }
+
+    // Spawn incoming Solar Shortwave photons
+    const swRate = (state.sunPct / 100) * 14 * state.fluxDensity;
+    if (Math.random() < swRate * dt) {
+      photons.push({
+        kind: 'sw',
+        x: Math.random() * W,
+        y: -10,
+        vx: (Math.random() - 0.5) * 30,
+        vy: 195 + Math.random() * 55,
+        reflected: false,
+        life: 1.0
+      });
+    }
+
+    // Spawn outgoing Surface Thermal IR photons proportional to T^4
+    const irRate = Math.min(28, Math.pow(state.tempK / 287, 3) * 11 * state.fluxDensity);
+    if (Math.random() < irRate * dt) {
+      photons.push({
+        kind: 'ir',
+        x: Math.random() * W,
+        y: surfY - 4,
+        vx: (Math.random() - 0.5) * 45,
+        vy: -(140 + Math.random() * 45),
+        bounced: 0,
+        life: 1.0
+      });
+    }
+
+    // Ice cap X bounds on surface (left & right edges grow inward!)
+    const iceWidth = W * 0.5 * state.iceFrac;
+
+    for (let i = photons.length - 1; i >= 0; i--) {
+      const p = photons[i];
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+
+      if (p.kind === 'sw' && !p.reflected) {
+        // Stratospheric aerosol reflection
+        if (state.aerosolPct > 2 && Math.abs(p.y - stratY) < 12 && Math.random() < (state.aerosolPct / 100) * 0.35) {
+          p.vy = -Math.abs(p.vy); p.vx += (Math.random() - 0.5) * 80; p.reflected = true;
+          flashes.push({ x: p.x, y: p.y, r: 2, maxR: 16, alpha: 0.7, col: '#b8e8ff' });
+          continue;
+        }
+        // Cloud reflection
+        for (const c of clouds) {
+          if (Math.abs(p.x - c.x) < c.w * 0.5 && Math.abs(p.y - c.y) < c.h * 0.45 && Math.random() < 0.25) {
+            p.vy = -Math.abs(p.vy); p.vx += (Math.random() - 0.5) * 70; p.reflected = true;
+            break;
+          }
+        }
+        // Surface hit
+        if (p.y >= surfY) {
+          const onIce = p.x < iceWidth || p.x > W - iceWidth;
+          if (onIce && Math.random() < 0.78) {
+            p.vy = -Math.abs(p.vy); p.vx += (Math.random() - 0.5) * 60; p.reflected = true;
+            flashes.push({ x: p.x, y: surfY, r: 3, maxR: 20, alpha: 0.85, col: '#dff7ff' });
+          } else {
+            flashes.push({ x: p.x, y: surfY, r: 3, maxR: 22, alpha: 0.7, col: '#ffbe5c' });
+            photons.splice(i, 1);
+            continue;
+          }
+        }
+      } else if (p.kind === 'ir') {
+        // Check GHG molecule interception
+        if (p.bounced < 3 && p.y > H * 0.28 && p.y < surfY - 22) {
+          for (let j = 0; j < ghgMols.length; j++) {
+            const m = ghgMols[j];
+            if (Math.hypot(p.x - m.x, p.y - m.y) < 16) {
+              m.excite = 1.0;
+              p.bounced++;
+              // Re-emit isotropically (half back down toward Earth!)
+              const ang = Math.random() * Math.PI * 2;
+              const spd = 155;
+              p.vx = Math.cos(ang) * spd;
+              p.vy = Math.sin(ang) * spd;
+              flashes.push({ x: m.x, y: m.y, r: 3, maxR: 24, alpha: 0.9, col: '#ff6488' });
+              if (Math.random() < 0.15) audio.chime(290 + Math.random() * 140, 0.12);
+              break;
+            }
+          }
+        }
+        if (p.y >= surfY && p.vy > 0) {
+          // Re-absorbed by surface (greenhouse warming!)
+          flashes.push({ x: p.x, y: surfY, r: 3, maxR: 24, alpha: 0.85, col: '#ff6488' });
+          photons.splice(i, 1);
+          continue;
+        }
+      }
+
+      if (p.y < -30 || p.y > H + 30 || p.x < -40 || p.x > W + 40) {
+        photons.splice(i, 1);
+      }
+    }
+
+    for (let i = flashes.length - 1; i >= 0; i--) {
+      const f = flashes[i];
+      f.r += (f.maxR - f.r) * Math.min(1, dt * 8);
+      f.alpha -= dt * 2.2;
+      if (f.alpha <= 0) flashes.splice(i, 1);
+    }
+  }
+
+  function render(nowSec) {
+    const surfY = H * 0.78;
+    const stratY = H * 0.24;
+    const tempC = state.tempK - 273.15;
+
+    // Sky gradient shifting smoothly with warming / Venus haze
+    const heatTint = Math.max(0, Math.min(1, (tempC - 14) / 70));
+    const sky = ctx.createLinearGradient(0, 0, 0, surfY);
+    sky.addColorStop(0, '#02040a');
+    sky.addColorStop(0.28, '#060c1d');
+    sky.addColorStop(0.72, `rgb(${Math.round(14 + heatTint * 55)}, ${Math.round(28 + heatTint * 16)}, ${Math.round(58 - heatTint * 24)})`);
+    sky.addColorStop(1, `rgb(${Math.round(24 + heatTint * 85)}, ${Math.round(52 + heatTint * 20)}, ${Math.round(92 - heatTint * 40)})`);
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, W, H);
+
+    // Deep space stars
+    ctx.fillStyle = '#dce8ff';
+    for (const s of stars) {
+      ctx.globalAlpha = s.a * (0.7 + 0.3 * Math.sin(nowSec * 1.6 + s.x * 10));
+      ctx.fillRect(s.x * W, s.y * H, s.r, s.r);
+    }
+    ctx.globalAlpha = 1;
+
+    // Atmospheric layer bands
+    if (state.showLayers) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(130, 180, 255, 0.16)';
+      ctx.setLineDash([6, 8]);
+      ctx.beginPath(); ctx.moveTo(0, stratY); ctx.lineTo(W, stratY); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(155, 195, 255, 0.45)';
+      ctx.font = '600 10px ui-monospace, monospace';
+      ctx.fillText('STRATOPAUSE · AEROSOL LAYER', 18, stratY - 6);
+      ctx.fillText('TROPOSPHERE · GREENHOUSE LAYER', 18, stratY + 14);
+      ctx.restore();
+    }
+
+    // Volcanic stratospheric aerosol veil
+    if (state.aerosolPct > 0.5) {
+      const ag = ctx.createLinearGradient(0, stratY - 18, 0, stratY + 24);
+      ag.addColorStop(0, 'rgba(185, 220, 255, 0)');
+      ag.addColorStop(0.5, `rgba(185, 225, 255, ${(state.aerosolPct / 100) * 0.36})`);
+      ag.addColorStop(1, 'rgba(185, 220, 255, 0)');
+      ctx.fillStyle = ag;
+      ctx.fillRect(0, stratY - 18, W, 42);
+    }
+
+    // Clouds
+    for (const c of clouds) {
+      const cg = ctx.createRadialGradient(c.x, c.y, 4, c.x, c.y, c.w * 0.58);
+      cg.addColorStop(0, 'rgba(225, 238, 255, 0.42)');
+      cg.addColorStop(1, 'rgba(190, 215, 255, 0)');
+      ctx.fillStyle = cg;
+      ctx.beginPath();
+      ctx.ellipse(c.x, c.y, c.w * 0.55, c.h * 0.55, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Greenhouse gas molecules
+    if (state.showMols) {
+      for (const m of ghgMols) {
+        const vib = m.excite * Math.sin(nowSec * 45 + m.phase) * 3.2;
+        ctx.save();
+        ctx.translate(m.x + vib, m.y);
+        const col = m.type === 'CO2' ? '#ff9f5c' : m.type === 'H2O' ? '#5ce1ff' : '#c084fc';
+        if (m.excite > 0.05) {
+          ctx.fillStyle = `rgba(255, 100, 136, ${m.excite * 0.5})`;
+          ctx.beginPath(); ctx.arc(0, 0, 12 + m.excite * 8, 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.fillStyle = col;
+        ctx.beginPath(); ctx.arc(0, 0, 3.2, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,0.75)';
+        ctx.beginPath(); ctx.arc(-5, 0, 2.1, 0, Math.PI * 2); ctx.arc(5, 0, 2.1, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+      }
+    }
+
+    // Earth Surface: Dark Ocean + Land + Expanding/Retreating Polar Ice Caps!
+    const oceanGrad = ctx.createLinearGradient(0, surfY, 0, H);
+    oceanGrad.addColorStop(0, tempC > 100 ? '#5c261c' : '#0b2c52');
+    oceanGrad.addColorStop(1, '#040e1f');
+    ctx.fillStyle = oceanGrad;
+    ctx.fillRect(0, surfY, W, H - surfY);
+
+    // Temperate green/amber landmass in middle
+    const landW = W * 0.28;
+    ctx.fillStyle = tempC > 45 ? '#7c4c28' : '#1b4f3a';
+    ctx.beginPath();
+    ctx.moveTo(W * 0.36, surfY + 12);
+    ctx.quadraticCurveTo(W * 0.50, surfY - 22, W * 0.36 + landW, surfY + 12);
+    ctx.lineTo(W * 0.36 + landW, H);
+    ctx.lineTo(W * 0.36, H);
+    ctx.closePath();
+    ctx.fill();
+
+    // Polar Ice Caps growing inward from both edges!
+    const iceW = W * 0.5 * state.iceFrac;
+    if (iceW > 2) {
+      const iceGrad = ctx.createLinearGradient(0, surfY - 8, 0, H);
+      iceGrad.addColorStop(0, '#eef9ff');
+      iceGrad.addColorStop(0.25, '#9edbff');
+      iceGrad.addColorStop(1, '#2d5c82');
+      ctx.fillStyle = iceGrad;
+      ctx.fillRect(0, surfY - 5, iceW, H - surfY + 5);
+      ctx.fillRect(W - iceW, surfY - 5, iceW, H - surfY + 5);
+    }
+
+    // Surface glow horizon line
+    ctx.strokeStyle = tempC < 0 ? 'rgba(180, 235, 255, 0.7)' : 'rgba(255, 191, 94, 0.45)';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(0, surfY); ctx.lineTo(W, surfY); ctx.stroke();
+
+    // Photons (sinusoidal wave-packets!)
+    for (const p of photons) {
+      const ang = Math.atan2(p.vy, p.vx);
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(ang);
+      ctx.strokeStyle = p.kind === 'sw' ? (p.reflected ? '#e8f9ff' : '#ffdf78') : '#ff6488';
+      ctx.lineWidth = 2.0;
+      const wl = p.kind === 'sw' ? 7 : 13;
+      ctx.beginPath();
+      for (let x = -22; x <= 4; x += 2) {
+        const y = Math.sin((x / wl) * Math.PI * 2 - nowSec * 22) * 3.8;
+        if (x === -22) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      ctx.fillStyle = '#fff';
+      ctx.beginPath(); ctx.arc(4, 0, 2, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
+
+    // Flashes
+    for (const f of flashes) {
+      ctx.save();
+      ctx.strokeStyle = f.col; ctx.globalAlpha = Math.max(0, f.alpha); ctx.lineWidth = 1.8;
+      ctx.beginPath(); ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2); ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  function renderHistory() {
+    const w = histCanvas.width, h = histCanvas.height;
+    hCtx.clearRect(0, 0, w, h);
+    if (state.history.length < 2) return;
+
+    // 14 C reference line
+    const mapY = tc => h - 10 - ((Math.max(-55, Math.min(95, tc)) + 55) / 150) * (h - 20);
+    hCtx.strokeStyle = 'rgba(76, 242, 178, 0.28)';
+    hCtx.setLineDash([4, 4]);
+    const y14 = mapY(14);
+    hCtx.beginPath(); hCtx.moveTo(0, y14); hCtx.lineTo(w, y14); hCtx.stroke();
+    hCtx.setLineDash([]);
+
+    hCtx.strokeStyle = '#ffbf5e';
+    hCtx.lineWidth = 2;
+    hCtx.beginPath();
+    state.history.forEach((pt, idx) => {
+      const x = (idx / Math.max(1, state.history.length - 1)) * w;
+      const y = mapY(pt.tc);
+      if (idx === 0) hCtx.moveTo(x, y); else hCtx.lineTo(x, y);
+    });
+    hCtx.stroke();
+
+    hCtx.fillStyle = 'rgba(170, 195, 240, 0.55)';
+    hCtx.font = '600 9px ui-monospace, monospace';
+    hCtx.fillText('14°C ref', 5, Math.max(11, y14 - 3));
+  }
+
+  function updateHUD() {
+    const tc = state.tempK - 273.15;
+    document.getElementById('tel-temp').textContent = `${tc.toFixed(1)} °C`;
+    const sign = state.imbalance >= 0 ? '+' : '';
+    document.getElementById('tel-imb').textContent = `${sign}${state.imbalance.toFixed(1)} W/m²`;
+    document.getElementById('tel-alb').textContent = state.albedo.toFixed(2);
+    document.getElementById('tel-co2').textContent = `${Math.round(state.co2 + state.ch4Extra)} ppm`;
+    document.getElementById('tel-ice').textContent = `${Math.round(state.iceFrac * 100)}%`;
+    document.getElementById('tel-ghg').textContent = `${Math.round(state.epsIR * 100)}%`;
+    document.getElementById('tel-sw').textContent = `${state.swAbs.toFixed(0)} W/m²`;
+    document.getElementById('tel-lw').textContent = `${state.lwOut.toFixed(0)} W/m²`;
+    document.getElementById('tel-yr').textContent = `${Math.floor(state.simYear)}`;
+
+    const pill = document.getElementById('status-pill');
+    pill.className = 'status-pill';
+    if (tc < -15) { pill.textContent = 'Snowball Earth!'; pill.classList.add('cold'); }
+    else if (tc > 60) { pill.textContent = 'Runaway Greenhouse'; pill.classList.add('hot'); }
+    else if (state.imbalance > 1.2) { pill.textContent = 'Warming Imbalance'; pill.classList.add('warm'); }
+    else if (state.imbalance < -1.2) { pill.textContent = 'Cooling Imbalance'; pill.classList.add('cold'); }
+    else { pill.textContent = 'Radiative Balance'; }
+  }
+
+  function applyPreset(name) {
+    state.preset = name;
+    state.ch4Extra = 0;
+    state.aerosolPct = 0;
+    state.history = [];
+    state.simYear = 0;
+    if (name === 'preind')   { state.co2 = 280;  state.sunPct = 100; state.cloudPct = 50; state.tempK = 287.15; state.iceFrac = 0.28; }
+    if (name === 'modern')   { state.co2 = 425;  state.sunPct = 100; state.cloudPct = 50; state.tempK = 288.2;  state.iceFrac = 0.24; }
+    if (name === 'highco2')  { state.co2 = 850;  state.sunPct = 100; state.cloudPct = 48; state.tempK = 289.0;  state.iceFrac = 0.22; }
+    if (name === 'snowball') { state.co2 = 120;  state.sunPct = 90;  state.cloudPct = 55; state.tempK = 266.0;  state.iceFrac = 0.72; }
+    if (name === 'barerock') { state.co2 = 0;    state.sunPct = 100; state.cloudPct = 0;  state.tempK = 280.0;  state.iceFrac = 0.30; }
+    if (name === 'venus')    { state.co2 = 2000; state.sunPct = 130; state.cloudPct = 70; state.tempK = 330.0;  state.iceFrac = 0.0;  }
+
+    document.querySelectorAll('.preset-btn').forEach(b => b.classList.toggle('active', b.dataset.preset === name));
+    document.getElementById('sl-co2').value = state.co2;
+    document.getElementById('val-co2').textContent = `${state.co2} ppm`;
+    document.getElementById('sl-sun').value = state.sunPct;
+    document.getElementById('val-sun').textContent = `${state.sunPct}%`;
+    document.getElementById('sl-cloud').value = state.cloudPct;
+    document.getElementById('val-cloud').textContent = `${state.cloudPct}%`;
+    document.getElementById('sl-aero').value = state.aerosolPct;
+    document.getElementById('val-aero').textContent = `${state.aerosolPct}%`;
+    rebuildAtmosphereEntities();
+    updateHUD();
+  }
+
+  // UI Listeners
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById(`tab-${btn.dataset.tab}`).classList.add('active');
+    });
+  });
+  document.querySelectorAll('.preset-btn').forEach(b => b.addEventListener('click', () => applyPreset(b.dataset.preset)));
+  document.getElementById('sl-co2').addEventListener('input', e => { state.co2 = Number(e.target.value); document.getElementById('val-co2').textContent = `${state.co2} ppm`; });
+  document.getElementById('sl-sun').addEventListener('input', e => { state.sunPct = Number(e.target.value); document.getElementById('val-sun').textContent = `${state.sunPct}%`; });
+  document.getElementById('sl-cloud').addEventListener('input', e => { state.cloudPct = Number(e.target.value); document.getElementById('val-cloud').textContent = `${state.cloudPct}%`; });
+  document.getElementById('sl-aero').addEventListener('input', e => { state.aerosolPct = Number(e.target.value); document.getElementById('val-aero').textContent = `${state.aerosolPct}%`; });
+  document.getElementById('sl-flux').addEventListener('input', e => { state.fluxDensity = Number(e.target.value); document.getElementById('val-flux').textContent = `${state.fluxDensity.toFixed(1)}×`; });
+
+  document.getElementById('btn-volcano').addEventListener('click', () => {
+    state.aerosolPct = 78;
+    document.getElementById('sl-aero').value = 78;
+    document.getElementById('val-aero').textContent = '78%';
+    audio.chime(140, 0.35);
+  });
+  document.getElementById('btn-pulse-co2').addEventListener('click', () => {
+    state.co2 = Math.min(2000, state.co2 + 200);
+    document.getElementById('sl-co2').value = state.co2;
+    document.getElementById('val-co2').textContent = `${state.co2} ppm`;
+    audio.chime(420, 0.2);
+  });
+
+  document.getElementById('chk-icefb').addEventListener('change', e => state.iceFeedback = e.target.checked);
+  document.getElementById('chk-h2ofb').addEventListener('change', e => state.h2oFeedback = e.target.checked);
+  document.getElementById('chk-ch4fb').addEventListener('change', e => state.ch4Feedback = e.target.checked);
+  document.getElementById('chk-mols').addEventListener('change', e => state.showMols = e.target.checked);
+  document.getElementById('chk-layers').addEventListener('change', e => state.showLayers = e.target.checked);
+
+  canvas.addEventListener('pointerdown', e => {
+    state.co2 = Math.min(2000, state.co2 + 40);
+    document.getElementById('sl-co2').value = state.co2;
+    document.getElementById('val-co2').textContent = `${state.co2} ppm`;
+    flashes.push({ x: e.clientX, y: e.clientY, r: 4, maxR: 34, alpha: 0.9, col: '#ffbe5c' });
+    audio.chime(480, 0.14);
+  });
+
+  const btnPlay = document.getElementById('btn-play');
+  btnPlay.addEventListener('click', () => {
+    state.paused = !state.paused;
+    btnPlay.textContent = state.paused ? '▶ Play' : '⏸ Pause';
+    btnPlay.classList.toggle('active', !state.paused);
+  });
+  document.getElementById('btn-reset').addEventListener('click', () => applyPreset(state.preset));
+  document.getElementById('btn-sound').addEventListener('click', e => {
+    const on = audio.toggle();
+    e.target.textContent = on ? '🔊 Audio' : '🔇 Audio';
+    e.target.classList.toggle('active', on);
+  });
+  document.getElementById('btn-toggle-drawer').addEventListener('click', e => {
+    document.getElementById('drawer').classList.toggle('collapsed');
+    e.target.classList.toggle('active', !document.getElementById('drawer').classList.contains('collapsed'));
+  });
+  function toggleZen() { document.body.classList.toggle('zen-mode'); }
+  document.getElementById('btn-zen').addEventListener('click', toggleZen);
+  document.getElementById('btn-zen-restore').addEventListener('click', toggleZen);
+
+  window.addEventListener('keydown', e => {
+    if (e.key === 'h' || e.key === 'H') toggleZen();
+    else if (e.key === 'v' || e.key === 'V') document.getElementById('btn-volcano').click();
+    else if (e.code === 'Space') { e.preventDefault(); btnPlay.click(); }
+  });
+  window.addEventListener('resize', resize);
+
+  let lastNow = performance.now(), frame = 0;
+  function loop(now) {
+    const dt = Math.min(0.05, (now - lastNow) / 1000);
+    lastNow = now;
+    if (!state.paused) {
+      stepClimateODE(dt);
+      stepVisuals(dt);
+    }
+    render(now / 1000);
+    if (frame % 4 === 0) { updateHUD(); renderHistory(); }
+    frame++;
+    requestAnimationFrame(loop);
+  }
+
+  resize();
+  applyPreset('preind');
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
