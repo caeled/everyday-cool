@@ -34,3 +34,8 @@ Electronics Wave II back doors, 23 November 2026: `index.html` gained back doors
 ## Back doors 99–115 — Mathematics, Earth Science, and the completed Biology Wave · 23 November 2026
 
 `index.html` gained seventeen back doors (99–115) in the mixed Antigravity delivery integrated the same day: seven for the Mathematics Wave (Everyday Math), eight for the Earth Science Wave (Weather Everywhere), and two for the completed Biology Wave — Mitosis & Genetics and the Lenia Automata Zoo (Everyday Body). The section heading rose from "Ninety-eight games" to "One hundred fifteen games", verified sequential 1–115 on the page. Each card carries the audit's one-line receipt; the full measurements live in the lessons, in their home rooms.
+
+
+## Back door 116 — Skip · 23 November 2026
+
+`index.html` gained one back door (116) for Skip (The Radio Room) — Steven Powell's own Python skywave game, ported to the web by Muse with its physics and Morse cores carried over line for line; the card carries the port's receipt (secant-law MUF exact at 18.000000000000 MHz for fo 9 at 30°, the original self-test's 31 checks passing against the shipped code). The section heading rose from "One hundred fifteen games" to "One hundred sixteen games", verified sequential 1–116 on the page. The full measurements live in the lesson, in its home room.
