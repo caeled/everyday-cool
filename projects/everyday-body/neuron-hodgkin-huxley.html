@@ -1,0 +1,4003 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Action Potential — Hodgkin–Huxley Neuron & Spiking Network</title>
+<style>
+  :root {
+    --bg-deep: #040711;
+    --panel-bg: rgba(9, 14, 28, 0.78);
+    --panel-bg-strong: rgba(7, 11, 23, 0.92);
+    --panel-border: rgba(140, 178, 255, 0.16);
+    --panel-border-hi: rgba(140, 178, 255, 0.36);
+    --text-main: #eef4ff;
+    --text-dim: #9aaad0;
+    --text-muted: #67779c;
+    --accent-gold: #ffbe55;
+    --accent-cyan: #52dcff;
+    --accent-mint: #46f0b4;
+    --accent-violet: #b084ff;
+    --accent-rose: #ff5c86;
+    --radius-lg: 14px;
+    --radius-md: 10px;
+    --radius-sm: 7px;
+    --mono: ui-monospace, "Cascadia Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Inter, Helvetica, Arial, sans-serif;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg-deep);
+    color: var(--text-main);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    touch-action: none;
+  }
+
+  #sim-canvas {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    cursor: crosshair;
+  }
+  #sim-canvas.pointer { cursor: pointer; }
+  #sim-canvas.grabbing { cursor: grabbing; }
+
+  /* HUD Layer */
+  .hud {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 10;
+  }
+  body.cinema-mode .hud > :not(.cinema-restore) {
+    opacity: 0;
+    pointer-events: none !important;
+  }
+
+  .panel {
+    pointer-events: auto;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-lg);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.52), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    transition: opacity 0.24s ease, transform 0.24s ease;
+  }
+
+  /* Top-Left Telemetry */
+  .top-left {
+    position: fixed;
+    top: 14px;
+    left: 14px;
+    width: min(430px, calc(100vw - 366px));
+    min-width: 292px;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .brand-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .brand-title-wrap {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .brand-title {
+    font-size: 15.5px;
+    font-weight: 800;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+    background: linear-gradient(120deg, #fff5dc 0%, #ffbe55 42%, #52dcff 75%, #b084ff 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .mode-badge {
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 999px;
+    border: 1px solid rgba(82, 220, 255, 0.4);
+    background: rgba(82, 220, 255, 0.12);
+    color: var(--accent-cyan);
+  }
+  .mode-badge.network {
+    border-color: rgba(176, 132, 255, 0.45);
+    background: rgba(176, 132, 255, 0.14);
+    color: var(--accent-violet);
+  }
+
+  .status-pill {
+    font-size: 10px;
+    font-weight: 750;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 3px 9px;
+    border-radius: 999px;
+    background: rgba(82, 220, 255, 0.13);
+    color: var(--accent-cyan);
+    border: 1px solid rgba(82, 220, 255, 0.36);
+    white-space: nowrap;
+    transition: all 0.12s ease;
+  }
+  .status-pill.depol {
+    background: rgba(255, 190, 85, 0.22);
+    color: #ffe2a8;
+    border-color: rgba(255, 190, 85, 0.65);
+    box-shadow: 0 0 14px rgba(255, 190, 85, 0.32);
+  }
+  .status-pill.repol {
+    background: rgba(176, 132, 255, 0.2);
+    color: #dfc9ff;
+    border-color: rgba(176, 132, 255, 0.55);
+  }
+  .status-pill.refrac {
+    background: rgba(70, 240, 180, 0.15);
+    color: #9bf7d7;
+    border-color: rgba(70, 240, 180, 0.4);
+  }
+  .status-pill.blocked {
+    background: rgba(255, 92, 134, 0.2);
+    color: #ffc2d2;
+    border-color: rgba(255, 92, 134, 0.55);
+  }
+
+  .telemetry-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+  }
+
+  .tele-card {
+    background: rgba(255, 255, 255, 0.028);
+    border: 1px solid rgba(140, 178, 255, 0.11);
+    border-radius: var(--radius-sm);
+    padding: 5px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5px;
+  }
+
+  .tele-label {
+    font-size: 9px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .tele-val {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--text-main);
+  }
+  .tele-val.gold { color: var(--accent-gold); }
+  .tele-val.cyan { color: var(--accent-cyan); }
+  .tele-val.mint { color: var(--accent-mint); }
+  .tele-val.violet { color: var(--accent-violet); }
+  .tele-val.rose { color: var(--accent-rose); }
+
+  .ion-meter-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    padding-top: 4px;
+    border-top: 1px solid rgba(140, 178, 255, 0.1);
+  }
+  .mini-bar-wrap {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 10px;
+    color: var(--text-dim);
+    font-family: var(--mono);
+  }
+  .mini-track {
+    flex: 1;
+    height: 5px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+    overflow: hidden;
+  }
+  .mini-fill-na {
+    height: 100%;
+    width: 0%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #ff9933, #ffd97a);
+  }
+  .mini-fill-k {
+    height: 100%;
+    width: 0%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #8b5cf6, #d8b4fe);
+  }
+
+  /* Right Control Drawer (330px) */
+  .drawer {
+    position: fixed;
+    top: 14px;
+    right: 14px;
+    bottom: 14px;
+    width: 330px;
+    max-width: calc(100vw - 28px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .drawer.collapsed {
+    transform: translateX(calc(100% + 24px));
+    pointer-events: none;
+  }
+
+  .drawer-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+    padding: 8px 8px 6px;
+    border-bottom: 1px solid var(--panel-border);
+    background: rgba(4, 7, 17, 0.46);
+  }
+
+  .tab-btn {
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    padding: 7px 5px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .tab-btn:hover {
+    color: var(--text-main);
+    background: rgba(255, 255, 255, 0.04);
+  }
+  .tab-btn.active {
+    color: #fff;
+    background: rgba(82, 220, 255, 0.16);
+    border-color: rgba(82, 220, 255, 0.42);
+  }
+
+  .drawer-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 11px 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .drawer-body::-webkit-scrollbar { width: 5px; }
+  .drawer-body::-webkit-scrollbar-thumb {
+    background: rgba(140, 178, 255, 0.22);
+    border-radius: 999px;
+  }
+
+  .tab-pane {
+    display: none;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .tab-pane.active { display: flex; }
+
+  .section {
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(140, 178, 255, 0.11);
+    border-radius: var(--radius-md);
+    padding: 9px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .section-title {
+    font-size: 10px;
+    font-weight: 750;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  /* Mode switcher */
+  .mode-switch {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 5px;
+  }
+  .mode-btn {
+    border: 1px solid rgba(140, 178, 255, 0.18);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-dim);
+    font-size: 11px;
+    font-weight: 700;
+    padding: 7px 6px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-align: center;
+  }
+  .mode-btn:hover { color: #fff; border-color: rgba(140, 178, 255, 0.4); }
+  .mode-btn.active {
+    color: #fff;
+    background: linear-gradient(135deg, rgba(82, 220, 255, 0.22), rgba(176, 132, 255, 0.2));
+    border-color: var(--accent-cyan);
+    box-shadow: 0 0 12px rgba(82, 220, 255, 0.18);
+  }
+
+  /* Presets grid */
+  .preset-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .preset-btn {
+    text-align: left;
+    padding: 7px 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(140, 178, 255, 0.14);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-main);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .preset-btn:hover {
+    border-color: rgba(255, 190, 85, 0.48);
+    background: rgba(255, 190, 85, 0.08);
+  }
+  .preset-btn.active {
+    border-color: var(--accent-gold);
+    background: rgba(255, 190, 85, 0.15);
+  }
+  .preset-name {
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+  .preset-sub {
+    font-size: 9.2px;
+    color: var(--text-muted);
+    line-height: 1.25;
+  }
+
+  /* Action Buttons */
+  .btn-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .btn {
+    border: 1px solid rgba(140, 178, 255, 0.22);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-main);
+    font-size: 11.5px;
+    font-weight: 700;
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+  .btn:hover {
+    background: rgba(255, 255, 255, 0.11);
+    border-color: rgba(140, 178, 255, 0.48);
+  }
+  .btn:active { transform: scale(0.97); }
+  .btn.pulse-btn {
+    width: 100%;
+    padding: 9.5px 12px;
+    font-size: 12px;
+    background: linear-gradient(135deg, rgba(255, 190, 85, 0.34), rgba(255, 118, 68, 0.28));
+    border-color: rgba(255, 190, 85, 0.68);
+    color: #fff6e0;
+    box-shadow: 0 0 18px rgba(255, 190, 85, 0.18);
+  }
+  .btn.pulse-btn:hover {
+    background: linear-gradient(135deg, rgba(255, 190, 85, 0.48), rgba(255, 118, 68, 0.4));
+    box-shadow: 0 0 22px rgba(255, 190, 85, 0.32);
+  }
+  .btn.primary {
+    background: linear-gradient(135deg, rgba(82, 220, 255, 0.26), rgba(56, 140, 255, 0.22));
+    border-color: rgba(82, 220, 255, 0.55);
+    color: #e6f9ff;
+  }
+  .btn.violet {
+    background: linear-gradient(135deg, rgba(176, 132, 255, 0.26), rgba(124, 58, 237, 0.22));
+    border-color: rgba(176, 132, 255, 0.55);
+    color: #f2e8ff;
+  }
+  .btn.danger {
+    background: rgba(255, 92, 134, 0.14);
+    border-color: rgba(255, 92, 134, 0.42);
+    color: #ffc2d2;
+  }
+
+  /* Sliders */
+  .control-row {
+    display: flex;
+    flex-direction: column;
+    gap: 3.5px;
+  }
+  .control-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+  .control-head .val {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-main);
+    font-weight: 650;
+  }
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 5px;
+    border-radius: 999px;
+    background: rgba(140, 178, 255, 0.18);
+    outline: none;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 13px;
+    height: 13px;
+    border-radius: 50%;
+    background: var(--accent-cyan);
+    border: 2px solid #071020;
+    box-shadow: 0 0 9px rgba(82, 220, 255, 0.65);
+    cursor: pointer;
+  }
+  input[type="range"].gold::-webkit-slider-thumb {
+    background: var(--accent-gold);
+    box-shadow: 0 0 9px rgba(255, 190, 85, 0.65);
+  }
+  input[type="range"].violet::-webkit-slider-thumb {
+    background: var(--accent-violet);
+    box-shadow: 0 0 9px rgba(176, 132, 255, 0.65);
+  }
+  input[type="range"].mint::-webkit-slider-thumb {
+    background: var(--accent-mint);
+    box-shadow: 0 0 9px rgba(70, 240, 180, 0.65);
+  }
+
+  /* Segmented pills */
+  .seg-row {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 5px;
+  }
+  .seg-row.three {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .seg-btn {
+    border: 1px solid rgba(140, 178, 255, 0.16);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-dim);
+    font-size: 10.8px;
+    font-weight: 650;
+    padding: 6px 5px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-align: center;
+  }
+  .seg-btn:hover { color: #fff; border-color: rgba(140, 178, 255, 0.36); }
+  .seg-btn.active {
+    color: #fff;
+    background: rgba(82, 220, 255, 0.18);
+    border-color: var(--accent-cyan);
+  }
+  .seg-btn.active.mint {
+    background: rgba(70, 240, 180, 0.18);
+    border-color: var(--accent-mint);
+    color: #cbffea;
+  }
+  .seg-btn.active.violet {
+    background: rgba(176, 132, 255, 0.22);
+    border-color: var(--accent-violet);
+    color: #f0e3ff;
+  }
+
+  /* Toggle switches */
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11px;
+    color: var(--text-dim);
+    cursor: pointer;
+  }
+  .toggle-row input { display: none; }
+  .switch {
+    width: 34px;
+    height: 18px;
+    border-radius: 999px;
+    background: rgba(140, 178, 255, 0.2);
+    border: 1px solid rgba(140, 178, 255, 0.26);
+    position: relative;
+    transition: all 0.18s ease;
+    flex-shrink: 0;
+  }
+  .switch::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #c8d7f5;
+    transition: transform 0.18s ease, background 0.18s ease;
+  }
+  .toggle-row input:checked + .switch {
+    background: rgba(82, 220, 255, 0.34);
+    border-color: var(--accent-cyan);
+  }
+  .toggle-row input:checked + .switch::after {
+    transform: translateX(16px);
+    background: #fff;
+  }
+
+  /* Science info cards */
+  .bio-card {
+    background: rgba(4, 7, 17, 0.45);
+    border: 1px solid rgba(140, 178, 255, 0.12);
+    border-radius: var(--radius-sm);
+    padding: 8px 9px;
+    font-size: 10.8px;
+    line-height: 1.45;
+    color: var(--text-dim);
+  }
+  .bio-card strong { color: var(--text-main); }
+  .bio-eq {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--accent-cyan);
+    background: rgba(82, 220, 255, 0.08);
+    border: 1px solid rgba(82, 220, 255, 0.18);
+    border-radius: 5px;
+    padding: 5px 7px;
+    margin: 5px 0;
+    line-height: 1.45;
+    white-space: pre-wrap;
+  }
+  .live-currents {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 5px;
+    font-family: var(--mono);
+    font-size: 10.5px;
+  }
+  .curr-chip {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(140, 178, 255, 0.11);
+    border-radius: 6px;
+    padding: 5px 7px;
+    display: flex;
+    justify-content: space-between;
+  }
+
+  /* Bottom Transport Bar */
+  .bottom-bar {
+    position: fixed;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 7px 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: nowrap;
+  }
+
+  .bar-btn {
+    border: 1px solid rgba(140, 178, 255, 0.16);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-main);
+    font-size: 11.5px;
+    font-weight: 650;
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    white-space: nowrap;
+  }
+  .bar-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(140, 178, 255, 0.42);
+  }
+  .bar-btn.active {
+    background: rgba(82, 220, 255, 0.2);
+    border-color: var(--accent-cyan);
+    color: #fff;
+  }
+  .bar-btn.gold {
+    background: rgba(255, 190, 85, 0.18);
+    border-color: rgba(255, 190, 85, 0.55);
+    color: #ffebbd;
+  }
+  .bar-btn.gold:hover {
+    background: rgba(255, 190, 85, 0.3);
+  }
+  .bar-divider {
+    width: 1px;
+    height: 20px;
+    background: rgba(140, 178, 255, 0.16);
+    margin: 0 2px;
+  }
+
+  /* Bottom-left hints */
+  .hint-pill {
+    position: fixed;
+    bottom: 14px;
+    left: 14px;
+    padding: 7px 11px;
+    font-size: 10.8px;
+    color: var(--text-dim);
+    max-width: 300px;
+    line-height: 1.4;
+  }
+  .hint-pill kbd {
+    font-family: var(--mono);
+    font-size: 9.8px;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #fff;
+  }
+
+  /* Toast Banner */
+  .toast-banner {
+    position: fixed;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%) translateY(-10px);
+    padding: 8px 15px;
+    border-radius: var(--radius-md);
+    background: rgba(8, 16, 30, 0.9);
+    border: 1px solid rgba(82, 220, 255, 0.48);
+    color: #dcf6ff;
+    font-size: 12px;
+    font-weight: 650;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.24s ease, transform 0.24s ease;
+    z-index: 25;
+    backdrop-filter: blur(12px);
+    white-space: nowrap;
+  }
+  .toast-banner.visible {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+  .toast-banner.warn {
+    background: rgba(24, 9, 16, 0.9);
+    border-color: rgba(255, 92, 134, 0.58);
+    color: #ffd6e0;
+  }
+
+  .cinema-restore {
+    position: fixed;
+    bottom: 14px;
+    right: 14px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+  }
+  body.cinema-mode .cinema-restore {
+    opacity: 0.9;
+    pointer-events: auto;
+  }
+
+  .note-small {
+    font-size: 10px;
+    color: var(--text-muted);
+    line-height: 1.35;
+  }
+
+  .hidden { display: none !important; }
+
+  @media (max-width: 960px) {
+    .top-left {
+      width: calc(100vw - 28px);
+      max-width: none;
+    }
+    .drawer {
+      top: auto;
+      bottom: 62px;
+      height: 50vh;
+      width: calc(100vw - 28px);
+    }
+    .hint-pill { display: none; }
+  }
+</style>
+</head>
+<body>
+<canvas id="sim-canvas"></canvas>
+
+<div class="hud">
+  <!-- Top-Left Telemetry -->
+  <div class="panel top-left">
+    <div class="brand-row">
+      <div class="brand-title-wrap">
+        <div class="brand-title">Action Potential</div>
+        <span id="mode-badge" class="mode-badge">Hodgkin–Huxley ODE</span>
+      </div>
+      <span id="phase-badge" class="status-pill">Resting -65mV</span>
+    </div>
+
+    <div class="telemetry-grid">
+      <div class="tele-card">
+        <span class="tele-label" id="lbl-vm">Vₘ Membrane</span>
+        <span id="tel-vm" class="tele-val cyan">-65.0 mV</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Spike Rate</span>
+        <span id="tel-rate" class="tele-val gold">0.0 Hz</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Conduction Vel</span>
+        <span id="tel-vel" class="tele-val mint">2.4 m/s</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Na⁺ Open (m³h)</span>
+        <span id="tel-na" class="tele-val gold">0.0%</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">K⁺ Open (n⁴)</span>
+        <span id="tel-k" class="tele-val violet">1.0%</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label" id="lbl-sixth">Post-Syn V</span>
+        <span id="tel-sixth" class="tele-val cyan">-65.0 mV</span>
+      </div>
+    </div>
+
+    <div class="ion-meter-row">
+      <div class="mini-bar-wrap">
+        <span style="color:var(--accent-gold);">Na⁺</span>
+        <div class="mini-track"><div id="bar-na" class="mini-fill-na"></div></div>
+        <span id="clock-t" style="color:var(--text-dim);">0.0 ms</span>
+      </div>
+      <div class="mini-bar-wrap">
+        <span style="color:var(--accent-violet);">K⁺</span>
+        <div class="mini-track"><div id="bar-k" class="mini-fill-k"></div></div>
+        <span id="clock-temp" style="color:var(--text-dim);">18.5°C</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Banner -->
+  <div id="toast-banner" class="toast-banner">Stimulus Pulse Injected</div>
+
+  <!-- Collapsible 330px Right Drawer -->
+  <aside id="control-drawer" class="panel drawer">
+    <div class="drawer-tabs">
+      <button class="tab-btn active" data-tab="lab">Experiment</button>
+      <button class="tab-btn" data-tab="optics">Optics & Net</button>
+      <button class="tab-btn" data-tab="science">Biophysics</button>
+    </div>
+
+    <div class="drawer-body">
+      <!-- TAB 1: EXPERIMENT -->
+      <div id="tab-lab" class="tab-pane active">
+        <div class="section">
+          <div class="section-title">
+            <span>Simulation Mode</span>
+            <span id="sub-mode-hint" style="color:var(--accent-cyan);font-family:var(--mono);">Axon</span>
+          </div>
+          <div class="mode-switch">
+            <button id="btn-mode-axon" class="mode-btn active">Axon &amp; Channels</button>
+            <button id="btn-mode-net" class="mode-btn">Spiking Circuit</button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Neuroscience Presets</span></div>
+          <div class="preset-grid">
+            <button class="preset-btn active" data-preset="single">
+              <span class="preset-name">Single Action Potential</span>
+              <span class="preset-sub">Textbook HH spike &amp; cleft</span>
+            </button>
+            <button class="preset-btn" data-preset="burst">
+              <span class="preset-name">Tonic Bursting Train</span>
+              <span class="preset-sub">Sustained I_ext oscillation</span>
+            </button>
+            <button class="preset-btn" data-preset="myelin">
+              <span class="preset-name">Saltatory Conduction</span>
+              <span class="preset-sub">Myelinated node leaps</span>
+            </button>
+            <button class="preset-btn" data-preset="ttx">
+              <span class="preset-name">TTX Sodium Block</span>
+              <span class="preset-sub">Pufferfish toxin pore plug</span>
+            </button>
+            <button class="preset-btn" data-preset="gaba">
+              <span class="preset-name">Inhibitory GABA</span>
+              <span class="preset-sub">IPSP hyperpolarization</span>
+            </button>
+            <button class="preset-btn" data-preset="hebbian">
+              <span class="preset-name">Hebbian Spiking Net</span>
+              <span class="preset-sub">STDP fires &amp; wires together</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Stimulation &amp; Channels</span></div>
+          <button id="btn-inject" class="btn pulse-btn">⚡ Inject Stimulus Pulse</button>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Stimulus Current I_ext</span>
+              <span id="val-iext" class="val">0.0 μA/cm²</span>
+            </div>
+            <input id="sl-iext" type="range" min="0" max="28" step="0.5" value="0" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Na⁺ Conductance g_Na</span>
+              <span id="val-gna" class="val" style="color:var(--accent-gold);">120 mS/cm²</span>
+            </div>
+            <input id="sl-gna" class="gold" type="range" min="0" max="180" step="2" value="120" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>K⁺ Conductance g_K</span>
+              <span id="val-gk" class="val" style="color:var(--accent-violet);">36 mS/cm²</span>
+            </div>
+            <input id="sl-gk" class="violet" type="range" min="4" max="72" step="1" value="36" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Temperature (Q₁₀ Kinetics)</span>
+              <span id="val-temp" class="val">18.5 °C</span>
+            </div>
+            <input id="sl-temp" class="mint" type="range" min="6.3" max="37.0" step="0.5" value="18.5" />
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Axon &amp; Synapse Biophysics</span></div>
+          <label class="toggle-row">
+            <span>Myelin Sheath (Saltatory)</span>
+            <input id="chk-myelin" type="checkbox" />
+            <span class="switch"></span>
+          </label>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Synaptic Neurotransmitter</span>
+              <span id="val-syntype" class="val" style="color:var(--accent-mint);">Glutamate (+)</span>
+            </div>
+            <div class="seg-row">
+              <button id="btn-syn-exc" class="seg-btn active mint">Excitatory (Glu)</button>
+              <button id="btn-syn-inh" class="seg-btn">Inhibitory (GABA)</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 2: OPTICS & NETWORK -->
+      <div id="tab-optics" class="tab-pane">
+        <div class="section">
+          <div class="section-title"><span>Time &amp; Microscope Optics</span></div>
+          <div class="control-row">
+            <div class="control-head">
+              <span>Time Dilation</span>
+              <span id="val-speed" class="val">1.00×</span>
+            </div>
+            <input id="sl-speed" type="range" min="0.2" max="2.5" step="0.05" value="1.0" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Membrane Inset Zoom</span>
+              <span id="val-zoom" class="val">1.00×</span>
+            </div>
+            <input id="sl-zoom" class="gold" type="range" min="0.85" max="2.1" step="0.05" value="1.0" />
+          </div>
+
+          <label class="toggle-row">
+            <span>Plot Gating Curves (m, h, n)</span>
+            <input id="chk-gates" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+
+          <label class="toggle-row">
+            <span>Anatomy &amp; Channel Labels</span>
+            <input id="chk-labels" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Mode B — Spiking Network &amp; STDP</span></div>
+          <div class="seg-row three">
+            <button id="btn-topo-cort" class="seg-btn active">Cortical</button>
+            <button id="btn-topo-ring" class="seg-btn">Recurrent</button>
+            <button id="btn-topo-hub" class="seg-btn">Assembly</button>
+          </div>
+
+          <label class="toggle-row">
+            <span>Hebbian STDP Plasticity</span>
+            <input id="chk-stdp" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>STDP Learning Rate</span>
+              <span id="val-stdp" class="val">1.0×</span>
+            </div>
+            <input id="sl-stdp" class="gold" type="range" min="0.2" max="2.5" step="0.1" value="1.0" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Spontaneous Sensory Drive</span>
+              <span id="val-drive" class="val">35%</span>
+            </div>
+            <input id="sl-drive" class="violet" type="range" min="0" max="100" step="5" value="35" />
+          </div>
+
+          <div class="btn-row">
+            <button id="btn-net-wave" class="btn primary">⚡ Input Burst</button>
+            <button id="btn-net-resetw" class="btn danger">↺ Reset Weights</button>
+          </div>
+          <p class="note-small">Tip: In Spiking Circuit mode, click any neuron to fire an action potential, or drag neurons to reshape the connectome.</p>
+        </div>
+      </div>
+
+      <!-- TAB 3: BIOPHYSICS -->
+      <div id="tab-science" class="tab-pane">
+        <div class="section">
+          <div class="section-title"><span>Live Ionic Currents (Node)</span></div>
+          <div class="live-currents">
+            <div class="curr-chip"><span style="color:var(--accent-gold);">I_Na</span><span id="val-ina">0.0</span></div>
+            <div class="curr-chip"><span style="color:var(--accent-violet);">I_K</span><span id="val-ik">0.0</span></div>
+            <div class="curr-chip"><span style="color:var(--accent-cyan);">I_L</span><span id="val-il">0.0</span></div>
+            <div class="curr-chip"><span style="color:var(--accent-mint);">Q₁₀ φ</span><span id="val-phi">3.82×</span></div>
+          </div>
+          <div class="live-currents">
+            <div class="curr-chip"><span>m (act)</span><span id="val-m" style="color:var(--accent-gold);">0.05</span></div>
+            <div class="curr-chip"><span>h (inact)</span><span id="val-h" style="color:var(--accent-rose);">0.60</span></div>
+            <div class="curr-chip"><span>n (K⁺)</span><span id="val-n" style="color:var(--accent-violet);">0.32</span></div>
+            <div class="curr-chip"><span>Cleft NT</span><span id="val-nt" style="color:var(--accent-mint);">0</span></div>
+          </div>
+        </div>
+
+        <div class="bio-card">
+          <strong>Hodgkin–Huxley (1952) Conductance ODE</strong>
+          <div class="bio-eq">Cₘ dV/dt = I_ext − g_Na m³h(V−E_Na)
+           − g_K n⁴(V−E_K) − g_L(V−E_L)</div>
+          Fast <strong>m-gates</strong> open Na⁺ channels for rapid depolarization (+40 mV); the tethered <strong>h-ball</strong> plugs the pore shortly after while delayed <strong>n-gates</strong> open K⁺ channels to repolarize and enforce the refractory period.
+        </div>
+
+        <div class="bio-card">
+          <strong>Saltatory Conduction &amp; TTX Pharmacology</strong><br/>
+          Wrapping internodes in insulating <strong>myelin</strong> slashes membrane capacitance and leak, letting depolarizing current leap from <strong>Node of Ranvier</strong> to Node (~30× faster). <strong>Tetrodotoxin (TTX)</strong> from pufferfish physically corks the outer Na⁺ selectivity filter, silencing spikes.
+        </div>
+
+        <div class="bio-card">
+          <strong>Synaptic Cleft &amp; Hebbian STDP</strong><br/>
+          Arriving spikes open presynaptic <strong>Ca²⁺</strong> channels, fusing vesicles to release <strong>Glutamate</strong> (EPSP, depolarizing) or <strong>GABA</strong> (IPSP, Cl⁻ hyperpolarizing). In circuits, <strong>STDP</strong> strengthens synapses when pre fires just before post (Δt &gt; 0): <em>cells that fire together, wire together</em>.
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Bottom-Left Interaction Hints -->
+  <div id="hint-pill" class="panel hint-pill">
+    Click <strong>Soma</strong> to fire · Hover <strong>Membrane</strong> &amp; scroll to zoom · <kbd>Space</kbd> Pause · <kbd>P</kbd> Pulse · <kbd>H</kbd> Cinema
+  </div>
+
+  <!-- Bottom-Center Transport Bar -->
+  <div class="panel bottom-bar">
+    <button id="btn-play" class="bar-btn active">⏸ Pause</button>
+    <button id="btn-reset" class="bar-btn">↺ Reset</button>
+    <button id="btn-bar-pulse" class="bar-btn gold">⚡ Pulse</button>
+    <div class="bar-divider"></div>
+    <button id="btn-audio" class="bar-btn">🔇 Audio</button>
+    <button id="btn-drawer" class="bar-btn active">⚙ Controls</button>
+    <button id="btn-cinema" class="bar-btn">👁 Cinema</button>
+  </div>
+
+  <!-- Cinema Restore Button -->
+  <button id="btn-cinema-restore" class="panel bar-btn cinema-restore">Show HUD (H)</button>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // =========================================================================
+  // 1. CANVAS & VIEWPORT SETUP
+  // =========================================================================
+  const canvas = document.getElementById('sim-canvas');
+  const ctx = canvas.getContext('2d', { alpha: false });
+  let W = window.innerWidth;
+  let H = window.innerHeight;
+  let DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+  function resizeCanvas() {
+    W = window.innerWidth;
+    H = window.innerHeight;
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.round(W * DPR);
+    canvas.height = Math.round(H * DPR);
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    updateLayoutRects();
+    if (state.mode === 'network' && net.neurons.length) {
+      layoutNetwork(net.topology, true);
+    }
+  }
+
+  // =========================================================================
+  // 2. SIMULATION STATE & PARAMETERS
+  // =========================================================================
+  const state = {
+    mode: 'axon', // 'axon' | 'network'
+    preset: 'single',
+    paused: false,
+    drawerOpen: true,
+    cinema: false,
+    audioOn: false,
+    timeMs: 0,
+
+    // Hodgkin-Huxley Parameters
+    I_ext: 0.0,       // uA/cm^2
+    g_Na: 120.0,      // mS/cm^2
+    g_K: 36.0,        // mS/cm^2
+    g_L: 0.3,         // mS/cm^2
+    E_Na: 50.0,       // mV
+    E_K: -77.0,       // mV
+    E_L: -54.387,     // mV
+    C_m: 1.0,         // uF/cm^2
+    tempC: 18.5,      // deg C
+    myelinated: false,
+    synapseType: 'excitatory', // 'excitatory' | 'inhibitory'
+
+    // Optics & UI
+    timeScale: 1.0,
+    insetZoom: 1.0,
+    showGates: true,
+    showLabels: true,
+
+    // Stimulus pulse queue
+    pulseTimerMs: 0,
+    pulseAmp: 24.0,
+
+    // Mode B settings
+    stdpEnabled: true,
+    stdpRate: 1.0,
+    spontDrive: 0.35,
+
+    // Telemetry cache
+    spikeTimestamps: [],
+    lastSomaAbove: false,
+    conductionVel: 2.4,
+    node1FireMs: -1,
+    node4FireMs: -1,
+    activePhase: 'Resting -65mV',
+    activePhaseClass: '',
+    somaRipple: 0,
+  };
+
+  // Layout rects computed dynamically based on viewport & drawer
+  const layout = {
+    safeLeft: 18,
+    safeRight: W - 360,
+    safeTop: 158,
+    safeBottom: H - 68,
+    axonY: 260,
+    somaX: 165,
+    somaR: 42,
+    axonStartX: 215,
+    axonEndX: 680,
+    cleftX: 735,
+    postX: 775,
+    insetRect: { x: 24, y: 400, w: 380, h: 220 },
+    scopeRect: { x: 420, y: 400, w: 380, h: 220 },
+    netRect: { x: 24, y: 156, w: 800, h: 420 },
+    netScopeRect: { x: 24, y: 584, w: 800, h: 112 },
+  };
+
+  function updateLayoutRects() {
+    const drawerVisible = state.drawerOpen && !state.cinema && W > 960;
+    const topHudVisible = !state.cinema;
+    const rightMargin = drawerVisible ? 356 : 20;
+    const topMargin = topHudVisible ? (W <= 960 ? 186 : 158) : 24;
+    const bottomMargin = state.cinema ? 24 : 68;
+
+    layout.safeLeft = 18;
+    layout.safeRight = Math.max(layout.safeLeft + 340, W - rightMargin);
+    layout.safeTop = topMargin;
+    layout.safeBottom = Math.max(layout.safeTop + 260, H - bottomMargin);
+
+    const availW = layout.safeRight - layout.safeLeft;
+    const availH = layout.safeBottom - layout.safeTop;
+
+    // Upper anatomy band (52% height) & lower inset+oscilloscope band (45% height)
+    const upperH = Math.max(175, availH * 0.50);
+    const lowerY = layout.safeTop + upperH + 10;
+    const lowerH = Math.max(145, layout.safeBottom - lowerY);
+
+    layout.axonY = layout.safeTop + upperH * 0.50;
+    layout.somaR = Math.max(30, Math.min(44, availW * 0.048, upperH * 0.21));
+    layout.somaX = layout.safeLeft + Math.max(82, availW * 0.14);
+    layout.axonStartX = layout.somaX + layout.somaR + 18;
+    layout.postX = layout.safeRight - Math.max(66, availW * 0.105);
+    layout.cleftX = layout.postX - Math.max(38, availW * 0.05);
+    layout.axonEndX = layout.cleftX - Math.max(34, availW * 0.042);
+
+    const gap = 12;
+    const insetW = Math.floor((availW - gap) * 0.51);
+    const scopeW = availW - gap - insetW;
+    layout.insetRect = { x: layout.safeLeft, y: lowerY, w: insetW, h: lowerH };
+    layout.scopeRect = { x: layout.safeLeft + insetW + gap, y: lowerY, w: scopeW, h: lowerH };
+
+    // Mode B network bounds
+    const netScopeH = Math.min(118, Math.max(84, availH * 0.21));
+    layout.netRect = {
+      x: layout.safeLeft,
+      y: layout.safeTop - (topHudVisible ? 4 : 0),
+      w: availW,
+      h: Math.max(200, availH - netScopeH - 10),
+    };
+    layout.netScopeRect = {
+      x: layout.safeLeft,
+      y: layout.netRect.y + layout.netRect.h + 10,
+      w: availW,
+      h: netScopeH,
+    };
+  }
+
+  // =========================================================================
+  // 3. WEB AUDIO — EXTRACELLULAR MICROELECTRODE SPIKE SYNTH
+  // =========================================================================
+  let audioCtx = null;
+  let lastClickTime = 0;
+
+  function ensureAudio() {
+    if (!audioCtx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) audioCtx = new AC();
+    }
+    if (audioCtx && audioCtx.state === 'suspended') {
+      audioCtx.resume().catch(() => {});
+    }
+  }
+
+  function playSpikePop(pitchMult = 1.0, volume = 0.18) {
+    if (!state.audioOn) return;
+    ensureAudio();
+    if (!audioCtx) return;
+    const now = audioCtx.currentTime;
+    if (now - lastClickTime < 0.018) return;
+    lastClickTime = now;
+
+    // Classic extracellular electrode "pop/tick" — crisp bandpass-filtered micro-impulse + brief sine ping
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    const filter = audioCtx.createBiquadFilter();
+
+    osc.type = 'triangle';
+    const baseF = (1450 + Math.random() * 280) * pitchMult;
+    osc.frequency.setValueAtTime(baseF, now);
+    osc.frequency.exponentialRampToValueAtTime(baseF * 0.28, now + 0.016);
+
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(baseF * 1.15, now);
+    filter.Q.setValueAtTime(2.6, now);
+
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.linearRampToValueAtTime(volume, now + 0.0014);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.019);
+
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(audioCtx.destination);
+
+    osc.start(now);
+    osc.stop(now + 0.022);
+  }
+
+  function playSubtleChime(freq = 660, vol = 0.06) {
+    if (!state.audioOn) return;
+    ensureAudio();
+    if (!audioCtx) return;
+    const now = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(freq, now);
+    osc.frequency.exponentialRampToValueAtTime(freq * 1.18, now + 0.08);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.linearRampToValueAtTime(vol, now + 0.006);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.09);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(now);
+    osc.stop(now + 0.095);
+  }
+
+  // =========================================================================
+  // 4. HODGKIN–HUXLEY BIOPHYSICS ENGINE (MODE A: 48-COMPARTMENT CABLE)
+  // =========================================================================
+  const N_COMP = 48;
+  // Nodes of Ranvier positions along the 48-compartment axon
+  const RANVIER_NODES = [0, 11, 22, 33, 44, 47];
+  const MYELIN_SEGMENTS = [
+    { start: 1, end: 10 },
+    { start: 12, end: 21 },
+    { start: 23, end: 32 },
+    { start: 34, end: 43 },
+  ];
+  const PROBE_COMP = 22; // Microscope probe sits at Node 2 (center of axon)
+
+  function hhRates(V) {
+    // Classic HH rate constants shifted to V_rest = -65 mV
+    const v = V + 65.0;
+    const dvM = 25.0 - v;
+    const aM = Math.abs(dvM) < 1e-4 ? 1.0 : (0.1 * dvM) / (Math.exp(dvM / 10.0) - 1.0);
+    const bM = 4.0 * Math.exp(-v / 18.0);
+
+    const aH = 0.07 * Math.exp(-v / 20.0);
+    const bH = 1.0 / (Math.exp((30.0 - v) / 10.0) + 1.0);
+
+    const dvN = 10.0 - v;
+    const aN = Math.abs(dvN) < 1e-4 ? 0.1 : (0.01 * dvN) / (Math.exp(dvN / 10.0) - 1.0);
+    const bN = 0.125 * Math.exp(-v / 80.0);
+
+    return { aM, bM, aH, bH, aN, bN };
+  }
+
+  function hhSteadyState(V) {
+    const r = hhRates(V);
+    return {
+      m: r.aM / (r.aM + r.bM),
+      h: r.aH / (r.aH + r.bH),
+      n: r.aN / (r.aN + r.bN),
+    };
+  }
+
+  const cable = {
+    V: new Float64Array(N_COMP),
+    m: new Float64Array(N_COMP),
+    h: new Float64Array(N_COMP),
+    n: new Float64Array(N_COMP),
+    Vnew: new Float64Array(N_COMP),
+    isInternode: new Uint8Array(N_COMP),
+    // Diagnostics at probe
+    I_Na: 0,
+    I_K: 0,
+    I_L: 0,
+    // Post-synaptic dendrite model
+    V_post: -65.0,
+    g_syn_exc: 0.0,
+    g_syn_inh: 0.0,
+    caLevel: 0.0,
+    terminalWasHigh: false,
+    // Oscilloscope history ring buffer
+    histLen: 420,
+    histIdx: 0,
+    histV: new Float32Array(420),
+    histVpost: new Float32Array(420),
+    histM: new Float32Array(420),
+    histH: new Float32Array(420),
+    histN: new Float32Array(420),
+    sampleAccum: 0,
+  };
+
+  for (const seg of MYELIN_SEGMENTS) {
+    for (let i = seg.start; i <= seg.end; i++) cable.isInternode[i] = 1;
+  }
+
+  // Synaptic vesicles, neurotransmitters, Ca2+ ions, and membrane inset ions
+  const synapse = {
+    vesicles: [],
+    ntParticles: [],
+    caParticles: [],
+    receptors: [],
+    postIons: [],
+    saltatoryArcs: [],
+  };
+
+  const membraneIons = [];
+
+  function initSynapseVisuals() {
+    synapse.vesicles = [];
+    for (let i = 0; i < 8; i++) {
+      synapse.vesicles.push({
+        baseOx: -24 + (i % 3) * 14 + (Math.random() - 0.5) * 4,
+        baseOy: -24 + Math.floor(i / 3) * 20 + (Math.random() - 0.5) * 5,
+        ox: 0,
+        oy: 0,
+        state: 'ready', // 'ready' | 'docking' | 'fusing' | 'refilling'
+        prog: 0,
+        phase: Math.random() * Math.PI * 2,
+      });
+    }
+    synapse.ntParticles = [];
+    synapse.caParticles = [];
+    synapse.postIons = [];
+    synapse.saltatoryArcs = [];
+    synapse.receptors = [];
+    for (let i = 0; i < 5; i++) {
+      synapse.receptors.push({
+        slot: (i - 2) * 0.36, // vertical normalized offset
+        open: 0,
+      });
+    }
+  }
+
+  function initMembraneIons() {
+    membraneIons.length = 0;
+    // 32 Na+ ions (mostly extracellular) + 32 K+ ions (mostly intracellular)
+    for (let i = 0; i < 34; i++) {
+      membraneIons.push({
+        type: 'Na',
+        x: Math.random(),
+        y: 0.06 + Math.random() * 0.28, // top = extracellular
+        vx: (Math.random() - 0.5) * 0.14,
+        vy: (Math.random() - 0.5) * 0.08,
+        transit: 0, // 0 idle, 1 crossing inward
+        chIdx: Math.floor(Math.random() * 2),
+      });
+    }
+    for (let i = 0; i < 34; i++) {
+      membraneIons.push({
+        type: 'K',
+        x: Math.random(),
+        y: 0.66 + Math.random() * 0.28, // bottom = intracellular
+        vx: (Math.random() - 0.5) * 0.14,
+        vy: (Math.random() - 0.5) * 0.08,
+        transit: 0,
+        chIdx: Math.floor(Math.random() * 2),
+      });
+    }
+  }
+
+  function resetAxon() {
+    const ss = hhSteadyState(-65.0);
+    for (let i = 0; i < N_COMP; i++) {
+      cable.V[i] = -65.0;
+      cable.m[i] = ss.m;
+      cable.h[i] = ss.h;
+      cable.n[i] = ss.n;
+    }
+    cable.V_post = -65.0;
+    cable.g_syn_exc = 0;
+    cable.g_syn_inh = 0;
+    cable.caLevel = 0;
+    cable.terminalWasHigh = false;
+    cable.histIdx = 0;
+    cable.histV.fill(-65.0);
+    cable.histVpost.fill(-65.0);
+    cable.histM.fill(ss.m);
+    cable.histH.fill(ss.h);
+    cable.histN.fill(ss.n);
+    state.timeMs = 0;
+    state.spikeTimestamps = [];
+    state.lastSomaAbove = false;
+    state.node1FireMs = -1;
+    state.node4FireMs = -1;
+    state.pulseTimerMs = 0;
+    state.conductionVel = state.myelinated ? 68.5 : 2.4;
+    initSynapseVisuals();
+    initMembraneIons();
+  }
+
+  function injectPulse(amp = 24.0, durMs = 1.6) {
+    if (state.mode === 'axon') {
+      state.pulseAmp = amp;
+      state.pulseTimerMs = Math.max(state.pulseTimerMs, durMs);
+      state.somaRipple = 1.0;
+      playSubtleChime(520, 0.05);
+    } else {
+      fireNetworkInputBurst();
+    }
+  }
+
+  function stepCable(dtMs) {
+    // Temperature Q10 scaling factor
+    const phi = Math.pow(3.0, (state.tempC - 6.3) / 10.0);
+    // Keep numerical dt strictly stable even at 37C
+    const subSteps = Math.max(8, Math.ceil(dtMs * Math.max(4, phi * 1.15)));
+    const dt = dtMs / subSteps;
+
+    const my = state.myelinated;
+    // Axial diffusion coefficient (higher effective electrotonic reach in myelinated internodes)
+    const D_base = my ? 14.5 : 4.2;
+
+    for (let s = 0; s < subSteps; s++) {
+      const pulseI = state.pulseTimerMs > 0 ? state.pulseAmp : 0;
+      if (state.pulseTimerMs > 0) state.pulseTimerMs = Math.max(0, state.pulseTimerMs - dt);
+
+      for (let i = 0; i < N_COMP; i++) {
+        const V = cable.V[i];
+        const m = cable.m[i];
+        const h = cable.h[i];
+        const n = cable.n[i];
+
+        const r = hhRates(V);
+        // Rush-Larsen exponential integration for gating variables (unconditionally stable!)
+        const am = phi * r.aM, bm = phi * r.bM;
+        const ah = phi * r.aH, bh = phi * r.bH;
+        const an = phi * r.aN, bn = phi * r.bN;
+
+        const mInf = am / (am + bm);
+        const hInf = ah / (ah + bh);
+        const nInf = an / (an + bn);
+
+        const mNew = mInf + (m - mInf) * Math.exp(-(am + bm) * dt);
+        const hNew = hInf + (h - hInf) * Math.exp(-(ah + bh) * dt);
+        const nNew = nInf + (n - nInf) * Math.exp(-(an + bn) * dt);
+
+        cable.m[i] = mNew;
+        cable.h[i] = hNew;
+        cable.n[i] = nNew;
+
+        const internode = my && cable.isInternode[i] === 1;
+        // Myelinated internodes have insulated lipid sheath -> tiny capacitance & minimal transmembrane conductance
+        // Nodes of Ranvier have dense Na+ channel clusters (1.35x) for rapid regeneration!
+        const nodeBoost = my && !internode ? 1.32 : 1.0;
+        const gNaLoc = internode ? 0.0 : state.g_Na * nodeBoost;
+        const gKLoc = internode ? 0.0 : state.g_K * nodeBoost;
+        const gLLoc = internode ? 0.015 : state.g_L;
+        const CmLoc = internode ? 0.075 : state.C_m;
+
+        const I_Na = gNaLoc * (mNew * mNew * mNew) * hNew * (V - state.E_Na);
+        const I_K = gKLoc * (nNew * nNew * nNew * nNew) * (V - state.E_K);
+        const I_L = gLLoc * (V - state.E_L);
+
+        // External stimulus applied to soma / hillock compartments (0..2)
+        const I_stim = i <= 2 ? (state.I_ext + pulseI) * (i === 0 ? 1.0 : i === 1 ? 0.7 : 0.35) : 0.0;
+
+        // Axial cable current (Neumann zero-flux boundary)
+        const Vleft = i > 0 ? cable.V[i - 1] : V;
+        const Vright = i < N_COMP - 1 ? cable.V[i + 1] : V;
+        const I_ax = D_base * (Vleft + Vright - 2.0 * V);
+
+        const dV = (I_stim + I_ax - I_Na - I_K - I_L) / CmLoc;
+        cable.Vnew[i] = Math.max(-105, Math.min(70, V + dV * dt));
+
+        if (i === PROBE_COMP) {
+          cable.I_Na = I_Na;
+          cable.I_K = I_K;
+          cable.I_L = I_L;
+        }
+      }
+
+      for (let i = 0; i < N_COMP; i++) cable.V[i] = cable.Vnew[i];
+
+      // Post-synaptic dendrite conductance-based integration (EPSP / IPSP)
+      cable.g_syn_exc *= Math.exp(-dt / 3.4);
+      cable.g_syn_inh *= Math.exp(-dt / 5.2);
+      const I_post_exc = cable.g_syn_exc * (cable.V_post - 0.0);    // E_AMPA = 0 mV
+      const I_post_inh = cable.g_syn_inh * (cable.V_post - (-80.0)); // E_GABA = -80 mV
+      const I_post_leak = 0.28 * (cable.V_post - (-65.0));
+      cable.V_post += (-I_post_leak - I_post_exc - I_post_inh) * dt;
+      cable.V_post = Math.max(-88, Math.min(18, cable.V_post));
+
+      cable.caLevel *= Math.exp(-dt / 4.5);
+      state.timeMs += dt;
+
+      // Detect spikes at Soma (comp 0)
+      const vSoma = cable.V[0];
+      if (!state.lastSomaAbove && vSoma > 5.0) {
+        state.lastSomaAbove = true;
+        state.spikeTimestamps.push(state.timeMs);
+        if (state.spikeTimestamps.length > 16) state.spikeTimestamps.shift();
+        playSpikePop(1.0, 0.16);
+      } else if (state.lastSomaAbove && vSoma < -15.0) {
+        state.lastSomaAbove = false;
+      }
+
+      // Measure propagation velocity between Node 1 (i=11) and Node 4 (i=44)
+      if (cable.V[11] > 5.0 && (state.node1FireMs < 0 || state.timeMs - state.node1FireMs > 6.0)) {
+        state.node1FireMs = state.timeMs;
+        if (state.myelinated) {
+          synapse.saltatoryArcs.push({ fromNode: 0, toNode: 1, life: 1.0 });
+        }
+      }
+      if (state.myelinated && cable.V[22] > 5.0 && synapse.saltatoryArcs.every(a => a.fromNode !== 1 || a.life < 0.7)) {
+        synapse.saltatoryArcs.push({ fromNode: 1, toNode: 2, life: 1.0 });
+      }
+      if (state.myelinated && cable.V[33] > 5.0 && synapse.saltatoryArcs.every(a => a.fromNode !== 2 || a.life < 0.7)) {
+        synapse.saltatoryArcs.push({ fromNode: 2, toNode: 3, life: 1.0 });
+      }
+      if (cable.V[44] > 5.0 && state.node1FireMs > 0 && state.timeMs - state.node1FireMs > 0.08 && state.timeMs - state.node1FireMs < 25.0) {
+        const travelMs = state.timeMs - state.node1FireMs;
+        // Scale physiological velocity: myelinated ~55-95 m/s, unmyelinated ~1.8-6 m/s
+        const physScale = state.myelinated ? 62.0 : 12.5;
+        const rawVel = physScale / Math.max(0.35, travelMs);
+        state.conductionVel = state.conductionVel * 0.4 + Math.min(120, Math.max(0.4, rawVel)) * 0.6;
+        state.node1FireMs = -1;
+        if (state.myelinated) {
+          synapse.saltatoryArcs.push({ fromNode: 3, toNode: 4, life: 1.0 });
+        }
+      }
+
+      // Terminal spike triggers Ca2+ influx & synaptic vesicle fusion!
+      const vTerm = cable.V[N_COMP - 1];
+      if (!cable.terminalWasHigh && vTerm > 0.0) {
+        cable.terminalWasHigh = true;
+        triggerSynapticRelease();
+      } else if (cable.terminalWasHigh && vTerm < -25.0) {
+        cable.terminalWasHigh = false;
+      }
+
+      // Sample oscilloscope trace every ~0.12 ms
+      cable.sampleAccum += dt;
+      if (cable.sampleAccum >= 0.12) {
+        cable.sampleAccum = 0;
+        const idx = cable.histIdx;
+        // Plot probe node V when spike reaches axon or soma if TTX blocked
+        const plotComp = state.g_Na < 18 ? 0 : PROBE_COMP;
+        cable.histV[idx] = cable.V[plotComp];
+        cable.histVpost[idx] = cable.V_post;
+        cable.histM[idx] = cable.m[plotComp];
+        cable.histH[idx] = cable.h[plotComp];
+        cable.histN[idx] = cable.n[plotComp];
+        cable.histIdx = (idx + 1) % cable.histLen;
+      }
+    }
+
+    // Update saltatory arcs
+    for (let i = synapse.saltatoryArcs.length - 1; i >= 0; i--) {
+      synapse.saltatoryArcs[i].life -= dtMs * 0.28;
+      if (synapse.saltatoryArcs[i].life <= 0) synapse.saltatoryArcs.splice(i, 1);
+    }
+
+    // Update conduction velocity fallback if resting
+    if (state.g_Na < 15) {
+      state.conductionVel += (0.0 - state.conductionVel) * 0.08;
+    } else {
+      const targetBase = (state.myelinated ? 66.0 : 2.3) * Math.pow(phi, 0.35) * Math.sqrt(state.g_Na / 120.0);
+      if (state.spikeTimestamps.length === 0) {
+        state.conductionVel += (targetBase - state.conductionVel) * 0.06;
+      }
+    }
+
+    updateSynapseParticles(dtMs);
+    updateMembraneIons(dtMs);
+  }
+
+  function triggerSynapticRelease() {
+    cable.caLevel = 1.0;
+    // Spawn Ca2+ sparks entering presynaptic terminal
+    for (let i = 0; i < 10; i++) {
+      const side = i % 2 === 0 ? -1 : 1;
+      synapse.caParticles.push({
+        ox: 6 + (Math.random() - 0.5) * 14,
+        oy: side * (30 + Math.random() * 8),
+        vx: (Math.random() - 0.5) * 14,
+        vy: -side * (24 + Math.random() * 16),
+        life: 1.0,
+      });
+    }
+    // Dock 2-3 ready vesicles to the active zone
+    let triggered = 0;
+    for (const v of synapse.vesicles) {
+      if (v.state === 'ready' && triggered < 3) {
+        v.state = 'docking';
+        v.prog = 0;
+        triggered++;
+      }
+    }
+    if (triggered === 0 && synapse.vesicles.length) {
+      spawnNeurotransmitters(0);
+    }
+  }
+
+  function spawnNeurotransmitters(oy) {
+    const isExc = state.synapseType === 'excitatory';
+    const count = 11;
+    for (let i = 0; i < count; i++) {
+      synapse.ntParticles.push({
+        t: 0, // 0 at pre-membrane -> 1 at post-membrane
+        speed: 0.24 + Math.random() * 0.16,
+        y0: oy + (Math.random() - 0.5) * 12,
+        y1: (Math.random() - 0.5) * 58,
+        wobble: Math.random() * Math.PI * 2,
+        exc: isExc,
+        bound: false,
+        life: 1.0,
+      });
+    }
+  }
+
+  function updateSynapseParticles(dtMs) {
+    const dtSec = dtMs * 0.08;
+    // Vesicles
+    for (const v of synapse.vesicles) {
+      v.phase += dtSec * 2.2;
+      if (v.state === 'ready') {
+        v.ox = v.baseOx + Math.cos(v.phase) * 2.2;
+        v.oy = v.baseOy + Math.sin(v.phase * 1.3) * 2.2;
+      } else if (v.state === 'docking') {
+        v.prog += dtSec * 3.8;
+        const p = Math.min(1, v.prog);
+        v.ox = v.baseOx + (24 - v.baseOx) * p;
+        v.oy = v.baseOy * (1 - p * 0.25);
+        if (v.prog >= 1) {
+          v.state = 'fusing';
+          v.prog = 0;
+          spawnNeurotransmitters(v.oy);
+        }
+      } else if (v.state === 'fusing') {
+        v.prog += dtSec * 4.5;
+        if (v.prog >= 1) {
+          v.state = 'refilling';
+          v.prog = 0;
+        }
+      } else if (v.state === 'refilling') {
+        v.prog += dtSec * 1.2;
+        const p = Math.min(1, v.prog);
+        v.ox = -30 + (v.baseOx + 30) * p;
+        v.oy = v.baseOy;
+        if (v.prog >= 1) v.state = 'ready';
+      }
+    }
+
+    // Ca2+ particles
+    for (let i = synapse.caParticles.length - 1; i >= 0; i--) {
+      const c = synapse.caParticles[i];
+      c.ox += c.vx * dtSec;
+      c.oy += c.vy * dtSec;
+      c.life -= dtSec * 1.8;
+      if (c.life <= 0) synapse.caParticles.splice(i, 1);
+    }
+
+    // Neurotransmitter particles crossing cleft
+    for (let i = synapse.ntParticles.length - 1; i >= 0; i--) {
+      const p = synapse.ntParticles[i];
+      if (!p.bound) {
+        p.t += p.speed * dtSec * 3.2;
+        p.wobble += dtSec * 9.0;
+        if (p.t >= 1.0) {
+          p.t = 1.0;
+          p.bound = true;
+          // Bind to nearest receptor & trigger EPSP or IPSP!
+          let bestR = synapse.receptors[0];
+          let bestD = 999;
+          for (const rec of synapse.receptors) {
+            const d = Math.abs(rec.slot * 75 - p.y1);
+            if (d < bestD) { bestD = d; bestR = rec; }
+          }
+          if (bestR) bestR.open = Math.min(1.0, bestR.open + 0.55);
+          if (p.exc) {
+            cable.g_syn_exc = Math.min(2.2, cable.g_syn_exc + 0.14);
+          } else {
+            cable.g_syn_inh = Math.min(2.6, cable.g_syn_inh + 0.22);
+          }
+          // Spawn post-synaptic ion entering dendrite
+          synapse.postIons.push({
+            ox: 0,
+            oy: p.y1,
+            vx: 22 + Math.random() * 20,
+            vy: (Math.random() - 0.5) * 14,
+            exc: p.exc,
+            life: 1.0,
+          });
+        }
+      } else {
+        p.life -= dtSec * 2.2;
+        if (p.life <= 0) synapse.ntParticles.splice(i, 1);
+      }
+    }
+
+    for (const rec of synapse.receptors) {
+      rec.open = Math.max(0, rec.open - dtSec * 1.6);
+    }
+    for (let i = synapse.postIons.length - 1; i >= 0; i--) {
+      const pi = synapse.postIons[i];
+      pi.ox += pi.vx * dtSec;
+      pi.oy += pi.vy * dtSec;
+      pi.life -= dtSec * 2.0;
+      if (pi.life <= 0) synapse.postIons.splice(i, 1);
+    }
+  }
+
+  function updateMembraneIons(dtMs) {
+    const dt = dtMs * 0.045;
+    const comp = state.g_Na < 18 ? 0 : PROBE_COMP;
+    const m = cable.m[comp];
+    const h = cable.h[comp];
+    const n = cable.n[comp];
+    const naOpen = (m * m * m) * h * (state.g_Na / 120.0);
+    const kOpen = (n * n * n * n) * (state.g_K / 36.0);
+
+    // Channel normalized x positions inside inset: Na at 0.26, 0.58; K at 0.42, 0.76
+    const naXs = [0.26, 0.58];
+    const kXs = [0.42, 0.76];
+
+    for (const ion of membraneIons) {
+      if (ion.type === 'Na') {
+        if (ion.transit === 0) {
+          ion.x += ion.vx * dt;
+          ion.y += ion.vy * dt;
+          if (ion.x < 0.04 || ion.x > 0.96) ion.vx *= -1;
+          if (ion.y < 0.06 || ion.y > 0.34) ion.vy *= -1;
+          ion.x = Math.max(0.04, Math.min(0.96, ion.x));
+          ion.y = Math.max(0.06, Math.min(0.34, ion.y));
+          // Probability of rushing through open Na+ pore!
+          if (naOpen > 0.025 && Math.random() < naOpen * dt * 2.4) {
+            ion.transit = 1;
+            ion.chIdx = Math.random() < 0.5 ? 0 : 1;
+          }
+        } else {
+          const targetX = naXs[ion.chIdx];
+          ion.x += (targetX - ion.x) * Math.min(1, dt * 8.0);
+          ion.y += (0.8 + naOpen * 1.4) * dt;
+          if (ion.y > 0.92) {
+            // Recycle back to extracellular pool smoothly
+            ion.transit = 0;
+            ion.y = 0.07 + Math.random() * 0.14;
+            ion.x = 0.08 + Math.random() * 0.84;
+          }
+        }
+      } else {
+        if (ion.transit === 0) {
+          ion.x += ion.vx * dt;
+          ion.y += ion.vy * dt;
+          if (ion.x < 0.04 || ion.x > 0.96) ion.vx *= -1;
+          if (ion.y < 0.66 || ion.y > 0.94) ion.vy *= -1;
+          ion.x = Math.max(0.04, Math.min(0.96, ion.x));
+          ion.y = Math.max(0.66, Math.min(0.94, ion.y));
+          // Rush outward through open K+ channel!
+          if (kOpen > 0.06 && Math.random() < kOpen * dt * 1.8) {
+            ion.transit = 1;
+            ion.chIdx = Math.random() < 0.5 ? 0 : 1;
+          }
+        } else {
+          const targetX = kXs[ion.chIdx];
+          ion.x += (targetX - ion.x) * Math.min(1, dt * 8.0);
+          ion.y -= (0.7 + kOpen * 1.2) * dt;
+          if (ion.y < 0.08) {
+            ion.transit = 0;
+            ion.y = 0.78 + Math.random() * 0.15;
+            ion.x = 0.08 + Math.random() * 0.84;
+          }
+        }
+      }
+    }
+  }
+
+  // =========================================================================
+  // 5. MODE B: LIVE SPIKING NEURAL CIRCUIT & HEBBIAN STDP LEARNING
+  // =========================================================================
+  const net = {
+    topology: 'cortical', // 'cortical' | 'ring' | 'hub'
+    neurons: [],
+    synapses: [],
+    pulses: [],
+    ltpFlashes: [],
+    raster: [], // { t, idx, inh }
+    popHist: new Float32Array(320),
+    popIdx: 0,
+    popAccum: 0,
+    hoveredNeuron: -1,
+    hoveredSynapse: -1,
+    dragNeuron: -1,
+    spontAccum: 0,
+    recentSpikes: [],
+  };
+
+  function buildNetwork(topo = 'cortical') {
+    net.topology = topo;
+    net.neurons = [];
+    net.synapses = [];
+    net.pulses = [];
+    net.ltpFlashes = [];
+    net.raster = [];
+    net.popHist.fill(-65);
+    net.popIdx = 0;
+    net.recentSpikes = [];
+
+    const ss = hhSteadyState(-65.0);
+    const count = topo === 'cortical' ? 15 : topo === 'ring' ? 14 : 16;
+
+    for (let i = 0; i < count; i++) {
+      // ~20% inhibitory GABA interneurons
+      const inh = (topo === 'cortical' && (i === 5 || i === 10 || i === 13)) ||
+                  (topo !== 'cortical' && i % 5 === 4);
+      net.neurons.push({
+        id: i,
+        label: inh ? `I${i + 1}` : `E${i + 1}`,
+        inh,
+        x: 0,
+        y: 0,
+        r: inh ? 15 : 17,
+        V: -65.0 + (Math.random() - 0.5) * 2.0,
+        m: ss.m,
+        h: ss.h,
+        n: ss.n,
+        gExc: 0,
+        gInh: 0,
+        pulseMs: 0,
+        wasHigh: false,
+        lastSpikeMs: -999,
+        glow: 0,
+        spikeCount: 0,
+      });
+    }
+
+    layoutNetwork(topo, false);
+
+    // Connect synapses based on topology
+    const addSyn = (from, to, w) => {
+      if (from === to) return;
+      if (net.synapses.some(s => s.from === from && s.to === to)) return;
+      net.synapses.push({
+        from,
+        to,
+        w,           // synaptic efficacy [0.18 .. 2.2]
+        wInit: w,
+        lastDelta: 0,
+        ltpGlow: 0,
+        ltdGlow: 0,
+        curve: (Math.random() - 0.5) * 34 + (from < to ? 14 : -14),
+      });
+    };
+
+    if (topo === 'cortical') {
+      // 4 layers: Input (0-2), Hidden1 (3-7), Hidden2 (8-11), Output (12-14)
+      const layers = [[0, 1, 2], [3, 4, 5, 6, 7], [8, 9, 10, 11], [12, 13, 14]];
+      for (let l = 0; l < layers.length - 1; l++) {
+        for (const a of layers[l]) {
+          for (const b of layers[l + 1]) {
+            if (Math.random() < 0.72) {
+              addSyn(a, b, 0.72 + Math.random() * 0.35);
+            }
+          }
+        }
+      }
+      // Recurrent lateral & feedback loops for reverberating Hebbian assemblies
+      addSyn(8, 3, 0.62); addSyn(9, 4, 0.65); addSyn(11, 6, 0.62);
+      addSyn(12, 8, 0.66); addSyn(14, 9, 0.64);
+      addSyn(5, 4, 0.85); addSyn(5, 6, 0.85); // lateral inhibition
+      addSyn(10, 9, 0.85); addSyn(10, 11, 0.85);
+      addSyn(13, 12, 0.85); addSyn(13, 14, 0.85);
+    } else if (topo === 'ring') {
+      for (let i = 0; i < count; i++) {
+        addSyn(i, (i + 1) % count, 0.92);
+        addSyn(i, (i + 2) % count, 0.68);
+        if (i % 3 === 0) addSyn(i, (i + 5) % count, 0.60);
+        if (net.neurons[i].inh) addSyn(i, (i + count - 1) % count, 0.82);
+      }
+    } else {
+      // Dual Hebbian Assemblies with shared hub neurons
+      for (let i = 0; i < count; i++) {
+        const grp = i < 8 ? 0 : 1;
+        for (let j = 0; j < count; j++) {
+          if (i === j) continue;
+          const grpJ = j < 8 ? 0 : 1;
+          if (grp === grpJ && Math.random() < 0.36) {
+            addSyn(i, j, 0.76 + Math.random() * 0.3);
+          } else if (grp !== grpJ && (i === 3 || i === 7 || i === 8 || i === 12) && Math.random() < 0.22) {
+            addSyn(i, j, 0.55 + Math.random() * 0.25);
+          }
+        }
+      }
+    }
+  }
+
+  function layoutNetwork(topo, preserveIfDragged) {
+    const r = layout.netRect;
+    const padX = 56, padY = 44;
+    const w = Math.max(240, r.w - padX * 2);
+    const h = Math.max(140, r.h - padY * 2);
+    const cx = r.x + r.w * 0.5;
+    const cy = r.y + r.h * 0.5;
+
+    if (preserveIfDragged && net.neurons.length) {
+      // Gently clamp existing positions inside new rect
+      for (const n of net.neurons) {
+        n.x = Math.max(r.x + 28, Math.min(r.x + r.w - 28, n.x));
+        n.y = Math.max(r.y + 28, Math.min(r.y + r.h - 28, n.y));
+      }
+      return;
+    }
+
+    if (topo === 'cortical') {
+      const layers = [[0, 1, 2], [3, 4, 5, 6, 7], [8, 9, 10, 11], [12, 13, 14]];
+      layers.forEach((layer, li) => {
+        const lx = r.x + padX + (w * li) / (layers.length - 1);
+        layer.forEach((idx, j) => {
+          const ly = r.y + padY + (h * (j + 0.5)) / layer.length;
+          const jitterX = (j % 2 === 0 ? -1 : 1) * 12;
+          net.neurons[idx].x = lx + jitterX;
+          net.neurons[idx].y = ly;
+        });
+      });
+    } else if (topo === 'ring') {
+      const rx = w * 0.44;
+      const ry = h * 0.44;
+      net.neurons.forEach((n, i) => {
+        const a = (i / net.neurons.length) * Math.PI * 2 - Math.PI * 0.5;
+        const radScale = i % 2 === 0 ? 1.0 : 0.78;
+        n.x = cx + Math.cos(a) * rx * radScale;
+        n.y = cy + Math.sin(a) * ry * radScale;
+      });
+    } else {
+      // Dual assembly clusters
+      net.neurons.forEach((n, i) => {
+        const left = i < 8;
+        const idx = left ? i : i - 8;
+        const angle = (idx / 8) * Math.PI * 2;
+        const ccx = cx + (left ? -w * 0.25 : w * 0.25);
+        const rx = w * 0.20;
+        const ry = h * 0.40;
+        n.x = ccx + Math.cos(angle) * rx;
+        n.y = cy + Math.sin(angle) * ry;
+      });
+    }
+  }
+
+  function stimulateNeuron(idx) {
+    const n = net.neurons[idx];
+    if (!n) return;
+    n.pulseMs = 2.0;
+    n.glow = 1.0;
+    playSubtleChime(480 + idx * 24, 0.045);
+  }
+
+  function fireNetworkInputBurst() {
+    if (!net.neurons.length) return;
+    const targets = net.topology === 'cortical' ? [0, 1, 2] : [0, 1, 2];
+    targets.forEach((id, k) => {
+      if (net.neurons[id]) {
+        net.neurons[id].pulseMs = 2.2 + k * 0.3;
+        net.neurons[id].glow = 1.0;
+      }
+    });
+    showToast('Sensory Input Burst Injected');
+    playSubtleChime(620, 0.055);
+  }
+
+  function resetNetworkWeights() {
+    for (const s of net.synapses) {
+      s.w = s.wInit;
+      s.lastDelta = 0;
+      s.ltpGlow = 0;
+      s.ltdGlow = 0;
+    }
+    showToast('Synaptic Weights Reset to Baseline');
+  }
+
+  function stepNetwork(dtMs) {
+    const phi = Math.pow(3.0, (state.tempC - 6.3) / 10.0);
+    const subSteps = Math.max(6, Math.ceil(dtMs * Math.max(3, phi * 1.1)));
+    const dt = dtMs / subSteps;
+
+    // Spontaneous sensory input drive
+    if (state.spontDrive > 0 && state.g_Na >= 15) {
+      net.spontAccum += dtMs * state.spontDrive;
+      if (net.spontAccum > 6.5) {
+        net.spontAccum = 0;
+        const pool = net.topology === 'cortical' ? [0, 1, 2] : [0, 1, 2, 3, 8, 9];
+        const pick = pool[Math.floor(Math.random() * pool.length)];
+        if (net.neurons[pick]) net.neurons[pick].pulseMs = 1.8;
+      }
+    }
+
+    for (let step = 0; step < subSteps; step++) {
+      state.timeMs += dt;
+
+      // Update each neuron with true Hodgkin–Huxley ODE!
+      for (let i = 0; i < net.neurons.length; i++) {
+        const neu = net.neurons[i];
+        const V = neu.V;
+        const r = hhRates(V);
+        const am = phi * r.aM, bm = phi * r.bM;
+        const ah = phi * r.aH, bh = phi * r.bH;
+        const an = phi * r.aN, bn = phi * r.bN;
+
+        const mInf = am / (am + bm);
+        const hInf = ah / (ah + bh);
+        const nInf = an / (an + bn);
+
+        neu.m = mInf + (neu.m - mInf) * Math.exp(-(am + bm) * dt);
+        neu.h = hInf + (neu.h - hInf) * Math.exp(-(ah + bh) * dt);
+        neu.n = nInf + (neu.n - nInf) * Math.exp(-(an + bn) * dt);
+
+        neu.gExc *= Math.exp(-dt / 3.2);
+        neu.gInh *= Math.exp(-dt / 5.5);
+
+        const I_Na = state.g_Na * (neu.m ** 3) * neu.h * (V - state.E_Na);
+        const I_K = state.g_K * (neu.n ** 4) * (V - state.E_K);
+        const I_L = state.g_L * (V - state.E_L);
+        const I_syn = neu.gExc * (V - 0.0) + neu.gInh * (V - (-80.0));
+        const I_stim = (neu.pulseMs > 0 ? 28.0 : 0.0) + state.I_ext * 0.45;
+        if (neu.pulseMs > 0) neu.pulseMs = Math.max(0, neu.pulseMs - dt);
+
+        neu.V = Math.max(-100, Math.min(60, V + (I_stim - I_Na - I_K - I_L - I_syn) * dt));
+
+        // Spike detection
+        if (!neu.wasHigh && neu.V > 8.0) {
+          neu.wasHigh = true;
+          neu.lastSpikeMs = state.timeMs;
+          neu.glow = 1.0;
+          neu.spikeCount++;
+          net.recentSpikes.push(state.timeMs);
+          if (net.recentSpikes.length > 60) net.recentSpikes.shift();
+          net.raster.push({ t: state.timeMs, idx: i, inh: neu.inh });
+          if (net.raster.length > 260) net.raster.shift();
+          playSpikePop(0.75 + (i % 7) * 0.09, 0.11);
+
+          // Launch glowing action potentials along outgoing axons
+          for (let si = 0; si < net.synapses.length; si++) {
+            const syn = net.synapses[si];
+            if (syn.from === i) {
+              const dst = net.neurons[syn.to];
+              const dist = Math.hypot(dst.x - neu.x, dst.y - neu.y);
+              const vel = state.myelinated ? 150.0 : 62.0; // px per ms
+              net.pulses.push({
+                synIdx: si,
+                t: 0,
+                speed: vel / Math.max(50, dist),
+                inh: neu.inh,
+              });
+            }
+          }
+        } else if (neu.wasHigh && neu.V < -15.0) {
+          neu.wasHigh = false;
+        }
+      }
+
+      // Advance pulses along axons
+      for (let pi = net.pulses.length - 1; pi >= 0; pi--) {
+        const p = net.pulses[pi];
+        p.t += p.speed * dt;
+        if (p.t >= 1.0) {
+          const syn = net.synapses[p.synIdx];
+          if (syn) {
+            const dst = net.neurons[syn.to];
+            const src = net.neurons[syn.from];
+            if (p.inh) {
+              dst.gInh = Math.min(2.8, dst.gInh + 0.65 * syn.w);
+            } else {
+              dst.gExc = Math.min(3.0, dst.gExc + 0.56 * syn.w);
+            }
+
+            // Asymmetric Hebbian STDP when excitatory pulse arrives!
+            if (state.stdpEnabled && !p.inh) {
+              const dtPostPre = dst.lastSpikeMs - state.timeMs; // negative if post fired recently before arrival (LTD)
+              if (dtPostPre < 0 && dtPostPre > -30.0) {
+                const dw = -0.055 * state.stdpRate * Math.exp(dtPostPre / 14.0);
+                syn.w = Math.max(0.22, syn.w + dw);
+                syn.lastDelta = dw;
+                syn.ltdGlow = 0.85;
+              }
+            }
+            // Mark pre-arrival timestamp on synapse for LTP check when post fires
+            syn.lastArriveMs = state.timeMs;
+
+            // Check immediate LTP if post fires right after pre-arrival
+            if (state.stdpEnabled && !p.inh && src) {
+              // Also check other synapses into dst whenever dst just spiked
+            }
+          }
+          net.pulses.splice(pi, 1);
+        }
+      }
+
+      // Apply Hebbian LTP to incoming excitatory synapses whenever a neuron spikes
+      if (state.stdpEnabled) {
+        for (const syn of net.synapses) {
+          const src = net.neurons[syn.from];
+          const dst = net.neurons[syn.to];
+          if (src.inh) continue;
+          if (dst.lastSpikeMs === state.timeMs && syn.lastArriveMs !== undefined) {
+            const dtPreToPost = state.timeMs - syn.lastArriveMs;
+            if (dtPreToPost >= 0 && dtPreToPost < 32.0) {
+              const dw = 0.14 * state.stdpRate * Math.exp(-dtPreToPost / 14.0);
+              syn.w = Math.min(2.25, syn.w + dw);
+              syn.lastDelta = dw;
+              syn.ltpGlow = 1.0;
+              net.ltpFlashes.push({ x: dst.x, y: dst.y, r: dst.r + 4, life: 1.0 });
+            }
+          }
+        }
+      }
+
+      // Population average trace
+      net.popAccum += dt;
+      if (net.popAccum >= 0.15) {
+        net.popAccum = 0;
+        let sumV = 0;
+        for (const neu of net.neurons) sumV += neu.V;
+        net.popHist[net.popIdx] = sumV / Math.max(1, net.neurons.length);
+        net.popIdx = (net.popIdx + 1) % net.popHist.length;
+      }
+    }
+
+    // Decay visual glows
+    const decay = Math.exp(-dtMs * 0.22);
+    for (const neu of net.neurons) neu.glow *= decay;
+    for (const syn of net.synapses) {
+      syn.ltpGlow *= Math.exp(-dtMs * 0.10);
+      syn.ltdGlow *= Math.exp(-dtMs * 0.14);
+    }
+    for (let i = net.ltpFlashes.length - 1; i >= 0; i--) {
+      net.ltpFlashes[i].r += dtMs * 3.8;
+      net.ltpFlashes[i].life -= dtMs * 0.18;
+      if (net.ltpFlashes[i].life <= 0) net.ltpFlashes.splice(i, 1);
+    }
+  }
+
+  // =========================================================================
+  // 6. COLOR & HELPER UTILITIES
+  // =========================================================================
+  function voltageToRGB(V) {
+    // Maps -80mV (deep violet/indigo) -> -65mV (cool cyan-blue) -> -20mV (electric teal) -> +40mV (blazing gold-white)
+    if (V < -66) {
+      const t = Math.min(1, (-66 - V) / 14);
+      return [
+        Math.round(52 + 124 * t),
+        Math.round(165 - 45 * t),
+        Math.round(240 + 15 * t),
+      ];
+    } else if (V < -30) {
+      const t = (V + 66) / 36;
+      return [
+        Math.round(52 + 30 * t),
+        Math.round(165 + 65 * t),
+        Math.round(240 + 15 * t),
+      ];
+    } else {
+      const t = Math.min(1, (V + 30) / 68);
+      return [
+        Math.round(82 + 173 * t),
+        Math.round(230 - 15 * t + 30 * t * t),
+        Math.round(255 - 150 * t),
+      ];
+    }
+  }
+
+  function voltageColor(V, alpha = 1) {
+    const [r, g, b] = voltageToRGB(V);
+    return `rgba(${r},${g},${b},${alpha})`;
+  }
+
+  function roundRectPath(x, y, w, h, r) {
+    const rad = Math.min(r, w * 0.5, h * 0.5);
+    ctx.beginPath();
+    ctx.moveTo(x + rad, y);
+    ctx.arcTo(x + w, y, x + w, y + h, rad);
+    ctx.arcTo(x + w, y + h, x, y + h, rad);
+    ctx.arcTo(x, y + h, x, y, rad);
+    ctx.arcTo(x, y, x + w, y, rad);
+    ctx.closePath();
+  }
+
+  // Subtle biological dark-field background particles
+  const bgDust = Array.from({ length: 55 }, () => ({
+    x: Math.random(),
+    y: Math.random(),
+    r: 0.7 + Math.random() * 1.6,
+    a: 0.06 + Math.random() * 0.14,
+    vx: (Math.random() - 0.5) * 0.004,
+    vy: (Math.random() - 0.5) * 0.004,
+  }));
+
+  function drawBackdrop(nowSec) {
+    ctx.fillStyle = '#040711';
+    ctx.fillRect(0, 0, W, H);
+
+    // Soft bioluminescent deep-tissue nebula glows
+    const g1 = ctx.createRadialGradient(W * 0.25, H * 0.35, 10, W * 0.25, H * 0.35, W * 0.45);
+    g1.addColorStop(0, 'rgba(30, 82, 138, 0.14)');
+    g1.addColorStop(1, 'rgba(4, 7, 17, 0)');
+    ctx.fillStyle = g1;
+    ctx.fillRect(0, 0, W, H);
+
+    const g2 = ctx.createRadialGradient(W * 0.68, H * 0.55, 10, W * 0.68, H * 0.55, W * 0.42);
+    g2.addColorStop(0, 'rgba(104, 52, 178, 0.10)');
+    g2.addColorStop(1, 'rgba(4, 7, 17, 0)');
+    ctx.fillStyle = g2;
+    ctx.fillRect(0, 0, W, H);
+
+    // Subtle scientific grid
+    ctx.strokeStyle = 'rgba(120, 165, 240, 0.032)';
+    ctx.lineWidth = 1;
+    const step = 44;
+    ctx.beginPath();
+    for (let x = 0; x < W; x += step) {
+      ctx.moveTo(x, 0); ctx.lineTo(x, H);
+    }
+    for (let y = 0; y < H; y += step) {
+      ctx.moveTo(0, y); ctx.lineTo(W, y);
+    }
+    ctx.stroke();
+
+    // Floating extracellular micro-specks
+    for (const d of bgDust) {
+      d.x = (d.x + d.vx * 0.016 + 1) % 1;
+      d.y = (d.y + d.vy * 0.016 + 1) % 1;
+      const pulse = 0.7 + 0.3 * Math.sin(nowSec * 1.4 + d.x * 20);
+      ctx.fillStyle = `rgba(140, 195, 255, ${d.a * pulse})`;
+      ctx.beginPath();
+      ctx.arc(d.x * W, d.y * H, d.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // =========================================================================
+  // 7. RENDERING — MODE A (AXON ANATOMY, MEMBRANE INSET & OSCILLOSCOPE)
+  // =========================================================================
+  function getAxonPoint(compIdx) {
+    const t = compIdx / (N_COMP - 1);
+    const x = layout.axonStartX + (layout.axonEndX - layout.axonStartX) * t;
+    const y = layout.axonY + Math.sin(t * Math.PI * 2.0) * 6.0;
+    return { x, y };
+  }
+
+  function drawModeA(nowSec) {
+    drawNeuronAnatomy(nowSec);
+    drawMembraneInset(nowSec);
+    drawOscilloscope();
+  }
+
+  function drawNeuronAnatomy(nowSec) {
+    const sx = layout.somaX;
+    const sy = layout.axonY;
+    const sr = layout.somaR;
+    const vSoma = cable.V[0];
+    const somaDepol = Math.max(0, Math.min(1, (vSoma + 65) / 100));
+
+    // --- 1. Branching Dendritic Tree (left of Soma) ---
+    const dendAngles = [-2.55, -2.18, -1.78, 1.78, 2.18, 2.55, Math.PI];
+    ctx.save();
+    for (let i = 0; i < dendAngles.length; i++) {
+      const ang = dendAngles[i];
+      const len = sr * (1.45 + (i % 3) * 0.35);
+      const x1 = sx + Math.cos(ang) * (sr * 0.85);
+      const y1 = sy + Math.sin(ang) * (sr * 0.85);
+      const cx1 = sx + Math.cos(ang + 0.14) * (sr + len * 0.45);
+      const cy1 = sy + Math.sin(ang + 0.14) * (sr + len * 0.45);
+      const x2 = sx + Math.cos(ang) * (sr + len);
+      const y2 = sy + Math.sin(ang) * (sr + len);
+
+      ctx.strokeStyle = voltageColor(vSoma - 6, 0.55);
+      ctx.lineWidth = 4.2;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.quadraticCurveTo(cx1, cy1, x2, y2);
+      ctx.stroke();
+
+      // Secondary dendritic twigs
+      for (const sgn of [-1, 1]) {
+        const subA = ang + sgn * 0.42;
+        const tx = x2 + Math.cos(subA) * (sr * 0.55);
+        const ty = y2 + Math.sin(subA) * (sr * 0.55);
+        ctx.lineWidth = 2.0;
+        ctx.strokeStyle = voltageColor(vSoma - 10, 0.38);
+        ctx.beginPath();
+        ctx.moveTo(x2, y2);
+        ctx.lineTo(tx, ty);
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+
+    // --- 2. Axon Hillock Funnel ---
+    const hillockGrad = ctx.createLinearGradient(sx + sr * 0.4, sy, layout.axonStartX + 16, sy);
+    hillockGrad.addColorStop(0, voltageColor(cable.V[0], 0.55));
+    hillockGrad.addColorStop(1, voltageColor(cable.V[2], 0.72));
+    ctx.fillStyle = hillockGrad;
+    ctx.beginPath();
+    ctx.moveTo(sx + sr * 0.5, sy - sr * 0.52);
+    ctx.quadraticCurveTo(sx + sr * 1.08, sy - 12, layout.axonStartX + 4, sy - 9);
+    ctx.lineTo(layout.axonStartX + 4, sy + 9);
+    ctx.quadraticCurveTo(sx + sr * 1.08, sy + 12, sx + sr * 0.5, sy + sr * 0.52);
+    ctx.closePath();
+    ctx.fill();
+
+    // --- 3. Axon Core & Live Traveling Action Potential Glow ---
+    // Outer membrane tube
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    for (let i = 0; i < N_COMP - 1; i++) {
+      const p0 = getAxonPoint(i);
+      const p1 = getAxonPoint(i + 1);
+      const vMid = 0.5 * (cable.V[i] + cable.V[i + 1]);
+      const act = Math.max(0, (vMid + 58) / 95);
+
+      // Ambient electric aura when depolarized
+      if (act > 0.08) {
+        ctx.strokeStyle = voltageColor(vMid, act * 0.38);
+        ctx.lineWidth = 22 + act * 22;
+        ctx.beginPath();
+        ctx.moveTo(p0.x, p0.y);
+        ctx.lineTo(p1.x, p1.y);
+        ctx.stroke();
+      }
+
+      // Main axon plasma core
+      ctx.strokeStyle = voltageColor(vMid, 0.72 + act * 0.28);
+      ctx.lineWidth = 14;
+      ctx.beginPath();
+      ctx.moveTo(p0.x, p0.y);
+      ctx.lineTo(p1.x, p1.y);
+      ctx.stroke();
+
+      // Bright inner filament
+      ctx.strokeStyle = act > 0.3 ? `rgba(255, 250, 224, ${act * 0.9})` : 'rgba(180, 232, 255, 0.25)';
+      ctx.lineWidth = 3.2 + act * 3.5;
+      ctx.beginPath();
+      ctx.moveTo(p0.x, p0.y);
+      ctx.lineTo(p1.x, p1.y);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // --- 4. Myelin Sheaths & Nodes of Ranvier ---
+    if (state.myelinated) {
+      for (let s = 0; s < MYELIN_SEGMENTS.length; s++) {
+        const seg = MYELIN_SEGMENTS[s];
+        const pStart = getAxonPoint(seg.start);
+        const pEnd = getAxonPoint(seg.end);
+        const midX = 0.5 * (pStart.x + pEnd.x);
+        const midY = 0.5 * (pStart.y + pEnd.y);
+        const segW = Math.max(22, pEnd.x - pStart.x - 4);
+        const segH = 34;
+
+        // Pearlescent insulating Schwann myelin wrap
+        const mGrad = ctx.createLinearGradient(midX, midY - segH * 0.5, midX, midY + segH * 0.5);
+        mGrad.addColorStop(0, 'rgba(116, 235, 255, 0.42)');
+        mGrad.addColorStop(0.32, 'rgba(70, 240, 180, 0.22)');
+        mGrad.addColorStop(0.5, 'rgba(20, 48, 76, 0.32)');
+        mGrad.addColorStop(0.75, 'rgba(70, 240, 180, 0.24)');
+        mGrad.addColorStop(1, 'rgba(116, 235, 255, 0.42)');
+
+        roundRectPath(pStart.x + 2, midY - segH * 0.5, segW, segH, 12);
+        ctx.fillStyle = mGrad;
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(128, 242, 255, 0.58)';
+        ctx.lineWidth = 1.4;
+        ctx.stroke();
+
+        // Subtle lamellar wrap highlights
+        ctx.strokeStyle = 'rgba(220, 252, 255, 0.22)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(pStart.x + 12, midY - segH * 0.27);
+        ctx.lineTo(pEnd.x - 12, midY - segH * 0.27);
+        ctx.moveTo(pStart.x + 12, midY + segH * 0.27);
+        ctx.lineTo(pEnd.x - 12, midY + segH * 0.27);
+        ctx.stroke();
+      }
+
+      // Highlight glowing Nodes of Ranvier
+      for (const nIdx of [11, 22, 33, 44]) {
+        const np = getAxonPoint(nIdx);
+        const vNode = cable.V[nIdx];
+        const act = Math.max(0, (vNode + 55) / 90);
+        const glowR = 13 + act * 18;
+        const ng = ctx.createRadialGradient(np.x, np.y, 1, np.x, np.y, glowR);
+        ng.addColorStop(0, act > 0.2 ? 'rgba(255, 238, 170, 0.95)' : 'rgba(82, 220, 255, 0.55)');
+        ng.addColorStop(1, 'rgba(82, 220, 255, 0)');
+        ctx.fillStyle = ng;
+        ctx.beginPath();
+        ctx.arc(np.x, np.y, glowR, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Draw saltatory electric current-leap arcs between Nodes of Ranvier!
+      for (const arc of synapse.saltatoryArcs) {
+        const nFrom = RANVIER_NODES[arc.fromNode];
+        const nTo = RANVIER_NODES[arc.toNode];
+        if (nFrom === undefined || nTo === undefined) continue;
+        const pA = getAxonPoint(nFrom);
+        const pB = getAxonPoint(nTo);
+        const mx = 0.5 * (pA.x + pB.x);
+        const my = 0.5 * (pA.y + pB.y);
+        for (const sgn of [-1, 1]) {
+          ctx.save();
+          ctx.strokeStyle = `rgba(255, 212, 110, ${arc.life * 0.85})`;
+          ctx.lineWidth = 2.0;
+          ctx.setLineDash([5, 4]);
+          ctx.beginPath();
+          ctx.moveTo(pA.x, pA.y + sgn * 8);
+          ctx.quadraticCurveTo(mx, my + sgn * 42, pB.x, pB.y + sgn * 8);
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
+    }
+
+    // --- 5. Neuron Soma (Interactive Click Target) ---
+    // Expanding stimulus ripple
+    if (state.somaRipple > 0.01) {
+      ctx.strokeStyle = `rgba(255, 206, 108, ${state.somaRipple * 0.8})`;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(sx, sy, sr + (1 - state.somaRipple) * 44, 0, Math.PI * 2);
+      ctx.stroke();
+      state.somaRipple *= 0.92;
+    }
+
+    // Outer soma aura
+    const somaGlow = ctx.createRadialGradient(sx, sy, sr * 0.3, sx, sy, sr * (1.8 + somaDepol * 0.6));
+    somaGlow.addColorStop(0, voltageColor(vSoma, 0.55 + somaDepol * 0.35));
+    somaGlow.addColorStop(1, 'rgba(4, 7, 17, 0)');
+    ctx.fillStyle = somaGlow;
+    ctx.beginPath();
+    ctx.arc(sx, sy, sr * 2.3, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Organic Soma cell body
+    ctx.save();
+    ctx.beginPath();
+    const pts = 32;
+    for (let i = 0; i <= pts; i++) {
+      const a = (i / pts) * Math.PI * 2;
+      const wobble = 1 + 0.045 * Math.sin(a * 5 + nowSec * 1.4) + 0.03 * Math.cos(a * 3 - nowSec);
+      const px = sx + Math.cos(a) * sr * wobble;
+      const py = sy + Math.sin(a) * sr * wobble;
+      if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+    const bodyGrad = ctx.createRadialGradient(sx - sr * 0.22, sy - sr * 0.22, 4, sx, sy, sr * 1.15);
+    bodyGrad.addColorStop(0, voltageColor(vSoma + 18, 0.95));
+    bodyGrad.addColorStop(0.55, voltageColor(vSoma, 0.72));
+    bodyGrad.addColorStop(1, 'rgba(14, 26, 56, 0.92)');
+    ctx.fillStyle = bodyGrad;
+    ctx.fill();
+    ctx.strokeStyle = voltageColor(vSoma + 24, 0.9);
+    ctx.lineWidth = 2.2;
+    ctx.stroke();
+
+    // Nucleus + Nucleolus
+    const nucR = sr * 0.42;
+    const nucGrad = ctx.createRadialGradient(sx - 3, sy - 3, 2, sx, sy, nucR);
+    nucGrad.addColorStop(0, 'rgba(205, 175, 255, 0.75)');
+    nucGrad.addColorStop(0.7, 'rgba(78, 56, 148, 0.65)');
+    nucGrad.addColorStop(1, 'rgba(38, 28, 84, 0.85)');
+    ctx.fillStyle = nucGrad;
+    ctx.beginPath();
+    ctx.arc(sx - 2, sy, nucR, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(195, 165, 255, 0.55)';
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+
+    ctx.fillStyle = 'rgba(245, 232, 255, 0.82)';
+    ctx.beginPath();
+    ctx.arc(sx - 5, sy - 2, nucR * 0.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // --- 6. Presynaptic Terminal, Synaptic Cleft & Post-Synaptic Dendrite ---
+    drawSynapticCleft(nowSec);
+
+    // --- 7. Microscope Probe Reticle + Leader Lines to Membrane Inset ---
+    const probeP = getAxonPoint(PROBE_COMP);
+    const ir = layout.insetRect;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255, 190, 85, 0.85)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(probeP.x, probeP.y, 14, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.strokeStyle = 'rgba(255, 190, 85, 0.28)';
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(probeP.x - 10, probeP.y + 11);
+    ctx.lineTo(ir.x + 18, ir.y);
+    ctx.moveTo(probeP.x + 10, probeP.y + 11);
+    ctx.lineTo(ir.x + ir.w - 18, ir.y);
+    ctx.stroke();
+    ctx.restore();
+
+    // --- 8. Crisp Anatomical Labels ---
+    if (state.showLabels) {
+      ctx.save();
+      ctx.font = '600 10.5px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = 'rgba(218, 232, 255, 0.85)';
+      ctx.fillText('SOMA (Click to Fire)', sx, sy - sr - 13);
+      ctx.fillStyle = 'rgba(160, 190, 235, 0.72)';
+      ctx.fillText('Dendrites', sx - sr - 28, sy + sr + 16);
+
+      const midAxonX = 0.5 * (layout.axonStartX + layout.axonEndX);
+      ctx.fillStyle = state.myelinated ? 'rgba(110, 245, 210, 0.92)' : 'rgba(145, 210, 255, 0.82)';
+      ctx.fillText(
+        state.myelinated ? 'MYELINATED AXON · NODES OF RANVIER (SALTATORY)' : 'UNMYELINATED AXON (CONTINUOUS)',
+        midAxonX,
+        sy - 34
+      );
+      ctx.fillStyle = 'rgba(255, 205, 115, 0.85)';
+      ctx.fillText('Patch Probe', probeP.x, probeP.y - 20);
+
+      ctx.fillStyle = state.synapseType === 'excitatory' ? 'rgba(70, 240, 180, 0.9)' : 'rgba(212, 152, 255, 0.9)';
+      ctx.fillText(
+        state.synapseType === 'excitatory' ? 'SYNAPTIC CLEFT (Glutamate)' : 'SYNAPTIC CLEFT (GABA)',
+        layout.cleftX,
+        sy - 52
+      );
+      ctx.fillStyle = 'rgba(195, 215, 245, 0.8)';
+      ctx.fillText('Post-Synaptic', layout.postX + 20, sy + 58);
+      ctx.restore();
+    }
+  }
+
+  function drawSynapticCleft(nowSec) {
+    const endP = getAxonPoint(N_COMP - 1);
+    const tx = endP.x + 12;
+    const ty = endP.y;
+    const vTerm = cable.V[N_COMP - 1];
+    const isExc = state.synapseType === 'excitatory';
+    const ntColor = isExc ? '#46f0b4' : '#c084fc';
+    const ntGlow = isExc ? 'rgba(70, 240, 180, 0.85)' : 'rgba(192, 132, 252, 0.85)';
+
+    // Presynaptic Bouton (bulbous terminal)
+    ctx.save();
+    const termGrad = ctx.createRadialGradient(tx + 4, ty, 6, tx + 4, ty, 42);
+    termGrad.addColorStop(0, voltageColor(vTerm, 0.62));
+    termGrad.addColorStop(1, 'rgba(14, 24, 48, 0.92)');
+    ctx.fillStyle = termGrad;
+    ctx.beginPath();
+    ctx.moveTo(endP.x - 10, ty - 8);
+    ctx.bezierCurveTo(tx + 6, ty - 42, tx + 34, ty - 42, tx + 34, ty);
+    ctx.bezierCurveTo(tx + 34, ty + 42, tx + 6, ty + 42, endP.x - 10, ty + 8);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = voltageColor(vTerm + 14, 0.85);
+    ctx.lineWidth = 2.0;
+    ctx.stroke();
+
+    // Ca2+ Voltage-Gated Channels on Terminal Top/Bottom
+    for (const sgn of [-1, 1]) {
+      const caGlow = cable.caLevel;
+      ctx.fillStyle = caGlow > 0.1 ? `rgba(110, 250, 255, ${0.4 + caGlow * 0.6})` : 'rgba(100, 145, 190, 0.55)';
+      roundRectPath(tx + 4, ty + sgn * 32 - 3, 10, 6, 3);
+      ctx.fill();
+    }
+
+    // Ca2+ Sparks entering bouton
+    for (const c of synapse.caParticles) {
+      ctx.fillStyle = `rgba(140, 250, 255, ${c.life})`;
+      ctx.beginPath();
+      ctx.arc(tx + c.ox, ty + c.oy, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Synaptic Vesicles inside Presynaptic Bouton
+    for (const v of synapse.vesicles) {
+      const vx = tx + v.ox;
+      const vy = ty + v.oy;
+      const scale = v.state === 'fusing' ? 1.0 - v.prog * 0.7 : 1.0;
+      const vr = 6.2 * scale;
+      if (vr < 1.2) continue;
+      ctx.fillStyle = 'rgba(12, 20, 40, 0.85)';
+      ctx.strokeStyle = ntColor;
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.arc(vx, vy, vr, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+
+      // Tiny NT dots inside vesicle
+      ctx.fillStyle = ntColor;
+      for (let d = 0; d < 3; d++) {
+        const a = d * 2.1 + v.phase;
+        ctx.beginPath();
+        ctx.arc(vx + Math.cos(a) * vr * 0.42, vy + Math.sin(a) * vr * 0.42, 1.3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // Post-Synaptic Dendrite Spine (right side of cleft)
+    const px = layout.postX;
+    const vPost = cable.V_post;
+    const postDepol = (vPost + 65) / 40; // >0 EPSP, <0 IPSP
+    const postStroke = postDepol > 0.08
+      ? `rgba(70, 240, 180, ${0.55 + Math.min(0.45, postDepol)})`
+      : postDepol < -0.05
+        ? `rgba(192, 132, 252, ${0.55 + Math.min(0.45, -postDepol * 1.4)})`
+        : 'rgba(110, 175, 255, 0.7)';
+
+    const postFill = ctx.createLinearGradient(px - 10, ty, px + 52, ty);
+    postFill.addColorStop(0, postDepol > 0.06
+      ? `rgba(45, 195, 145, ${0.22 + Math.min(0.42, postDepol * 0.6)})`
+      : postDepol < -0.04
+        ? `rgba(145, 76, 225, ${0.24 + Math.min(0.45, -postDepol * 1.1)})`
+        : 'rgba(26, 48, 92, 0.55)');
+    postFill.addColorStop(1, 'rgba(8, 14, 28, 0.92)');
+
+    ctx.fillStyle = postFill;
+    ctx.beginPath();
+    ctx.moveTo(px + 48, ty - 22);
+    ctx.bezierCurveTo(px + 12, ty - 30, px - 12, ty - 42, px - 12, ty);
+    ctx.bezierCurveTo(px - 12, ty + 42, px + 12, ty + 30, px + 48, ty + 22);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = postStroke;
+    ctx.lineWidth = 2.1;
+    ctx.stroke();
+
+    // Post-Synaptic Receptors (AMPA / GABA_A)
+    for (const rec of synapse.receptors) {
+      const ry = ty + rec.slot * 72;
+      const rx = px - 11 + Math.abs(rec.slot) * 5;
+      const open = rec.open;
+      ctx.fillStyle = open > 0.05 ? ntColor : 'rgba(130, 165, 220, 0.55)';
+      // Receptor Y-shaped cup
+      ctx.beginPath();
+      ctx.arc(rx, ry, 4.2 + open * 1.8, Math.PI * 0.55, Math.PI * 1.45);
+      ctx.fill();
+      if (open > 0.1) {
+        ctx.fillStyle = ntGlow;
+        ctx.beginPath();
+        ctx.arc(rx - 2, ry, 5 + open * 5, 0, Math.PI * 2);
+        ctx.globalAlpha = open * 0.35;
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    // Neurotransmitter particles drifting across cleft
+    const cleftLeft = tx + 35;
+    const cleftRight = px - 13;
+    for (const p of synapse.ntParticles) {
+      const x = cleftLeft + (cleftRight - cleftLeft) * p.t;
+      const y = ty + p.y0 + (p.y1 - p.y0) * p.t + Math.sin(p.wobble) * (1 - p.t) * 4.0;
+      const col = p.exc ? `rgba(70, 240, 180, ${p.life})` : `rgba(202, 138, 255, ${p.life})`;
+      ctx.fillStyle = col;
+      ctx.beginPath();
+      ctx.arc(x, y, p.bound ? 3.2 : 2.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Post-synaptic ions entering dendrite (+ Na+ for EPSP, - Cl- for IPSP)
+    for (const pi of synapse.postIons) {
+      ctx.fillStyle = pi.exc ? `rgba(255, 206, 108, ${pi.life})` : `rgba(186, 130, 255, ${pi.life})`;
+      ctx.beginPath();
+      ctx.arc(px - 6 + pi.ox, ty + pi.oy, 2.3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // EPSP / IPSP mini badge on post-synaptic dendrite
+    if (Math.abs(vPost + 65) > 1.2) {
+      ctx.font = '700 10px ui-monospace, monospace';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = vPost > -65 ? '#5ff7c4' : '#d8b4fe';
+      ctx.fillText(vPost > -65 ? 'EPSP ↑' : 'IPSP ↓', px + 20, ty + 3);
+    }
+    ctx.restore();
+  }
+
+  // =========================================================================
+  // 8. ZOOMABLE MEMBRANE CROSS-SECTION INSET (Na+ & K+ CHANNELS + TTX PLUGS)
+  // =========================================================================
+  function drawMembraneInset(nowSec) {
+    const r = layout.insetRect;
+    const comp = state.g_Na < 18 ? 0 : PROBE_COMP;
+    const m = cable.m[comp];
+    const h = cable.h[comp];
+    const n = cable.n[comp];
+    const isTTX = state.g_Na < 18;
+    const zoom = state.insetZoom;
+
+    ctx.save();
+    // Glass card container
+    roundRectPath(r.x, r.y, r.w, r.h, 12);
+    ctx.fillStyle = 'rgba(7, 12, 24, 0.84)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(140, 178, 255, 0.22)';
+    ctx.lineWidth = 1.1;
+    ctx.stroke();
+
+    // Clip to card interior
+    ctx.save();
+    roundRectPath(r.x + 1, r.y + 1, r.w - 2, r.h - 2, 11);
+    ctx.clip();
+
+    // Apply interactive zoom around center of inset
+    const cx = r.x + r.w * 0.5;
+    const cy = r.y + r.h * 0.52;
+    ctx.translate(cx, cy);
+    ctx.scale(zoom, zoom);
+    ctx.translate(-cx, -cy);
+
+    // Extracellular (top) vs Intracellular (bottom) tint
+    const memY = r.y + r.h * 0.52;
+    const memH = 44;
+    const topGrad = ctx.createLinearGradient(0, r.y, 0, memY - memH * 0.5);
+    topGrad.addColorStop(0, 'rgba(24, 48, 92, 0.26)');
+    topGrad.addColorStop(1, 'rgba(10, 20, 40, 0.05)');
+    ctx.fillStyle = topGrad;
+    ctx.fillRect(r.x - 100, r.y - 100, r.w + 200, memY - r.y + 100);
+
+    const botGrad = ctx.createLinearGradient(0, memY + memH * 0.5, 0, r.y + r.h);
+    botGrad.addColorStop(0, 'rgba(42, 22, 74, 0.14)');
+    botGrad.addColorStop(1, 'rgba(18, 10, 38, 0.34)');
+    ctx.fillStyle = botGrad;
+    ctx.fillRect(r.x - 100, memY + memH * 0.5, r.w + 200, r.h + 100);
+
+    // Channel X positions
+    const channels = [
+      { type: 'Na', x: r.x + r.w * 0.26 },
+      { type: 'K',  x: r.x + r.w * 0.42 },
+      { type: 'Na', x: r.x + r.w * 0.58 },
+      { type: 'K',  x: r.x + r.w * 0.76 },
+    ];
+
+    // Phospholipid Bilayer (skipping channel footprints)
+    const headR = 4.6;
+    const spacing = 10.6;
+    for (let px = r.x - 20; px <= r.x + r.w + 20; px += spacing) {
+      let insideCh = false;
+      for (const ch of channels) {
+        if (Math.abs(px - ch.x) < 18) { insideCh = true; break; }
+      }
+      if (insideCh) continue;
+
+      const wave = Math.sin(px * 0.06 + nowSec * 2.1) * 1.4;
+      const topY = memY - memH * 0.5 + wave;
+      const botY = memY + memH * 0.5 + wave;
+
+      // Hydrophobic fatty-acid tails
+      ctx.strokeStyle = 'rgba(128, 172, 232, 0.32)';
+      ctx.lineWidth = 1.1;
+      ctx.beginPath();
+      ctx.moveTo(px - 1.6, topY + headR);
+      ctx.lineTo(px - 2.3, memY - 2 + wave);
+      ctx.moveTo(px + 1.6, topY + headR);
+      ctx.lineTo(px + 2.3, memY - 2 + wave);
+      ctx.moveTo(px - 1.6, botY - headR);
+      ctx.lineTo(px - 2.3, memY + 2 + wave);
+      ctx.moveTo(px + 1.6, botY - headR);
+      ctx.lineTo(px + 2.3, memY + 2 + wave);
+      ctx.stroke();
+
+      // Hydrophilic polar phosphate heads
+      ctx.fillStyle = 'rgba(120, 200, 255, 0.65)';
+      ctx.beginPath();
+      ctx.arc(px, topY, headR, 0, Math.PI * 2);
+      ctx.arc(px, botY, headR, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Animated Na+ (gold) & K+ (violet) ions
+    for (const ion of membraneIons) {
+      const ix = r.x + ion.x * r.w;
+      const iy = r.y + 22 + ion.y * (r.h - 32);
+      if (ion.type === 'Na') {
+        ctx.fillStyle = ion.transit ? '#ffe596' : 'rgba(255, 190, 85, 0.85)';
+        ctx.beginPath();
+        ctx.arc(ix, iy, ion.transit ? 3.5 : 2.7, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        ctx.fillStyle = ion.transit ? '#e4c7ff' : 'rgba(176, 132, 255, 0.85)';
+        ctx.beginPath();
+        ctx.arc(ix, iy, ion.transit ? 3.5 : 2.7, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // Draw Transmembrane Voltage-Gated Ion Channels
+    for (const ch of channels) {
+      if (ch.type === 'Na') {
+        drawNaChannel(ch.x, memY, memH, m, h, isTTX);
+      } else {
+        drawKChannel(ch.x, memY, memH, n);
+      }
+    }
+
+    ctx.restore(); // end zoom clip
+
+    // Crisp HUD overlay header inside Membrane Inset (never distorted by zoom)
+    ctx.fillStyle = 'rgba(8, 13, 26, 0.72)';
+    ctx.fillRect(r.x + 1, r.y + 1, r.w - 2, 23);
+    ctx.font = '700 10px system-ui, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#dce8ff';
+    ctx.fillText('MEMBRANE CROSS-SECTION · VOLTAGE-GATED CHANNELS', r.x + 10, r.y + 15);
+
+    ctx.font = '600 9.8px ui-monospace, monospace';
+    ctx.textAlign = 'right';
+    ctx.fillStyle = 'var(--accent-gold)';
+    ctx.fillStyle = '#ffbe55';
+    ctx.fillText(`${zoom.toFixed(2)}×`, r.x + r.w - 10, r.y + 15);
+
+    // Side space annotations
+    ctx.font = '600 9px system-ui, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = 'rgba(155, 195, 245, 0.72)';
+    ctx.fillText('EXTRACELLULAR (High Na⁺)', r.x + 10, r.y + 36);
+    ctx.fillStyle = 'rgba(195, 165, 255, 0.72)';
+    ctx.fillText('INTRACELLULAR (High K⁺)', r.x + 10, r.y + r.h - 9);
+
+    // Mini legend bottom-right
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#ffbe55';
+    ctx.fillText('● Na⁺ (m/h)', r.x + r.w - 78, r.y + r.h - 9);
+    ctx.fillStyle = '#b084ff';
+    ctx.fillText('● K⁺ (n)', r.x + r.w - 10, r.y + r.h - 9);
+
+    ctx.restore();
+  }
+
+  function drawNaChannel(cx, cy, memH, m, h, isTTX) {
+    const halfH = memH * 0.5 + 9;
+    // Pore gap opens dynamically with m^3!
+    const openFrac = Math.pow(m, 2.2);
+    const poreHalf = 3.2 + openFrac * 6.5;
+    const conducting = openFrac * h * (state.g_Na / 120.0);
+
+    // Inner conductance beam when ions rush in
+    if (conducting > 0.04) {
+      const beam = ctx.createLinearGradient(cx, cy - halfH - 12, cx, cy + halfH + 12);
+      beam.addColorStop(0, `rgba(255, 212, 110, ${conducting * 0.85})`);
+      beam.addColorStop(0.5, `rgba(255, 185, 65, ${conducting * 0.55})`);
+      beam.addColorStop(1, `rgba(255, 224, 140, ${conducting * 0.85})`);
+      ctx.fillStyle = beam;
+      ctx.fillRect(cx - poreHalf, cy - halfH - 8, poreHalf * 2, (halfH + 8) * 2);
+    }
+
+    // Left & Right golden transmembrane protein subunits
+    const subW = 9.5;
+    const grad = ctx.createLinearGradient(cx - 16, cy - halfH, cx + 16, cy + halfH);
+    grad.addColorStop(0, '#ffe08a');
+    grad.addColorStop(0.5, '#e89828');
+    grad.addColorStop(1, '#9a5410');
+
+    ctx.fillStyle = grad;
+    ctx.strokeStyle = '#ffda85';
+    ctx.lineWidth = 1.2;
+
+    roundRectPath(cx - poreHalf - subW, cy - halfH, subW, halfH * 2, 5);
+    ctx.fill(); ctx.stroke();
+
+    roundRectPath(cx + poreHalf, cy - halfH, subW, halfH * 2, 5);
+    ctx.fill(); ctx.stroke();
+
+    // Physical Swinging m-gate flaps inside pore
+    const flapAngle = (1 - openFrac) * 0.95; // 0 = swung wide open, 0.95 = shut across pore
+    ctx.strokeStyle = '#fff0be';
+    ctx.lineWidth = 2.4;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(cx - poreHalf, cy - 4);
+    ctx.lineTo(cx - poreHalf + Math.sin(flapAngle) * 7.5, cy - 4 + Math.cos(flapAngle) * 5.5);
+    ctx.moveTo(cx + poreHalf, cy - 4);
+    ctx.lineTo(cx + poreHalf - Math.sin(flapAngle) * 7.5, cy - 4 + Math.cos(flapAngle) * 5.5);
+    ctx.stroke();
+
+    // Physical Intracellular h-inactivation ball-and-chain!
+    // h=1 -> dangling away (open); h=0 -> plugged directly into intracellular pore mouth!
+    const plugProg = 1 - h;
+    const ballX = cx + (1 - plugProg) * 14;
+    const ballY = cy + halfH + 11 - plugProg * 12;
+    ctx.strokeStyle = 'rgba(255, 130, 160, 0.85)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(cx + poreHalf + 4, cy + halfH - 2);
+    ctx.quadraticCurveTo(cx + 16, cy + halfH + 14, ballX, ballY);
+    ctx.stroke();
+
+    ctx.fillStyle = plugProg > 0.55 ? '#ff5c86' : '#ff9eb5';
+    ctx.beginPath();
+    ctx.arc(ballX, ballY, 4.6, 0, Math.PI * 2);
+    ctx.fill();
+
+    // TTX Pufferfish Toxin Cork plugging extracellular vestibule!
+    if (isTTX) {
+      ctx.fillStyle = '#ff3868';
+      ctx.strokeStyle = '#ffd1dc';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.arc(cx, cy - halfH + 1, 6.8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.font = '800 7.5px ui-monospace, monospace';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText('TTX', cx, cy - halfH + 3.5);
+    }
+  }
+
+  function drawKChannel(cx, cy, memH, n) {
+    const halfH = memH * 0.5 + 8;
+    const openFrac = Math.pow(n, 3.0);
+    const poreHalf = 2.6 + openFrac * 6.4;
+    const conducting = openFrac * (state.g_K / 36.0);
+
+    if (conducting > 0.05) {
+      const beam = ctx.createLinearGradient(cx, cy + halfH + 10, cx, cy - halfH - 10);
+      beam.addColorStop(0, `rgba(196, 152, 255, ${conducting * 0.8})`);
+      beam.addColorStop(1, `rgba(148, 92, 246, ${conducting * 0.5})`);
+      ctx.fillStyle = beam;
+      ctx.fillRect(cx - poreHalf, cy - halfH - 8, poreHalf * 2, (halfH + 8) * 2);
+    }
+
+    const subW = 9.0;
+    const grad = ctx.createLinearGradient(cx - 14, cy - halfH, cx + 14, cy + halfH);
+    grad.addColorStop(0, '#d8b4fe');
+    grad.addColorStop(0.5, '#8b5cf6');
+    grad.addColorStop(1, '#4c1d95');
+
+    ctx.fillStyle = grad;
+    ctx.strokeStyle = '#d8b4fe';
+    ctx.lineWidth = 1.2;
+
+    roundRectPath(cx - poreHalf - subW, cy - halfH, subW, halfH * 2, 5);
+    ctx.fill(); ctx.stroke();
+
+    roundRectPath(cx + poreHalf, cy - halfH, subW, halfH * 2, 5);
+    ctx.fill(); ctx.stroke();
+
+    // Swinging intracellular n-gate flaps
+    const flapAngle = (1 - openFrac) * 1.0;
+    ctx.strokeStyle = '#efe0ff';
+    ctx.lineWidth = 2.3;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(cx - poreHalf, cy + 7);
+    ctx.lineTo(cx - poreHalf + Math.sin(flapAngle) * 7.2, cy + 7 - Math.cos(flapAngle) * 5.2);
+    ctx.moveTo(cx + poreHalf, cy + 7);
+    ctx.lineTo(cx + poreHalf - Math.sin(flapAngle) * 7.2, cy + 7 - Math.cos(flapAngle) * 5.2);
+    ctx.stroke();
+  }
+
+  // =========================================================================
+  // 9. LIVE OSCILLOSCOPE — V_m(t) [-90..+50 mV] & GATING VARIABLES (m, h, n)
+  // =========================================================================
+  function drawOscilloscope() {
+    const r = layout.scopeRect;
+    ctx.save();
+    roundRectPath(r.x, r.y, r.w, r.h, 12);
+    ctx.fillStyle = 'rgba(6, 10, 22, 0.88)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(140, 178, 255, 0.22)';
+    ctx.lineWidth = 1.1;
+    ctx.stroke();
+
+    // Header
+    ctx.fillStyle = 'rgba(8, 13, 26, 0.72)';
+    ctx.fillRect(r.x + 1, r.y + 1, r.w - 2, 23);
+    ctx.font = '700 10px system-ui, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#dce8ff';
+    ctx.fillText('OSCILLOSCOPE · HODGKIN–HUXLEY Vₘ(t) & GATES', r.x + 10, r.y + 15);
+
+    const padL = 36, padR = 10, padT = 30, padB = state.showGates ? 52 : 16;
+    const px = r.x + padL;
+    const py = r.y + padT;
+    const pw = Math.max(80, r.w - padL - padR);
+    const ph = Math.max(60, r.h - padT - padB);
+
+    const vMin = -90, vMax = 50;
+    const vToY = v => py + ph * (1 - (v - vMin) / (vMax - vMin));
+
+    // Reference voltage grid lines
+    const refs = [
+      { v: 40, label: '+40', col: 'rgba(255, 190, 85, 0.18)' },
+      { v: 0, label: '0', col: 'rgba(140, 178, 255, 0.18)' },
+      { v: -55, label: '-55', col: 'rgba(255, 190, 85, 0.34)', dash: true },
+      { v: -65, label: '-65', col: 'rgba(82, 220, 255, 0.24)' },
+      { v: -90, label: '-90', col: 'rgba(140, 178, 255, 0.14)' },
+    ];
+    ctx.font = '600 9px ui-monospace, monospace';
+    ctx.textAlign = 'right';
+    for (const rf of refs) {
+      const gy = vToY(rf.v);
+      ctx.save();
+      ctx.strokeStyle = rf.col;
+      ctx.lineWidth = 1;
+      if (rf.dash) ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      ctx.moveTo(px, gy);
+      ctx.lineTo(px + pw, gy);
+      ctx.stroke();
+      ctx.restore();
+      ctx.fillStyle = rf.dash ? 'rgba(255, 200, 100, 0.8)' : 'rgba(145, 168, 208, 0.72)';
+      ctx.fillText(rf.label, px - 5, gy + 3);
+    }
+
+    // Subtle Post-Synaptic V_post trace (dashed)
+    const len = cable.histLen;
+    ctx.save();
+    ctx.strokeStyle = state.synapseType === 'excitatory' ? 'rgba(70, 240, 180, 0.55)' : 'rgba(192, 132, 252, 0.65)';
+    ctx.lineWidth = 1.3;
+    ctx.setLineDash([4, 3]);
+    ctx.beginPath();
+    for (let i = 0; i < len; i++) {
+      const idx = (cable.histIdx + i) % len;
+      const x = px + (i / (len - 1)) * pw;
+      const y = vToY(cable.histVpost[idx]);
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    ctx.restore();
+
+    // Main Glowing Membrane Potential V_m(t) trace
+    ctx.save();
+    ctx.lineWidth = 2.2;
+    ctx.lineJoin = 'round';
+    for (let i = 1; i < len; i++) {
+      const i0 = (cable.histIdx + i - 1) % len;
+      const i1 = (cable.histIdx + i) % len;
+      const x0 = px + ((i - 1) / (len - 1)) * pw;
+      const y0 = vToY(cable.histV[i0]);
+      const x1 = px + (i / (len - 1)) * pw;
+      const y1 = vToY(cable.histV[i1]);
+      ctx.strokeStyle = voltageColor(cable.histV[i1], 0.95);
+      ctx.beginPath();
+      ctx.moveTo(x0, y0);
+      ctx.lineTo(x1, y1);
+      ctx.stroke();
+    }
+    // Live bright phosphor head dot
+    const lastIdx = (cable.histIdx + len - 1) % len;
+    const headY = vToY(cable.histV[lastIdx]);
+    ctx.fillStyle = '#ffffff';
+    ctx.shadowColor = voltageColor(cable.histV[lastIdx], 1);
+    ctx.shadowBlur = 10;
+    ctx.beginPath();
+    ctx.arc(px + pw, headY, 3.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // Lower Gating Variable Strip (m, h, n in [0..1])
+    if (state.showGates) {
+      const gy0 = py + ph + 9;
+      const gh = Math.max(26, r.y + r.h - gy0 - 10);
+      ctx.strokeStyle = 'rgba(140, 178, 255, 0.14)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(px, gy0, pw, gh);
+
+      const drawGateCurve = (arr, color) => {
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        for (let i = 0; i < len; i++) {
+          const idx = (cable.histIdx + i) % len;
+          const x = px + (i / (len - 1)) * pw;
+          const y = gy0 + gh * (1 - arr[idx]);
+          if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+      };
+      drawGateCurve(cable.histM, '#ffbe55');
+      drawGateCurve(cable.histH, '#ff5c86');
+      drawGateCurve(cable.histN, '#b084ff');
+
+      ctx.font = '600 8.5px ui-monospace, monospace';
+      ctx.textAlign = 'right';
+      ctx.fillStyle = 'rgba(145, 168, 208, 0.65)';
+      ctx.fillText('1.0', px - 5, gy0 + 7);
+      ctx.fillText('0.0', px - 5, gy0 + gh);
+
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#ffbe55'; ctx.fillText('m', px + 5, gy0 + 9);
+      ctx.fillStyle = '#ff5c86'; ctx.fillText('h', px + 18, gy0 + 9);
+      ctx.fillStyle = '#b084ff'; ctx.fillText('n', px + 31, gy0 + 9);
+    }
+
+    ctx.restore();
+  }
+
+  // =========================================================================
+  // 10. RENDERING — MODE B (SPIKING NEURAL CIRCUIT + HEBBIAN STDP)
+  // =========================================================================
+  function getSynapseCtrl(syn) {
+    const a = net.neurons[syn.from];
+    const b = net.neurons[syn.to];
+    const mx = 0.5 * (a.x + b.x);
+    const my = 0.5 * (a.y + b.y);
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const dist = Math.hypot(dx, dy) || 1;
+    const nx = -dy / dist;
+    const ny = dx / dist;
+    return { cx: mx + nx * syn.curve, cy: my + ny * syn.curve };
+  }
+
+  function quadPoint(a, c, b, t) {
+    const u = 1 - t;
+    return {
+      x: u * u * a.x + 2 * u * t * c.cx + t * t * b.x,
+      y: u * u * a.y + 2 * u * t * c.cy + t * t * b.y,
+    };
+  }
+
+  function drawModeB(nowSec) {
+    const r = layout.netRect;
+    // Subtle network frame
+    ctx.save();
+    roundRectPath(r.x, r.y, r.w, r.h, 14);
+    ctx.fillStyle = 'rgba(6, 11, 24, 0.42)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(140, 178, 255, 0.14)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Mode B header tag
+    ctx.font = '700 10.5px system-ui, sans-serif';
+    ctx.fillStyle = 'rgba(190, 212, 255, 0.78)';
+    ctx.fillText(
+      `LIVE SPIKING CIRCUIT (${net.neurons.length} HH NEURONS) · HEBBIAN STDP ${state.stdpEnabled ? 'ACTIVE' : 'PAUSED'}`,
+      r.x + 14,
+      r.y + 20
+    );
+
+    // 1. Draw Synaptic Axons (thickness & luminescence encode Hebbian weight w!)
+    for (let si = 0; si < net.synapses.length; si++) {
+      const syn = net.synapses[si];
+      const a = net.neurons[syn.from];
+      const b = net.neurons[syn.to];
+      const ctrl = getSynapseCtrl(syn);
+      const isHov = si === net.hoveredSynapse;
+      const strength = Math.max(0, Math.min(1, (syn.w - 0.25) / 1.8));
+      const lw = 0.9 + strength * 4.4 + syn.ltpGlow * 2.2 + (isHov ? 1.5 : 0);
+
+      // Soft LTP bloom halo on strongly potentiated synapses
+      if (strength > 0.45 || syn.ltpGlow > 0.1) {
+        ctx.strokeStyle = a.inh
+          ? `rgba(192, 132, 252, ${0.14 + syn.ltpGlow * 0.35})`
+          : `rgba(255, 198, 92, ${0.10 + strength * 0.22 + syn.ltpGlow * 0.42})`;
+        ctx.lineWidth = lw + 5.5;
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.quadraticCurveTo(ctrl.cx, ctrl.cy, b.x, b.y);
+        ctx.stroke();
+      }
+
+      // Main axon curve
+      if (a.inh) {
+        ctx.strokeStyle = `rgba(186, 126, 255, ${0.28 + strength * 0.55})`;
+      } else {
+        const rr = Math.round(78 + 177 * strength);
+        const gg = Math.round(188 + 30 * strength);
+        const bb = Math.round(255 - 140 * strength);
+        ctx.strokeStyle = `rgba(${rr}, ${gg}, ${bb}, ${0.24 + strength * 0.68 + syn.ltpGlow * 0.2})`;
+      }
+      ctx.lineWidth = lw;
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.quadraticCurveTo(ctrl.cx, ctrl.cy, b.x, b.y);
+      ctx.stroke();
+
+      // Synaptic terminal bouton near target neuron
+      const tip = quadPoint(a, ctrl, b, 0.87);
+      ctx.fillStyle = a.inh ? '#c084fc' : (strength > 0.55 ? '#ffd470' : '#52dcff');
+      ctx.beginPath();
+      ctx.arc(tip.x, tip.y, 2.2 + strength * 2.1, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // 2. Traveling Action Potential Comets along Axons
+    for (const p of net.pulses) {
+      const syn = net.synapses[p.synIdx];
+      if (!syn) continue;
+      const a = net.neurons[syn.from];
+      const b = net.neurons[syn.to];
+      const ctrl = getSynapseCtrl(syn);
+      const pos = quadPoint(a, ctrl, b, p.t);
+      const tail = quadPoint(a, ctrl, b, Math.max(0, p.t - 0.12));
+
+      // Comet tail
+      const tg = ctx.createLinearGradient(tail.x, tail.y, pos.x, pos.y);
+      tg.addColorStop(0, 'rgba(255,255,255,0)');
+      tg.addColorStop(1, p.inh ? 'rgba(210, 145, 255, 0.95)' : 'rgba(255, 224, 125, 0.98)');
+      ctx.strokeStyle = tg;
+      ctx.lineWidth = 3.5;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(tail.x, tail.y);
+      ctx.lineTo(pos.x, pos.y);
+      ctx.stroke();
+
+      // Bright glowing spike head
+      const hg = ctx.createRadialGradient(pos.x, pos.y, 1, pos.x, pos.y, 11);
+      hg.addColorStop(0, '#ffffff');
+      hg.addColorStop(0.4, p.inh ? 'rgba(192, 132, 252, 0.9)' : 'rgba(255, 198, 92, 0.95)');
+      hg.addColorStop(1, 'rgba(255, 198, 92, 0)');
+      ctx.fillStyle = hg;
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, 11, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // 3. Expanding LTP Hebbian Plasticity Halo Rings
+    for (const fl of net.ltpFlashes) {
+      ctx.strokeStyle = `rgba(255, 214, 110, ${fl.life * 0.85})`;
+      ctx.lineWidth = 2.0;
+      ctx.beginPath();
+      ctx.arc(fl.x, fl.y, fl.r, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    // 4. Draw Interactive Neurons
+    for (let i = 0; i < net.neurons.length; i++) {
+      const neu = net.neurons[i];
+      const act = Math.max(0, Math.min(1, (neu.V + 65) / 95));
+      const isHov = i === net.hoveredNeuron;
+      const haloR = neu.r * (1.7 + act * 1.1 + neu.glow * 0.8);
+
+      const ng = ctx.createRadialGradient(neu.x, neu.y, neu.r * 0.2, neu.x, neu.y, haloR);
+      if (neu.inh) {
+        ng.addColorStop(0, `rgba(216, 160, 255, ${0.42 + act * 0.55})`);
+        ng.addColorStop(1, 'rgba(176, 132, 255, 0)');
+      } else {
+        ng.addColorStop(0, voltageColor(neu.V, 0.45 + act * 0.52));
+        ng.addColorStop(1, 'rgba(82, 220, 255, 0)');
+      }
+      ctx.fillStyle = ng;
+      ctx.beginPath();
+      ctx.arc(neu.x, neu.y, haloR, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Soma body
+      const fillG = ctx.createRadialGradient(neu.x - 4, neu.y - 4, 2, neu.x, neu.y, neu.r);
+      if (neu.inh) {
+        fillG.addColorStop(0, act > 0.35 ? '#fff2ff' : '#d8b4fe');
+        fillG.addColorStop(0.65, '#6d28d9');
+        fillG.addColorStop(1, '#26124d');
+      } else {
+        fillG.addColorStop(0, voltageColor(neu.V + 22, 0.96));
+        fillG.addColorStop(0.65, voltageColor(neu.V, 0.78));
+        fillG.addColorStop(1, '#101d3b');
+      }
+      ctx.fillStyle = fillG;
+      ctx.beginPath();
+      ctx.arc(neu.x, neu.y, neu.r + (isHov ? 2 : 0), 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = isHov ? '#ffffff' : (neu.inh ? '#e2c2ff' : voltageColor(neu.V + 20, 0.92));
+      ctx.lineWidth = isHov ? 2.4 : 1.7;
+      ctx.stroke();
+
+      // Neuron ID label
+      ctx.font = '700 9.5px ui-monospace, monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = act > 0.5 ? '#06101f' : '#eef5ff';
+      ctx.fillText(neu.label, neu.x, neu.y + 0.5);
+    }
+    ctx.textBaseline = 'alphabetic';
+
+    // Hover Tooltip
+    if (net.hoveredNeuron >= 0) {
+      const neu = net.neurons[net.hoveredNeuron];
+      const tx = Math.min(r.x + r.w - 165, Math.max(r.x + 10, neu.x + 22));
+      const ty = Math.max(r.y + 12, neu.y - 46);
+      roundRectPath(tx, ty, 156, 44, 8);
+      ctx.fillStyle = 'rgba(7, 12, 26, 0.92)';
+      ctx.fill();
+      ctx.strokeStyle = neu.inh ? 'rgba(192, 132, 252, 0.6)' : 'rgba(82, 220, 255, 0.55)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.font = '700 10px system-ui, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#fff';
+      ctx.fillText(`${neu.label} · ${neu.inh ? 'GABA Inhibitory' : 'Glu Excitatory'}`, tx + 8, ty + 16);
+      ctx.font = '600 10px ui-monospace, monospace';
+      ctx.fillStyle = '#9fd8ff';
+      ctx.fillText(`Vₘ: ${neu.V.toFixed(1)} mV  Spikes: ${neu.spikeCount}`, tx + 8, ty + 33);
+    }
+
+    ctx.restore();
+
+    // 5. Bottom Spike Raster & Population Voltage Monitor
+    drawNetworkRaster();
+  }
+
+  function drawNetworkRaster() {
+    const r = layout.netScopeRect;
+    ctx.save();
+    roundRectPath(r.x, r.y, r.w, r.h, 12);
+    ctx.fillStyle = 'rgba(6, 10, 22, 0.86)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(140, 178, 255, 0.2)';
+    ctx.lineWidth = 1.1;
+    ctx.stroke();
+
+    ctx.font = '700 9.8px system-ui, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#dce8ff';
+    ctx.fillText('SPIKE RASTER & POPULATION LFP MONITOR', r.x + 10, r.y + 16);
+
+    // Legend
+    ctx.font = '600 9.2px system-ui, sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#ffbe55';
+    ctx.fillText('■ Excitatory Spike', r.x + r.w - 115, r.y + 16);
+    ctx.fillStyle = '#c084fc';
+    ctx.fillText('■ Inhibitory Spike', r.x + r.w - 12, r.y + 16);
+
+    const px = r.x + 12;
+    const py = r.y + 24;
+    const pw = r.w - 24;
+    const ph = r.h - 32;
+    const windowMs = 140.0;
+
+    // Population voltage wave background
+    const len = net.popHist.length;
+    ctx.strokeStyle = 'rgba(82, 220, 255, 0.45)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    for (let i = 0; i < len; i++) {
+      const idx = (net.popIdx + i) % len;
+      const v = net.popHist[idx];
+      const x = px + (i / (len - 1)) * pw;
+      const y = py + ph * (1 - Math.max(0, Math.min(1, (v + 75) / 75)));
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    // Raster ticks
+    const nCount = Math.max(1, net.neurons.length);
+    for (const sp of net.raster) {
+      const age = state.timeMs - sp.t;
+      if (age < 0 || age > windowMs) continue;
+      const x = px + pw * (1 - age / windowMs);
+      const y = py + ((sp.idx + 0.5) / nCount) * ph;
+      ctx.strokeStyle = sp.inh ? '#c084fc' : '#ffbe55';
+      ctx.lineWidth = 2.0;
+      ctx.beginPath();
+      ctx.moveTo(x, y - 3);
+      ctx.lineTo(x, y + 3);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // =========================================================================
+  // 11. DOM REFERENCES, TELEMETRY & CONTROLS WIRING
+  // =========================================================================
+  const el = {
+    modeBadge: document.getElementById('mode-badge'),
+    phaseBadge: document.getElementById('phase-badge'),
+    lblVm: document.getElementById('lbl-vm'),
+    telVm: document.getElementById('tel-vm'),
+    telRate: document.getElementById('tel-rate'),
+    telVel: document.getElementById('tel-vel'),
+    telNa: document.getElementById('tel-na'),
+    telK: document.getElementById('tel-k'),
+    lblSixth: document.getElementById('lbl-sixth'),
+    telSixth: document.getElementById('tel-sixth'),
+    barNa: document.getElementById('bar-na'),
+    barK: document.getElementById('bar-k'),
+    clockT: document.getElementById('clock-t'),
+    clockTemp: document.getElementById('clock-temp'),
+    toast: document.getElementById('toast-banner'),
+    drawer: document.getElementById('control-drawer'),
+    subModeHint: document.getElementById('sub-mode-hint'),
+    hintPill: document.getElementById('hint-pill'),
+
+    btnModeAxon: document.getElementById('btn-mode-axon'),
+    btnModeNet: document.getElementById('btn-mode-net'),
+    btnInject: document.getElementById('btn-inject'),
+    slIext: document.getElementById('sl-iext'),
+    valIext: document.getElementById('val-iext'),
+    slGna: document.getElementById('sl-gna'),
+    valGna: document.getElementById('val-gna'),
+    slGk: document.getElementById('sl-gk'),
+    valGk: document.getElementById('val-gk'),
+    slTemp: document.getElementById('sl-temp'),
+    valTemp: document.getElementById('val-temp'),
+    chkMyelin: document.getElementById('chk-myelin'),
+    valSyntype: document.getElementById('val-syntype'),
+    btnSynExc: document.getElementById('btn-syn-exc'),
+    btnSynInh: document.getElementById('btn-syn-inh'),
+
+    slSpeed: document.getElementById('sl-speed'),
+    valSpeed: document.getElementById('val-speed'),
+    slZoom: document.getElementById('sl-zoom'),
+    valZoom: document.getElementById('val-zoom'),
+    chkGates: document.getElementById('chk-gates'),
+    chkLabels: document.getElementById('chk-labels'),
+
+    btnTopoCort: document.getElementById('btn-topo-cort'),
+    btnTopoRing: document.getElementById('btn-topo-ring'),
+    btnTopoHub: document.getElementById('btn-topo-hub'),
+    chkStdp: document.getElementById('chk-stdp'),
+    slStdp: document.getElementById('sl-stdp'),
+    valStdp: document.getElementById('val-stdp'),
+    slDrive: document.getElementById('sl-drive'),
+    valDrive: document.getElementById('val-drive'),
+    btnNetWave: document.getElementById('btn-net-wave'),
+    btnNetResetW: document.getElementById('btn-net-resetw'),
+
+    valIna: document.getElementById('val-ina'),
+    valIk: document.getElementById('val-ik'),
+    valIl: document.getElementById('val-il'),
+    valPhi: document.getElementById('val-phi'),
+    valM: document.getElementById('val-m'),
+    valH: document.getElementById('val-h'),
+    valN: document.getElementById('val-n'),
+    valNt: document.getElementById('val-nt'),
+
+    btnPlay: document.getElementById('btn-play'),
+    btnReset: document.getElementById('btn-reset'),
+    btnBarPulse: document.getElementById('btn-bar-pulse'),
+    btnAudio: document.getElementById('btn-audio'),
+    btnDrawer: document.getElementById('btn-drawer'),
+    btnCinema: document.getElementById('btn-cinema'),
+    btnCinemaRestore: document.getElementById('btn-cinema-restore'),
+  };
+
+  let toastTimeout = null;
+  function showToast(msg, warn = false) {
+    el.toast.textContent = msg;
+    el.toast.classList.toggle('warn', warn);
+    el.toast.classList.add('visible');
+    clearTimeout(toastTimeout);
+    toastTimeout = setTimeout(() => el.toast.classList.remove('visible'), 2300);
+  }
+
+  function syncControlsFromState() {
+    el.slIext.value = state.I_ext;
+    el.valIext.textContent = `${state.I_ext.toFixed(1)} μA/cm²`;
+    el.slGna.value = state.g_Na;
+    el.valGna.textContent = `${Math.round(state.g_Na)} mS/cm²`;
+    el.slGk.value = state.g_K;
+    el.valGk.textContent = `${Math.round(state.g_K)} mS/cm²`;
+    el.slTemp.value = state.tempC;
+    el.valTemp.textContent = `${state.tempC.toFixed(1)} °C`;
+    el.chkMyelin.checked = state.myelinated;
+
+    const isExc = state.synapseType === 'excitatory';
+    el.btnSynExc.classList.toggle('active', isExc);
+    el.btnSynExc.classList.toggle('mint', isExc);
+    el.btnSynInh.classList.toggle('active', !isExc);
+    el.btnSynInh.classList.toggle('violet', !isExc);
+    el.valSyntype.textContent = isExc ? 'Glutamate (+)' : 'GABA (−)';
+    el.valSyntype.style.color = isExc ? 'var(--accent-mint)' : 'var(--accent-violet)';
+
+    el.slSpeed.value = state.timeScale;
+    el.valSpeed.textContent = `${state.timeScale.toFixed(2)}×`;
+    el.slZoom.value = state.insetZoom;
+    el.valZoom.textContent = `${state.insetZoom.toFixed(2)}×`;
+
+    const isAxon = state.mode === 'axon';
+    el.btnModeAxon.classList.toggle('active', isAxon);
+    el.btnModeNet.classList.toggle('active', !isAxon);
+    el.modeBadge.textContent = isAxon ? 'Hodgkin–Huxley ODE' : 'Spiking Circuit · STDP';
+    el.modeBadge.classList.toggle('network', !isAxon);
+    el.subModeHint.textContent = isAxon ? 'Axon' : 'Network';
+    el.lblVm.textContent = isAxon ? 'Vₘ Membrane' : 'Mean Pop Vₘ';
+    el.lblSixth.textContent = isAxon ? 'Post-Syn V' : 'Mean Weight w̄';
+    el.btnInject.textContent = isAxon ? '⚡ Inject Stimulus Pulse' : '⚡ Fire Sensory Input Burst';
+
+    el.hintPill.innerHTML = isAxon
+      ? 'Click <strong>Soma</strong> to fire · Hover <strong>Membrane</strong> &amp; scroll to zoom · <kbd>Space</kbd> Pause · <kbd>P</kbd> Pulse · <kbd>H</kbd> Cinema'
+      : 'Click any <strong>Neuron</strong> to fire · Drag neurons to rearrange · <kbd>Space</kbd> Pause · <kbd>P</kbd> Burst · <kbd>H</kbd> Cinema';
+  }
+
+  function setMode(newMode) {
+    state.mode = newMode;
+    if (newMode === 'network' && net.neurons.length === 0) {
+      buildNetwork(net.topology);
+    }
+    syncControlsFromState();
+  }
+
+  function applyPreset(key) {
+    state.preset = key;
+    document.querySelectorAll('.preset-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.preset === key);
+    });
+
+    if (key === 'single') {
+      state.mode = 'axon';
+      state.I_ext = 0.0;
+      state.g_Na = 120;
+      state.g_K = 36;
+      state.tempC = 18.5;
+      state.myelinated = false;
+      state.synapseType = 'excitatory';
+      resetAxon();
+      syncControlsFromState();
+      injectPulse(25, 1.8);
+      showToast('Single Action Potential — Click Soma anytime to fire');
+    } else if (key === 'burst') {
+      state.mode = 'axon';
+      state.I_ext = 14.5;
+      state.g_Na = 120;
+      state.g_K = 36;
+      state.tempC = 19.5;
+      state.myelinated = false;
+      state.synapseType = 'excitatory';
+      resetAxon();
+      syncControlsFromState();
+      showToast('Tonic Bursting Train — Sustained Depolarizing Current');
+    } else if (key === 'myelin') {
+      state.mode = 'axon';
+      state.I_ext = 11.5;
+      state.g_Na = 120;
+      state.g_K = 36;
+      state.tempC = 22.0;
+      state.myelinated = true;
+      state.synapseType = 'excitatory';
+      resetAxon();
+      syncControlsFromState();
+      injectPulse(24, 1.5);
+      showToast('Myelinated Saltatory Conduction — Node-to-Node Leaps!');
+    } else if (key === 'ttx') {
+      state.mode = 'axon';
+      state.I_ext = 0.0;
+      state.g_Na = 4;
+      state.g_K = 36;
+      state.tempC = 18.5;
+      state.myelinated = false;
+      state.synapseType = 'excitatory';
+      resetAxon();
+      syncControlsFromState();
+      injectPulse(26, 2.2);
+      showToast('TTX Pufferfish Toxin — Na⁺ Channels Plugged & Silenced!', true);
+    } else if (key === 'gaba') {
+      state.mode = 'axon';
+      state.I_ext = 12.5;
+      state.g_Na = 120;
+      state.g_K = 36;
+      state.tempC = 18.5;
+      state.myelinated = true;
+      state.synapseType = 'inhibitory';
+      resetAxon();
+      syncControlsFromState();
+      injectPulse(24, 1.6);
+      showToast('Inhibitory GABA Synapse — Hyperpolarizing IPSP Wave');
+    } else if (key === 'hebbian') {
+      state.mode = 'network';
+      state.I_ext = 0.0;
+      state.g_Na = 120;
+      state.g_K = 36;
+      state.tempC = 20.0;
+      state.myelinated = true;
+      state.stdpEnabled = true;
+      state.spontDrive = 0.42;
+      el.chkStdp.checked = true;
+      el.slDrive.value = 42;
+      el.valDrive.textContent = '42%';
+      buildNetwork('cortical');
+      syncControlsFromState();
+      fireNetworkInputBurst();
+      showToast('Hebbian Spiking Network — Click Neurons to Wire Synapses!');
+    }
+  }
+
+  function updateTelemetry() {
+    el.clockT.textContent = `${state.timeMs.toFixed(1)} ms`;
+    el.clockTemp.textContent = `${state.tempC.toFixed(1)}°C`;
+    const phi = Math.pow(3.0, (state.tempC - 6.3) / 10.0);
+    el.valPhi.textContent = `${phi.toFixed(2)}×`;
+
+    if (state.mode === 'axon') {
+      const comp = state.g_Na < 18 ? 0 : PROBE_COMP;
+      const V = cable.V[comp];
+      const m = cable.m[comp];
+      const h = cable.h[comp];
+      const n = cable.n[comp];
+      const naPct = Math.min(100, (m ** 3) * h * (state.g_Na / 120.0) * 100);
+      const kPct = Math.min(100, (n ** 4) * (state.g_K / 36.0) * 100);
+
+      el.telVm.textContent = `${V >= 0 ? '+' : ''}${V.toFixed(1)} mV`;
+      el.telVm.className = 'tele-val ' + (V > -20 ? 'gold' : V < -69 ? 'violet' : 'cyan');
+
+      // Spike rate from recent ISI or window
+      let hz = 0;
+      const ts = state.spikeTimestamps;
+      if (ts.length >= 2 && state.timeMs - ts[ts.length - 1] < 85) {
+        const isi = ts[ts.length - 1] - ts[ts.length - 2];
+        if (isi > 0.5) hz = 1000.0 / isi;
+      }
+      el.telRate.textContent = `${hz.toFixed(1)} Hz`;
+      el.telVel.textContent = state.g_Na < 15 ? '0.0 m/s' : `${state.conductionVel.toFixed(1)} m/s`;
+      el.telNa.textContent = `${naPct.toFixed(1)}%`;
+      el.telK.textContent = `${kPct.toFixed(1)}%`;
+      el.telSixth.textContent = `${cable.V_post >= 0 ? '+' : ''}${cable.V_post.toFixed(1)} mV`;
+      el.telSixth.className = 'tele-val ' + (cable.V_post > -62 ? 'mint' : cable.V_post < -68 ? 'violet' : 'cyan');
+
+      el.barNa.style.width = `${Math.min(100, naPct * 2.2)}%`;
+      el.barK.style.width = `${Math.min(100, kPct * 1.6)}%`;
+
+      // Phase Badge
+      let phaseText = 'Resting -65mV';
+      let phaseCls = '';
+      if (state.g_Na < 15) {
+        phaseText = 'TTX Blocked';
+        phaseCls = 'blocked';
+      } else if (V > -40 && (m > 0.45 && h > 0.25)) {
+        phaseText = 'Depolarizing!';
+        phaseCls = 'depol';
+      } else if (V > -62 && n > 0.48) {
+        phaseText = 'Repolarizing';
+        phaseCls = 'repol';
+      } else if (V < -67.5 || h < 0.35) {
+        phaseText = 'Refractory';
+        phaseCls = 'refrac';
+      }
+      el.phaseBadge.textContent = phaseText;
+      el.phaseBadge.className = 'status-pill ' + phaseCls;
+
+      // Biophysics tab live readouts
+      el.valIna.textContent = `${cable.I_Na.toFixed(1)}`;
+      el.valIk.textContent = `${cable.I_K.toFixed(1)}`;
+      el.valIl.textContent = `${cable.I_L.toFixed(1)}`;
+      el.valM.textContent = m.toFixed(3);
+      el.valH.textContent = h.toFixed(3);
+      el.valN.textContent = n.toFixed(3);
+      el.valNt.textContent = `${synapse.ntParticles.length}`;
+    } else {
+      // Mode B network telemetry
+      let sumV = 0, sumNa = 0, sumK = 0;
+      for (const neu of net.neurons) {
+        sumV += neu.V;
+        sumNa += (neu.m ** 3) * neu.h * (state.g_Na / 120.0);
+        sumK += (neu.n ** 4) * (state.g_K / 36.0);
+      }
+      const cnt = Math.max(1, net.neurons.length);
+      const meanV = sumV / cnt;
+      const naPct = (sumNa / cnt) * 100;
+      const kPct = (sumK / cnt) * 100;
+
+      // Count spikes in last 100ms
+      const recent = net.recentSpikes.filter(t => state.timeMs - t < 100).length;
+      const popHz = (recent / cnt) * 10.0;
+
+      let meanW = 0;
+      for (const s of net.synapses) meanW += s.w;
+      meanW /= Math.max(1, net.synapses.length);
+
+      el.telVm.textContent = `${meanV >= 0 ? '+' : ''}${meanV.toFixed(1)} mV`;
+      el.telVm.className = 'tele-val cyan';
+      el.telRate.textContent = `${popHz.toFixed(1)} Hz`;
+      el.telVel.textContent = state.myelinated ? '70.0 m/s' : '2.8 m/s';
+      el.telNa.textContent = `${naPct.toFixed(1)}%`;
+      el.telK.textContent = `${kPct.toFixed(1)}%`;
+      el.telSixth.textContent = `${meanW.toFixed(2)}×`;
+      el.telSixth.className = 'tele-val ' + (meanW > 0.95 ? 'gold' : 'mint');
+
+      el.barNa.style.width = `${Math.min(100, naPct * 4.0)}%`;
+      el.barK.style.width = `${Math.min(100, kPct * 2.4)}%`;
+
+      if (state.g_Na < 15) {
+        el.phaseBadge.textContent = 'TTX Silenced';
+        el.phaseBadge.className = 'status-pill blocked';
+      } else if (net.pulses.length > 5) {
+        el.phaseBadge.textContent = 'Active Wave!';
+        el.phaseBadge.className = 'status-pill depol';
+      } else if (state.stdpEnabled) {
+        el.phaseBadge.textContent = 'STDP Ready';
+        el.phaseBadge.className = 'status-pill refrac';
+      } else {
+        el.phaseBadge.textContent = 'Circuit Idle';
+        el.phaseBadge.className = 'status-pill';
+      }
+    }
+  }
+
+  // Tabs
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById(`tab-${btn.dataset.tab}`).classList.add('active');
+    });
+  });
+
+  // Mode buttons
+  el.btnModeAxon.addEventListener('click', () => setMode('axon'));
+  el.btnModeNet.addEventListener('click', () => setMode('network'));
+
+  // Presets
+  document.querySelectorAll('.preset-btn').forEach(btn => {
+    btn.addEventListener('click', () => applyPreset(btn.dataset.preset));
+  });
+
+  // Inject pulse buttons
+  el.btnInject.addEventListener('click', () => injectPulse(25, 1.8));
+  el.btnBarPulse.addEventListener('click', () => injectPulse(25, 1.8));
+
+  // Sliders
+  el.slIext.addEventListener('input', () => {
+    state.I_ext = parseFloat(el.slIext.value);
+    el.valIext.textContent = `${state.I_ext.toFixed(1)} μA/cm²`;
+  });
+  el.slGna.addEventListener('input', () => {
+    state.g_Na = parseFloat(el.slGna.value);
+    el.valGna.textContent = `${Math.round(state.g_Na)} mS/cm²`;
+  });
+  el.slGk.addEventListener('input', () => {
+    state.g_K = parseFloat(el.slGk.value);
+    el.valGk.textContent = `${Math.round(state.g_K)} mS/cm²`;
+  });
+  el.slTemp.addEventListener('input', () => {
+    state.tempC = parseFloat(el.slTemp.value);
+    el.valTemp.textContent = `${state.tempC.toFixed(1)} °C`;
+  });
+  el.chkMyelin.addEventListener('change', () => {
+    state.myelinated = el.chkMyelin.checked;
+    showToast(state.myelinated ? 'Myelin Sheath ON — Saltatory Conduction' : 'Myelin Sheath OFF — Unmyelinated Axon');
+  });
+
+  el.btnSynExc.addEventListener('click', () => {
+    state.synapseType = 'excitatory';
+    syncControlsFromState();
+  });
+  el.btnSynInh.addEventListener('click', () => {
+    state.synapseType = 'inhibitory';
+    syncControlsFromState();
+  });
+
+  el.slSpeed.addEventListener('input', () => {
+    state.timeScale = parseFloat(el.slSpeed.value);
+    el.valSpeed.textContent = `${state.timeScale.toFixed(2)}×`;
+  });
+  el.slZoom.addEventListener('input', () => {
+    state.insetZoom = parseFloat(el.slZoom.value);
+    el.valZoom.textContent = `${state.insetZoom.toFixed(2)}×`;
+  });
+  el.chkGates.addEventListener('change', () => { state.showGates = el.chkGates.checked; });
+  el.chkLabels.addEventListener('change', () => { state.showLabels = el.chkLabels.checked; });
+
+  // Network controls
+  const setTopo = (topo, activeBtn) => {
+    [el.btnTopoCort, el.btnTopoRing, el.btnTopoHub].forEach(b => b.classList.remove('active'));
+    activeBtn.classList.add('active');
+    buildNetwork(topo);
+    if (state.mode !== 'network') setMode('network');
+    fireNetworkInputBurst();
+  };
+  el.btnTopoCort.addEventListener('click', () => setTopo('cortical', el.btnTopoCort));
+  el.btnTopoRing.addEventListener('click', () => setTopo('ring', el.btnTopoRing));
+  el.btnTopoHub.addEventListener('click', () => setTopo('hub', el.btnTopoHub));
+  el.chkStdp.addEventListener('change', () => { state.stdpEnabled = el.chkStdp.checked; });
+  el.slStdp.addEventListener('input', () => {
+    state.stdpRate = parseFloat(el.slStdp.value);
+    el.valStdp.textContent = `${state.stdpRate.toFixed(1)}×`;
+  });
+  el.slDrive.addEventListener('input', () => {
+    const pct = parseInt(el.slDrive.value, 10);
+    state.spontDrive = pct / 100;
+    el.valDrive.textContent = `${pct}%`;
+  });
+  el.btnNetWave.addEventListener('click', () => {
+    if (state.mode !== 'network') setMode('network');
+    fireNetworkInputBurst();
+  });
+  el.btnNetResetW.addEventListener('click', resetNetworkWeights);
+
+  // Transport Bar controls
+  function togglePause() {
+    state.paused = !state.paused;
+    el.btnPlay.textContent = state.paused ? '▶ Play' : '⏸ Pause';
+    el.btnPlay.classList.toggle('active', !state.paused);
+  }
+  function toggleDrawer() {
+    state.drawerOpen = !state.drawerOpen;
+    el.drawer.classList.toggle('collapsed', !state.drawerOpen);
+    el.btnDrawer.classList.toggle('active', state.drawerOpen);
+    updateLayoutRects();
+    if (state.mode === 'network' && net.neurons.length) layoutNetwork(net.topology, true);
+  }
+  function toggleCinema() {
+    state.cinema = !state.cinema;
+    document.body.classList.toggle('cinema-mode', state.cinema);
+    el.btnCinema.classList.toggle('active', state.cinema);
+    updateLayoutRects();
+    if (state.mode === 'network' && net.neurons.length) layoutNetwork(net.topology, true);
+  }
+  function toggleAudio() {
+    state.audioOn = !state.audioOn;
+    if (state.audioOn) ensureAudio();
+    el.btnAudio.textContent = state.audioOn ? '🔊 Audio' : '🔇 Audio';
+    el.btnAudio.classList.toggle('active', state.audioOn);
+    if (state.audioOn) playSpikePop(1.0, 0.14);
+  }
+
+  el.btnPlay.addEventListener('click', togglePause);
+  el.btnReset.addEventListener('click', () => {
+    if (state.mode === 'axon') {
+      resetAxon();
+      injectPulse(24, 1.6);
+    } else {
+      buildNetwork(net.topology);
+      fireNetworkInputBurst();
+    }
+    showToast('Simulation Reset');
+  });
+  el.btnAudio.addEventListener('click', toggleAudio);
+  el.btnDrawer.addEventListener('click', toggleDrawer);
+  el.btnCinema.addEventListener('click', toggleCinema);
+  el.btnCinemaRestore.addEventListener('click', toggleCinema);
+
+  // Keyboard shortcuts
+  window.addEventListener('keydown', e => {
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+    if (e.code === 'Space') { e.preventDefault(); togglePause(); }
+    else if (e.key === 'h' || e.key === 'H') { toggleCinema(); }
+    else if (e.key === 'r' || e.key === 'R') { el.btnReset.click(); }
+    else if (e.key === 'p' || e.key === 'P' || e.key === 'Enter') { injectPulse(25, 1.8); }
+    else if (e.key === 'm' || e.key === 'M') {
+      state.myelinated = !state.myelinated;
+      syncControlsFromState();
+    }
+  });
+
+  // =========================================================================
+  // 12. CANVAS POINTER & WHEEL INTERACTION
+  // =========================================================================
+  let pointerDownPos = null;
+  let draggedMoved = false;
+
+  function inRect(x, y, r) {
+    return x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
+  }
+
+  function findNeuronAt(x, y) {
+    for (let i = net.neurons.length - 1; i >= 0; i--) {
+      const n = net.neurons[i];
+      if (Math.hypot(x - n.x, y - n.y) <= n.r + 8) return i;
+    }
+    return -1;
+  }
+
+  canvas.addEventListener('pointerdown', e => {
+    const x = e.clientX, y = e.clientY;
+    pointerDownPos = { x, y };
+    draggedMoved = false;
+
+    if (state.mode === 'axon') {
+      // Click Soma or Dendrites -> inject immediate stimulus pulse!
+      if (Math.hypot(x - layout.somaX, y - layout.axonY) <= layout.somaR + 36) {
+        injectPulse(26, 1.8);
+      } else if (inRect(x, y, layout.insetRect)) {
+        // Click membrane inset to cycle zoom cleanly
+        state.insetZoom = state.insetZoom >= 1.7 ? 1.0 : Math.min(2.1, state.insetZoom + 0.35);
+        syncControlsFromState();
+      }
+    } else {
+      const idx = findNeuronAt(x, y);
+      if (idx >= 0) {
+        net.dragNeuron = idx;
+        canvas.classList.add('grabbing');
+      }
+    }
+  });
+
+  canvas.addEventListener('pointermove', e => {
+    const x = e.clientX, y = e.clientY;
+    if (state.mode === 'axon') {
+      const overSoma = Math.hypot(x - layout.somaX, y - layout.axonY) <= layout.somaR + 34;
+      const overInset = inRect(x, y, layout.insetRect);
+      canvas.classList.toggle('pointer', overSoma || overInset);
+    } else {
+      if (net.dragNeuron >= 0) {
+        if (pointerDownPos && Math.hypot(x - pointerDownPos.x, y - pointerDownPos.y) > 4) {
+          draggedMoved = true;
+        }
+        const n = net.neurons[net.dragNeuron];
+        const r = layout.netRect;
+        n.x = Math.max(r.x + 24, Math.min(r.x + r.w - 24, x));
+        n.y = Math.max(r.y + 32, Math.min(r.y + r.h - 24, y));
+      } else {
+        net.hoveredNeuron = findNeuronAt(x, y);
+        canvas.classList.toggle('pointer', net.hoveredNeuron >= 0);
+      }
+    }
+  });
+
+  window.addEventListener('pointerup', () => {
+    if (state.mode === 'network' && net.dragNeuron >= 0) {
+      if (!draggedMoved) {
+        stimulateNeuron(net.dragNeuron);
+      }
+      net.dragNeuron = -1;
+      canvas.classList.remove('grabbing');
+    }
+    pointerDownPos = null;
+  });
+
+  canvas.addEventListener('wheel', e => {
+    if (state.mode === 'axon' && inRect(e.clientX, e.clientY, layout.insetRect)) {
+      e.preventDefault();
+      const delta = e.deltaY < 0 ? 0.12 : -0.12;
+      state.insetZoom = Math.max(0.85, Math.min(2.1, state.insetZoom + delta));
+      syncControlsFromState();
+    }
+  }, { passive: false });
+
+  window.addEventListener('resize', resizeCanvas);
+
+  // =========================================================================
+  // 13. MAIN ANIMATION LOOP
+  // =========================================================================
+  let lastFrameTs = performance.now();
+  let uiAccum = 0;
+
+  function frame(ts) {
+    const rawDtSec = Math.min(0.05, (ts - lastFrameTs) / 1000);
+    lastFrameTs = ts;
+
+    if (!state.paused) {
+      // Biological ms per real-world frame (scaled so APs are ~1.2s of gorgeous slow-motion observation!)
+      const bioDtMs = rawDtSec * 14.5 * state.timeScale;
+      if (state.mode === 'axon') {
+        stepCable(bioDtMs);
+      } else {
+        stepNetwork(bioDtMs * 1.45);
+      }
+    }
+
+    drawBackdrop(ts * 0.001);
+    if (state.mode === 'axon') {
+      drawModeA(ts * 0.001);
+    } else {
+      drawModeB(ts * 0.001);
+    }
+
+    uiAccum += rawDtSec;
+    if (uiAccum >= 0.05) {
+      uiAccum = 0;
+      updateTelemetry();
+    }
+
+    requestAnimationFrame(frame);
+  }
+
+  // Initialize!
+  resizeCanvas();
+  buildNetwork('cortical');
+  applyPreset('single');
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
