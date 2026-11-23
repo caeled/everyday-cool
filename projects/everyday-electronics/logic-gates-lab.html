@@ -1,0 +1,4219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Logic Bench — Digital Gates, CMOS, Flip-Flops &amp; 4-Bit ALU</title>
+<style>
+  :root {
+    --bg-deep: #040711;
+    --panel-bg: rgba(9, 13, 24, 0.80);
+    --panel-bg-strong: rgba(8, 12, 22, 0.94);
+    --panel-border: rgba(148, 179, 255, 0.16);
+    --panel-border-hi: rgba(148, 179, 255, 0.36);
+    --text-main: #eef3ff;
+    --text-dim: #9aa9cc;
+    --text-muted: #68789c;
+    --accent-amber: #ffbe5c;
+    --accent-cyan: #58dcff;
+    --accent-mint: #4af2b2;
+    --accent-rose: #ff6083;
+    --accent-violet: #a78bfa;
+    --radius-lg: 14px;
+    --radius-md: 10px;
+    --radius-sm: 7px;
+    --mono: ui-monospace, "Cascadia Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Inter, Helvetica, Arial, sans-serif;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg-deep);
+    color: var(--text-main);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    touch-action: none;
+  }
+
+  #sim-canvas {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    cursor: default;
+  }
+  #sim-canvas.panning { cursor: grabbing; }
+  #sim-canvas.wiring { cursor: crosshair; }
+  #sim-canvas.placing { cursor: copy; }
+  #sim-canvas.deleting { cursor: not-allowed; }
+  #sim-canvas.pointer { cursor: pointer; }
+
+  /* HUD Layer */
+  .hud {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 10;
+  }
+  body.zen-mode .hud > :not(.zen-restore) {
+    opacity: 0;
+    pointer-events: none !important;
+  }
+
+  .panel {
+    pointer-events: auto;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-lg);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    transition: opacity 0.25s ease, transform 0.25s ease;
+  }
+
+  /* Top-Left Brand + Telemetry */
+  .top-left {
+    position: fixed;
+    top: 14px;
+    left: 14px;
+    width: min(415px, calc(100vw - 360px));
+    min-width: 285px;
+    padding: 11px 13px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .brand-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .brand-title-wrap {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .brand-title {
+    font-size: 16px;
+    font-weight: 800;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+    background: linear-gradient(120deg, #e8fff9 0%, #4af2b2 46%, #58dcff 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .mode-badge {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 999px;
+    border: 1px solid rgba(88, 220, 255, 0.42);
+    background: rgba(88, 220, 255, 0.12);
+    color: var(--accent-cyan);
+  }
+  .mode-badge.cmos {
+    border-color: rgba(167, 139, 250, 0.45);
+    background: rgba(167, 139, 250, 0.15);
+    color: var(--accent-violet);
+  }
+  .mode-badge.sandbox {
+    border-color: rgba(255, 190, 92, 0.45);
+    background: rgba(255, 190, 92, 0.14);
+    color: var(--accent-amber);
+  }
+
+  .status-pill {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: rgba(74, 242, 178, 0.14);
+    color: var(--accent-mint);
+    border: 1px solid rgba(74, 242, 178, 0.35);
+    white-space: nowrap;
+  }
+  .status-pill.paused {
+    background: rgba(255, 190, 92, 0.16);
+    color: var(--accent-amber);
+    border-color: rgba(255, 190, 92, 0.42);
+  }
+  .status-pill.wire {
+    background: rgba(88, 220, 255, 0.18);
+    color: var(--accent-cyan);
+    border-color: rgba(88, 220, 255, 0.45);
+  }
+
+  .telemetry-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 5px;
+  }
+
+  .tele-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(148, 179, 255, 0.1);
+    border-radius: var(--radius-sm);
+    padding: 5px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .tele-label {
+    font-size: 9px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+  }
+
+  .tele-val {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-main);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .tele-val.amber { color: var(--accent-amber); }
+  .tele-val.cyan { color: var(--accent-cyan); }
+  .tele-val.mint { color: var(--accent-mint); }
+  .tele-val.rose { color: var(--accent-rose); }
+  .tele-val.violet { color: var(--accent-violet); }
+
+  .io-readout {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 6px 9px;
+    border-radius: var(--radius-sm);
+    background: rgba(74, 242, 178, 0.06);
+    border: 1px solid rgba(74, 242, 178, 0.22);
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: #d7fff0;
+    line-height: 1.3;
+  }
+  .io-readout .io-tag {
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent-mint);
+    flex-shrink: 0;
+  }
+  .io-readout #tel-io {
+    flex: 1;
+    text-align: right;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Logic Analyzer Floating Panel */
+  .la-panel {
+    position: fixed;
+    bottom: 54px;
+    left: 14px;
+    width: min(390px, calc(100vw - 370px));
+    min-width: 280px;
+    padding: 8px 10px 9px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .la-panel.hidden-la {
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(14px);
+  }
+  .la-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .la-title {
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--accent-cyan);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .la-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--accent-mint);
+    box-shadow: 0 0 8px var(--accent-mint);
+  }
+  .la-actions {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .la-meta {
+    font-family: var(--mono);
+    font-size: 9.5px;
+    color: var(--text-muted);
+  }
+  .mini-btn {
+    border: 1px solid rgba(148, 179, 255, 0.2);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-dim);
+    font-size: 9.5px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: all 0.14s ease;
+  }
+  .mini-btn:hover {
+    color: #fff;
+    border-color: var(--accent-cyan);
+    background: rgba(88, 220, 255, 0.14);
+  }
+  .mini-btn.active {
+    color: #fff;
+    border-color: var(--accent-amber);
+    background: rgba(255, 190, 92, 0.18);
+  }
+  #la-canvas {
+    width: 100%;
+    height: 126px;
+    display: block;
+    border-radius: var(--radius-sm);
+    background: rgba(3, 6, 15, 0.85);
+    border: 1px solid rgba(148, 179, 255, 0.12);
+  }
+
+  /* Right Control Drawer */
+  .drawer {
+    position: fixed;
+    top: 14px;
+    right: 14px;
+    bottom: 14px;
+    width: 330px;
+    max-width: calc(100vw - 28px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: transform 0.25s ease, opacity 0.25s ease;
+  }
+  .drawer.collapsed {
+    transform: translateX(calc(100% + 24px));
+    pointer-events: none;
+  }
+
+  .drawer-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+    padding: 8px 8px 6px;
+    border-bottom: 1px solid var(--panel-border);
+    background: rgba(4, 7, 15, 0.45);
+  }
+
+  .tab-btn {
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 11.5px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    padding: 7px 6px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .tab-btn:hover {
+    color: var(--text-main);
+    background: rgba(255, 255, 255, 0.04);
+  }
+  .tab-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.16);
+    border-color: rgba(88, 220, 255, 0.4);
+  }
+
+  .drawer-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 11px 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .drawer-body::-webkit-scrollbar { width: 5px; }
+  .drawer-body::-webkit-scrollbar-thumb {
+    background: rgba(148, 179, 255, 0.22);
+    border-radius: 999px;
+  }
+
+  .tab-pane {
+    display: none;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .tab-pane.active { display: flex; }
+
+  .section {
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(148, 179, 255, 0.11);
+    border-radius: var(--radius-md);
+    padding: 10px 11px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .section-title {
+    font-size: 10px;
+    font-weight: 750;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  /* Presets grid */
+  .preset-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .preset-btn {
+    text-align: left;
+    padding: 7px 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(148, 179, 255, 0.14);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-main);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .preset-btn:hover {
+    border-color: rgba(74, 242, 178, 0.45);
+    background: rgba(74, 242, 178, 0.08);
+  }
+  .preset-btn.active {
+    border-color: var(--accent-mint);
+    background: rgba(74, 242, 178, 0.15);
+    box-shadow: inset 0 0 12px rgba(74, 242, 178, 0.12);
+  }
+  .preset-name {
+    font-size: 11.2px;
+    font-weight: 700;
+  }
+  .preset-sub {
+    font-size: 9.3px;
+    color: var(--text-muted);
+    line-height: 1.25;
+  }
+
+  /* Sliders */
+  .control-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .control-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11.2px;
+    color: var(--text-dim);
+  }
+  .control-head .val {
+    font-family: var(--mono);
+    font-size: 11.2px;
+    color: var(--text-main);
+    font-weight: 650;
+  }
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 5px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.18);
+    outline: none;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent-cyan);
+    border: 2px solid #08101f;
+    box-shadow: 0 0 10px rgba(88, 220, 255, 0.65);
+    cursor: pointer;
+  }
+  input[type="range"].mint::-webkit-slider-thumb {
+    background: var(--accent-mint);
+    box-shadow: 0 0 10px rgba(74, 242, 178, 0.65);
+  }
+  input[type="range"].amber::-webkit-slider-thumb {
+    background: var(--accent-amber);
+    box-shadow: 0 0 10px rgba(255, 190, 92, 0.65);
+  }
+
+  /* Segmented pills */
+  .seg-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(58px, 1fr));
+    gap: 4px;
+  }
+  .seg-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-dim);
+    font-size: 10.8px;
+    font-weight: 650;
+    padding: 6px 5px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-align: center;
+  }
+  .seg-btn:hover {
+    color: #fff;
+    border-color: rgba(148, 179, 255, 0.35);
+  }
+  .seg-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.18);
+    border-color: var(--accent-cyan);
+  }
+  .seg-btn.active.amber {
+    background: rgba(255, 190, 92, 0.18);
+    border-color: var(--accent-amber);
+    color: #ffdfaa;
+  }
+  .seg-btn.active.mint {
+    background: rgba(74, 242, 178, 0.18);
+    border-color: var(--accent-mint);
+    color: #d6fff0;
+  }
+  .seg-btn.active.rose {
+    background: rgba(255, 96, 131, 0.2);
+    border-color: var(--accent-rose);
+    color: #ffd5df;
+  }
+
+  /* Buttons */
+  .btn-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .btn {
+    border: 1px solid rgba(148, 179, 255, 0.22);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-main);
+    font-size: 11.2px;
+    font-weight: 700;
+    padding: 7px 9px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+  .btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 179, 255, 0.45);
+  }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary {
+    background: linear-gradient(135deg, rgba(74, 242, 178, 0.26), rgba(88, 220, 255, 0.22));
+    border-color: rgba(74, 242, 178, 0.55);
+    color: #e6fff6;
+  }
+  .btn.amber {
+    background: linear-gradient(135deg, rgba(255, 190, 92, 0.24), rgba(255, 130, 60, 0.20));
+    border-color: rgba(255, 190, 92, 0.52);
+    color: #fff3db;
+  }
+  .btn.danger {
+    background: rgba(255, 96, 131, 0.14);
+    border-color: rgba(255, 96, 131, 0.4);
+    color: #ffc2d0;
+  }
+
+  /* Gate Palette */
+  .palette-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 5px;
+  }
+  .pal-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-main);
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 700;
+    padding: 7px 4px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+  }
+  .pal-btn span.pal-sub {
+    font-family: var(--sans);
+    font-size: 8.8px;
+    font-weight: 500;
+    color: var(--text-muted);
+  }
+  .pal-btn:hover {
+    border-color: var(--accent-cyan);
+    background: rgba(88, 220, 255, 0.1);
+  }
+  .pal-btn.active {
+    border-color: var(--accent-mint);
+    background: rgba(74, 242, 178, 0.18);
+    color: #e9fff7;
+    box-shadow: 0 0 12px rgba(74, 242, 178, 0.2);
+  }
+
+  /* Toggle switches */
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11.2px;
+    color: var(--text-dim);
+    cursor: pointer;
+  }
+  .toggle-row input { display: none; }
+  .switch {
+    width: 34px;
+    height: 18px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.2);
+    border: 1px solid rgba(148, 179, 255, 0.25);
+    position: relative;
+    transition: all 0.18s ease;
+    flex-shrink: 0;
+  }
+  .switch::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #c8d7f5;
+    transition: transform 0.18s ease, background 0.18s ease;
+  }
+  .toggle-row input:checked + .switch {
+    background: rgba(74, 242, 178, 0.32);
+    border-color: var(--accent-mint);
+  }
+  .toggle-row input:checked + .switch::after {
+    transform: translateX(16px);
+    background: #fff;
+  }
+
+  /* Bottom Transport Bar */
+  .bottom-bar {
+    position: fixed;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 6px 9px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    flex-wrap: nowrap;
+  }
+
+  .bar-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-main);
+    font-size: 11.2px;
+    font-weight: 650;
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    white-space: nowrap;
+  }
+  .bar-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 179, 255, 0.4);
+  }
+  .bar-btn.active {
+    background: rgba(88, 220, 255, 0.2);
+    border-color: var(--accent-cyan);
+    color: #fff;
+  }
+  .bar-btn.amber-hi {
+    border-color: rgba(255, 190, 92, 0.42);
+    background: rgba(255, 190, 92, 0.12);
+    color: #ffe3b0;
+  }
+
+  .bar-divider {
+    width: 1px;
+    height: 20px;
+    background: rgba(148, 179, 255, 0.16);
+    margin: 0 2px;
+  }
+
+  /* Bottom-left interaction hint */
+  .hint-pill {
+    position: fixed;
+    bottom: 14px;
+    left: 14px;
+    padding: 6px 10px;
+    font-size: 10.5px;
+    color: var(--text-dim);
+    max-width: 390px;
+    line-height: 1.35;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .hint-pill kbd {
+    font-family: var(--mono);
+    font-size: 9.5px;
+    padding: 1px 4px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #fff;
+  }
+
+  .zen-restore {
+    position: fixed;
+    bottom: 14px;
+    right: 14px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+  }
+  body.zen-mode .zen-restore {
+    opacity: 0.9;
+    pointer-events: auto;
+  }
+
+  .note-small {
+    font-size: 10.5px;
+    color: var(--text-muted);
+    line-height: 1.4;
+  }
+  .note-card {
+    font-size: 11px;
+    color: var(--text-dim);
+    line-height: 1.45;
+    background: rgba(88, 220, 255, 0.05);
+    border: 1px solid rgba(88, 220, 255, 0.16);
+    border-radius: var(--radius-sm);
+    padding: 8px 9px;
+  }
+  .note-card strong { color: var(--text-main); }
+
+  .toast-banner {
+    position: fixed;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%) translateY(-10px);
+    padding: 7px 14px;
+    border-radius: var(--radius-md);
+    background: rgba(8, 16, 28, 0.9);
+    border: 1px solid rgba(74, 242, 178, 0.45);
+    color: #dbfff2;
+    font-size: 11.5px;
+    font-weight: 650;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    z-index: 25;
+    backdrop-filter: blur(10px);
+  }
+  .toast-banner.visible {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+
+  @media (max-width: 960px) {
+    .top-left {
+      width: calc(100vw - 28px);
+      max-width: none;
+    }
+    .la-panel {
+      display: none;
+    }
+    .drawer {
+      top: auto;
+      bottom: 60px;
+      height: 50vh;
+      width: calc(100vw - 28px);
+    }
+    .hint-pill { display: none; }
+  }
+</style>
+</head>
+<body>
+<canvas id="sim-canvas"></canvas>
+
+<div class="hud">
+  <!-- Top-Left Brand + Telemetry -->
+  <div class="panel top-left">
+    <div class="brand-row">
+      <div class="brand-title-wrap">
+        <div class="brand-title">Logic Bench</div>
+        <span id="mode-badge" class="mode-badge">4-Bit ALU</span>
+      </div>
+      <span id="sim-status" class="status-pill">Running</span>
+    </div>
+
+    <div class="telemetry-grid">
+      <div class="tele-card">
+        <span class="tele-label">Circuit</span>
+        <span id="tel-circuit" class="tele-val cyan">Ripple ALU</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Clock Rate</span>
+        <span id="tel-clk" class="tele-val amber">MANUAL</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Prop Delay t_pd</span>
+        <span id="tel-tpd" class="tele-val mint">25 ns</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Active Gates</span>
+        <span id="tel-gates" class="tele-val">24</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Transitions/s</span>
+        <span id="tel-trans" class="tele-val violet">0 /s</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Sim Clock</span>
+        <span id="tel-time" class="tele-val">0 ns</span>
+      </div>
+    </div>
+
+    <div class="io-readout">
+      <span class="io-tag">I/O</span>
+      <span id="tel-io">A=0101(5) + B=0011(3) = 01000 (8)</span>
+    </div>
+  </div>
+
+  <!-- Embedded Floating Multi-Channel Logic Analyzer -->
+  <div id="la-panel" class="panel la-panel">
+    <div class="la-head">
+      <div class="la-title"><span class="la-dot"></span>Logic Analyzer</div>
+      <div class="la-actions">
+        <span id="la-scale" class="la-meta">t_pd 25 ns</span>
+        <button id="btn-la-hold" class="mini-btn" title="Freeze waveform">Hold</button>
+        <button id="btn-la-clear" class="mini-btn" title="Clear trace">Clear</button>
+      </div>
+    </div>
+    <canvas id="la-canvas"></canvas>
+  </div>
+
+  <!-- Toast notification -->
+  <div id="toast-banner" class="toast-banner"></div>
+
+  <!-- Right Control Drawer (330px) -->
+  <aside id="drawer" class="panel drawer">
+    <div class="drawer-tabs">
+      <button class="tab-btn active" data-tab="circuits">Circuits</button>
+      <button class="tab-btn" data-tab="sandbox">Sandbox</button>
+      <button class="tab-btn" data-tab="display">Display</button>
+    </div>
+
+    <div class="drawer-body">
+      <!-- TAB 1: CIRCUITS & TIMING -->
+      <div id="tab-circuits" class="tab-pane active">
+        <div class="section">
+          <div class="section-title"><span>Digital Architectures (8)</span></div>
+          <div class="preset-grid" id="preset-grid">
+            <button class="preset-btn active" data-preset="alu4">
+              <span class="preset-name">4-Bit Ripple ALU</span>
+              <span class="preset-sub">Add/Sub + Carry wave</span>
+            </button>
+            <button class="preset-btn" data-preset="cmos">
+              <span class="preset-name">CMOS X-Ray</span>
+              <span class="preset-sub">PMOS/NMOS transistors</span>
+            </button>
+            <button class="preset-btn" data-preset="latch">
+              <span class="preset-name">SR &amp; D Flip-Flop</span>
+              <span class="preset-sub">Cross-coupled memory</span>
+            </button>
+            <button class="preset-btn" data-preset="counter4">
+              <span class="preset-name">4-Bit Counter</span>
+              <span class="preset-sub">0→F ripple /2/4/8/16</span>
+            </button>
+            <button class="preset-btn" data-preset="shift4">
+              <span class="preset-name">4-Bit Shift Reg</span>
+              <span class="preset-sub">Serial-In Parallel-Out</span>
+            </button>
+            <button class="preset-btn" data-preset="ring">
+              <span class="preset-name">Ring Oscillator</span>
+              <span class="preset-sub">3-inverter t_pd clock</span>
+            </button>
+            <button class="preset-btn" data-preset="decmux">
+              <span class="preset-name">Decoder / MUX</span>
+              <span class="preset-sub">2→4 Dec &amp; 4→1 MUX</span>
+            </button>
+            <button class="preset-btn" data-preset="sandbox">
+              <span class="preset-name">Blank Sandbox</span>
+              <span class="preset-sub">Build &amp; wire custom</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Contextual Preset Controls -->
+        <div class="section" id="ctx-alu" style="display:flex;">
+          <div class="section-title">
+            <span>ALU Operation</span>
+            <span id="alu-mode-lbl" style="color:var(--accent-mint); font-family:var(--mono);">A + B</span>
+          </div>
+          <div class="seg-row">
+            <button id="btn-alu-add" class="seg-btn active mint">ADD (SUB=0)</button>
+            <button id="btn-alu-sub" class="seg-btn">SUB (2's Comp)</button>
+          </div>
+          <div class="btn-row">
+            <button id="btn-alu-ripple" class="btn amber">⚡ 15 + 1 Ripple!</button>
+            <button id="btn-alu-rand" class="btn">Random A, B</button>
+          </div>
+        </div>
+
+        <div class="section" id="ctx-cmos" style="display:none;">
+          <div class="section-title">
+            <span>CMOS Topology</span>
+            <span id="cmos-type-lbl" style="color:var(--accent-violet); font-family:var(--mono);">2-IN NAND</span>
+          </div>
+          <div class="seg-row">
+            <button class="seg-btn active" data-cmos="NAND">CMOS NAND</button>
+            <button class="seg-btn" data-cmos="NOR">CMOS NOR</button>
+            <button class="seg-btn" data-cmos="NOT">Inverter</button>
+          </div>
+          <div class="btn-row">
+            <button id="btn-cmos-a" class="btn">Toggle IN A</button>
+            <button id="btn-cmos-b" class="btn">Toggle IN B</button>
+          </div>
+          <div class="note-small">Watch complementary PMOS (pull-up) &amp; NMOS (pull-down) switch V_DD/GND with <strong>0.00 µA static current</strong>.</div>
+        </div>
+
+        <div class="section" id="ctx-shift" style="display:none;">
+          <div class="section-title"><span>Serial Data Stream</span></div>
+          <div class="btn-row">
+            <button id="btn-shift-bit" class="btn primary">Toggle D_IN</button>
+            <button id="btn-shift-pattern" class="btn amber">Inject 1011</button>
+          </div>
+        </div>
+
+        <div class="section" id="ctx-decmux" style="display:none;">
+          <div class="section-title"><span>Combinational Mode</span></div>
+          <div class="seg-row">
+            <button id="btn-mode-dec" class="seg-btn active mint">2-to-4 Decoder</button>
+            <button id="btn-mode-mux" class="seg-btn">4-to-1 MUX</button>
+          </div>
+        </div>
+
+        <!-- Timing & Clock Generator -->
+        <div class="section">
+          <div class="section-title">
+            <span>Timing &amp; Clock Generator</span>
+            <span id="clk-state-lbl" style="font-family:var(--mono); color:var(--accent-amber);">LOW</span>
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Gate Prop Delay (t_pd)</span>
+              <span id="val-tpd" class="val">25 ns</span>
+            </div>
+            <input id="sl-tpd" class="mint" type="range" min="5" max="120" step="1" value="25" />
+          </div>
+
+          <label class="toggle-row">
+            <span>Auto Clock Oscillator</span>
+            <input id="chk-autoclk" type="checkbox" />
+            <span class="switch"></span>
+          </label>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Auto Clock Frequency</span>
+              <span id="val-freq" class="val">1.4 Hz</span>
+            </div>
+            <input id="sl-freq" class="amber" type="range" min="0.2" max="5.0" step="0.1" value="1.4" />
+          </div>
+
+          <div class="btn-row">
+            <button id="btn-drawer-pulse" class="btn amber">⎍ Step Clock</button>
+            <button id="btn-drawer-reset" class="btn">↺ Reset State</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 2: SANDBOX BUILDER -->
+      <div id="tab-sandbox" class="tab-pane">
+        <div class="section">
+          <div class="section-title"><span>Canvas Interaction Tool</span></div>
+          <div class="seg-row" id="tool-row">
+            <button class="seg-btn active mint" data-tool="interact">Interact</button>
+            <button class="seg-btn" data-tool="wire">Wire Pins</button>
+            <button class="seg-btn" data-tool="delete">Delete</button>
+          </div>
+          <div class="note-small" id="tool-hint">Click switches to toggle, drag gates to move, or click an output pin → input pin to wire directly.</div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Place Component (Click to Spawn)</span></div>
+          <div class="palette-grid" id="palette-grid">
+            <button class="pal-btn" data-place="SWITCH">SW<span class="pal-sub">Toggle 0/1</span></button>
+            <button class="pal-btn" data-place="CLOCK">CLK<span class="pal-sub">Pulse Gen</span></button>
+            <button class="pal-btn" data-place="LED">LED<span class="pal-sub">Indicator</span></button>
+            <button class="pal-btn" data-place="AND">AND<span class="pal-sub">A · B</span></button>
+            <button class="pal-btn" data-place="OR">OR<span class="pal-sub">A + B</span></button>
+            <button class="pal-btn" data-place="NOT">NOT<span class="pal-sub">Inverter</span></button>
+            <button class="pal-btn" data-place="NAND">NAND<span class="pal-sub">Universal</span></button>
+            <button class="pal-btn" data-place="NOR">NOR<span class="pal-sub">Universal</span></button>
+            <button class="pal-btn" data-place="XOR">XOR<span class="pal-sub">A ⊕ B</span></button>
+            <button class="pal-btn" data-place="DFF">D-FF<span class="pal-sub">1-Bit Mem</span></button>
+            <button class="pal-btn" data-place="TFF">T-FF<span class="pal-sub">Toggle FF</span></button>
+            <button class="pal-btn" data-place="HEX7">HEX7<span class="pal-sub">7-Seg Disp</span></button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Sandbox Actions</span></div>
+          <div class="btn-row">
+            <button id="btn-sb-starter" class="btn primary">Half-Adder Kit</button>
+            <button id="btn-sb-clear" class="btn danger">Clear Board</button>
+          </div>
+          <div class="note-small">Tip: Click any <strong>output pin</strong> (right dot) then click an <strong>input pin</strong> (left dot) to connect a wire. Right-click cancels wiring or deletes in Sandbox.</div>
+        </div>
+      </div>
+
+      <!-- TAB 3: DISPLAY & ARCHITECTURE NOTES -->
+      <div id="tab-display" class="tab-pane">
+        <div class="section">
+          <div class="section-title"><span>Visual Overlays</span></div>
+          <label class="toggle-row">
+            <span>Animated Signal Wavefronts</span>
+            <input id="chk-pulses" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Pin Binary Badges (0/1)</span>
+            <input id="chk-badges" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>PCB Grid &amp; Glow Bloom</span>
+            <input id="chk-grid" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Logic Analyzer Overlay</span>
+            <input id="chk-la" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Architecture Notes</span></div>
+          <div id="arch-notes" class="note-card">
+            <strong>4-Bit Ripple-Carry ALU:</strong> Four cascaded Full Adders compute <code>A[3:0] ± B[3:0]</code>. In Subtract mode, XOR inverters flip <code>B</code> and inject <code>C_in = 1</code> to form 2's complement (<code>A + ~B + 1</code>). Slow down <code>t_pd</code> to watch the Carry bit ripple gate-by-gate!
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Signal Legend</span></div>
+          <div class="note-small">
+            <span style="color:#4af2b2; font-weight:700;">● HIGH (1 / +5V)</span> — Electric Cyan-Mint<br/>
+            <span style="color:#5c729c; font-weight:700;">● LOW (0 / GND)</span> — Deep Slate<br/>
+            <span style="color:#ffbe5c; font-weight:700;">● CLOCK / STROBE</span> — Amber Pulse<br/>
+            <span style="color:#a78bfa; font-weight:700;">● PMOS PULL-UP</span> — Violet Channel
+          </div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Bottom-Left Hints Pill -->
+  <div class="panel hint-pill">
+    Click switches to toggle · Output→Input pin to wire · <kbd>Space</kbd> Play · <kbd>C</kbd> Clock · <kbd>H</kbd> Cinema
+  </div>
+
+  <!-- Bottom-Center Transport Bar -->
+  <div class="panel bottom-bar">
+    <button id="btn-play" class="bar-btn active" title="Pause / Play (Space)">⏸ Pause</button>
+    <button id="btn-step-clk" class="bar-btn amber-hi" title="Manual Clock Pulse (C)">⎍ Step CLK</button>
+    <button id="btn-reset" class="bar-btn" title="Reset Circuit (R)">↺ Reset</button>
+    <button id="btn-fit" class="bar-btn" title="Fit Circuit to View (F)">⌖ Fit</button>
+    <div class="bar-divider"></div>
+    <button id="btn-audio" class="bar-btn" title="Toggle Digital Audio">🔇 Audio</button>
+    <button id="btn-drawer" class="bar-btn active" title="Toggle Controls Drawer">Controls</button>
+    <button id="btn-cinema" class="bar-btn" title="Cinema Mode (H)">Cinema [H]</button>
+  </div>
+
+  <!-- Cinema Mode Restore -->
+  <button id="btn-zen-restore" class="bar-btn panel zen-restore">Exit Cinema [H]</button>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // =========================================================================
+  // DOM & CANVAS REFERENCES
+  // =========================================================================
+  const canvas = document.getElementById('sim-canvas');
+  const ctx = canvas.getContext('2d');
+  const laCanvas = document.getElementById('la-canvas');
+  const laCtx = laCanvas.getContext('2d');
+
+  const els = {
+    modeBadge: document.getElementById('mode-badge'),
+    simStatus: document.getElementById('sim-status'),
+    telCircuit: document.getElementById('tel-circuit'),
+    telClk: document.getElementById('tel-clk'),
+    telTpd: document.getElementById('tel-tpd'),
+    telGates: document.getElementById('tel-gates'),
+    telTrans: document.getElementById('tel-trans'),
+    telTime: document.getElementById('tel-time'),
+    telIo: document.getElementById('tel-io'),
+    laPanel: document.getElementById('la-panel'),
+    laScale: document.getElementById('la-scale'),
+    btnLaHold: document.getElementById('btn-la-hold'),
+    btnLaClear: document.getElementById('btn-la-clear'),
+    toast: document.getElementById('toast-banner'),
+    drawer: document.getElementById('drawer'),
+    presetGrid: document.getElementById('preset-grid'),
+    ctxAlu: document.getElementById('ctx-alu'),
+    ctxCmos: document.getElementById('ctx-cmos'),
+    ctxShift: document.getElementById('ctx-shift'),
+    ctxDecmux: document.getElementById('ctx-decmux'),
+    aluModeLbl: document.getElementById('alu-mode-lbl'),
+    btnAluAdd: document.getElementById('btn-alu-add'),
+    btnAluSub: document.getElementById('btn-alu-sub'),
+    btnAluRipple: document.getElementById('btn-alu-ripple'),
+    btnAluRand: document.getElementById('btn-alu-rand'),
+    cmosTypeLbl: document.getElementById('cmos-type-lbl'),
+    btnCmosA: document.getElementById('btn-cmos-a'),
+    btnCmosB: document.getElementById('btn-cmos-b'),
+    btnShiftBit: document.getElementById('btn-shift-bit'),
+    btnShiftPattern: document.getElementById('btn-shift-pattern'),
+    btnModeDec: document.getElementById('btn-mode-dec'),
+    btnModeMux: document.getElementById('btn-mode-mux'),
+    clkStateLbl: document.getElementById('clk-state-lbl'),
+    slTpd: document.getElementById('sl-tpd'),
+    valTpd: document.getElementById('val-tpd'),
+    chkAutoClk: document.getElementById('chk-autoclk'),
+    slFreq: document.getElementById('sl-freq'),
+    valFreq: document.getElementById('val-freq'),
+    btnDrawerPulse: document.getElementById('btn-drawer-pulse'),
+    btnDrawerReset: document.getElementById('btn-drawer-reset'),
+    toolRow: document.getElementById('tool-row'),
+    toolHint: document.getElementById('tool-hint'),
+    paletteGrid: document.getElementById('palette-grid'),
+    btnSbStarter: document.getElementById('btn-sb-starter'),
+    btnSbClear: document.getElementById('btn-sb-clear'),
+    chkPulses: document.getElementById('chk-pulses'),
+    chkBadges: document.getElementById('chk-badges'),
+    chkGrid: document.getElementById('chk-grid'),
+    chkLa: document.getElementById('chk-la'),
+    archNotes: document.getElementById('arch-notes'),
+    btnPlay: document.getElementById('btn-play'),
+    btnStepClk: document.getElementById('btn-step-clk'),
+    btnReset: document.getElementById('btn-reset'),
+    btnFit: document.getElementById('btn-fit'),
+    btnAudio: document.getElementById('btn-audio'),
+    btnDrawer: document.getElementById('btn-drawer'),
+    btnCinema: document.getElementById('btn-cinema'),
+    btnZenRestore: document.getElementById('btn-zen-restore')
+  };
+
+  // =========================================================================
+  // WEB AUDIO ENGINE (MUTED BY DEFAULT)
+  // =========================================================================
+  const AudioEngine = {
+    enabled: false,
+    ctx: null,
+    lastTickMs: 0,
+    init() {
+      if (!this.ctx) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (AC) this.ctx = new AC();
+      }
+      if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
+    },
+    playTone(f0, f1, dur, gainVal, type = 'triangle') {
+      if (!this.enabled) return;
+      const nowMs = performance.now();
+      if (nowMs - this.lastTickMs < 42) return;
+      this.lastTickMs = nowMs;
+      this.init();
+      if (!this.ctx) return;
+      const t = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const g = this.ctx.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(f0, t);
+      osc.frequency.exponentialRampToValueAtTime(Math.max(40, f1), t + dur);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.linearRampToValueAtTime(gainVal, t + 0.005);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      osc.connect(g);
+      g.connect(this.ctx.destination);
+      osc.start(t);
+      osc.stop(t + dur + 0.01);
+    },
+    clockTick(high) {
+      this.playTone(high ? 1180 : 760, high ? 960 : 540, 0.024, 0.032, 'sine');
+    },
+    switchFlip(val) {
+      if (val) this.playTone(620, 920, 0.045, 0.045, 'triangle');
+      else this.playTone(540, 360, 0.045, 0.04, 'triangle');
+    },
+    wireConnect() {
+      this.playTone(720, 1120, 0.06, 0.045, 'sine');
+    }
+  };
+
+  // =========================================================================
+  // GLOBAL SIMULATION STATE
+  // =========================================================================
+  const state = {
+    preset: 'alu4',
+    running: true,
+    tpdNs: 25,           // gate propagation delay in nanoseconds (5..120)
+    autoClk: false,
+    clkFreq: 1.4,        // Hz
+    clkPhase: 0,
+    clkVal: 0,
+    manualPulseTimer: 0,
+    simTimeNs: 0,
+    visualSecPerNs: 0.0068, // 25 ns -> ~0.17s crisp observable propagation!
+    showPulses: true,
+    showBadges: true,
+    showGrid: true,
+    showLa: true,
+    laHold: false,
+    drawerOpen: true,
+    cinemaMode: false,
+
+    // Sub-modes
+    cmosType: 'NAND',    // NAND | NOR | NOT
+    decmuxMode: 'DEC',   // DEC | MUX
+
+    // Shift register pattern injection queue
+    shiftQueue: [],
+
+    // Sandbox tool
+    tool: 'interact',    // interact | wire | delete
+    placeType: null,     // e.g. 'AND', 'SWITCH'
+
+    // Camera
+    camX: 0,
+    camY: 0,
+    zoom: 1,
+
+    // Graph
+    nodes: [],
+    wires: [],
+    nextId: 1,
+    groups: [],          // Optional visual bounding boxes (e.g. Full Adder slices)
+
+    // CMOS dedicated physics state
+    cmos: {
+      a: 1,
+      b: 0,
+      vOut: 1.0,         // normalized 0..1 (0..5V)
+      targetOut: 1,
+      iSpike: 0,         // 0..1 dynamic switching current spike
+      chargeDir: 0,      // +1 charging from VDD, -1 discharging to GND
+      particles: []
+    },
+
+    // Telemetry counters
+    transHistory: [],    // timestamps (ms) of recent transitions for transitions/sec
+    laSamples: [],       // ring buffer of { t, vals: [...], edge: bool }
+    laChannels: [],      // [{ name, color, getVal }]
+    laSampleAcc: 0,
+
+    // Interaction state
+    hoverNode: null,
+    hoverPin: null,      // { node, kind: 'in'|'out', idx, wx, wy }
+    hoverWire: null,
+    wiringFrom: null,    // { node, pinIdx }
+    dragNode: null,
+    dragOffset: { x: 0, y: 0 },
+    dragMoved: false,
+    panning: false,
+    panStart: { sx: 0, sy: 0, cx: 0, cy: 0 },
+    mouseWorld: { x: 0, y: 0 },
+    mouseScreen: { x: 0, y: 0 }
+  };
+
+  let toastTimer = null;
+  function showToast(msg) {
+    els.toast.textContent = msg;
+    els.toast.classList.add('visible');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => els.toast.classList.remove('visible'), 2100);
+  }
+
+  // =========================================================================
+  // NODE FACTORY & PIN GEOMETRY
+  // =========================================================================
+  const COMP_SPECS = {
+    SWITCH: { w: 62, h: 36, ins: [], outs: ['OUT'] },
+    CLOCK:  { w: 68, h: 42, ins: [], outs: ['CLK'] },
+    LED:    { w: 46, h: 38, ins: ['IN'], outs: [] },
+    HEX7:   { w: 94, h: 122, ins: ['B0', 'B1', 'B2', 'B3', 'DP'], outs: [] },
+    NOT:    { w: 64, h: 40, ins: ['A'], outs: ['Y'] },
+    AND:    { w: 72, h: 46, ins: ['A', 'B'], outs: ['Y'] },
+    AND3:   { w: 74, h: 54, ins: ['A', 'B', 'C'], outs: ['Y'] },
+    OR:     { w: 72, h: 46, ins: ['A', 'B'], outs: ['Y'] },
+    OR4:    { w: 78, h: 66, ins: ['A', 'B', 'C', 'D'], outs: ['Y'] },
+    NAND:   { w: 76, h: 46, ins: ['A', 'B'], outs: ['Y'] },
+    NOR:    { w: 76, h: 46, ins: ['A', 'B'], outs: ['Y'] },
+    XOR:    { w: 76, h: 46, ins: ['A', 'B'], outs: ['Y'] },
+    DFF:    { w: 86, h: 78, ins: ['D', 'CLK'], outs: ['Q', 'Q̄'] },
+    TFF:    { w: 86, h: 78, ins: ['T', 'CLK'], outs: ['Q', 'Q̄'] }
+  };
+
+  function makeNode(type, x, y, opts = {}) {
+    const spec = COMP_SPECS[type] || COMP_SPECS.AND;
+    const id = opts.id || `${type}_${state.nextId++}`;
+    const w = opts.w || spec.w;
+    const h = opts.h || spec.h;
+    const ins = spec.ins.map((name, i) => ({
+      name,
+      val: opts.initIn ? (opts.initIn[i] || 0) : 0,
+      rx: -w / 2,
+      ry: spec.ins.length === 1 ? 0 : (-h * 0.34 + (i / (spec.ins.length - 1)) * (h * 0.68))
+    }));
+    const outs = spec.outs.map((name, i) => {
+      let initV = 0;
+      if (opts.initOut && opts.initOut[i] !== undefined) initV = opts.initOut[i];
+      else if (type === 'SWITCH') initV = opts.val ? 1 : 0;
+      else if ((type === 'DFF' || type === 'TFF') && i === 1) initV = opts.initQ ? 0 : 1;
+      else if ((type === 'DFF' || type === 'TFF') && i === 0) initV = opts.initQ ? 1 : 0;
+      return {
+        name,
+        val: initV,
+        scheduledVal: initV,
+        delayLeft: 0,
+        rx: w / 2,
+        ry: spec.outs.length === 1 ? 0 : (-h * 0.25 + (i / (spec.outs.length - 1)) * (h * 0.5))
+      };
+    });
+
+    const node = {
+      id,
+      type,
+      x,
+      y,
+      w,
+      h,
+      label: opts.label !== undefined ? opts.label : (type === 'SWITCH' ? 'SW' : type === 'LED' ? 'LED' : type === 'HEX7' ? 'HEX' : type),
+      sublabel: opts.sublabel || '',
+      ledColor: opts.ledColor || 'mint', // mint | cyan | amber | rose
+      val: opts.val ? 1 : 0,
+      q: opts.initQ ? 1 : 0,
+      prevClk: 0,
+      ins,
+      outs,
+      flash: 0,
+      moved: false
+    };
+    state.nodes.push(node);
+    return node;
+  }
+
+  function getNodeById(id) {
+    return state.nodes.find(n => n.id === id) || null;
+  }
+
+  function getPinPos(node, kind, idx) {
+    const p = kind === 'in' ? node.ins[idx] : node.outs[idx];
+    return { x: node.x + p.rx, y: node.y + p.ry };
+  }
+
+  function connect(fromId, fromPin, toId, toPin, opts = {}) {
+    // Remove any existing wire into the same input pin
+    state.wires = state.wires.filter(w => !(w.toId === toId && w.toPin === toPin));
+    const src = getNodeById(fromId);
+    const dst = getNodeById(toId);
+    if (!src || !dst) return null;
+    const initVal = src.outs[fromPin] ? src.outs[fromPin].val : 0;
+    const wire = {
+      id: `W_${state.nextId++}`,
+      fromId,
+      fromPin,
+      toId,
+      toPin,
+      destVal: initVal,
+      pulses: [],
+      bendX: opts.bendX !== undefined ? opts.bendX : null,
+      fbOffset: opts.fbOffset !== undefined ? opts.fbOffset : 0,
+      customPath: opts.customPath || null,
+      colorHint: opts.colorHint || null // e.g. 'amber' for CLK, 'rose' for Carry
+    };
+    if (dst.ins[toPin]) dst.ins[toPin].val = initVal;
+    state.wires.push(wire);
+    return wire;
+  }
+
+  // =========================================================================
+  // GATE LOGIC EVALUATION & PROPAGATION ENGINE
+  // =========================================================================
+  function evalCombinational(node) {
+    const a = node.ins[0] ? node.ins[0].val : 0;
+    const b = node.ins[1] ? node.ins[1].val : 0;
+    const c = node.ins[2] ? node.ins[2].val : 0;
+    const d = node.ins[3] ? node.ins[3].val : 0;
+    switch (node.type) {
+      case 'NOT':  return [a ? 0 : 1];
+      case 'AND':  return [(a && b) ? 1 : 0];
+      case 'AND3': return [(a && b && c) ? 1 : 0];
+      case 'OR':   return [(a || b) ? 1 : 0];
+      case 'OR4':  return [(a || b || c || d) ? 1 : 0];
+      case 'NAND': return [(a && b) ? 0 : 1];
+      case 'NOR':  return [(a || b) ? 0 : 1];
+      case 'XOR':  return [(a ^ b) ? 1 : 0];
+      default:     return null;
+    }
+  }
+
+  function recordTransition() {
+    state.transHistory.push(performance.now());
+  }
+
+  function launchWavefront(node, outIdx, newVal) {
+    const outPin = node.outs[outIdx];
+    if (outPin.val === newVal) return;
+    outPin.val = newVal;
+    node.flash = 1.0;
+    recordTransition();
+    for (let i = 0; i < state.wires.length; i++) {
+      const w = state.wires[i];
+      if (w.fromId === node.id && w.fromPin === outIdx) {
+        w.pulses.push({ val: newVal, progress: 0 });
+      }
+    }
+  }
+
+  function scheduleOutput(node, outIdx, targetVal, gateDelaySec) {
+    const outPin = node.outs[outIdx];
+    if (targetVal === outPin.scheduledVal) return;
+    outPin.scheduledVal = targetVal;
+    if (gateDelaySec <= 0.0005) {
+      outPin.delayLeft = 0;
+      launchWavefront(node, outIdx, targetVal);
+    } else {
+      outPin.delayLeft = gateDelaySec;
+    }
+  }
+
+  function settleCircuitInstant(iterations = 18) {
+    // Propagate steady state immediately on preset load (except Ring Oscillator)
+    for (let iter = 0; iter < iterations; iter++) {
+      for (const n of state.nodes) {
+        if (n.type === 'SWITCH') {
+          n.outs[0].val = n.val;
+          n.outs[0].scheduledVal = n.val;
+          n.outs[0].delayLeft = 0;
+        } else if (n.type === 'CLOCK') {
+          n.outs[0].val = state.clkVal;
+          n.outs[0].scheduledVal = state.clkVal;
+          n.outs[0].delayLeft = 0;
+        } else if (n.type === 'DFF' || n.type === 'TFF') {
+          n.outs[0].val = n.q;
+          n.outs[0].scheduledVal = n.q;
+          n.outs[1].val = n.q ? 0 : 1;
+          n.outs[1].scheduledVal = n.q ? 0 : 1;
+          n.prevClk = n.ins[1].val;
+        } else {
+          const res = evalCombinational(n);
+          if (res) {
+            n.outs[0].val = res[0];
+            n.outs[0].scheduledVal = res[0];
+            n.outs[0].delayLeft = 0;
+          }
+        }
+      }
+      for (const w of state.wires) {
+        const src = getNodeById(w.fromId);
+        const dst = getNodeById(w.toId);
+        if (!src || !dst) continue;
+        const v = src.outs[w.fromPin].val;
+        w.destVal = v;
+        w.pulses = [];
+        dst.ins[w.toPin].val = v;
+      }
+    }
+  }
+
+  function triggerManualClockPulse() {
+    // Emit a clean rising edge followed by falling edge
+    state.clkVal = 1;
+    state.manualPulseTimer = Math.max(0.22, state.tpdNs * state.visualSecPerNs * 1.4);
+    AudioEngine.clockTick(true);
+    pushClockToNodes(1);
+    if (state.preset === 'shift4' && state.shiftQueue.length > 0) {
+      // Advance serial data after pulse finishes
+    }
+  }
+
+  function pushClockToNodes(val) {
+    for (const n of state.nodes) {
+      if (n.type === 'CLOCK') {
+        launchWavefront(n, 0, val);
+      }
+    }
+    els.clkStateLbl.textContent = val ? 'HIGH' : 'LOW';
+    els.clkStateLbl.style.color = val ? 'var(--accent-mint)' : 'var(--accent-amber)';
+  }
+
+  // =========================================================================
+  // 8 BUILT-IN CLASSIC DIGITAL ARCHITECTURE PRESETS
+  // =========================================================================
+  function clearGraph() {
+    state.nodes = [];
+    state.wires = [];
+    state.groups = [];
+    state.nextId = 1;
+    state.wiringFrom = null;
+    state.dragNode = null;
+    state.simTimeNs = 0;
+    state.laSamples = [];
+    state.shiftQueue = [];
+  }
+
+  // --- PRESET 1: 4-BIT RIPPLE-CARRY ADDER / ALU ---
+  function buildALU4() {
+    clearGraph();
+    state.autoClk = false;
+    els.chkAutoClk.checked = false;
+
+    const initA = [1, 0, 1, 0]; // A = 0101 (5) -> bit 0 is LSB (1)
+    const initB = [1, 1, 0, 0]; // B = 0011 (3) -> bit 0 is LSB (1)
+
+    // SUB control switch at top-left
+    makeNode('SWITCH', -430, -295, { id: 'SUB', label: 'SUB', val: 0 });
+
+    const sliceY = [-190, -55, 80, 215];
+    for (let i = 0; i < 4; i++) {
+      const y = sliceY[i];
+      state.groups.push({
+        x: -290, y: y - 56, w: 545, h: 112,
+        title: `FULL ADDER BIT ${i}${i === 0 ? ' (LSB)' : i === 3 ? ' (MSB)' : ''}`,
+        accent: i % 2 === 0 ? 'rgba(88,220,255,0.22)' : 'rgba(74,242,178,0.22)'
+      });
+
+      makeNode('SWITCH', -430, y - 24, { id: `A${i}`, label: `A${i}`, val: initA[i] });
+      makeNode('SWITCH', -430, y + 24, { id: `B${i}`, label: `B${i}`, val: initB[i] });
+
+      // B_i XOR SUB (2's complement conditional inverter)
+      makeNode('XOR', -230, y + 24, { id: `BX${i}`, label: 'XOR', w: 66, h: 38 });
+      // Half Adder 1: A_i XOR B'_i and A_i AND B'_i
+      makeNode('XOR', -95, y - 18, { id: `X1_${i}`, label: 'XOR', w: 66, h: 38 });
+      makeNode('AND', -95, y + 30, { id: `N1_${i}`, label: 'AND', w: 64, h: 38 });
+      // Half Adder 2: P_i XOR C_in and P_i AND C_in
+      makeNode('XOR', 55, y - 26, { id: `X2_${i}`, label: 'XOR', w: 66, h: 38 });
+      makeNode('AND', 55, y + 22, { id: `N2_${i}`, label: 'AND', w: 64, h: 38 });
+      // Carry OR
+      makeNode('OR', 195, y + 26, { id: `OR_${i}`, label: 'OR', w: 66, h: 38 });
+
+      // Sum LED
+      makeNode('LED', 330, y - 26, { id: `S${i}`, label: `S${i}`, ledColor: 'mint' });
+
+      // Internal wiring
+      connect(`B${i}`, 0, `BX${i}`, 0, { bendX: -320 });
+      connect('SUB', 0, `BX${i}`, 1, { bendX: -345, colorHint: 'amber' });
+
+      connect(`A${i}`, 0, `X1_${i}`, 0, { bendX: -162 });
+      connect(`BX${i}`, 0, `X1_${i}`, 1, { bendX: -152 });
+
+      connect(`A${i}`, 0, `N1_${i}`, 0, { bendX: -162 });
+      connect(`BX${i}`, 0, `N1_${i}`, 1, { bendX: -152 });
+
+      connect(`X1_${i}`, 0, `X2_${i}`, 0, { bendX: -20 });
+      connect(`X1_${i}`, 0, `N2_${i}`, 0, { bendX: -20 });
+
+      // Carry in: Bit 0 gets SUB, Bit i>0 gets OR_{i-1}
+      if (i === 0) {
+        connect('SUB', 0, `X2_0`, 1, { bendX: -8, colorHint: 'rose' });
+        connect('SUB', 0, `N2_0`, 1, { bendX: -8, colorHint: 'rose' });
+      } else {
+        const py = sliceY[i - 1] + 26;
+        const midY = (sliceY[i - 1] + sliceY[i]) / 2 + 8;
+        connect(`OR_${i - 1}`, 0, `X2_${i}`, 1, {
+          colorHint: 'rose',
+          customPath: [
+            { x: 245, y: py },
+            { x: 245, y: midY },
+            { x: -8, y: midY },
+            { x: -8, y: y - 13 }
+          ]
+        });
+        connect(`OR_${i - 1}`, 0, `N2_${i}`, 1, {
+          colorHint: 'rose',
+          customPath: [
+            { x: 245, y: py },
+            { x: 245, y: midY },
+            { x: -8, y: midY },
+            { x: -8, y: y + 35 }
+          ]
+        });
+      }
+
+      connect(`N2_${i}`, 0, `OR_${i}`, 0, { bendX: 125 });
+      connect(`N1_${i}`, 0, `OR_${i}`, 1, { bendX: 135 });
+      connect(`X2_${i}`, 0, `S${i}`, 0, { bendX: 280 });
+    }
+
+    // Carry Out LED + 7-Segment Hex Display
+    makeNode('LED', 330, 290, { id: 'COUT', label: 'C_OUT', ledColor: 'rose' });
+    connect('OR_3', 0, 'COUT', 0, { bendX: 270, colorHint: 'rose' });
+
+    makeNode('HEX7', 465, 10, { id: 'HEX', label: 'SUM HEX' });
+    connect('X2_0', 0, 'HEX', 0, { bendX: 382 });
+    connect('X2_1', 0, 'HEX', 1, { bendX: 392 });
+    connect('X2_2', 0, 'HEX', 2, { bendX: 392 });
+    connect('X2_3', 0, 'HEX', 3, { bendX: 382 });
+    connect('OR_3', 0, 'HEX', 4, { bendX: 372, colorHint: 'rose' });
+
+    settleCircuitInstant();
+    syncAluButtons();
+
+    state.laChannels = [
+      { name: 'S0', color: '#4af2b2', getVal: () => getNodeById('S0')?.ins[0].val || 0 },
+      { name: 'S1', color: '#58dcff', getVal: () => getNodeById('S1')?.ins[0].val || 0 },
+      { name: 'S2', color: '#6ee7ff', getVal: () => getNodeById('S2')?.ins[0].val || 0 },
+      { name: 'S3', color: '#a78bfa', getVal: () => getNodeById('S3')?.ins[0].val || 0 },
+      { name: 'C1', color: '#ffbe5c', getVal: () => getNodeById('OR_0')?.outs[0].val || 0 },
+      { name: 'COUT', color: '#ff6083', getVal: () => getNodeById('COUT')?.ins[0].val || 0 }
+    ];
+  }
+
+  // --- PRESET 2: CMOS TRANSISTOR-LEVEL X-RAY ---
+  function buildCMOS() {
+    clearGraph();
+    state.autoClk = false;
+    els.chkAutoClk.checked = false;
+    state.cmos.a = 1;
+    state.cmos.b = 0;
+    const out = evalCmosTarget();
+    state.cmos.targetOut = out;
+    state.cmos.vOut = out;
+    state.cmos.iSpike = 0;
+    state.cmos.particles = [];
+
+    state.laChannels = [
+      { name: 'IN A', color: '#58dcff', getVal: () => state.cmos.a },
+      { name: 'IN B', color: '#6ee7ff', getVal: () => state.cmosType === 'NOT' ? 0 : state.cmos.b },
+      { name: 'PMOS', color: '#a78bfa', getVal: () => cmosPunOn() ? 1 : 0 },
+      { name: 'NMOS', color: '#4af2b2', getVal: () => cmosPdnOn() ? 1 : 0 },
+      { name: 'OUT Y', color: '#4af2b2', getVal: () => state.cmos.vOut > 0.5 ? 1 : 0 },
+      { name: 'I_sw', color: '#ffbe5c', getVal: () => state.cmos.iSpike > 0.18 ? 1 : 0 }
+    ];
+  }
+
+  function cmosPunOn() {
+    const { a, b } = state.cmos;
+    if (state.cmosType === 'NOT') return !a;
+    if (state.cmosType === 'NAND') return (!a || !b);
+    return (!a && !b); // NOR: series PMOS
+  }
+  function cmosPdnOn() {
+    const { a, b } = state.cmos;
+    if (state.cmosType === 'NOT') return !!a;
+    if (state.cmosType === 'NAND') return (!!a && !!b); // NAND: series NMOS
+    return (!!a || !!b); // NOR: parallel NMOS
+  }
+  function evalCmosTarget() {
+    return cmosPunOn() ? 1 : 0;
+  }
+
+  // --- PRESET 3: SR & D FLIP-FLOP MEMORY CELL ---
+  function buildLatch() {
+    clearGraph();
+    state.autoClk = false;
+    els.chkAutoClk.checked = false;
+
+    // Group 1: Cross-Coupled NOR SR Latch
+    state.groups.push({
+      x: -360, y: -235, w: 720, h: 195,
+      title: 'CROSS-COUPLED NOR SR LATCH (1-BIT FEEDBACK MEMORY)',
+      accent: 'rgba(74,242,178,0.26)'
+    });
+    makeNode('SWITCH', -300, -180, { id: 'RST', label: 'RESET', val: 0 });
+    makeNode('SWITCH', -300, -90, { id: 'SET', label: 'SET', val: 0 });
+    makeNode('NOR', -40, -172, { id: 'NOR_Q', label: 'NOR', initOut: [0] });
+    makeNode('NOR', -40, -98, { id: 'NOR_QB', label: 'NOR', initOut: [1] });
+    makeNode('LED', 270, -172, { id: 'SR_Q', label: 'Q', ledColor: 'mint' });
+    makeNode('LED', 270, -98, { id: 'SR_QB', label: 'Q̄', ledColor: 'rose' });
+
+    connect('RST', 0, 'NOR_Q', 0, { bendX: -180 });
+    connect('SET', 0, 'NOR_QB', 1, { bendX: -180 });
+    // Cross-coupled feedback loops
+    connect('NOR_QB', 0, 'NOR_Q', 1, {
+      colorHint: 'cyan',
+      customPath: [{ x: 60, y: -98 }, { x: 60, y: -124 }, { x: -118, y: -150 }, { x: -118, y: -158 }]
+    });
+    connect('NOR_Q', 0, 'NOR_QB', 0, {
+      colorHint: 'mint',
+      customPath: [{ x: 88, y: -172 }, { x: 88, y: -146 }, { x: -138, y: -120 }, { x: -138, y: -112 }]
+    });
+    connect('NOR_Q', 0, 'SR_Q', 0, { bendX: 165 });
+    connect('NOR_QB', 0, 'SR_QB', 0, { bendX: 165 });
+
+    // Group 2: Gated D-Latch (NAND Implementation)
+    state.groups.push({
+      x: -360, y: 0, w: 720, h: 225,
+      title: 'GATED D-LATCH (TRANSPARENT WHEN CLK=1, HOLDS WHEN CLK=0)',
+      accent: 'rgba(88,220,255,0.26)'
+    });
+    makeNode('SWITCH', -300, 62, { id: 'D_IN', label: 'DATA', val: 1 });
+    makeNode('CLOCK', -300, 148, { id: 'D_CLK', label: 'CLK' });
+    makeNode('NOT', -195, 185, { id: 'D_NOT', label: 'NOT', w: 58, h: 36, initOut: [0] });
+
+    makeNode('NAND', -85, 74, { id: 'DN1', label: 'NAND', initOut: [1] });
+    makeNode('NAND', -85, 174, { id: 'DN2', label: 'NAND', initOut: [1] });
+
+    makeNode('NAND', 85, 86, { id: 'DL_Q', label: 'NAND', initOut: [0] });
+    makeNode('NAND', 85, 164, { id: 'DL_QB', label: 'NAND', initOut: [1] });
+
+    makeNode('LED', 270, 86, { id: 'D_Q', label: 'Q_D', ledColor: 'cyan' });
+    makeNode('LED', 270, 164, { id: 'D_QB', label: 'Q̄_D', ledColor: 'rose' });
+
+    connect('D_IN', 0, 'DN1', 0, { bendX: -225 });
+    connect('D_IN', 0, 'D_NOT', 0, { bendX: -245 });
+    connect('D_NOT', 0, 'DN2', 1, { bendX: -145 });
+    connect('D_CLK', 0, 'DN1', 1, { bendX: -165, colorHint: 'amber' });
+    connect('D_CLK', 0, 'DN2', 0, { bendX: -165, colorHint: 'amber' });
+
+    connect('DN1', 0, 'DL_Q', 0, { bendX: 0 });
+    connect('DN2', 0, 'DL_QB', 1, { bendX: 0 });
+    connect('DL_QB', 0, 'DL_Q', 1, {
+      colorHint: 'cyan',
+      customPath: [{ x: 175, y: 164 }, { x: 175, y: 138 }, { x: 14, y: 112 }, { x: 14, y: 100 }]
+    });
+    connect('DL_Q', 0, 'DL_QB', 0, {
+      colorHint: 'mint',
+      customPath: [{ x: 196, y: 86 }, { x: 196, y: 112 }, { x: -4, y: 138 }, { x: -4, y: 150 }]
+    });
+    connect('DL_Q', 0, 'D_Q', 0, { bendX: 225 });
+    connect('DL_QB', 0, 'D_QB', 0, { bendX: 225 });
+
+    // Initialize NOR latch Q=0, QB=1 and D latch Q=0, QB=1 cleanly
+    settleCircuitInstant(2);
+    // Keep cross-coupled bistable state stable
+    const norQ = getNodeById('NOR_Q'); const norQB = getNodeById('NOR_QB');
+    norQ.outs[0].val = 0; norQ.outs[0].scheduledVal = 0;
+    norQB.outs[0].val = 1; norQB.outs[0].scheduledVal = 1;
+    const dlQ = getNodeById('DL_Q'); const dlQB = getNodeById('DL_QB');
+    dlQ.outs[0].val = 0; dlQ.outs[0].scheduledVal = 0;
+    dlQB.outs[0].val = 1; dlQB.outs[0].scheduledVal = 1;
+    settleCircuitInstant(6);
+
+    state.laChannels = [
+      { name: 'SET', color: '#4af2b2', getVal: () => getNodeById('SET')?.val || 0 },
+      { name: 'RST', color: '#ff6083', getVal: () => getNodeById('RST')?.val || 0 },
+      { name: 'SR_Q', color: '#58dcff', getVal: () => getNodeById('SR_Q')?.ins[0].val || 0 },
+      { name: 'D_IN', color: '#a78bfa', getVal: () => getNodeById('D_IN')?.val || 0 },
+      { name: 'CLK', color: '#ffbe5c', getVal: () => state.clkVal },
+      { name: 'D_Q', color: '#4af2b2', getVal: () => getNodeById('D_Q')?.ins[0].val || 0 }
+    ];
+  }
+
+  // --- PRESET 4: 4-BIT ASYNCHRONOUS BINARY COUNTER ---
+  function buildCounter4() {
+    clearGraph();
+    state.autoClk = true;
+    state.clkFreq = 1.6;
+    els.chkAutoClk.checked = true;
+    els.slFreq.value = '1.6';
+    els.valFreq.textContent = '1.6 Hz';
+
+    state.groups.push({
+      x: -440, y: -155, w: 880, h: 315,
+      title: '4-BIT ASYNCHRONOUS RIPPLE COUNTER (FREQUENCY DIVIDER /2, /4, /8, /16)',
+      accent: 'rgba(88,220,255,0.22)'
+    });
+
+    makeNode('CLOCK', -380, 20, { id: 'CLK', label: 'CLK' });
+    makeNode('SWITCH', -380, -78, { id: 'EN', label: 'COUNT', val: 1 });
+
+    const xs = [-215, -60, 95, 250];
+    const divLabels = ['/2 (Q0)', '/4 (Q1)', '/8 (Q2)', '/16 (Q3)'];
+    for (let i = 0; i < 4; i++) {
+      makeNode('TFF', xs[i], 0, { id: `FF${i}`, label: `T-FF ${i}`, sublabel: divLabels[i] });
+      makeNode('LED', xs[i], -108, { id: `Q${i}`, label: `Q${i}`, ledColor: i === 3 ? 'amber' : 'mint' });
+
+      connect('EN', 0, `FF${i}`, 0, { bendX: xs[i] - 66 });
+      connect(`FF${i}`, 0, `Q${i}`, 0, {
+        customPath: [{ x: xs[i] + 58, y: -20 }, { x: xs[i] + 58, y: -64 }, { x: xs[i] - 42, y: -64 }, { x: xs[i] - 42, y: -108 }]
+      });
+
+      if (i === 0) {
+        connect('CLK', 0, 'FF0', 1, { bendX: -295, colorHint: 'amber' });
+      } else {
+        // Connect Q̄ of stage i-1 to CLK of stage i (classic ripple counter!)
+        connect(`FF${i - 1}`, 1, `FF${i}`, 1, { bendX: (xs[i - 1] + xs[i]) / 2, colorHint: 'amber' });
+      }
+    }
+
+    makeNode('HEX7', 385, 0, { id: 'HEX', label: 'COUNT' });
+    for (let i = 0; i < 4; i++) {
+      const yBus = 74 + i * 16;
+      connect(`FF${i}`, 0, 'HEX', i, {
+        customPath: [
+          { x: xs[i] + 58, y: -20 },
+          { x: xs[i] + 58, y: yBus },
+          { x: 320, y: yBus }
+        ]
+      });
+    }
+
+    settleCircuitInstant();
+
+    state.laChannels = [
+      { name: 'CLK', color: '#ffbe5c', getVal: () => state.clkVal },
+      { name: 'Q0 /2', color: '#4af2b2', getVal: () => getNodeById('FF0')?.outs[0].val || 0 },
+      { name: 'Q1 /4', color: '#58dcff', getVal: () => getNodeById('FF1')?.outs[0].val || 0 },
+      { name: 'Q2 /8', color: '#6ee7ff', getVal: () => getNodeById('FF2')?.outs[0].val || 0 },
+      { name: 'Q3/16', color: '#a78bfa', getVal: () => getNodeById('FF3')?.outs[0].val || 0 }
+    ];
+  }
+
+  // --- PRESET 5: 4-BIT SHIFT REGISTER (SIPO) ---
+  function buildShift4() {
+    clearGraph();
+    state.autoClk = true;
+    state.clkFreq = 1.2;
+    els.chkAutoClk.checked = true;
+    els.slFreq.value = '1.2';
+    els.valFreq.textContent = '1.2 Hz';
+
+    state.groups.push({
+      x: -440, y: -155, w: 880, h: 315,
+      title: '4-BIT SERIAL-IN PARALLEL-OUT (SIPO) SHIFT REGISTER',
+      accent: 'rgba(74,242,178,0.22)'
+    });
+
+    makeNode('SWITCH', -380, -25, { id: 'DIN', label: 'D_IN', val: 1 });
+    makeNode('CLOCK', -380, 62, { id: 'CLK', label: 'CLK' });
+
+    const xs = [-215, -60, 95, 250];
+    for (let i = 0; i < 4; i++) {
+      makeNode('DFF', xs[i], 0, { id: `FF${i}`, label: `D-FF ${i}`, sublabel: `BIT ${i}` });
+      makeNode('LED', xs[i], -108, { id: `Q${i}`, label: `Q${i}`, ledColor: 'cyan' });
+
+      connect(`FF${i}`, 0, `Q${i}`, 0, {
+        customPath: [{ x: xs[i] + 58, y: -20 }, { x: xs[i] + 58, y: -64 }, { x: xs[i] - 42, y: -64 }, { x: xs[i] - 42, y: -108 }]
+      });
+      connect('CLK', 0, `FF${i}`, 1, {
+        colorHint: 'amber',
+        customPath: [{ x: -320, y: 62 }, { x: -320, y: 62 }, { x: xs[i] - 62, y: 62 }, { x: xs[i] - 62, y: 26 }]
+      });
+
+      if (i === 0) {
+        connect('DIN', 0, 'FF0', 0, { bendX: -295 });
+      } else {
+        connect(`FF${i - 1}`, 0, `FF${i}`, 0, { bendX: (xs[i - 1] + xs[i]) / 2 });
+      }
+    }
+
+    makeNode('HEX7', 385, 0, { id: 'HEX', label: 'REG HEX' });
+    for (let i = 0; i < 4; i++) {
+      const yBus = 82 + i * 15;
+      connect(`FF${i}`, 0, 'HEX', i, {
+        customPath: [
+          { x: xs[i] + 58, y: -20 },
+          { x: xs[i] + 58, y: yBus },
+          { x: 320, y: yBus }
+        ]
+      });
+    }
+
+    settleCircuitInstant();
+
+    state.laChannels = [
+      { name: 'CLK', color: '#ffbe5c', getVal: () => state.clkVal },
+      { name: 'D_IN', color: '#ff6083', getVal: () => getNodeById('DIN')?.val || 0 },
+      { name: 'Q0', color: '#4af2b2', getVal: () => getNodeById('FF0')?.outs[0].val || 0 },
+      { name: 'Q1', color: '#58dcff', getVal: () => getNodeById('FF1')?.outs[0].val || 0 },
+      { name: 'Q2', color: '#6ee7ff', getVal: () => getNodeById('FF2')?.outs[0].val || 0 },
+      { name: 'Q3', color: '#a78bfa', getVal: () => getNodeById('FF3')?.outs[0].val || 0 }
+    ];
+  }
+
+  // --- PRESET 6: RING OSCILLATOR (3-INVERTER FEEDBACK LOOP) ---
+  function buildRingOsc() {
+    clearGraph();
+    state.autoClk = false;
+    els.chkAutoClk.checked = false;
+
+    state.groups.push({
+      x: -360, y: -175, w: 720, h: 330,
+      title: '3-STAGE RING OSCILLATOR (SELF-CLOCKING VIA ODD INVERTER PROPAGATION DELAY)',
+      accent: 'rgba(255,190,92,0.26)'
+    });
+
+    makeNode('SWITCH', -310, -40, { id: 'EN', label: 'ENABLE', val: 1 });
+    makeNode('NAND', -160, -24, { id: 'INV1', label: 'INV 1', initOut: [1] });
+    makeNode('NOT', 15, -24, { id: 'INV2', label: 'INV 2', initOut: [0] });
+    makeNode('NOT', 180, -24, { id: 'INV3', label: 'INV 3', initOut: [1] });
+
+    makeNode('LED', -80, -120, { id: 'L1', label: 'φ1', ledColor: 'mint' });
+    makeNode('LED', 95, -120, { id: 'L2', label: 'φ2', ledColor: 'cyan' });
+    makeNode('LED', 295, -24, { id: 'L3', label: 'OUT φ3', ledColor: 'amber' });
+
+    connect('EN', 0, 'INV1', 0, { bendX: -240 });
+    connect('INV1', 0, 'INV2', 0, { bendX: -72 });
+    connect('INV2', 0, 'INV3', 0, { bendX: 98 });
+
+    // Feedback wire looping underneath from INV3 back to INV1 input 1
+    connect('INV3', 0, 'INV1', 1, {
+      colorHint: 'amber',
+      customPath: [
+        { x: 245, y: -24 },
+        { x: 245, y: 105 },
+        { x: -235, y: 105 },
+        { x: -235, y: -8 }
+      ]
+    });
+
+    connect('INV1', 0, 'L1', 0, { customPath: [{ x: -102, y: -24 }, { x: -102, y: -120 }] });
+    connect('INV2', 0, 'L2', 0, { customPath: [{ x: 68, y: -24 }, { x: 68, y: -120 }] });
+    connect('INV3', 0, 'L3', 0, { bendX: 255 });
+
+    // Seed an asymmetric state so oscillation starts cleanly on frame 1!
+    getNodeById('INV1').ins[0].val = 1;
+    getNodeById('INV1').ins[1].val = 1;
+    getNodeById('INV1').outs[0].val = 1;
+    getNodeById('INV2').ins[0].val = 1;
+    getNodeById('INV2').outs[0].val = 0;
+    getNodeById('INV3').ins[0].val = 0;
+    getNodeById('INV3').outs[0].val = 1;
+    // Trigger initial pulse on feedback
+    for (const w of state.wires) {
+      const s = getNodeById(w.fromId);
+      w.destVal = s.outs[w.fromPin].val;
+    }
+
+    state.laChannels = [
+      { name: 'EN', color: '#68789c', getVal: () => getNodeById('EN')?.val || 0 },
+      { name: 'NODE φ1', color: '#4af2b2', getVal: () => getNodeById('INV1')?.outs[0].val || 0 },
+      { name: 'NODE φ2', color: '#58dcff', getVal: () => getNodeById('INV2')?.outs[0].val || 0 },
+      { name: 'OUT φ3', color: '#ffbe5c', getVal: () => getNodeById('INV3')?.outs[0].val || 0 }
+    ];
+  }
+
+  // --- PRESET 7: 2-TO-4 DECODER / 4-TO-1 MULTIPLEXER ---
+  function buildDecMux() {
+    clearGraph();
+    state.autoClk = false;
+    els.chkAutoClk.checked = false;
+
+    if (state.decmuxMode === 'DEC') {
+      state.groups.push({
+        x: -340, y: -225, w: 690, h: 455,
+        title: '2-TO-4 BINARY DECODER (ONE-HOT LINE SELECTOR)',
+        accent: 'rgba(74,242,178,0.24)'
+      });
+
+      makeNode('SWITCH', -280, -140, { id: 'S1', label: 'S1 (MSB)', val: 0 });
+      makeNode('SWITCH', -280, -25, { id: 'S0', label: 'S0 (LSB)', val: 1 });
+      makeNode('SWITCH', -280, 115, { id: 'EN', label: 'ENABLE', val: 1 });
+
+      makeNode('NOT', -150, -90, { id: 'NS1', label: 'NOT', w: 58, h: 34 });
+      makeNode('NOT', -150, 25, { id: 'NS0', label: 'NOT', w: 58, h: 34 });
+
+      const ys = [-160, -55, 50, 155];
+      for (let i = 0; i < 4; i++) {
+        makeNode('AND3', 55, ys[i], { id: `A${i}`, label: `AND ${i}` });
+        makeNode('LED', 185, ys[i], { id: `Y${i}`, label: `Y${i}`, ledColor: 'mint' });
+
+        const s1Src = (i & 2) ? 'S1' : 'NS1';
+        const s0Src = (i & 1) ? 'S0' : 'NS0';
+        connect(s1Src, 0, `A${i}`, 0, { bendX: -65 + (i & 2 ? -18 : 0) });
+        connect(s0Src, 0, `A${i}`, 1, { bendX: -40 + (i & 1 ? -14 : 0) });
+        connect('EN', 0, `A${i}`, 2, { bendX: -20, colorHint: 'amber' });
+        connect(`A${i}`, 0, `Y${i}`, 0, { bendX: 125 });
+      }
+      connect('S1', 0, 'NS1', 0, { bendX: -210 });
+      connect('S0', 0, 'NS0', 0, { bendX: -210 });
+
+      makeNode('HEX7', 295, 0, { id: 'HEX', label: 'INDEX' });
+      connect('S0', 0, 'HEX', 0, { bendX: 230 });
+      connect('S1', 0, 'HEX', 1, { bendX: 240 });
+      connect('EN', 0, 'HEX', 4, { bendX: 220, colorHint: 'amber' });
+
+      settleCircuitInstant();
+      state.laChannels = [
+        { name: 'S1', color: '#ffbe5c', getVal: () => getNodeById('S1')?.val || 0 },
+        { name: 'S0', color: '#58dcff', getVal: () => getNodeById('S0')?.val || 0 },
+        { name: 'Y0', color: '#4af2b2', getVal: () => getNodeById('Y0')?.ins[0].val || 0 },
+        { name: 'Y1', color: '#4af2b2', getVal: () => getNodeById('Y1')?.ins[0].val || 0 },
+        { name: 'Y2', color: '#4af2b2', getVal: () => getNodeById('Y2')?.ins[0].val || 0 },
+        { name: 'Y3', color: '#4af2b2', getVal: () => getNodeById('Y3')?.ins[0].val || 0 }
+      ];
+    } else {
+      // 4-to-1 Multiplexer
+      state.groups.push({
+        x: -360, y: -235, w: 720, h: 470,
+        title: '4-TO-1 DATA MULTIPLEXER (ROUTES D[S1:S0] → Y)',
+        accent: 'rgba(88,220,255,0.24)'
+      });
+
+      const ys = [-165, -75, 15, 105];
+      const initD = [0, 1, 0, 1];
+      for (let i = 0; i < 4; i++) {
+        makeNode('SWITCH', -295, ys[i], { id: `D${i}`, label: `D${i}`, val: initD[i] });
+        makeNode('AND3', 15, ys[i], { id: `M${i}`, label: `SEL ${i}` });
+        connect(`D${i}`, 0, `M${i}`, 0, { bendX: -180 });
+      }
+
+      makeNode('SWITCH', -295, 185, { id: 'S1', label: 'S1', val: 0 });
+      makeNode('SWITCH', -195, 185, { id: 'S0', label: 'S0', val: 1 });
+      makeNode('NOT', -110, 162, { id: 'NS1', label: 'NOT', w: 54, h: 32 });
+      makeNode('NOT', -110, 206, { id: 'NS0', label: 'NOT', w: 54, h: 32 });
+      connect('S1', 0, 'NS1', 0, { bendX: -240 });
+      connect('S0', 0, 'NS0', 0, { bendX: -152 });
+
+      for (let i = 0; i < 4; i++) {
+        const s1Src = (i & 2) ? 'S1' : 'NS1';
+        const s0Src = (i & 1) ? 'S0' : 'NS0';
+        connect(s1Src, 0, `M${i}`, 1, { bendX: -58, colorHint: 'amber' });
+        connect(s0Src, 0, `M${i}`, 2, { bendX: -42, colorHint: 'cyan' });
+      }
+
+      makeNode('OR4', 175, -30, { id: 'MUX_OR', label: 'OR4' });
+      for (let i = 0; i < 4; i++) {
+        connect(`M${i}`, 0, 'MUX_OR', i, { bendX: 98 + (i % 2) * 14 });
+      }
+      makeNode('LED', 300, -30, { id: 'MUX_Y', label: 'OUT Y', ledColor: 'mint' });
+      connect('MUX_OR', 0, 'MUX_Y', 0, { bendX: 245 });
+
+      settleCircuitInstant();
+      state.laChannels = [
+        { name: 'S1', color: '#ffbe5c', getVal: () => getNodeById('S1')?.val || 0 },
+        { name: 'S0', color: '#58dcff', getVal: () => getNodeById('S0')?.val || 0 },
+        { name: 'D0', color: '#68789c', getVal: () => getNodeById('D0')?.val || 0 },
+        { name: 'D1', color: '#6ee7ff', getVal: () => getNodeById('D1')?.val || 0 },
+        { name: 'D2', color: '#a78bfa', getVal: () => getNodeById('D2')?.val || 0 },
+        { name: 'OUT Y', color: '#4af2b2', getVal: () => getNodeById('MUX_Y')?.ins[0].val || 0 }
+      ];
+    }
+  }
+
+  // --- PRESET 8: BLANK SANDBOX ---
+  function buildSandbox(withStarter = false) {
+    clearGraph();
+    state.autoClk = false;
+    els.chkAutoClk.checked = false;
+
+    if (withStarter) {
+      makeNode('SWITCH', -200, -55, { id: 'SW_A', label: 'IN A', val: 1 });
+      makeNode('SWITCH', -200, 55, { id: 'SW_B', label: 'IN B', val: 1 });
+      makeNode('XOR', 0, -55, { id: 'G_SUM', label: 'XOR' });
+      makeNode('AND', 0, 55, { id: 'G_CAR', label: 'AND' });
+      makeNode('LED', 180, -55, { id: 'LED_S', label: 'SUM', ledColor: 'mint' });
+      makeNode('LED', 180, 55, { id: 'LED_C', label: 'CARRY', ledColor: 'amber' });
+
+      connect('SW_A', 0, 'G_SUM', 0);
+      connect('SW_B', 0, 'G_SUM', 1);
+      connect('SW_A', 0, 'G_CAR', 0);
+      connect('SW_B', 0, 'G_CAR', 1);
+      connect('G_SUM', 0, 'LED_S', 0);
+      connect('G_CAR', 0, 'LED_C', 0);
+      settleCircuitInstant();
+    }
+    rebuildSandboxLaChannels();
+  }
+
+  function rebuildSandboxLaChannels() {
+    if (state.preset !== 'sandbox') return;
+    const palette = ['#ffbe5c', '#4af2b2', '#58dcff', '#a78bfa', '#ff6083', '#6ee7ff'];
+    const interesting = state.nodes.filter(n => n.type === 'CLOCK' || n.type === 'SWITCH' || n.type === 'LED' || n.type === 'DFF' || n.type === 'TFF' || n.outs.length > 0);
+    state.laChannels = interesting.slice(0, 6).map((n, idx) => ({
+      name: (n.label || n.type).slice(0, 6),
+      color: palette[idx % palette.length],
+      getVal: () => n.type === 'LED' ? (n.ins[0]?.val || 0) : (n.outs[0]?.val || 0)
+    }));
+  }
+
+  // =========================================================================
+  // PRESET LOADER & UI SYNC
+  // =========================================================================
+  const PRESET_META = {
+    alu4: {
+      name: 'Ripple ALU',
+      badge: '4-Bit ALU',
+      badgeClass: '',
+      notes: '<strong>4-Bit Ripple-Carry ALU:</strong> Four cascaded Full Adders compute <code>A[3:0] ± B[3:0]</code>. In Subtract mode, XOR gates invert <code>B</code> and inject <code>C_in = 1</code> for 2\'s complement (<code>A + ~B + 1</code>). Try <strong>15 + 1 Ripple</strong> at high <code>t_pd</code> to watch the Carry wave race through every bit!'
+    },
+    cmos: {
+      name: 'CMOS X-Ray',
+      badge: 'CMOS Physics',
+      badgeClass: 'cmos',
+      notes: '<strong>CMOS Transistor-Level X-Ray:</strong> Every modern CPU logic gate uses complementary <strong>PMOS pull-up</strong> and <strong>NMOS pull-down</strong> networks. Because one network is always OFF in steady state, DC static current is <strong>0.00 µA</strong> — power is only drawn as a brief dynamic spike while charging/discharging load capacitance <code>C_L</code>.'
+    },
+    latch: {
+      name: 'SR & D Latch',
+      badge: 'Memory Cell',
+      badgeClass: '',
+      notes: '<strong>SR &amp; D Flip-Flop Memory:</strong> Cross-coupled <code>NOR</code> and <code>NAND</code> feedback loops form bistable multivibrators capable of storing 1 bit of state indefinitely. Click <strong>SET</strong> / <strong>RESET</strong> or toggle <strong>DATA</strong> + pulse <strong>CLK</strong> to watch the feedback wires lock in the bit.'
+    },
+    counter4: {
+      name: '4-Bit Counter',
+      badge: 'Ripple /16',
+      badgeClass: '',
+      notes: '<strong>4-Bit Asynchronous Binary Counter:</strong> Cascading <code>Q̄</code> of each T Flip-Flop into the next stage\'s clock divides frequency by <code>/2, /4, /8, /16</code> and counts <code>0 → F</code> on the 7-segment display. Notice the subtle staggered propagation skew between bits on the Logic Analyzer!'
+    },
+    shift4: {
+      name: '4-Bit Shift Reg',
+      badge: 'SIPO Reg',
+      badgeClass: '',
+      notes: '<strong>4-Bit Shift Register (SIPO):</strong> All 4 D Flip-Flops share a synchronous <code>CLK</code>. On each rising edge, serial input <code>D_IN</code> marches one stage right (<code>Q0 → Q1 → Q2 → Q3</code>). Use <strong>Inject 1011</strong> to stream a 4-bit serial word into parallel output LEDs.'
+    },
+    ring: {
+      name: 'Ring Oscillator',
+      badge: 'Self-Clock',
+      badgeClass: 'sandbox',
+      notes: '<strong>3-Stage Ring Oscillator:</strong> An odd number of inverters wired in a closed feedback loop has no stable DC state — the wavefront chases its own inversion endlessly with period <code>T = 2 · N · t_pd = 6 · t_pd</code>! Drag the <code>t_pd</code> slider to tune oscillator frequency live.'
+    },
+    decmux: {
+      name: 'Decoder / MUX',
+      badge: 'Combinational',
+      badgeClass: '',
+      notes: '<strong>2-to-4 Decoder &amp; 4-to-1 Multiplexer:</strong> Decoders convert a 2-bit binary address <code>(S1, S0)</code> into a one-hot line <code>Y0..Y3</code> for memory addressing. Multiplexers route one of four inputs <code>D0..D3</code> to output <code>Y</code>.'
+    },
+    sandbox: {
+      name: 'Sandbox',
+      badge: 'Custom Lab',
+      badgeClass: 'sandbox',
+      notes: '<strong>Custom Logic Sandbox:</strong> Switch to the <strong>Sandbox</strong> tab to spawn switches, clocks, gates, flip-flops, LEDs, and 7-segment displays. Click an output pin → input pin to wire gates, drag to rearrange, or load the Half-Adder Starter Kit!'
+    }
+  };
+
+  function loadPreset(presetKey, opts = {}) {
+    state.preset = presetKey;
+    state.placeType = null;
+    updatePaletteSelection();
+
+    document.querySelectorAll('#preset-grid .preset-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.preset === presetKey);
+    });
+
+    els.ctxAlu.style.display = presetKey === 'alu4' ? 'flex' : 'none';
+    els.ctxCmos.style.display = presetKey === 'cmos' ? 'flex' : 'none';
+    els.ctxShift.style.display = presetKey === 'shift4' ? 'flex' : 'none';
+    els.ctxDecmux.style.display = presetKey === 'decmux' ? 'flex' : 'none';
+
+    const meta = PRESET_META[presetKey];
+    els.telCircuit.textContent = meta.name;
+    els.modeBadge.textContent = meta.badge;
+    els.modeBadge.className = 'mode-badge' + (meta.badgeClass ? ' ' + meta.badgeClass : '');
+    els.archNotes.innerHTML = meta.notes;
+
+    switch (presetKey) {
+      case 'alu4': buildALU4(); break;
+      case 'cmos': buildCMOS(); break;
+      case 'latch': buildLatch(); break;
+      case 'counter4': buildCounter4(); break;
+      case 'shift4': buildShift4(); break;
+      case 'ring': buildRingOsc(); break;
+      case 'decmux': buildDecMux(); break;
+      case 'sandbox':
+        buildSandbox(!!opts.starter);
+        if (!opts.keepTab) switchTab('sandbox');
+        break;
+    }
+    fitView();
+    updateTelemetryUI();
+  }
+
+  function syncAluButtons() {
+    const subNode = getNodeById('SUB');
+    const isSub = !!(subNode && subNode.val);
+    els.btnAluAdd.classList.toggle('active', !isSub);
+    els.btnAluAdd.classList.toggle('mint', !isSub);
+    els.btnAluSub.classList.toggle('active', isSub);
+    els.btnAluSub.classList.toggle('rose', isSub);
+    els.aluModeLbl.textContent = isSub ? 'A − B (2\'s Comp)' : 'A + B';
+    els.aluModeLbl.style.color = isSub ? 'var(--accent-rose)' : 'var(--accent-mint)';
+  }
+
+  // =========================================================================
+  // CAMERA / VIEWPORT TRANSFORM
+  // =========================================================================
+  function resizeCanvases() {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.floor(window.innerWidth * dpr);
+    canvas.height = Math.floor(window.innerHeight * dpr);
+    canvas.style.width = window.innerWidth + 'px';
+    canvas.style.height = window.innerHeight + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    const laRect = laCanvas.getBoundingClientRect();
+    if (laRect.width > 10 && laRect.height > 10) {
+      laCanvas.width = Math.floor(laRect.width * dpr);
+      laCanvas.height = Math.floor(laRect.height * dpr);
+      laCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+  }
+
+  function screenToWorld(sx, sy) {
+    const cx = window.innerWidth / 2;
+    const cy = window.innerHeight / 2;
+    return {
+      x: (sx - cx) / state.zoom + state.camX,
+      y: (sy - cy) / state.zoom + state.camY
+    };
+  }
+
+  function worldToScreen(wx, wy) {
+    const cx = window.innerWidth / 2;
+    const cy = window.innerHeight / 2;
+    return {
+      x: (wx - state.camX) * state.zoom + cx,
+      y: (wy - state.camY) * state.zoom + cy
+    };
+  }
+
+  function fitView() {
+    const W = window.innerWidth;
+    const H = window.innerHeight;
+    const rightPad = (state.drawerOpen && !state.cinemaMode && W > 960) ? 352 : 28;
+    const leftPad = 32;
+    const topPad = state.cinemaMode ? 36 : 168;
+    const botPad = state.cinemaMode ? 36 : 74;
+
+    let minX = -380, maxX = 380, minY = -230, maxY = 230;
+    if (state.preset === 'cmos') {
+      minX = -400; maxX = 420; minY = -230; maxY = 230;
+    } else if (state.nodes.length > 0) {
+      minX = Infinity; maxX = -Infinity; minY = Infinity; maxY = -Infinity;
+      for (const n of state.nodes) {
+        minX = Math.min(minX, n.x - n.w / 2 - 42);
+        maxX = Math.max(maxX, n.x + n.w / 2 + 42);
+        minY = Math.min(minY, n.y - n.h / 2 - 42);
+        maxY = Math.max(maxY, n.y + n.h / 2 + 42);
+      }
+      for (const g of state.groups) {
+        minX = Math.min(minX, g.x - 16);
+        maxX = Math.max(maxX, g.x + g.w + 16);
+        minY = Math.min(minY, g.y - 24);
+        maxY = Math.max(maxY, g.y + g.h + 16);
+      }
+    }
+
+    const bw = Math.max(260, maxX - minX);
+    const bh = Math.max(200, maxY - minY);
+    const availW = Math.max(240, W - leftPad - rightPad);
+    const availH = Math.max(200, H - topPad - botPad);
+
+    state.zoom = Math.max(0.45, Math.min(1.22, Math.min(availW / bw, availH / bh)));
+    const targetScreenCenterX = leftPad + availW / 2;
+    const targetScreenCenterY = topPad + availH / 2;
+    const boxCenterX = (minX + maxX) / 2;
+    const boxCenterY = (minY + maxY) / 2;
+
+    state.camX = boxCenterX - (targetScreenCenterX - W / 2) / state.zoom;
+    state.camY = boxCenterY - (targetScreenCenterY - H / 2) / state.zoom;
+  }
+
+  // =========================================================================
+  // SIMULATION STEP (CONTINUOUS WAVEFRONT PROPAGATION & CMOS RC PHYSICS)
+  // =========================================================================
+  function stepSimulation(dtSec) {
+    if (!state.running) return;
+    const dt = Math.min(dtSec, 0.05);
+    const tpdVis = state.tpdNs * state.visualSecPerNs;
+    const gateDelaySec = tpdVis * 0.36;
+    const wireTravelSec = Math.max(0.015, tpdVis * 0.64);
+    state.simTimeNs += dt / state.visualSecPerNs;
+
+    // 1. Clock Generator
+    let clkEdge = false;
+    if (state.manualPulseTimer > 0) {
+      state.manualPulseTimer -= dt;
+      if (state.manualPulseTimer <= 0) {
+        state.manualPulseTimer = 0;
+        if (!state.autoClk) {
+          state.clkVal = 0;
+          pushClockToNodes(0);
+          AudioEngine.clockTick(false);
+        }
+      }
+    } else if (state.autoClk) {
+      state.clkPhase += dt * state.clkFreq;
+      if (state.clkPhase >= 1) state.clkPhase -= Math.floor(state.clkPhase);
+      const nextClk = state.clkPhase < 0.5 ? 1 : 0;
+      if (nextClk !== state.clkVal) {
+        if (nextClk === 1) clkEdge = true;
+        // If shift register has queued serial bits, apply before rising edge!
+        if (nextClk === 1 && state.preset === 'shift4' && state.shiftQueue.length > 0) {
+          const din = getNodeById('DIN');
+          if (din) {
+            const nextBit = state.shiftQueue.shift();
+            din.val = nextBit;
+            launchWavefront(din, 0, nextBit);
+          }
+        }
+        state.clkVal = nextClk;
+        pushClockToNodes(nextClk);
+        AudioEngine.clockTick(nextClk === 1);
+      }
+    }
+
+    // 2. CMOS X-Ray RC Charging & Switching Current Physics
+    if (state.preset === 'cmos') {
+      const target = evalCmosTarget();
+      if (target !== state.cmos.targetOut) {
+        state.cmos.targetOut = target;
+        state.cmos.chargeDir = target ? 1 : -1;
+        recordTransition();
+        // Spawn charge carrier particles
+        for (let k = 0; k < 14; k++) {
+          state.cmos.particles.push({
+            t: Math.random() * 0.25,
+            dir: target ? 1 : -1,
+            lane: k % 2
+          });
+        }
+      }
+      const tau = Math.max(0.04, tpdVis * 0.85);
+      const prevV = state.cmos.vOut;
+      const diff = state.cmos.targetOut - state.cmos.vOut;
+      if (Math.abs(diff) > 0.002) {
+        state.cmos.vOut += diff * Math.min(1, dt / (tau * 0.38));
+      } else {
+        state.cmos.vOut = state.cmos.targetOut;
+      }
+      const dvdt = Math.abs(state.cmos.vOut - prevV) / Math.max(dt, 0.001);
+      const targetSpike = Math.min(1, dvdt * tau * 0.9);
+      state.cmos.iSpike += (targetSpike - state.cmos.iSpike) * Math.min(1, dt * 18);
+      if (state.cmos.iSpike < 0.004) state.cmos.iSpike = 0;
+
+      // Advance carrier particles
+      for (let i = state.cmos.particles.length - 1; i >= 0; i--) {
+        state.cmos.particles[i].t += dt / Math.max(0.18, tpdVis * 1.1);
+        if (state.cmos.particles[i].t >= 1) state.cmos.particles.splice(i, 1);
+      }
+    } else {
+      // 3. Advance Wire Wavefront Pulses
+      for (let i = 0; i < state.wires.length; i++) {
+        const w = state.wires[i];
+        if (w.pulses.length === 0) continue;
+        const stepP = dt / wireTravelSec;
+        for (let p = 0; p < w.pulses.length; p++) {
+          w.pulses[p].progress += stepP;
+        }
+        while (w.pulses.length > 0 && w.pulses[0].progress >= 1) {
+          const arrived = w.pulses.shift();
+          w.destVal = arrived.val;
+          const dst = getNodeById(w.toId);
+          if (dst && dst.ins[w.toPin]) {
+            dst.ins[w.toPin].val = arrived.val;
+          }
+        }
+      }
+
+      // 4. Evaluate Gates & Flip-Flops
+      for (let i = 0; i < state.nodes.length; i++) {
+        const n = state.nodes[i];
+        if (n.flash > 0) n.flash = Math.max(0, n.flash - dt * 4.5);
+
+        if (n.type === 'DFF' || n.type === 'TFF') {
+          const clkIn = n.ins[1].val;
+          if (clkIn === 1 && n.prevClk === 0) {
+            // Rising edge triggered!
+            let nextQ = n.q;
+            if (n.type === 'DFF') nextQ = n.ins[0].val;
+            else if (n.ins[0].val) nextQ = n.q ? 0 : 1;
+            n.q = nextQ;
+            scheduleOutput(n, 0, nextQ, gateDelaySec);
+            scheduleOutput(n, 1, nextQ ? 0 : 1, gateDelaySec);
+            n.flash = 1.0;
+          }
+          n.prevClk = clkIn;
+        } else {
+          const res = evalCombinational(n);
+          if (res) {
+            scheduleOutput(n, 0, res[0], gateDelaySec);
+          }
+        }
+
+        // Countdown pending output delays
+        for (let o = 0; o < n.outs.length; o++) {
+          const outPin = n.outs[o];
+          if (outPin.delayLeft > 0) {
+            outPin.delayLeft -= dt;
+            if (outPin.delayLeft <= 0) {
+              outPin.delayLeft = 0;
+              launchWavefront(n, o, outPin.scheduledVal);
+            }
+          }
+        }
+      }
+    }
+
+    // 5. Sample Logic Analyzer (~60 Hz)
+    if (!state.laHold && state.laChannels.length > 0) {
+      state.laSampleAcc += dt;
+      if (state.laSampleAcc >= 0.016) {
+        state.laSampleAcc = 0;
+        const vals = state.laChannels.map(ch => ch.getVal());
+        const prev = state.laSamples.length > 0 ? state.laSamples[state.laSamples.length - 1] : null;
+        const risingEdge = clkEdge || (prev && state.laChannels[0] && vals[0] === 1 && prev.vals[0] === 0);
+        state.laSamples.push({ vals, edge: !!risingEdge });
+        if (state.laSamples.length > 260) state.laSamples.shift();
+      }
+    }
+  }
+
+  // =========================================================================
+  // WIRE POLYLINE COMPUTATION & RENDERING
+  // =========================================================================
+  function getWirePoints(wire) {
+    const src = getNodeById(wire.fromId);
+    const dst = getNodeById(wire.toId);
+    if (!src || !dst) return [];
+    const p1 = getPinPos(src, 'out', wire.fromPin);
+    const p2 = getPinPos(dst, 'in', wire.toPin);
+
+    if (wire.customPath && !src.moved && !dst.moved) {
+      return [p1, ...wire.customPath, p2];
+    }
+
+    if (p2.x >= p1.x + 22) {
+      const mx = (wire.bendX !== null && !src.moved && !dst.moved) ? wire.bendX : (p1.x + p2.x) * 0.5;
+      return [p1, { x: mx, y: p1.y }, { x: mx, y: p2.y }, p2];
+    } else {
+      // Feedback loop routing neatly around gates
+      const outX = p1.x + 24;
+      const inX = p2.x - 24;
+      const midY = (p1.y + p2.y) * 0.5 + (wire.fbOffset || (p1.y <= p2.y ? 68 : -68));
+      return [p1, { x: outX, y: p1.y }, { x: outX, y: midY }, { x: inX, y: midY }, { x: inX, y: p2.y }, p2];
+    }
+  }
+
+  function measurePolyline(pts) {
+    const segs = [];
+    let total = 0;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const dx = pts[i + 1].x - pts[i].x;
+      const dy = pts[i + 1].y - pts[i].y;
+      const len = Math.hypot(dx, dy);
+      segs.push({ x0: pts[i].x, y0: pts[i].y, x1: pts[i + 1].x, y1: pts[i + 1].y, len, start: total });
+      total += len;
+    }
+    return { segs, total: Math.max(total, 1) };
+  }
+
+  function samplePolyline(poly, t) {
+    const dist = Math.max(0, Math.min(1, t)) * poly.total;
+    for (let i = 0; i < poly.segs.length; i++) {
+      const s = poly.segs[i];
+      if (dist <= s.start + s.len || i === poly.segs.length - 1) {
+        const u = s.len > 0.001 ? Math.max(0, Math.min(1, (dist - s.start) / s.len)) : 0;
+        return { x: s.x0 + (s.x1 - s.x0) * u, y: s.y0 + (s.y1 - s.y0) * u };
+      }
+    }
+    return { x: 0, y: 0 };
+  }
+
+  function strokePolylineRange(pts, poly, tStart, tEnd, color, width, glowColor, glowBlur) {
+    const d0 = Math.max(0, Math.min(1, tStart)) * poly.total;
+    const d1 = Math.max(0, Math.min(1, tEnd)) * poly.total;
+    if (d1 - d0 < 0.5) return;
+
+    ctx.save();
+    ctx.beginPath();
+    let started = false;
+    for (let i = 0; i < poly.segs.length; i++) {
+      const s = poly.segs[i];
+      const segEnd = s.start + s.len;
+      if (segEnd < d0 || s.start > d1) continue;
+      const a = Math.max(d0, s.start);
+      const b = Math.min(d1, segEnd);
+      const u0 = s.len > 0.001 ? (a - s.start) / s.len : 0;
+      const u1 = s.len > 0.001 ? (b - s.start) / s.len : 1;
+      const x0 = s.x0 + (s.x1 - s.x0) * u0;
+      const y0 = s.y0 + (s.y1 - s.y0) * u0;
+      const x1 = s.x0 + (s.x1 - s.x0) * u1;
+      const y1 = s.y0 + (s.y1 - s.y0) * u1;
+      if (!started) { ctx.moveTo(x0, y0); started = true; }
+      else ctx.lineTo(x0, y0);
+      ctx.lineTo(x1, y1);
+    }
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    if (glowBlur > 0 && state.showGrid) {
+      ctx.shadowColor = glowColor;
+      ctx.shadowBlur = glowBlur;
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function wireColorHigh(wire) {
+    if (wire.colorHint === 'amber') return '#ffbe5c';
+    if (wire.colorHint === 'rose') return '#ff6083';
+    if (wire.colorHint === 'cyan') return '#58dcff';
+    return '#4af2b2';
+  }
+
+  function drawWire(wire) {
+    const pts = getWirePoints(wire);
+    if (pts.length < 2) return;
+    const poly = measurePolyline(pts);
+    const isHover = state.hoverWire === wire;
+    const hiCol = wireColorHigh(wire);
+    const loCol = isHover ? '#637aa8' : '#2a3a58';
+
+    // Build intervals along [0, 1] from destination (1) back to source (0)
+    // wire.pulses are ordered oldest (largest progress) to newest (smallest progress)
+    if (!state.showPulses || wire.pulses.length === 0) {
+      const col = wire.destVal ? hiCol : loCol;
+      strokePolylineRange(pts, poly, 0, 1, col, wire.destVal ? 2.8 : 2.1, col, wire.destVal ? 10 : 0);
+      return;
+    }
+
+    // Segments split by pulse progress values
+    let curEnd = 1.0;
+    let curVal = wire.destVal;
+    for (let i = 0; i < wire.pulses.length; i++) {
+      const p = wire.pulses[i];
+      const pPos = Math.max(0, Math.min(1, p.progress));
+      const col = curVal ? hiCol : loCol;
+      strokePolylineRange(pts, poly, pPos, curEnd, col, curVal ? 2.8 : 2.1, col, curVal ? 9 : 0);
+      curEnd = pPos;
+      curVal = p.val;
+    }
+    // Tail from source (0) to newest pulse
+    const col0 = curVal ? hiCol : loCol;
+    strokePolylineRange(pts, poly, 0, curEnd, col0, curVal ? 2.8 : 2.1, col0, curVal ? 10 : 0);
+
+    // Draw blazing wavefront heads at each active pulse!
+    for (let i = 0; i < wire.pulses.length; i++) {
+      const p = wire.pulses[i];
+      const pos = samplePolyline(poly, p.progress);
+      const headCol = p.val ? '#e8fff9' : '#7ea8ff';
+      const glowCol = p.val ? hiCol : '#58dcff';
+      // Trailing comet streak
+      const tailStart = Math.max(0, p.progress - 0.14);
+      strokePolylineRange(pts, poly, tailStart, p.progress, p.val ? '#ffffff' : '#6c8ec9', p.val ? 4.0 : 2.6, glowCol, 14);
+
+      ctx.save();
+      const r = p.val ? 7.5 : 5.0;
+      const g = ctx.createRadialGradient(pos.x, pos.y, 1, pos.x, pos.y, r * 2.2);
+      g.addColorStop(0, headCol);
+      g.addColorStop(0.4, glowCol);
+      g.addColorStop(1, 'rgba(74, 242, 178, 0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, r * 2.2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, p.val ? 3.2 : 2.2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  // =========================================================================
+  // COMPONENT & GATE RENDERING
+  // =========================================================================
+  const SEG_MAP = [
+    [1,1,1,1,1,1,0], // 0
+    [0,1,1,0,0,0,0], // 1
+    [1,1,0,1,1,0,1], // 2
+    [1,1,1,1,0,0,1], // 3
+    [0,1,1,0,0,1,1], // 4
+    [1,0,1,1,0,1,1], // 5
+    [1,0,1,1,1,1,1], // 6
+    [1,1,1,0,0,0,0], // 7
+    [1,1,1,1,1,1,1], // 8
+    [1,1,1,1,0,1,1], // 9
+    [1,1,1,0,1,1,1], // A
+    [0,0,1,1,1,1,1], // b
+    [1,0,0,1,1,1,0], // C
+    [0,1,1,1,1,0,1], // d
+    [1,0,0,1,1,1,1], // E
+    [1,0,0,0,1,1,1]  // F
+  ];
+
+  function roundRectPath(c, x, y, w, h, r) {
+    c.beginPath();
+    c.moveTo(x + r, y);
+    c.arcTo(x + w, y, x + w, y + h, r);
+    c.arcTo(x + w, y + h, x, y + h, r);
+    c.arcTo(x, y + h, x, y, r);
+    c.arcTo(x, y, x + w, y, r);
+    c.closePath();
+  }
+
+  function drawNode(node) {
+    const { x, y, w, h, type } = node;
+    const isHover = state.hoverNode === node;
+    const outHigh = node.outs.length > 0 && node.outs[0].val === 1;
+
+    ctx.save();
+    ctx.translate(x, y);
+
+    // Subtle flash halo when gate switches
+    if (node.flash > 0.05 && state.showGrid) {
+      ctx.save();
+      ctx.globalAlpha = node.flash * 0.32;
+      ctx.fillStyle = '#58dcff';
+      ctx.shadowColor = '#4af2b2';
+      ctx.shadowBlur = 22;
+      roundRectPath(ctx, -w / 2 - 4, -h / 2 - 4, w + 8, h + 8, 12);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    if (type === 'SWITCH') {
+      const on = node.val === 1;
+      roundRectPath(ctx, -w / 2, -h / 2, w, h, 9);
+      ctx.fillStyle = on ? 'rgba(12, 42, 46, 0.94)' : 'rgba(13, 19, 34, 0.92)';
+      ctx.fill();
+      ctx.lineWidth = isHover ? 2.2 : 1.5;
+      ctx.strokeStyle = on ? '#4af2b2' : (isHover ? '#7ea8ff' : 'rgba(148,179,255,0.32)');
+      if (on && state.showGrid) { ctx.shadowColor = '#4af2b2'; ctx.shadowBlur = 14; }
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      // Rocker toggle track inside
+      const tw = 24, th = 12;
+      roundRectPath(ctx, -w / 2 + 8, -th / 2, tw, th, 6);
+      ctx.fillStyle = on ? 'rgba(74,242,178,0.28)' : 'rgba(255,255,255,0.08)';
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(on ? (-w / 2 + 26) : (-w / 2 + 14), 0, 4.5, 0, Math.PI * 2);
+      ctx.fillStyle = on ? '#4af2b2' : '#6c7ea4';
+      ctx.fill();
+
+      // Digital 0 / 1 value
+      ctx.fillStyle = on ? '#e8fff7' : '#8ea0c4';
+      ctx.font = '700 13px ui-monospace, Consolas, monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(on ? '1' : '0', w / 2 - 14, 1);
+
+      // Label above
+      ctx.fillStyle = isHover ? '#ffffff' : '#b7c7e8';
+      ctx.font = '700 10.5px system-ui, sans-serif';
+      ctx.fillText(node.label, 0, -h / 2 - 10);
+
+    } else if (type === 'CLOCK') {
+      const hi = node.outs[0].val === 1;
+      roundRectPath(ctx, -w / 2, -h / 2, w, h, 9);
+      ctx.fillStyle = hi ? 'rgba(48, 32, 10, 0.94)' : 'rgba(14, 19, 34, 0.92)';
+      ctx.fill();
+      ctx.lineWidth = isHover ? 2.2 : 1.6;
+      ctx.strokeStyle = hi ? '#ffbe5c' : (isHover ? '#ffbe5c' : 'rgba(255,190,92,0.4)');
+      if (hi && state.showGrid) { ctx.shadowColor = '#ffbe5c'; ctx.shadowBlur = 16; }
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      // Square-wave glyph
+      ctx.beginPath();
+      ctx.moveTo(-20, 7); ctx.lineTo(-12, 7); ctx.lineTo(-12, -7);
+      ctx.lineTo(0, -7); ctx.lineTo(0, 7); ctx.lineTo(12, 7);
+      ctx.lineTo(12, -7); ctx.lineTo(20, -7);
+      ctx.strokeStyle = hi ? '#ffe4b3' : '#c99748';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      ctx.fillStyle = '#ffbe5c';
+      ctx.font = '700 10.5px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(node.label, 0, -h / 2 - 10);
+
+    } else if (type === 'LED') {
+      const on = node.ins[0].val === 1;
+      const colMap = { mint: '#4af2b2', cyan: '#58dcff', amber: '#ffbe5c', rose: '#ff6083' };
+      const cHi = colMap[node.ledColor] || '#4af2b2';
+
+      // Outer bezel
+      ctx.beginPath();
+      ctx.arc(0, 0, 16, 0, Math.PI * 2);
+      ctx.fillStyle = '#0b1020';
+      ctx.fill();
+      ctx.lineWidth = isHover ? 2.2 : 1.6;
+      ctx.strokeStyle = on ? cHi : 'rgba(148,179,255,0.28)';
+      ctx.stroke();
+
+      // Glowing dome
+      if (on && state.showGrid) {
+        const g = ctx.createRadialGradient(0, 0, 2, 0, 0, 28);
+        g.addColorStop(0, cHi);
+        g.addColorStop(0.5, cHi + '66');
+        g.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(0, 0, 28, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.beginPath();
+      ctx.arc(0, 0, 11, 0, Math.PI * 2);
+      ctx.fillStyle = on ? cHi : '#1d2740';
+      ctx.fill();
+
+      // Specular glint
+      ctx.beginPath();
+      ctx.arc(-3.5, -3.5, 3, 0, Math.PI * 2);
+      ctx.fillStyle = on ? 'rgba(255,255,255,0.75)' : 'rgba(255,255,255,0.14)';
+      ctx.fill();
+
+      ctx.fillStyle = on ? '#eef8ff' : '#95a6ca';
+      ctx.font = '700 10.5px ui-monospace, Consolas, monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(node.label, 0, -24);
+
+    } else if (type === 'HEX7') {
+      const val = (node.ins[0].val) | (node.ins[1].val << 1) | (node.ins[2].val << 2) | (node.ins[3].val << 3);
+      const dp = node.ins[4].val === 1;
+      const segs = SEG_MAP[val & 15];
+
+      roundRectPath(ctx, -w / 2, -h / 2, w, h, 11);
+      ctx.fillStyle = 'rgba(7, 11, 21, 0.96)';
+      ctx.fill();
+      ctx.lineWidth = isHover ? 2.2 : 1.6;
+      ctx.strokeStyle = isHover ? '#58dcff' : 'rgba(88, 220, 255, 0.35)';
+      ctx.stroke();
+
+      // 7-segment coordinates inside bezel
+      const sx = -20, sy = -36, sw = 40, sh = 34;
+      const drawSeg = (x0, y0, x1, y1, lit) => {
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(x0, y0);
+        ctx.lineTo(x1, y1);
+        ctx.lineCap = 'round';
+        ctx.lineWidth = lit ? 6.5 : 5.5;
+        ctx.strokeStyle = lit ? '#4af2b2' : 'rgba(74, 242, 178, 0.08)';
+        if (lit && state.showGrid) { ctx.shadowColor = '#4af2b2'; ctx.shadowBlur = 14; }
+        ctx.stroke();
+        ctx.restore();
+      };
+      const pad = 5;
+      drawSeg(sx + pad, sy, sx + sw - pad, sy, segs[0]);                   // A (top)
+      drawSeg(sx + sw, sy + pad, sx + sw, sy + sh - pad, segs[1]);         // B (top-right)
+      drawSeg(sx + sw, sy + sh + pad, sx + sw, sy + 2 * sh - pad, segs[2]);// C (bot-right)
+      drawSeg(sx + pad, sy + 2 * sh, sx + sw - pad, sy + 2 * sh, segs[3]); // D (bottom)
+      drawSeg(sx, sy + sh + pad, sx, sy + 2 * sh - pad, segs[4]);          // E (bot-left)
+      drawSeg(sx, sy + pad, sx, sy + sh - pad, segs[5]);                   // F (top-left)
+      drawSeg(sx + pad, sy + sh, sx + sw - pad, sy + sh, segs[6]);         // G (middle)
+
+      // Decimal point / Carry indicator
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(sx + sw + 11, sy + 2 * sh, 4, 0, Math.PI * 2);
+      ctx.fillStyle = dp ? '#ff6083' : 'rgba(255, 96, 131, 0.14)';
+      if (dp && state.showGrid) { ctx.shadowColor = '#ff6083'; ctx.shadowBlur = 12; }
+      ctx.fill();
+      ctx.restore();
+
+      // Decimal & Hex caption
+      ctx.fillStyle = '#9aa9cc';
+      ctx.font = '700 10px ui-monospace, Consolas, monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(`DEC ${val + (dp ? 16 : 0)}`, 0, h / 2 - 11);
+      ctx.fillStyle = '#58dcff';
+      ctx.fillText(node.label, 0, -h / 2 - 10);
+
+    } else if (type === 'DFF' || type === 'TFF') {
+      roundRectPath(ctx, -w / 2, -h / 2, w, h, 8);
+      ctx.fillStyle = 'rgba(12, 18, 34, 0.94)';
+      ctx.fill();
+      ctx.lineWidth = isHover ? 2.2 : 1.6;
+      ctx.strokeStyle = outHigh ? '#58dcff' : (isHover ? '#7ea8ff' : 'rgba(148,179,255,0.34)');
+      if (outHigh && state.showGrid) { ctx.shadowColor = '#58dcff'; ctx.shadowBlur = 12; }
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      // Clock notch triangle on CLK pin
+      const clkY = node.ins[1].ry;
+      ctx.beginPath();
+      ctx.moveTo(-w / 2, clkY - 6);
+      ctx.lineTo(-w / 2 + 9, clkY);
+      ctx.lineTo(-w / 2, clkY + 6);
+      ctx.strokeStyle = '#ffbe5c';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      // Pin labels inside IC
+      ctx.fillStyle = '#9aa9cc';
+      ctx.font = '700 10px ui-monospace, Consolas, monospace';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(type === 'DFF' ? 'D' : 'T', -w / 2 + 7, node.ins[0].ry);
+      ctx.fillStyle = '#ffbe5c';
+      ctx.fillText('CLK', -w / 2 + 11, clkY);
+
+      ctx.textAlign = 'right';
+      ctx.fillStyle = node.outs[0].val ? '#4af2b2' : '#7f90b3';
+      ctx.fillText('Q', w / 2 - 7, node.outs[0].ry);
+      ctx.fillStyle = node.outs[1].val ? '#58dcff' : '#7f90b3';
+      ctx.fillText('Q̄', w / 2 - 7, node.outs[1].ry);
+
+      // Center stored bit indicator
+      ctx.textAlign = 'center';
+      ctx.fillStyle = node.q ? '#4af2b2' : '#5f7299';
+      ctx.font = '800 18px ui-monospace, Consolas, monospace';
+      ctx.fillText(node.q ? '1' : '0', 4, -2);
+
+      // Header label
+      ctx.fillStyle = '#d3e1ff';
+      ctx.font = '700 10px system-ui, sans-serif';
+      ctx.fillText(node.label, 0, -h / 2 - 10);
+      if (node.sublabel) {
+        ctx.fillStyle = '#68789c';
+        ctx.font = '600 9.5px ui-monospace, Consolas, monospace';
+        ctx.fillText(node.sublabel, 0, h / 2 + 12);
+      }
+    } else {
+      // Distinctive IEEE Logic Gate Shapes (AND, AND3, OR, OR4, NAND, NOR, XOR, NOT)
+      drawLogicGateBody(node, isHover, outHigh);
+    }
+
+    ctx.restore();
+
+    // Draw Pins (in world space for crisp alignment)
+    for (let i = 0; i < node.ins.length; i++) {
+      const p = getPinPos(node, 'in', i);
+      const isPinHover = state.hoverPin && state.hoverPin.node === node && state.hoverPin.kind === 'in' && state.hoverPin.idx === i;
+      drawPinDot(p.x, p.y, node.ins[i].val, isPinHover, 'in');
+    }
+    for (let i = 0; i < node.outs.length; i++) {
+      const p = getPinPos(node, 'out', i);
+      const isPinHover = state.hoverPin && state.hoverPin.node === node && state.hoverPin.kind === 'out' && state.hoverPin.idx === i;
+      const isWireSrc = state.wiringFrom && state.wiringFrom.node === node && state.wiringFrom.pinIdx === i;
+      drawPinDot(p.x, p.y, node.outs[i].val, isPinHover || isWireSrc, 'out');
+    }
+  }
+
+  function drawLogicGateBody(node, isHover, outHigh) {
+    const { w, h, type } = node;
+    const hw = w / 2, hh = h / 2;
+    const hasBubble = (type === 'NOT' || type === 'NAND' || type === 'NOR');
+    const bodyRight = hasBubble ? hw - 9 : hw;
+
+    ctx.beginPath();
+    if (type === 'NOT') {
+      ctx.moveTo(-hw + 4, -hh + 3);
+      ctx.lineTo(bodyRight, 0);
+      ctx.lineTo(-hw + 4, hh - 3);
+      ctx.closePath();
+    } else if (type === 'AND' || type === 'AND3' || type === 'NAND') {
+      const r = hh - 2;
+      ctx.moveTo(-hw + 4, -r);
+      ctx.lineTo(bodyRight - r, -r);
+      ctx.arc(bodyRight - r, 0, r, -Math.PI / 2, Math.PI / 2);
+      ctx.lineTo(-hw + 4, r);
+      ctx.closePath();
+    } else {
+      // OR, OR4, NOR, XOR
+      const xL = (type === 'XOR') ? (-hw + 10) : (-hw + 4);
+      const r = hh - 2;
+      ctx.moveTo(xL, -r);
+      ctx.quadraticCurveTo(bodyRight * 0.45, -r, bodyRight, 0);
+      ctx.quadraticCurveTo(bodyRight * 0.45, r, xL, r);
+      ctx.quadraticCurveTo(xL + 12, 0, xL, -r);
+      ctx.closePath();
+    }
+
+    ctx.fillStyle = outHigh ? 'rgba(13, 36, 46, 0.94)' : 'rgba(12, 18, 34, 0.92)';
+    ctx.fill();
+    ctx.lineWidth = isHover ? 2.2 : 1.6;
+    ctx.strokeStyle = outHigh ? '#4af2b2' : (isHover ? '#7ea8ff' : 'rgba(148,179,255,0.38)');
+    if (outHigh && state.showGrid) { ctx.shadowColor = '#4af2b2'; ctx.shadowBlur = 12; }
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // Extra back curve for XOR
+    if (type === 'XOR') {
+      const r = hh - 2;
+      ctx.beginPath();
+      ctx.moveTo(-hw + 3, -r);
+      ctx.quadraticCurveTo(-hw + 15, 0, -hw + 3, r);
+      ctx.strokeStyle = outHigh ? '#4af2b2' : (isHover ? '#7ea8ff' : 'rgba(148,179,255,0.45)');
+      ctx.lineWidth = 1.8;
+      ctx.stroke();
+    }
+
+    // Inversion bubble
+    if (hasBubble) {
+      ctx.beginPath();
+      ctx.arc(bodyRight + 4.5, 0, 4.5, 0, Math.PI * 2);
+      ctx.fillStyle = '#091020';
+      ctx.fill();
+      ctx.strokeStyle = outHigh ? '#4af2b2' : 'rgba(148,179,255,0.55)';
+      ctx.lineWidth = 1.6;
+      ctx.stroke();
+    }
+
+    // Gate Type Label inside
+    ctx.fillStyle = outHigh ? '#dcfff2' : '#96a8cc';
+    ctx.font = '700 9.5px ui-monospace, Consolas, monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const labelOffsetX = type === 'NOT' ? -9 : (hasBubble ? -5 : -2);
+    ctx.fillText(type.replace('3', '').replace('4', ''), labelOffsetX, 0.5);
+  }
+
+  function drawPinDot(x, y, val, highlight, kind) {
+    ctx.save();
+    const r = highlight ? 6.2 : 4.1;
+    if (highlight) {
+      ctx.beginPath();
+      ctx.arc(x, y, 10.5, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(88, 220, 255, 0.22)';
+      ctx.fill();
+    }
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fillStyle = val ? '#4af2b2' : '#1b263e';
+    ctx.fill();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = highlight ? '#ffffff' : (val ? '#c9ffeb' : (kind === 'out' ? '#6a82b2' : '#4a5c84'));
+    ctx.stroke();
+
+    if (state.showBadges && state.zoom >= 0.72 && highlight) {
+      ctx.fillStyle = val ? '#4af2b2' : '#9aa9cc';
+      ctx.font = '700 9.5px ui-monospace, Consolas, monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(val ? '1' : '0', x, y - 13);
+    }
+    ctx.restore();
+  }
+
+  // =========================================================================
+  // CMOS TRANSISTOR-LEVEL X-RAY RENDERER (INTERACTIVE!)
+  // =========================================================================
+  const cmosHitboxes = [];
+
+  function drawCmosXRay() {
+    cmosHitboxes.length = 0;
+    const { a, b, vOut, iSpike, particles } = state.cmos;
+    const type = state.cmosType;
+    const isNot = type === 'NOT';
+    const punOn = cmosPunOn();
+    const pdnOn = cmosPdnOn();
+
+    // Power Rails: VDD (+5V) top, GND (0V) bottom
+    ctx.save();
+    // VDD Rail
+    ctx.strokeStyle = '#ff6083';
+    ctx.lineWidth = 3.2;
+    if (state.showGrid) { ctx.shadowColor = '#ff6083'; ctx.shadowBlur = 12; }
+    ctx.beginPath(); ctx.moveTo(-260, -195); ctx.lineTo(140, -195); ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#ff8ba4';
+    ctx.font = '800 12px ui-monospace, Consolas, monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText('V_DD (+5.0 V)  PULL-UP RAIL', -255, -206);
+
+    // GND Rail
+    ctx.strokeStyle = '#5c729c';
+    ctx.lineWidth = 3.0;
+    ctx.beginPath(); ctx.moveTo(-260, 195); ctx.lineTo(140, 195); ctx.stroke();
+    ctx.fillStyle = '#8fa3c9';
+    ctx.fillText('GND (0.0 V)  PULL-DOWN RAIL', -255, 214);
+    // Ground symbol
+    ctx.beginPath();
+    ctx.moveTo(-40, 195); ctx.lineTo(-40, 210);
+    ctx.moveTo(-54, 210); ctx.lineTo(-26, 210);
+    ctx.moveTo(-49, 216); ctx.lineTo(-31, 216);
+    ctx.moveTo(-44, 222); ctx.lineTo(-36, 222);
+    ctx.strokeStyle = '#7c92be'; ctx.lineWidth = 2; ctx.stroke();
+
+    // Region boxes for PUN & PDN
+    roundRectPath(ctx, -185, -172, 290, 148, 12);
+    ctx.fillStyle = punOn ? 'rgba(167, 139, 250, 0.08)' : 'rgba(167, 139, 250, 0.02)';
+    ctx.fill();
+    ctx.setLineDash([5, 5]);
+    ctx.strokeStyle = punOn ? 'rgba(167, 139, 250, 0.5)' : 'rgba(167, 139, 250, 0.2)';
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+
+    roundRectPath(ctx, -185, 24, 290, 148, 12);
+    ctx.fillStyle = pdnOn ? 'rgba(74, 242, 178, 0.08)' : 'rgba(74, 242, 178, 0.02)';
+    ctx.fill();
+    ctx.strokeStyle = pdnOn ? 'rgba(74, 242, 178, 0.5)' : 'rgba(74, 242, 178, 0.2)';
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.font = '700 10px ui-monospace, Consolas, monospace';
+    ctx.fillStyle = '#b99fff';
+    ctx.fillText(`PULL-UP NETWORK (PMOS) — ${punOn ? 'CONDUCTING' : 'CUTOFF'}`, -174, -156);
+    ctx.fillStyle = '#4af2b2';
+    ctx.fillText(`PULL-DOWN NETWORK (NMOS) — ${pdnOn ? 'CONDUCTING' : 'CUTOFF'}`, -174, 160);
+
+    // Interactive Input Switches A (and B)
+    drawCmosSwitch(-335, isNot ? 0 : -60, 'IN A', a, () => {
+      state.cmos.a = state.cmos.a ? 0 : 1;
+      AudioEngine.switchFlip(state.cmos.a);
+    });
+    if (!isNot) {
+      drawCmosSwitch(-335, 60, 'IN B', b, () => {
+        state.cmos.b = state.cmos.b ? 0 : 1;
+        AudioEngine.switchFlip(state.cmos.b);
+      });
+    }
+
+    // Draw Transistor Network Topology
+    const outHi = vOut > 0.5;
+    const outCol = outHi ? '#4af2b2' : '#435880';
+
+    if (type === 'NOT') {
+      // 1 PMOS at (-40, -95), 1 NMOS at (-40, 95)
+      drawCmosWire(-40, -195, -40, -130, true, '#ff6083');
+      drawCmosWire(-40, -60, -40, 60, outHi, outCol);
+      drawCmosWire(-40, 130, -40, 195, pdnOn, pdnOn ? '#4af2b2' : '#3a4c70');
+      // Input A to both gates
+      drawCmosPolyWire([[-295, 0], [-210, 0], [-210, -95], [-82, -95]], a);
+      drawCmosPolyWire([[-210, 0], [-210, 95], [-82, 95]], a);
+      drawMosfet(-40, -95, 'PMOS', 'P1', a);
+      drawMosfet(-40, 95, 'NMOS', 'N1', a);
+    } else if (type === 'NAND') {
+      // PUN: Parallel PMOS at x=-105 and x=25, y=-95
+      drawCmosWire(-40, -195, -40, -148, true, '#ff6083');
+      drawCmosPolyWire([[-105, -130], [-105, -148], [25, -148], [25, -130]], 1, '#ff6083');
+      drawCmosPolyWire([[-105, -60], [-105, -42], [25, -42], [25, -60]], outHi ? 1 : 0, outCol);
+      drawCmosWire(-40, -42, -40, 0, outHi, outCol);
+
+      // PDN: Series NMOS at x=-40, y=58 and y=132
+      drawCmosWire(-40, 0, -40, 26, outHi, outCol);
+      drawCmosWire(-40, 90, -40, 100, (a && b), (a && b) ? '#4af2b2' : '#3a4c70');
+      drawCmosWire(-40, 164, -40, 195, pdnOn, pdnOn ? '#4af2b2' : '#3a4c70');
+
+      // Gate drive wires
+      drawCmosPolyWire([[-295, -60], [-225, -60], [-225, -95], [-147, -95]], a);
+      drawCmosPolyWire([[-225, -60], [-225, 58], [-82, 58]], a);
+      drawCmosPolyWire([[-295, 60], [-245, 60], [-245, 132], [-82, 132]], b);
+      drawCmosPolyWire([[-245, 60], [-245, -12], [-20, -12], [-20, -95], [-17, -95]], b);
+
+      drawMosfet(-105, -95, 'PMOS', 'P_A', a);
+      drawMosfet(25, -95, 'PMOS', 'P_B', b);
+      drawMosfet(-40, 58, 'NMOS', 'N_A', a);
+      drawMosfet(-40, 132, 'NMOS', 'N_B', b);
+    } else {
+      // NOR: PUN Series PMOS at x=-40, y=-132 and y=-58; PDN Parallel NMOS at x=-105 and x=25, y=95
+      drawCmosWire(-40, -195, -40, -164, true, '#ff6083');
+      drawCmosWire(-40, -100, -40, -90, !a, !a ? '#a78bfa' : '#3a4c70');
+      drawCmosWire(-40, -26, -40, 0, outHi, outCol);
+
+      drawCmosWire(-40, 0, -40, 42, outHi, outCol);
+      drawCmosPolyWire([[-105, 60], [-105, 42], [25, 42], [25, 60]], outHi ? 1 : 0, outCol);
+      drawCmosPolyWire([[-105, 130], [-105, 148], [25, 148], [25, 130]], pdnOn ? 1 : 0, pdnOn ? '#4af2b2' : '#3a4c70');
+      drawCmosWire(-40, 148, -40, 195, pdnOn, pdnOn ? '#4af2b2' : '#3a4c70');
+
+      drawCmosPolyWire([[-295, -60], [-225, -60], [-225, -132], [-82, -132]], a);
+      drawCmosPolyWire([[-225, -60], [-225, 95], [-147, 95]], a);
+      drawCmosPolyWire([[-295, 60], [-245, 60], [-245, -58], [-82, -58]], b);
+      drawCmosPolyWire([[-245, 60], [-245, 15], [-20, 15], [-20, 95], [-17, 95]], b);
+
+      drawMosfet(-40, -132, 'PMOS', 'P_A', a);
+      drawMosfet(-40, -58, 'PMOS', 'P_B', b);
+      drawMosfet(-105, 95, 'NMOS', 'N_A', a);
+      drawMosfet(25, 95, 'NMOS', 'N_B', b);
+    }
+
+    // Output horizontal node -> Load Capacitor C_L & Output LED + Dynamic Current Meter
+    drawCmosWire(-40, 0, 210, 0, outHi, outCol);
+
+    // Output Node Junction Dot
+    ctx.beginPath();
+    ctx.arc(-40, 0, 5.5, 0, Math.PI * 2);
+    ctx.fillStyle = outHi ? '#4af2b2' : '#4a5c84';
+    ctx.fill();
+
+    // Load Capacitor C_L branch at x = 155
+    ctx.strokeStyle = outCol;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(155, 0); ctx.lineTo(155, 70);
+    ctx.moveTo(136, 70); ctx.lineTo(174, 70);
+    ctx.moveTo(136, 82); ctx.lineTo(174, 82);
+    ctx.moveTo(155, 82); ctx.lineTo(155, 195);
+    ctx.stroke();
+    ctx.fillStyle = '#9aa9cc';
+    ctx.font = '700 10px ui-monospace, Consolas, monospace';
+    ctx.fillText('C_L', 180, 78);
+    ctx.fillStyle = outHi ? '#4af2b2' : '#7f90b3';
+    ctx.fillText(`V_out = ${(vOut * 5).toFixed(2)}V`, 124, -14);
+
+    // Dynamic Current Particles during transition
+    for (const p of particles) {
+      let px, py;
+      if (p.dir > 0) {
+        // Charging VDD -> Output -> C_L
+        if (p.t < 0.5) { px = -40; py = -190 + (p.t * 2) * 190; }
+        else { const u = (p.t - 0.5) * 2; px = -40 + u * 195; py = 0; }
+      } else {
+        // Discharging C_L -> Output -> GND
+        if (p.t < 0.5) { const u = p.t * 2; px = 155 - u * 195; py = 0; }
+        else { const u = (p.t - 0.5) * 2; px = -40; py = u * 190; }
+      }
+      ctx.beginPath();
+      ctx.arc(px, py, 4.5, 0, Math.PI * 2);
+      ctx.fillStyle = p.dir > 0 ? '#ffd88a' : '#58dcff';
+      ctx.shadowColor = p.dir > 0 ? '#ffbe5c' : '#58dcff';
+      ctx.shadowBlur = 12;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+
+    // Output LED Dome at (235, 0)
+    ctx.beginPath();
+    ctx.arc(235, 0, 20, 0, Math.PI * 2);
+    ctx.fillStyle = '#0b1020';
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = outHi ? '#4af2b2' : 'rgba(148,179,255,0.3)';
+    ctx.stroke();
+    if (outHi && state.showGrid) {
+      const g = ctx.createRadialGradient(235, 0, 2, 235, 0, 36);
+      g.addColorStop(0, '#4af2b2');
+      g.addColorStop(1, 'rgba(74,242,178,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(235, 0, 36, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.beginPath();
+    ctx.arc(235, 0, 13, 0, Math.PI * 2);
+    ctx.fillStyle = outHi ? '#4af2b2' : '#1d2740';
+    ctx.fill();
+    ctx.fillStyle = '#eef3ff';
+    ctx.font = '800 12px ui-monospace, Consolas, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(`OUT Y = ${outHi ? '1' : '0'}`, 235, -32);
+
+    // Live Current & Truth Table Card on Right (x = 275..410)
+    roundRectPath(ctx, 275, -172, 148, 344, 11);
+    ctx.fillStyle = 'rgba(10, 15, 28, 0.88)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.22)';
+    ctx.lineWidth = 1.4;
+    ctx.stroke();
+
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#58dcff';
+    ctx.font = '800 10.5px ui-monospace, Consolas, monospace';
+    ctx.fillText(`CMOS ${type} TABLE`, 289, -150);
+
+    const rows = isNot
+      ? [['A', 'PMOS', 'NMOS', 'Y'], [0, 'ON', 'OFF', 1], [1, 'OFF', 'ON', 0]]
+      : type === 'NAND'
+        ? [['A B', 'PUN', 'PDN', 'Y'], ['0 0', 'ON', 'OFF', 1], ['0 1', 'ON', 'OFF', 1], ['1 0', 'ON', 'OFF', 1], ['1 1', 'OFF', 'ON', 0]]
+        : [['A B', 'PUN', 'PDN', 'Y'], ['0 0', 'ON', 'OFF', 1], ['0 1', 'OFF', 'ON', 0], ['1 0', 'OFF', 'ON', 0], ['1 1', 'OFF', 'ON', 0]];
+
+    const activeRow = isNot ? (a + 1) : (a * 2 + b + 1);
+    rows.forEach((r, idx) => {
+      const ry = -124 + idx * 24;
+      if (idx === activeRow) {
+        roundRectPath(ctx, 283, ry - 11, 132, 20, 5);
+        ctx.fillStyle = 'rgba(74, 242, 178, 0.16)';
+        ctx.fill();
+      }
+      ctx.font = idx === 0 ? '700 9.5px ui-monospace, monospace' : '600 10px ui-monospace, monospace';
+      ctx.fillStyle = idx === 0 ? '#68789c' : (idx === activeRow ? '#eef8ff' : '#8ea0c4');
+      ctx.fillText(String(r[0]), 289, ry + 2);
+      ctx.fillText(String(r[1]), 324, ry + 2);
+      ctx.fillText(String(r[2]), 358, ry + 2);
+      ctx.fillStyle = idx === 0 ? '#68789c' : (r[3] ? '#4af2b2' : '#7b8db0');
+      ctx.fillText(String(r[3]), 396, ry + 2);
+    });
+
+    // Dynamic Current Meter inside card
+    ctx.fillStyle = '#ffbe5c';
+    ctx.font = '700 10px ui-monospace, Consolas, monospace';
+    ctx.fillText('SUPPLY CURRENT I_DD', 289, 32);
+    const iMicro = iSpike * 420;
+    ctx.fillStyle = iSpike > 0.05 ? '#ffbe5c' : '#4af2b2';
+    ctx.font = '800 14px ui-monospace, Consolas, monospace';
+    ctx.fillText(iSpike > 0.05 ? `${iMicro.toFixed(0)} µA (SW)` : '0.00 µA', 289, 54);
+    ctx.fillStyle = '#7b8db0';
+    ctx.font = '600 9.5px system-ui, sans-serif';
+    ctx.fillText(iSpike > 0.05 ? 'Charging / Discharging C_L' : 'Zero static dissipation!', 289, 73);
+
+    // Current bar
+    roundRectPath(ctx, 289, 86, 120, 9, 4);
+    ctx.fillStyle = 'rgba(255,255,255,0.08)';
+    ctx.fill();
+    roundRectPath(ctx, 289, 86, Math.max(2, 120 * iSpike), 9, 4);
+    ctx.fillStyle = '#ffbe5c';
+    ctx.fill();
+
+    // Summary formula
+    ctx.fillStyle = '#9aa9cc';
+    ctx.font = '600 10px ui-monospace, Consolas, monospace';
+    ctx.fillText(type === 'NOT' ? 'Y = ¬A' : type === 'NAND' ? 'Y = ¬(A · B)' : 'Y = ¬(A + B)', 289, 130);
+    ctx.fillStyle = '#68789c';
+    ctx.font = '500 9.5px system-ui, sans-serif';
+    ctx.fillText('Click IN A / IN B to toggle', 289, 152);
+
+    ctx.restore();
+  }
+
+  function drawCmosSwitch(x, y, label, val, onClick) {
+    const w = 78, h = 40;
+    cmosHitboxes.push({ x: x - w / 2, y: y - h / 2, w, h, onClick });
+    roundRectPath(ctx, x - w / 2, y - h / 2, w, h, 9);
+    ctx.fillStyle = val ? 'rgba(12, 42, 46, 0.94)' : 'rgba(13, 19, 34, 0.92)';
+    ctx.fill();
+    ctx.lineWidth = 1.8;
+    ctx.strokeStyle = val ? '#4af2b2' : 'rgba(148,179,255,0.36)';
+    if (val && state.showGrid) { ctx.shadowColor = '#4af2b2'; ctx.shadowBlur = 12; }
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    ctx.fillStyle = val ? '#e8fff7' : '#9aa9cc';
+    ctx.font = '800 12px ui-monospace, Consolas, monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`${label}: ${val}`, x, y);
+  }
+
+  function drawCmosWire(x1, y1, x2, y2, active, col) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.strokeStyle = col;
+    ctx.lineWidth = active ? 2.8 : 2.0;
+    if (active && state.showGrid) { ctx.shadowColor = col; ctx.shadowBlur = 10; }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawCmosPolyWire(pts, val, overrideCol) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(pts[0][0], pts[0][1]);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+    const col = overrideCol || (val ? '#58dcff' : '#314266');
+    ctx.strokeStyle = col;
+    ctx.lineWidth = val ? 2.6 : 1.9;
+    ctx.lineJoin = 'round';
+    if (val && state.showGrid) { ctx.shadowColor = col; ctx.shadowBlur = 8; }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawMosfet(x, y, kind, label, gateVal) {
+    const isPmos = kind === 'PMOS';
+    const conducting = isPmos ? (gateVal === 0) : (gateVal === 1);
+    const activeCol = isPmos ? '#a78bfa' : '#4af2b2';
+
+    ctx.save();
+    ctx.translate(x, y);
+
+    // Subtle body halo when conducting
+    if (conducting) {
+      roundRectPath(ctx, -38, -32, 62, 64, 9);
+      ctx.fillStyle = isPmos ? 'rgba(167,139,250,0.12)' : 'rgba(74,242,178,0.12)';
+      ctx.fill();
+    }
+
+    // Gate lead + bubble (PMOS) + vertical oxide plate
+    ctx.strokeStyle = gateVal ? '#58dcff' : '#5c729c';
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    ctx.moveTo(-42, 0);
+    ctx.lineTo(isPmos ? -28 : -20, 0);
+    ctx.stroke();
+
+    if (isPmos) {
+      ctx.beginPath();
+      ctx.arc(-23.5, 0, 4.5, 0, Math.PI * 2);
+      ctx.fillStyle = '#070c18';
+      ctx.fill();
+      ctx.strokeStyle = conducting ? '#a78bfa' : '#6c80ab';
+      ctx.lineWidth = 1.8;
+      ctx.stroke();
+    }
+
+    // Gate plate
+    ctx.beginPath();
+    ctx.moveTo(-18, -19); ctx.lineTo(-18, 19);
+    ctx.strokeStyle = '#9db4df';
+    ctx.lineWidth = 2.6;
+    ctx.stroke();
+
+    // Channel bar (solid glowing if ON, broken 3-dash if OFF)
+    ctx.strokeStyle = conducting ? activeCol : '#3e5074';
+    ctx.lineWidth = conducting ? 3.4 : 2.2;
+    if (conducting && state.showGrid) { ctx.shadowColor = activeCol; ctx.shadowBlur = 14; }
+    ctx.beginPath();
+    if (conducting) {
+      ctx.moveTo(-11, -22); ctx.lineTo(-11, 22);
+    } else {
+      ctx.moveTo(-11, -22); ctx.lineTo(-11, -11);
+      ctx.moveTo(-11, -5); ctx.lineTo(-11, 5);
+      ctx.moveTo(-11, 11); ctx.lineTo(-11, 22);
+    }
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // Source / Drain stubs connecting to vertical rail at x=0
+    ctx.strokeStyle = conducting ? activeCol : '#4a5f88';
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    ctx.moveTo(-11, -18); ctx.lineTo(0, -18); ctx.lineTo(0, -34);
+    ctx.moveTo(-11, 18); ctx.lineTo(0, 18); ctx.lineTo(0, 34);
+    ctx.stroke();
+
+    // Label + ON/OFF badge
+    ctx.fillStyle = conducting ? '#ffffff' : '#7f90b3';
+    ctx.font = '700 10px ui-monospace, Consolas, monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText(label, 6, -5);
+    ctx.fillStyle = conducting ? activeCol : '#55678a';
+    ctx.font = '800 9px ui-monospace, Consolas, monospace';
+    ctx.fillText(conducting ? 'ON' : 'OFF', 6, 8);
+
+    ctx.restore();
+  }
+
+  // =========================================================================
+  // MAIN CANVAS RENDER LOOP
+  // =========================================================================
+  function renderMainCanvas() {
+    const W = window.innerWidth;
+    const H = window.innerHeight;
+
+    // Deep cosmic PCB backdrop
+    ctx.fillStyle = '#040711';
+    ctx.fillRect(0, 0, W, H);
+
+    // Subtle radial ambient glow
+    const rad = ctx.createRadialGradient(W * 0.45, H * 0.5, 40, W * 0.45, H * 0.5, Math.max(W, H) * 0.65);
+    rad.addColorStop(0, 'rgba(20, 42, 74, 0.24)');
+    rad.addColorStop(1, 'rgba(4, 7, 17, 0)');
+    ctx.fillStyle = rad;
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.save();
+    ctx.translate(W / 2, H / 2);
+    ctx.scale(state.zoom, state.zoom);
+    ctx.translate(-state.camX, -state.camY);
+
+    // Blueprint PCB dot/line grid
+    if (state.showGrid) {
+      const step = 32;
+      const left = state.camX - (W / 2) / state.zoom - step;
+      const right = state.camX + (W / 2) / state.zoom + step;
+      const top = state.camY - (H / 2) / state.zoom - step;
+      const bottom = state.camY + (H / 2) / state.zoom + step;
+
+      const x0 = Math.floor(left / step) * step;
+      const y0 = Math.floor(top / step) * step;
+
+      ctx.strokeStyle = 'rgba(110, 150, 230, 0.045)';
+      ctx.lineWidth = 1 / state.zoom;
+      ctx.beginPath();
+      for (let gx = x0; gx <= right; gx += step) {
+        ctx.moveTo(gx, top); ctx.lineTo(gx, bottom);
+      }
+      for (let gy = y0; gy <= bottom; gy += step) {
+        ctx.moveTo(left, gy); ctx.lineTo(right, gy);
+      }
+      ctx.stroke();
+
+      // Subtle major intersections
+      ctx.fillStyle = 'rgba(120, 165, 255, 0.14)';
+      const major = step * 4;
+      const mx0 = Math.floor(left / major) * major;
+      const my0 = Math.floor(top / major) * major;
+      for (let gx = mx0; gx <= right; gx += major) {
+        for (let gy = my0; gy <= bottom; gy += major) {
+          ctx.fillRect(gx - 1, gy - 1, 2, 2);
+        }
+      }
+    }
+
+    if (state.preset === 'cmos') {
+      drawCmosXRay();
+    } else {
+      // Optional Architecture Group Frames
+      for (const g of state.groups) {
+        roundRectPath(ctx, g.x, g.y, g.w, g.h, 12);
+        ctx.fillStyle = 'rgba(12, 20, 38, 0.36)';
+        ctx.fill();
+        ctx.strokeStyle = g.accent || 'rgba(148, 179, 255, 0.18)';
+        ctx.lineWidth = 1.2;
+        ctx.setLineDash([6, 5]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        ctx.fillStyle = 'rgba(160, 188, 240, 0.68)';
+        ctx.font = '700 9.5px ui-monospace, Consolas, monospace';
+        ctx.textAlign = 'left';
+        ctx.fillText(g.title, g.x + 12, g.y + 14);
+      }
+
+      // Sandbox empty hint
+      if (state.preset === 'sandbox' && state.nodes.length === 0) {
+        ctx.fillStyle = 'rgba(148, 179, 255, 0.34)';
+        ctx.font = '700 16px system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('Blank Digital Workbench', 0, -14);
+        ctx.font = '500 12px system-ui, sans-serif';
+        ctx.fillStyle = 'rgba(148, 179, 255, 0.25)';
+        ctx.fillText('Pick a component from the Sandbox tab & click here to place, or click Half-Adder Kit', 0, 12);
+      }
+
+      // Draw all Wires first
+      for (let i = 0; i < state.wires.length; i++) {
+        drawWire(state.wires[i]);
+      }
+
+      // Live Preview Wire when wiring pins
+      if (state.wiringFrom) {
+        const p1 = getPinPos(state.wiringFrom.node, 'out', state.wiringFrom.pinIdx);
+        const p2 = state.hoverPin && state.hoverPin.kind === 'in'
+          ? { x: state.hoverPin.wx, y: state.hoverPin.wy }
+          : state.mouseWorld;
+        const midX = (p1.x + p2.x) * 0.5;
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(p1.x, p1.y);
+        ctx.lineTo(midX, p1.y);
+        ctx.lineTo(midX, p2.y);
+        ctx.lineTo(p2.x, p2.y);
+        ctx.strokeStyle = '#58dcff';
+        ctx.lineWidth = 2.4;
+        ctx.setLineDash([6, 5]);
+        ctx.shadowColor = '#58dcff';
+        ctx.shadowBlur = 10;
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // Draw all Components
+      for (let i = 0; i < state.nodes.length; i++) {
+        drawNode(state.nodes[i]);
+      }
+
+      // Ghost preview when placing component in Sandbox
+      if (state.placeType) {
+        const spec = COMP_SPECS[state.placeType];
+        ctx.save();
+        ctx.globalAlpha = 0.55;
+        roundRectPath(ctx, state.mouseWorld.x - spec.w / 2, state.mouseWorld.y - spec.h / 2, spec.w, spec.h, 8);
+        ctx.strokeStyle = '#4af2b2';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([5, 4]);
+        ctx.stroke();
+        ctx.fillStyle = '#4af2b2';
+        ctx.font = '700 11px ui-monospace, Consolas, monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(`+ ${state.placeType}`, state.mouseWorld.x, state.mouseWorld.y);
+        ctx.restore();
+      }
+    }
+
+    ctx.restore();
+  }
+
+  // =========================================================================
+  // MULTI-CHANNEL LOGIC ANALYZER RENDERER
+  // =========================================================================
+  function renderLogicAnalyzer() {
+    if (!state.showLa) return;
+    const rect = laCanvas.getBoundingClientRect();
+    const W = rect.width;
+    const H = rect.height;
+    if (W < 20 || H < 20) return;
+
+    laCtx.fillStyle = '#050914';
+    laCtx.fillRect(0, 0, W, H);
+
+    const channels = state.laChannels;
+    if (channels.length === 0) {
+      laCtx.fillStyle = '#5c6e91';
+      laCtx.font = '600 11px ui-monospace, monospace';
+      laCtx.textAlign = 'center';
+      laCtx.fillText('Place components to probe timing channels', W / 2, H / 2);
+      return;
+    }
+
+    const labelW = 54;
+    const plotW = W - labelW - 6;
+    const rowH = H / channels.length;
+
+    // Subtle vertical timing grid
+    laCtx.strokeStyle = 'rgba(148, 179, 255, 0.08)';
+    laCtx.lineWidth = 1;
+    for (let gx = labelW; gx < W; gx += 36) {
+      laCtx.beginPath(); laCtx.moveTo(gx, 0); laCtx.lineTo(gx, H); laCtx.stroke();
+    }
+
+    const samples = state.laSamples;
+    const maxN = 260;
+    const dx = plotW / maxN;
+
+    // Rising edge markers
+    for (let s = 0; s < samples.length; s++) {
+      if (samples[s].edge) {
+        const sx = labelW + (maxN - samples.length + s) * dx;
+        laCtx.save();
+        laCtx.strokeStyle = 'rgba(255, 190, 92, 0.25)';
+        laCtx.setLineDash([2, 3]);
+        laCtx.beginPath(); laCtx.moveTo(sx, 0); laCtx.lineTo(sx, H); laCtx.stroke();
+        // Tiny rising arrow at top
+        laCtx.fillStyle = '#ffbe5c';
+        laCtx.beginPath();
+        laCtx.moveTo(sx, 2); laCtx.lineTo(sx - 3, 7); laCtx.lineTo(sx + 3, 7);
+        laCtx.closePath(); laCtx.fill();
+        laCtx.restore();
+      }
+    }
+
+    // Channel rows & crisp square-wave traces
+    for (let c = 0; c < channels.length; c++) {
+      const ch = channels[c];
+      const yTop = c * rowH;
+      const yHi = yTop + rowH * 0.24;
+      const yLo = yTop + rowH * 0.80;
+
+      // Divider
+      if (c > 0) {
+        laCtx.strokeStyle = 'rgba(148, 179, 255, 0.09)';
+        laCtx.beginPath(); laCtx.moveTo(0, yTop); laCtx.lineTo(W, yTop); laCtx.stroke();
+      }
+
+      // Channel Name
+      laCtx.fillStyle = ch.color;
+      laCtx.font = '700 9.5px ui-monospace, Consolas, monospace';
+      laCtx.textAlign = 'left';
+      laCtx.textBaseline = 'middle';
+      laCtx.fillText(ch.name, 6, yTop + rowH * 0.52);
+
+      if (samples.length < 2) continue;
+
+      // Trace path
+      laCtx.save();
+      laCtx.beginPath();
+      for (let s = 0; s < samples.length; s++) {
+        const v = samples[s].vals[c] ? 1 : 0;
+        const sx = labelW + (maxN - samples.length + s) * dx;
+        const sy = v ? yHi : yLo;
+        if (s === 0) {
+          laCtx.moveTo(sx, sy);
+        } else {
+          const prevV = samples[s - 1].vals[c] ? 1 : 0;
+          if (prevV !== v) {
+            laCtx.lineTo(sx, prevV ? yHi : yLo);
+          }
+          laCtx.lineTo(sx, sy);
+        }
+      }
+      laCtx.strokeStyle = ch.color;
+      laCtx.lineWidth = 1.65;
+      laCtx.stroke();
+      laCtx.restore();
+    }
+  }
+
+  // =========================================================================
+  // TELEMETRY READOUT COMPUTATION
+  // =========================================================================
+  function bin4(val) {
+    return (val & 15).toString(2).padStart(4, '0');
+  }
+
+  function updateTelemetryUI() {
+    els.telTpd.textContent = `${state.tpdNs} ns`;
+    els.laScale.textContent = `t_pd ${state.tpdNs} ns`;
+    els.telTime.textContent = state.simTimeNs >= 1000
+      ? `${(state.simTimeNs / 1000).toFixed(2)} µs`
+      : `${Math.floor(state.simTimeNs)} ns`;
+
+    if (state.preset === 'ring') {
+      const fMHz = 1000 / (6 * state.tpdNs);
+      els.telClk.textContent = `${fMHz.toFixed(1)} MHz`;
+    } else if (state.autoClk) {
+      els.telClk.textContent = `${state.clkFreq.toFixed(1)} Hz`;
+    } else {
+      els.telClk.textContent = 'MANUAL';
+    }
+
+    // Active Gate count
+    const gateCount = state.preset === 'cmos'
+      ? (state.cmosType === 'NOT' ? 2 : 4)
+      : state.nodes.filter(n => !['SWITCH', 'LED', 'CLOCK', 'HEX7'].includes(n.type)).length;
+    els.telGates.textContent = state.preset === 'cmos' ? `${gateCount} FETs` : `${gateCount}`;
+
+    // Transitions/sec over trailing 1.0 s window
+    const now = performance.now();
+    while (state.transHistory.length > 0 && now - state.transHistory[0] > 1000) {
+      state.transHistory.shift();
+    }
+    els.telTrans.textContent = `${state.transHistory.length} /s`;
+
+    // Status pill
+    if (state.wiringFrom) {
+      els.simStatus.textContent = 'Wiring';
+      els.simStatus.className = 'status-pill wire';
+    } else if (!state.running) {
+      els.simStatus.textContent = 'Paused';
+      els.simStatus.className = 'status-pill paused';
+    } else {
+      els.simStatus.textContent = state.preset === 'ring' ? 'Oscillating' : 'Running';
+      els.simStatus.className = 'status-pill';
+    }
+
+    // Circuit-specific Binary & Decimal I/O Readout
+    let ioStr = '';
+    if (state.preset === 'alu4') {
+      const A = (getNodeById('A0')?.val || 0) | ((getNodeById('A1')?.val || 0) << 1) | ((getNodeById('A2')?.val || 0) << 2) | ((getNodeById('A3')?.val || 0) << 3);
+      const B = (getNodeById('B0')?.val || 0) | ((getNodeById('B1')?.val || 0) << 1) | ((getNodeById('B2')?.val || 0) << 2) | ((getNodeById('B3')?.val || 0) << 3);
+      const S = (getNodeById('S0')?.ins[0].val || 0) | ((getNodeById('S1')?.ins[0].val || 0) << 1) | ((getNodeById('S2')?.ins[0].val || 0) << 2) | ((getNodeById('S3')?.ins[0].val || 0) << 3);
+      const C = getNodeById('COUT')?.ins[0].val || 0;
+      const isSub = !!(getNodeById('SUB')?.val);
+      if (!isSub) {
+        const total = S + (C ? 16 : 0);
+        ioStr = `A=${bin4(A)}(${A}) + B=${bin4(B)}(${B}) = ${C}${bin4(S)} (${total})`;
+      } else {
+        const diff = C ? S : (S - 16);
+        ioStr = `A=${bin4(A)}(${A}) − B=${bin4(B)}(${B}) = ${bin4(S)} (${diff})`;
+      }
+    } else if (state.preset === 'cmos') {
+      const { a, b, vOut, iSpike } = state.cmos;
+      const y = vOut > 0.5 ? 1 : 0;
+      const inp = state.cmosType === 'NOT' ? `A=${a}` : `A=${a},B=${b}`;
+      ioStr = `${state.cmosType}(${inp})=${y} | ${(vOut * 5).toFixed(2)}V | I=${iSpike > 0.05 ? Math.round(iSpike * 420) + 'µA' : '0.00µA'}`;
+    } else if (state.preset === 'latch') {
+      const srq = getNodeById('SR_Q')?.ins[0].val || 0;
+      const dq = getNodeById('D_Q')?.ins[0].val || 0;
+      ioStr = `SR_Q=${srq} (S=${getNodeById('SET')?.val || 0},R=${getNodeById('RST')?.val || 0}) | D_Q=${dq} (D=${getNodeById('D_IN')?.val || 0})`;
+    } else if (state.preset === 'counter4') {
+      const Q = (getNodeById('FF0')?.outs[0].val || 0) | ((getNodeById('FF1')?.outs[0].val || 0) << 1) | ((getNodeById('FF2')?.outs[0].val || 0) << 2) | ((getNodeById('FF3')?.outs[0].val || 0) << 3);
+      ioStr = `Q[3:0] = ${bin4(Q)} (DEC ${Q} · 0x${Q.toString(16).toUpperCase()})`;
+    } else if (state.preset === 'shift4') {
+      const Q = (getNodeById('FF0')?.outs[0].val || 0) | ((getNodeById('FF1')?.outs[0].val || 0) << 1) | ((getNodeById('FF2')?.outs[0].val || 0) << 2) | ((getNodeById('FF3')?.outs[0].val || 0) << 3);
+      const din = getNodeById('DIN')?.val || 0;
+      ioStr = `SER_IN=${din} → REG=${bin4(Q)} (0x${Q.toString(16).toUpperCase()})`;
+    } else if (state.preset === 'ring') {
+      const n1 = getNodeById('INV1')?.outs[0].val || 0;
+      const n2 = getNodeById('INV2')?.outs[0].val || 0;
+      const n3 = getNodeById('INV3')?.outs[0].val || 0;
+      const T = 6 * state.tpdNs;
+      ioStr = `φ=[${n1}${n2}${n3}] | T = 6·t_pd = ${T} ns | f = ${(1000 / T).toFixed(1)} MHz`;
+    } else if (state.preset === 'decmux') {
+      const s1 = getNodeById('S1')?.val || 0;
+      const s0 = getNodeById('S0')?.val || 0;
+      const sel = (s1 << 1) | s0;
+      if (state.decmuxMode === 'DEC') {
+        const y = [0,1,2,3].map(i => getNodeById(`Y${i}`)?.ins[0].val || 0).reverse().join('');
+        ioStr = `SEL=${s1}${s0}(${sel}) EN=${getNodeById('EN')?.val || 0} → Y[3:0]=${y}`;
+      } else {
+        const outY = getNodeById('MUX_Y')?.ins[0].val || 0;
+        ioStr = `MUX SEL=${s1}${s0} (D${sel}) → OUT Y = ${outY}`;
+      }
+    } else {
+      const sws = state.nodes.filter(n => n.type === 'SWITCH').map(n => n.val).join('');
+      const leds = state.nodes.filter(n => n.type === 'LED').map(n => n.ins[0].val).join('');
+      ioStr = `Nodes: ${state.nodes.length} · Wires: ${state.wires.length}${sws ? ' · SW=' + sws : ''}${leds ? ' · LED=' + leds : ''}`;
+    }
+    els.telIo.textContent = ioStr;
+  }
+
+  // =========================================================================
+  // HIT TESTING & INTERACTION (CLICK, DRAG, WIRE, PAN, ZOOM)
+  // =========================================================================
+  function findPinAt(wx, wy) {
+    const r = 13 / Math.max(0.6, state.zoom);
+    for (let i = state.nodes.length - 1; i >= 0; i--) {
+      const n = state.nodes[i];
+      for (let o = 0; o < n.outs.length; o++) {
+        const p = getPinPos(n, 'out', o);
+        if (Math.hypot(wx - p.x, wy - p.y) <= r) return { node: n, kind: 'out', idx: o, wx: p.x, wy: p.y };
+      }
+      for (let k = 0; k < n.ins.length; k++) {
+        const p = getPinPos(n, 'in', k);
+        if (Math.hypot(wx - p.x, wy - p.y) <= r) return { node: n, kind: 'in', idx: k, wx: p.x, wy: p.y };
+      }
+    }
+    return null;
+  }
+
+  function findNodeAt(wx, wy) {
+    for (let i = state.nodes.length - 1; i >= 0; i--) {
+      const n = state.nodes[i];
+      if (wx >= n.x - n.w / 2 - 4 && wx <= n.x + n.w / 2 + 4 && wy >= n.y - n.h / 2 - 4 && wy <= n.y + n.h / 2 + 4) {
+        return n;
+      }
+    }
+    return null;
+  }
+
+  function findWireAt(wx, wy) {
+    const thresh = 8 / Math.max(0.6, state.zoom);
+    for (let i = state.wires.length - 1; i >= 0; i--) {
+      const pts = getWirePoints(state.wires[i]);
+      for (let j = 0; j < pts.length - 1; j++) {
+        const d = distToSegment(wx, wy, pts[j].x, pts[j].y, pts[j + 1].x, pts[j + 1].y);
+        if (d <= thresh) return state.wires[i];
+      }
+    }
+    return null;
+  }
+
+  function distToSegment(px, py, x1, y1, x2, y2) {
+    const dx = x2 - x1, dy = y2 - y1;
+    const l2 = dx * dx + dy * dy;
+    if (l2 < 0.001) return Math.hypot(px - x1, py - y1);
+    const t = Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / l2));
+    return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
+  }
+
+  function deleteNode(node) {
+    state.nodes = state.nodes.filter(n => n !== node);
+    state.wires = state.wires.filter(w => w.fromId !== node.id && w.toId !== node.id);
+    if (state.wiringFrom && state.wiringFrom.node === node) state.wiringFrom = null;
+    rebuildSandboxLaChannels();
+  }
+
+  function updateCursor() {
+    canvas.className = '';
+    if (state.panning) { canvas.classList.add('panning'); return; }
+    if (state.placeType) { canvas.classList.add('placing'); return; }
+    if (state.tool === 'delete') { canvas.classList.add('deleting'); return; }
+    if (state.wiringFrom || state.tool === 'wire' || state.hoverPin) { canvas.classList.add('wiring'); return; }
+    if (state.preset === 'cmos') {
+      const overCmos = cmosHitboxes.some(b =>
+        state.mouseWorld.x >= b.x && state.mouseWorld.x <= b.x + b.w &&
+        state.mouseWorld.y >= b.y && state.mouseWorld.y <= b.y + b.h
+      );
+      if (overCmos) canvas.classList.add('pointer');
+      return;
+    }
+    if (state.hoverNode && (state.hoverNode.type === 'SWITCH' || state.hoverNode.type === 'CLOCK')) {
+      canvas.classList.add('pointer');
+    }
+  }
+
+  canvas.addEventListener('pointerdown', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const sx = e.clientX - rect.left;
+    const sy = e.clientY - rect.top;
+    const wpos = screenToWorld(sx, sy);
+    state.mouseScreen = { x: sx, y: sy };
+    state.mouseWorld = wpos;
+
+    // Right click cancels wiring/placing or deletes in Sandbox
+    if (e.button === 2) {
+      if (state.wiringFrom) { state.wiringFrom = null; showToast('Wiring cancelled'); return; }
+      if (state.placeType) { state.placeType = null; updatePaletteSelection(); return; }
+      const hitNode = findNodeAt(wpos.x, wpos.y);
+      if (hitNode && state.preset === 'sandbox') { deleteNode(hitNode); showToast(`Deleted ${hitNode.label}`); return; }
+      const hitWire = findWireAt(wpos.x, wpos.y);
+      if (hitWire && state.preset === 'sandbox') { state.wires = state.wires.filter(w => w !== hitWire); return; }
+      return;
+    }
+
+    // Middle button pans anywhere
+    if (e.button === 1) {
+      state.panning = true;
+      state.panStart = { sx, sy, cx: state.camX, cy: state.camY };
+      updateCursor();
+      return;
+    }
+
+    // CMOS X-Ray click handling
+    if (state.preset === 'cmos') {
+      for (const b of cmosHitboxes) {
+        if (wpos.x >= b.x && wpos.x <= b.x + b.w && wpos.y >= b.y && wpos.y <= b.y + b.h) {
+          b.onClick();
+          return;
+        }
+      }
+      state.panning = true;
+      state.panStart = { sx, sy, cx: state.camX, cy: state.camY };
+      updateCursor();
+      return;
+    }
+
+    // Place mode
+    if (state.placeType) {
+      const snappedX = Math.round(wpos.x / 16) * 16;
+      const snappedY = Math.round(wpos.y / 16) * 16;
+      const count = state.nodes.filter(n => n.type === state.placeType).length + 1;
+      const label = state.placeType === 'SWITCH' ? `SW${count}`
+        : state.placeType === 'LED' ? `LED${count}`
+        : state.placeType === 'HEX7' ? `HEX${count}`
+        : state.placeType;
+      makeNode(state.placeType, snappedX, snappedY, { label });
+      rebuildSandboxLaChannels();
+      AudioEngine.wireConnect();
+      showToast(`Placed ${label}`);
+      return;
+    }
+
+    // Delete tool
+    if (state.tool === 'delete') {
+      const hitNode = findNodeAt(wpos.x, wpos.y);
+      if (hitNode) { deleteNode(hitNode); showToast(`Deleted ${hitNode.label}`); return; }
+      const hitWire = findWireAt(wpos.x, wpos.y);
+      if (hitWire) { state.wires = state.wires.filter(w => w !== hitWire); showToast('Wire removed'); return; }
+      return;
+    }
+
+    // Pin wiring check (works in both Interact & Wire mode!)
+    const pin = findPinAt(wpos.x, wpos.y);
+    if (pin) {
+      if (pin.kind === 'out') {
+        state.wiringFrom = { node: pin.node, pinIdx: pin.idx };
+        showToast(`Wiring from ${pin.node.label} → click an input pin`);
+        return;
+      } else if (pin.kind === 'in' && state.wiringFrom) {
+        if (state.wiringFrom.node === pin.node && state.wiringFrom.node.type !== 'DFF') {
+          // Allow self-loop if desired, or connect normally
+        }
+        connect(state.wiringFrom.node.id, state.wiringFrom.pinIdx, pin.node.id, pin.idx);
+        AudioEngine.wireConnect();
+        state.wiringFrom = null;
+        showToast('Wire connected');
+        return;
+      } else if (pin.kind === 'in' && !state.wiringFrom) {
+        // Clicking an input pin with a wire disconnects it
+        const had = state.wires.some(w => w.toId === pin.node.id && w.toPin === pin.idx);
+        if (had) {
+          state.wires = state.wires.filter(w => !(w.toId === pin.node.id && w.toPin === pin.idx));
+          pin.node.ins[pin.idx].val = 0;
+          showToast('Input disconnected');
+          return;
+        }
+      }
+    }
+
+    if (state.wiringFrom) {
+      state.wiringFrom = null;
+      return;
+    }
+
+    // Node click / drag
+    const node = findNodeAt(wpos.x, wpos.y);
+    if (node) {
+      state.dragNode = node;
+      state.dragOffset = { x: wpos.x - node.x, y: wpos.y - node.y };
+      state.dragMoved = false;
+      return;
+    }
+
+    // Otherwise pan background
+    state.panning = true;
+    state.panStart = { sx, sy, cx: state.camX, cy: state.camY };
+    updateCursor();
+  });
+
+  window.addEventListener('pointermove', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const sx = e.clientX - rect.left;
+    const sy = e.clientY - rect.top;
+    state.mouseScreen = { x: sx, y: sy };
+    const wpos = screenToWorld(sx, sy);
+    state.mouseWorld = wpos;
+
+    if (state.panning) {
+      state.camX = state.panStart.cx - (sx - state.panStart.sx) / state.zoom;
+      state.camY = state.panStart.cy - (sy - state.panStart.sy) / state.zoom;
+      return;
+    }
+
+    if (state.dragNode) {
+      const nx = Math.round((wpos.x - state.dragOffset.x) / 8) * 8;
+      const ny = Math.round((wpos.y - state.dragOffset.y) / 8) * 8;
+      if (Math.hypot(nx - state.dragNode.x, ny - state.dragNode.y) > 4) {
+        state.dragMoved = true;
+        state.dragNode.moved = true;
+        state.dragNode.x = nx;
+        state.dragNode.y = ny;
+      }
+      return;
+    }
+
+    if (state.preset !== 'cmos') {
+      state.hoverPin = findPinAt(wpos.x, wpos.y);
+      state.hoverNode = state.hoverPin ? null : findNodeAt(wpos.x, wpos.y);
+      state.hoverWire = (!state.hoverPin && !state.hoverNode) ? findWireAt(wpos.x, wpos.y) : null;
+    } else {
+      state.hoverPin = null;
+      state.hoverNode = null;
+      state.hoverWire = null;
+    }
+    updateCursor();
+  });
+
+  window.addEventListener('pointerup', () => {
+    if (state.dragNode && !state.dragMoved) {
+      const n = state.dragNode;
+      if (n.type === 'SWITCH') {
+        n.val = n.val ? 0 : 1;
+        launchWavefront(n, 0, n.val);
+        AudioEngine.switchFlip(n.val);
+        if (state.preset === 'alu4' && n.id === 'SUB') syncAluButtons();
+      } else if (n.type === 'CLOCK') {
+        triggerManualClockPulse();
+      }
+    }
+    state.dragNode = null;
+    state.panning = false;
+    updateCursor();
+  });
+
+  canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+  canvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const rect = canvas.getBoundingClientRect();
+    const sx = e.clientX - rect.left;
+    const sy = e.clientY - rect.top;
+    const before = screenToWorld(sx, sy);
+    const factor = e.deltaY < 0 ? 1.1 : 0.91;
+    state.zoom = Math.max(0.35, Math.min(2.6, state.zoom * factor));
+    const after = screenToWorld(sx, sy);
+    state.camX += (before.x - after.x);
+    state.camY += (before.y - after.y);
+  }, { passive: false });
+
+  // =========================================================================
+  // UI EVENT WIRING
+  // =========================================================================
+  function switchTab(tabName) {
+    document.querySelectorAll('.drawer-tabs .tab-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.tab === tabName);
+    });
+    document.querySelectorAll('.tab-pane').forEach(p => {
+      p.classList.toggle('active', p.id === `tab-${tabName}`);
+    });
+  }
+
+  document.querySelectorAll('.drawer-tabs .tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+  });
+
+  document.querySelectorAll('#preset-grid .preset-btn').forEach(btn => {
+    btn.addEventListener('click', () => loadPreset(btn.dataset.preset));
+  });
+
+  // ALU controls
+  els.btnAluAdd.addEventListener('click', () => {
+    const sub = getNodeById('SUB');
+    if (sub && sub.val !== 0) { sub.val = 0; launchWavefront(sub, 0, 0); AudioEngine.switchFlip(0); syncAluButtons(); }
+  });
+  els.btnAluSub.addEventListener('click', () => {
+    const sub = getNodeById('SUB');
+    if (sub && sub.val !== 1) { sub.val = 1; launchWavefront(sub, 0, 1); AudioEngine.switchFlip(1); syncAluButtons(); }
+  });
+  els.btnAluRipple.addEventListener('click', () => {
+    // Set A=1111 (15), B=0000 (0), SUB=0, settle, then flip B0 -> 1 so user watches full 4-bit carry ripple!
+    const sub = getNodeById('SUB'); if (sub) sub.val = 0;
+    for (let i = 0; i < 4; i++) {
+      const a = getNodeById(`A${i}`); if (a) a.val = 1;
+      const b = getNodeById(`B${i}`); if (b) b.val = 0;
+    }
+    settleCircuitInstant();
+    syncAluButtons();
+    if (state.tpdNs < 45) {
+      state.tpdNs = 55;
+      els.slTpd.value = '55';
+      els.valTpd.textContent = '55 ns';
+    }
+    setTimeout(() => {
+      if (state.preset !== 'alu4') return;
+      const b0 = getNodeById('B0');
+      if (b0) { b0.val = 1; launchWavefront(b0, 0, 1); AudioEngine.switchFlip(1); }
+    }, 120);
+    showToast('15 + 1: Watch the Carry wave ripple Bit 0 → Bit 3 → C_OUT!');
+  });
+  els.btnAluRand.addEventListener('click', () => {
+    for (let i = 0; i < 4; i++) {
+      const a = getNodeById(`A${i}`);
+      const b = getNodeById(`B${i}`);
+      if (a) { a.val = Math.random() > 0.5 ? 1 : 0; launchWavefront(a, 0, a.val); }
+      if (b) { b.val = Math.random() > 0.5 ? 1 : 0; launchWavefront(b, 0, b.val); }
+    }
+    AudioEngine.switchFlip(1);
+  });
+
+  // CMOS controls
+  document.querySelectorAll('#ctx-cmos .seg-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.cmosType = btn.dataset.cmos;
+      document.querySelectorAll('#ctx-cmos .seg-btn').forEach(b => b.classList.toggle('active', b === btn));
+      els.cmosTypeLbl.textContent = state.cmosType === 'NOT' ? 'INVERTER' : `2-IN ${state.cmosType}`;
+      els.btnCmosB.disabled = state.cmosType === 'NOT';
+      els.btnCmosB.style.opacity = state.cmosType === 'NOT' ? '0.4' : '1';
+      state.cmos.targetOut = evalCmosTarget();
+      state.cmos.vOut = state.cmos.targetOut;
+      state.cmos.iSpike = 0;
+      state.laSamples = [];
+    });
+  });
+  els.btnCmosA.addEventListener('click', () => {
+    state.cmos.a = state.cmos.a ? 0 : 1;
+    AudioEngine.switchFlip(state.cmos.a);
+  });
+  els.btnCmosB.addEventListener('click', () => {
+    if (state.cmosType === 'NOT') return;
+    state.cmos.b = state.cmos.b ? 0 : 1;
+    AudioEngine.switchFlip(state.cmos.b);
+  });
+
+  // Shift Register controls
+  els.btnShiftBit.addEventListener('click', () => {
+    const din = getNodeById('DIN');
+    if (din) { din.val = din.val ? 0 : 1; launchWavefront(din, 0, din.val); AudioEngine.switchFlip(din.val); }
+  });
+  els.btnShiftPattern.addEventListener('click', () => {
+    state.shiftQueue = [1, 0, 1, 1];
+    state.autoClk = true;
+    els.chkAutoClk.checked = true;
+    showToast('Streaming serial pattern 1-0-1-1 into D_IN');
+  });
+
+  // Decoder / MUX controls
+  els.btnModeDec.addEventListener('click', () => {
+    state.decmuxMode = 'DEC';
+    els.btnModeDec.classList.add('active', 'mint');
+    els.btnModeMux.classList.remove('active', 'mint');
+    buildDecMux();
+    fitView();
+  });
+  els.btnModeMux.addEventListener('click', () => {
+    state.decmuxMode = 'MUX';
+    els.btnModeMux.classList.add('active', 'mint');
+    els.btnModeDec.classList.remove('active', 'mint');
+    buildDecMux();
+    fitView();
+  });
+
+  // Timing Sliders & Clock
+  els.slTpd.addEventListener('input', () => {
+    state.tpdNs = parseInt(els.slTpd.value, 10);
+    els.valTpd.textContent = `${state.tpdNs} ns`;
+  });
+  els.chkAutoClk.addEventListener('change', () => {
+    state.autoClk = els.chkAutoClk.checked;
+    if (!state.autoClk) { state.clkVal = 0; pushClockToNodes(0); }
+  });
+  els.slFreq.addEventListener('input', () => {
+    state.clkFreq = parseFloat(els.slFreq.value);
+    els.valFreq.textContent = `${state.clkFreq.toFixed(1)} Hz`;
+  });
+  els.btnDrawerPulse.addEventListener('click', triggerManualClockPulse);
+  els.btnDrawerReset.addEventListener('click', () => loadPreset(state.preset, { keepTab: true }));
+
+  // Sandbox Tools & Palette
+  document.querySelectorAll('#tool-row .seg-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.tool = btn.dataset.tool;
+      state.placeType = null;
+      state.wiringFrom = null;
+      updatePaletteSelection();
+      document.querySelectorAll('#tool-row .seg-btn').forEach(b => {
+        b.classList.toggle('active', b === btn);
+        b.classList.toggle('mint', b === btn && state.tool === 'interact');
+        b.classList.toggle('rose', b === btn && state.tool === 'delete');
+      });
+      const hints = {
+        interact: 'Click switches to toggle, drag gates to move, or click an output pin → input pin to wire directly.',
+        wire: 'Click any output pin (right dot) then click an input pin (left dot) to route a signal wire.',
+        delete: 'Click any gate, switch, LED, or wire on the canvas to remove it.'
+      };
+      els.toolHint.textContent = hints[state.tool];
+      updateCursor();
+    });
+  });
+
+  function updatePaletteSelection() {
+    document.querySelectorAll('#palette-grid .pal-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.place === state.placeType);
+    });
+    updateCursor();
+  }
+
+  document.querySelectorAll('#palette-grid .pal-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const type = btn.dataset.place;
+      if (state.preset === 'cmos') {
+        loadPreset('sandbox', { keepTab: true });
+      }
+      state.placeType = (state.placeType === type) ? null : type;
+      state.wiringFrom = null;
+      updatePaletteSelection();
+      if (state.placeType) showToast(`Click anywhere on canvas to place ${state.placeType}`);
+    });
+  });
+
+  els.btnSbStarter.addEventListener('click', () => {
+    loadPreset('sandbox', { starter: true, keepTab: true });
+    showToast('Loaded Half-Adder Sandbox Starter Kit');
+  });
+  els.btnSbClear.addEventListener('click', () => {
+    loadPreset('sandbox', { starter: false, keepTab: true });
+    showToast('Workbench cleared');
+  });
+
+  // Display Toggles
+  els.chkPulses.addEventListener('change', () => { state.showPulses = els.chkPulses.checked; });
+  els.chkBadges.addEventListener('change', () => { state.showBadges = els.chkBadges.checked; });
+  els.chkGrid.addEventListener('change', () => { state.showGrid = els.chkGrid.checked; });
+  els.chkLa.addEventListener('change', () => {
+    state.showLa = els.chkLa.checked;
+    els.laPanel.classList.toggle('hidden-la', !state.showLa);
+  });
+
+  // Logic Analyzer Buttons
+  els.btnLaHold.addEventListener('click', () => {
+    state.laHold = !state.laHold;
+    els.btnLaHold.classList.toggle('active', state.laHold);
+    els.btnLaHold.textContent = state.laHold ? 'Frozen' : 'Hold';
+  });
+  els.btnLaClear.addEventListener('click', () => { state.laSamples = []; });
+
+  // Bottom Transport Bar
+  function togglePlay() {
+    state.running = !state.running;
+    els.btnPlay.textContent = state.running ? '⏸ Pause' : '▶ Play';
+    els.btnPlay.classList.toggle('active', state.running);
+  }
+  els.btnPlay.addEventListener('click', togglePlay);
+  els.btnStepClk.addEventListener('click', triggerManualClockPulse);
+  els.btnReset.addEventListener('click', () => loadPreset(state.preset, { keepTab: true }));
+  els.btnFit.addEventListener('click', fitView);
+
+  els.btnAudio.addEventListener('click', () => {
+    AudioEngine.enabled = !AudioEngine.enabled;
+    if (AudioEngine.enabled) AudioEngine.init();
+    els.btnAudio.textContent = AudioEngine.enabled ? '🔊 Audio' : '🔇 Audio';
+    els.btnAudio.classList.toggle('active', AudioEngine.enabled);
+  });
+
+  els.btnDrawer.addEventListener('click', () => {
+    state.drawerOpen = !state.drawerOpen;
+    els.drawer.classList.toggle('collapsed', !state.drawerOpen);
+    els.btnDrawer.classList.toggle('active', state.drawerOpen);
+    setTimeout(fitView, 260);
+  });
+
+  function toggleCinema() {
+    state.cinemaMode = !state.cinemaMode;
+    document.body.classList.toggle('zen-mode', state.cinemaMode);
+    els.btnCinema.classList.toggle('active', state.cinemaMode);
+    setTimeout(fitView, 220);
+  }
+  els.btnCinema.addEventListener('click', toggleCinema);
+  els.btnZenRestore.addEventListener('click', toggleCinema);
+
+  // Keyboard shortcuts
+  window.addEventListener('keydown', (e) => {
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+    if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
+    else if (e.key === 'c' || e.key === 'C') triggerManualClockPulse();
+    else if (e.key === 'h' || e.key === 'H') toggleCinema();
+    else if (e.key === 'f' || e.key === 'F') fitView();
+    else if (e.key === 'r' || e.key === 'R') loadPreset(state.preset, { keepTab: true });
+    else if (e.key === 'Escape') {
+      state.wiringFrom = null;
+      state.placeType = null;
+      updatePaletteSelection();
+    }
+  });
+
+  // =========================================================================
+  // MAIN ANIMATION LOOP & BOOTSTRAP
+  // =========================================================================
+  let lastFrameMs = performance.now();
+  let uiAcc = 0;
+
+  function frame(nowMs) {
+    const dtSec = Math.min(0.05, (nowMs - lastFrameMs) / 1000);
+    lastFrameMs = nowMs;
+
+    stepSimulation(dtSec);
+    renderMainCanvas();
+    renderLogicAnalyzer();
+
+    uiAcc += dtSec;
+    if (uiAcc >= 0.08) {
+      uiAcc = 0;
+      updateTelemetryUI();
+    }
+
+    requestAnimationFrame(frame);
+  }
+
+  window.addEventListener('resize', () => {
+    resizeCanvases();
+    fitView();
+  });
+
+  resizeCanvases();
+  loadPreset('alu4');
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

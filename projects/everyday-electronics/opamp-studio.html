@@ -1,0 +1,3523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Op-Amp — Analog Computer, Virtual Ground &amp; Waveform Studio</title>
+<style>
+  :root {
+    --bg-deep: #040711;
+    --panel-bg: rgba(9, 13, 24, 0.80);
+    --panel-bg-strong: rgba(8, 12, 22, 0.93);
+    --panel-border: rgba(148, 179, 255, 0.16);
+    --panel-border-hi: rgba(148, 179, 255, 0.36);
+    --text-main: #eef3ff;
+    --text-dim: #9aa9cc;
+    --text-muted: #68789c;
+    --accent-amber: #ffbe5c;
+    --accent-cyan: #58dcff;
+    --accent-mint: #4af2b2;
+    --accent-rose: #ff6083;
+    --accent-violet: #a78bfa;
+    --radius-lg: 14px;
+    --radius-md: 10px;
+    --radius-sm: 7px;
+    --mono: ui-monospace, "Cascadia Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Inter, Helvetica, Arial, sans-serif;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg-deep);
+    color: var(--text-main);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    touch-action: none;
+  }
+
+  #sim-canvas {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    cursor: default;
+  }
+  #sim-canvas.interactive-hover {
+    cursor: ns-resize;
+  }
+  #sim-canvas.scope-hover {
+    cursor: crosshair;
+  }
+
+  /* HUD Layer */
+  .hud {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 10;
+  }
+  body.zen-mode .hud > :not(.zen-restore) {
+    opacity: 0;
+    pointer-events: none !important;
+  }
+
+  .panel {
+    pointer-events: auto;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-lg);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.52), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    transition: opacity 0.25s ease, transform 0.25s ease;
+  }
+
+  /* Top-Left Brand + Telemetry */
+  .top-left {
+    position: fixed;
+    top: 14px;
+    left: 14px;
+    width: min(426px, calc(100vw - 364px));
+    min-width: 290px;
+    padding: 11px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .brand-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .brand-title-wrap {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+    min-width: 0;
+  }
+
+  .brand-title {
+    font-size: 15.5px;
+    font-weight: 800;
+    letter-spacing: 0.10em;
+    text-transform: uppercase;
+    background: linear-gradient(120deg, #fff5dc 0%, #ffbe5c 45%, #58dcff 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    white-space: nowrap;
+  }
+
+  .mode-badge {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 999px;
+    border: 1px solid rgba(88, 220, 255, 0.4);
+    background: rgba(88, 220, 255, 0.12);
+    color: var(--accent-cyan);
+    white-space: nowrap;
+  }
+
+  .status-pill {
+    font-size: 10px;
+    font-weight: 750;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: rgba(74, 242, 178, 0.14);
+    color: var(--accent-mint);
+    border: 1px solid rgba(74, 242, 178, 0.38);
+    white-space: nowrap;
+    flex-shrink: 0;
+    transition: all 0.16s ease;
+  }
+  .status-pill.warn {
+    background: rgba(255, 190, 92, 0.18);
+    color: var(--accent-amber);
+    border-color: rgba(255, 190, 92, 0.48);
+  }
+  .status-pill.danger {
+    background: rgba(255, 96, 131, 0.22);
+    color: #ff8aa4;
+    border-color: rgba(255, 96, 131, 0.58);
+    box-shadow: 0 0 12px rgba(255, 96, 131, 0.3);
+  }
+  .status-pill.violet {
+    background: rgba(167, 139, 250, 0.18);
+    color: #cdb8ff;
+    border-color: rgba(167, 139, 250, 0.45);
+  }
+
+  .telemetry-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 5px;
+  }
+
+  .tele-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(148, 179, 255, 0.1);
+    border-radius: var(--radius-sm);
+    padding: 5px 7px;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+  }
+
+  .tele-label {
+    font-size: 9px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .tele-val {
+    font-family: var(--mono);
+    font-size: 12.2px;
+    font-weight: 700;
+    color: var(--text-main);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .tele-val.amber { color: var(--accent-amber); }
+  .tele-val.cyan { color: var(--accent-cyan); }
+  .tele-val.mint { color: var(--accent-mint); }
+  .tele-val.rose { color: var(--accent-rose); }
+  .tele-val.violet { color: var(--accent-violet); }
+
+  .clock-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding-top: 4px;
+    border-top: 1px solid rgba(148, 179, 255, 0.1);
+    font-size: 10.8px;
+    color: var(--text-dim);
+    font-family: var(--mono);
+  }
+  .clock-row span strong {
+    color: var(--text-main);
+    font-weight: 650;
+  }
+
+  /* Right Control Drawer */
+  .drawer {
+    position: fixed;
+    top: 14px;
+    right: 14px;
+    bottom: 14px;
+    width: 330px;
+    max-width: calc(100vw - 28px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: transform 0.25s ease, opacity 0.25s ease;
+  }
+  .drawer.collapsed {
+    transform: translateX(calc(100% + 24px));
+    pointer-events: none;
+  }
+
+  .drawer-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+    padding: 8px 8px 6px;
+    border-bottom: 1px solid var(--panel-border);
+    background: rgba(4, 7, 15, 0.42);
+  }
+
+  .tab-btn {
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    padding: 7px 5px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .tab-btn:hover {
+    color: var(--text-main);
+    background: rgba(255, 255, 255, 0.04);
+  }
+  .tab-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.16);
+    border-color: rgba(88, 220, 255, 0.42);
+  }
+
+  .drawer-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 11px 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .drawer-body::-webkit-scrollbar {
+    width: 5px;
+  }
+  .drawer-body::-webkit-scrollbar-thumb {
+    background: rgba(148, 179, 255, 0.22);
+    border-radius: 999px;
+  }
+
+  .tab-pane {
+    display: none;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .tab-pane.active {
+    display: flex;
+  }
+
+  .section {
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(148, 179, 255, 0.11);
+    border-radius: var(--radius-md);
+    padding: 9px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .section-title {
+    font-size: 10px;
+    font-weight: 750;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  /* Presets / Topology grid */
+  .preset-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .preset-btn {
+    text-align: left;
+    padding: 7px 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(148, 179, 255, 0.14);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-main);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .preset-btn:hover {
+    border-color: rgba(255, 190, 92, 0.45);
+    background: rgba(255, 190, 92, 0.08);
+  }
+  .preset-btn.active {
+    border-color: var(--accent-amber);
+    background: rgba(255, 190, 92, 0.15);
+    box-shadow: 0 0 12px rgba(255, 190, 92, 0.12);
+  }
+  .preset-name {
+    font-size: 11.2px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 4px;
+  }
+  .preset-key {
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--text-muted);
+    background: rgba(255,255,255,0.06);
+    padding: 0 4px;
+    border-radius: 3px;
+  }
+  .preset-sub {
+    font-size: 9.4px;
+    color: var(--text-muted);
+    line-height: 1.25;
+    font-family: var(--mono);
+  }
+
+  /* Formula box */
+  .formula-box {
+    background: rgba(4, 10, 22, 0.65);
+    border: 1px solid rgba(88, 220, 255, 0.22);
+    border-radius: var(--radius-sm);
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .formula-eq {
+    font-family: var(--mono);
+    font-size: 12.2px;
+    font-weight: 700;
+    color: var(--accent-amber);
+  }
+  .formula-desc {
+    font-size: 10.6px;
+    color: var(--text-dim);
+    line-height: 1.38;
+  }
+
+  /* Sliders */
+  .control-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .control-row.dimmed {
+    opacity: 0.42;
+  }
+
+  .control-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11.2px;
+    color: var(--text-dim);
+  }
+  .control-head .val {
+    font-family: var(--mono);
+    font-size: 11.2px;
+    color: var(--text-main);
+    font-weight: 650;
+  }
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 5px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.18);
+    outline: none;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent-cyan);
+    border: 2px solid #08101f;
+    box-shadow: 0 0 10px rgba(88, 220, 255, 0.65);
+    cursor: pointer;
+  }
+  input[type="range"].amber::-webkit-slider-thumb {
+    background: var(--accent-amber);
+    box-shadow: 0 0 10px rgba(255, 190, 92, 0.65);
+  }
+  input[type="range"].violet::-webkit-slider-thumb {
+    background: var(--accent-violet);
+    box-shadow: 0 0 10px rgba(167, 139, 250, 0.65);
+  }
+  input[type="range"].mint::-webkit-slider-thumb {
+    background: var(--accent-mint);
+    box-shadow: 0 0 10px rgba(74, 242, 178, 0.65);
+  }
+
+  /* Segmented pills */
+  .seg-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(52px, 1fr));
+    gap: 4px;
+  }
+  .seg-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-dim);
+    font-size: 10.6px;
+    font-weight: 650;
+    padding: 5.5px 4px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-align: center;
+  }
+  .seg-btn:hover {
+    color: #fff;
+    border-color: rgba(148, 179, 255, 0.35);
+  }
+  .seg-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.18);
+    border-color: var(--accent-cyan);
+  }
+  .seg-btn.active.amber {
+    background: rgba(255, 190, 92, 0.18);
+    border-color: var(--accent-amber);
+    color: #ffdfaa;
+  }
+  .seg-btn.active.violet {
+    background: rgba(167, 139, 250, 0.2);
+    border-color: var(--accent-violet);
+    color: #e6dcff;
+  }
+
+  /* Toggle switches */
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11.2px;
+    color: var(--text-dim);
+    cursor: pointer;
+    gap: 8px;
+  }
+  .toggle-row input {
+    display: none;
+  }
+  .switch {
+    width: 34px;
+    height: 18px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.2);
+    border: 1px solid rgba(148, 179, 255, 0.25);
+    position: relative;
+    transition: all 0.18s ease;
+    flex-shrink: 0;
+  }
+  .switch::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #c8d7f5;
+    transition: transform 0.18s ease, background 0.18s ease;
+  }
+  .toggle-row input:checked + .switch {
+    background: rgba(88, 220, 255, 0.32);
+    border-color: var(--accent-cyan);
+  }
+  .toggle-row input:checked + .switch::after {
+    transform: translateX(16px);
+    background: #fff;
+  }
+  .toggle-row input:checked + .switch.amber {
+    background: rgba(255, 190, 92, 0.36);
+    border-color: var(--accent-amber);
+  }
+
+  /* Buttons */
+  .btn-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .btn {
+    border: 1px solid rgba(148, 179, 255, 0.22);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-main);
+    font-size: 11.2px;
+    font-weight: 700;
+    padding: 7px 9px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+  }
+  .btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 179, 255, 0.45);
+  }
+  .btn.amber {
+    background: linear-gradient(135deg, rgba(255, 190, 92, 0.22), rgba(255, 120, 60, 0.18));
+    border-color: rgba(255, 190, 92, 0.52);
+    color: #fff3db;
+  }
+
+  /* Bottom Transport Bar */
+  .bottom-bar {
+    position: fixed;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 7px 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: nowrap;
+  }
+
+  .bar-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-main);
+    font-size: 11.5px;
+    font-weight: 650;
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    white-space: nowrap;
+  }
+  .bar-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 179, 255, 0.4);
+  }
+  .bar-btn.active {
+    background: rgba(88, 220, 255, 0.2);
+    border-color: var(--accent-cyan);
+    color: #fff;
+  }
+  .bar-btn.sound-on {
+    background: rgba(74, 242, 178, 0.18);
+    border-color: var(--accent-mint);
+    color: #d6fff0;
+  }
+
+  .bar-divider {
+    width: 1px;
+    height: 20px;
+    background: rgba(148, 179, 255, 0.16);
+    margin: 0 2px;
+  }
+
+  /* Bottom-left hint */
+  .hint-pill {
+    position: fixed;
+    bottom: 14px;
+    left: 14px;
+    padding: 7px 11px;
+    font-size: 10.6px;
+    color: var(--text-dim);
+    max-width: 315px;
+    line-height: 1.42;
+  }
+  .hint-pill kbd {
+    font-family: var(--mono);
+    font-size: 9.8px;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #fff;
+  }
+
+  .zen-restore {
+    position: fixed;
+    bottom: 14px;
+    right: 14px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+  }
+  body.zen-mode .zen-restore {
+    opacity: 0.9;
+    pointer-events: auto;
+  }
+
+  .note-small {
+    font-size: 10.3px;
+    color: var(--text-muted);
+    line-height: 1.38;
+  }
+
+  .golden-list {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    font-size: 10.5px;
+    color: var(--text-dim);
+    line-height: 1.35;
+  }
+  .golden-item {
+    display: flex;
+    gap: 6px;
+    align-items: flex-start;
+  }
+  .golden-num {
+    font-family: var(--mono);
+    font-size: 9.5px;
+    font-weight: 700;
+    color: var(--accent-mint);
+    background: rgba(74, 242, 178, 0.14);
+    border: 1px solid rgba(74, 242, 178, 0.35);
+    border-radius: 4px;
+    padding: 0 4px;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+
+  .hidden {
+    display: none !important;
+  }
+
+  @media (max-width: 940px) {
+    .top-left {
+      width: calc(100vw - 28px);
+      max-width: none;
+    }
+    .drawer {
+      top: auto;
+      bottom: 62px;
+      height: 50vh;
+      width: calc(100vw - 28px);
+    }
+    .hint-pill {
+      display: none;
+    }
+  }
+</style>
+</head>
+<body>
+<canvas id="sim-canvas"></canvas>
+
+<div class="hud">
+  <!-- Top-Left Telemetry -->
+  <div id="top-left-panel" class="panel top-left">
+    <div class="brand-row">
+      <div class="brand-title-wrap">
+        <div class="brand-title">Op-Amp Studio</div>
+        <span id="topo-badge" class="mode-badge">Inverting Amp</span>
+      </div>
+      <span id="sat-status" class="status-pill">Linear · Virtual Short OK</span>
+    </div>
+
+    <div class="telemetry-grid">
+      <div class="tele-card">
+        <span class="tele-label">Closed-Loop Gain</span>
+        <span id="tel-gain" class="tele-val amber">-2.00× (+6.0 dB)</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">V_in (Peak)</span>
+        <span id="tel-vin-pk" class="tele-val cyan">2.50 V</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">V_out (Peak)</span>
+        <span id="tel-vout-pk" class="tele-val amber">5.00 V</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">V₊ − V₋ Error</span>
+        <span id="tel-vdiff" class="tele-val mint">0.05 mV</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Slew State</span>
+        <span id="tel-slew" class="tele-val mint">Nominal</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label" id="tel-extra-label">Supply Rails</span>
+        <span id="tel-extra-val" class="tele-val">±12.0 V</span>
+      </div>
+    </div>
+
+    <div class="clock-row">
+      <span>V₊: <strong id="tel-vp" style="color:var(--accent-mint)">0.00 V</strong></span>
+      <span>V₋: <strong id="tel-vm" style="color:var(--accent-mint)">0.00 V</strong></span>
+      <span>V_out: <strong id="tel-vout-now" style="color:var(--accent-amber)">0.00 V</strong></span>
+    </div>
+  </div>
+
+  <!-- Right Control Drawer (330px) -->
+  <aside id="drawer" class="panel drawer">
+    <div class="drawer-tabs">
+      <button class="tab-btn active" data-tab="topos">Topologies</button>
+      <button class="tab-btn" data-tab="signal">Signal &amp; RC</button>
+      <button class="tab-btn" data-tab="opamp">Op-Amp</button>
+    </div>
+
+    <div class="drawer-body">
+      <!-- TAB 1: TOPOLOGIES -->
+      <div id="tab-topos" class="tab-pane active">
+        <div class="section">
+          <div class="section-title"><span>8 Classic Analog Topologies</span></div>
+          <div class="preset-grid" id="topo-grid">
+            <button class="preset-btn active" data-topo="inverting">
+              <span class="preset-name">Inverting Amp <span class="preset-key">1</span></span>
+              <span class="preset-sub">Aᵥ = −R_f / R_in</span>
+            </button>
+            <button class="preset-btn" data-topo="non_inverting">
+              <span class="preset-name">Non-Inverting <span class="preset-key">2</span></span>
+              <span class="preset-sub">Aᵥ = 1 + R_f / R_in</span>
+            </button>
+            <button class="preset-btn" data-topo="follower">
+              <span class="preset-name">Voltage Follower <span class="preset-key">3</span></span>
+              <span class="preset-sub">Aᵥ = 1 · Z_in → ∞</span>
+            </button>
+            <button class="preset-btn" data-topo="summing">
+              <span class="preset-name">Summing Mixer <span class="preset-key">4</span></span>
+              <span class="preset-sub">−R_f(V₁/R₁ + V₂/R₂)</span>
+            </button>
+            <button class="preset-btn" data-topo="integrator">
+              <span class="preset-name">Integrator <span class="preset-key">5</span></span>
+              <span class="preset-sub">−(1/RC) ∫ V_in dt</span>
+            </button>
+            <button class="preset-btn" data-topo="differentiator">
+              <span class="preset-name">Differentiator <span class="preset-key">6</span></span>
+              <span class="preset-sub">−RC · dV_in / dt</span>
+            </button>
+            <button class="preset-btn" data-topo="schmitt">
+              <span class="preset-name">Schmitt Trigger <span class="preset-key">7</span></span>
+              <span class="preset-sub">Hysteresis V_TH±</span>
+            </button>
+            <button class="preset-btn" data-topo="wien">
+              <span class="preset-name">Wien Oscillator <span class="preset-key">8</span></span>
+              <span class="preset-sub">f₀ = 1 / (2πRC)</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Active Circuit Transfer Law</span></div>
+          <div class="formula-box">
+            <div id="formula-eq" class="formula-eq">V_out = −(R_f / R_in) · V_in</div>
+            <div id="formula-desc" class="formula-desc">Negative feedback holds V₋ at Virtual Ground (0 V). Input current flows directly through R_f, inverting and scaling the signal.</div>
+          </div>
+        </div>
+
+        <!-- Summing Mixer Ch2 Panel (shown only in summing mode) -->
+        <div id="summing-section" class="section hidden">
+          <div class="section-title">
+            <span>Channel 2 Input (V₂)</span>
+            <span style="color:var(--accent-violet); font-family:var(--mono); font-size:10px;">MIXER CH2</span>
+          </div>
+          <div class="seg-row" id="wave2-row">
+            <button class="seg-btn active violet" data-wave2="sine">Sine</button>
+            <button class="seg-btn" data-wave2="square">Square</button>
+            <button class="seg-btn" data-wave2="triangle">Tri</button>
+          </div>
+          <div class="control-row">
+            <div class="control-head">
+              <span>V₂ Amplitude</span>
+              <span id="val-amp2" class="val">1.80 V</span>
+            </div>
+            <input id="sl-amp2" class="violet" type="range" min="0" max="6" step="0.1" value="1.8" />
+          </div>
+          <div class="control-row">
+            <div class="control-head">
+              <span>V₂ Frequency</span>
+              <span id="val-freq2" class="val">660 Hz</span>
+            </div>
+            <input id="sl-freq2" class="violet" type="range" min="80" max="1000" step="10" value="660" />
+          </div>
+          <div class="control-row">
+            <div class="control-head">
+              <span>Input Resistor R₂</span>
+              <span id="val-rin2" class="val">10.0 kΩ</span>
+            </div>
+            <input id="sl-rin2" class="violet" type="range" min="2" max="50" step="0.5" value="10" />
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>The Two Golden Rules</span></div>
+          <div class="golden-list">
+            <div class="golden-item">
+              <span class="golden-num">1</span>
+              <span><strong>Zero Input Current:</strong> Infinite input impedance means <code style="color:var(--accent-cyan)">I₊ = I₋ = 0</code>.</span>
+            </div>
+            <div class="golden-item">
+              <span class="golden-num">2</span>
+              <span><strong>Virtual Short:</strong> Under negative feedback (and while unclipped), output drives <code style="color:var(--accent-mint)">V₋ ≈ V₊</code>.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 2: SIGNAL & RC -->
+      <div id="tab-signal" class="tab-pane">
+        <div id="signal-gen-section" class="section">
+          <div class="section-title"><span>Input Signal Generator</span></div>
+          <div class="seg-row" id="wave-row">
+            <button class="seg-btn active" data-wave="sine">Sine</button>
+            <button class="seg-btn" data-wave="square">Square</button>
+            <button class="seg-btn" data-wave="triangle">Tri</button>
+            <button class="seg-btn" data-wave="sawtooth">Saw</button>
+            <button class="seg-btn" data-wave="noisy">Noisy</button>
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Input Amplitude (V_in)</span>
+              <span id="val-amp" class="val">2.50 V</span>
+            </div>
+            <input id="sl-amp" type="range" min="0.2" max="10.0" step="0.1" value="2.5" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Frequency (f)</span>
+              <span id="val-freq" class="val">220 Hz</span>
+            </div>
+            <input id="sl-freq" type="range" min="60" max="800" step="10" value="220" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>DC Offset</span>
+              <span id="val-offset" class="val">0.00 V</span>
+            </div>
+            <input id="sl-offset" type="range" min="-6.0" max="6.0" step="0.1" value="0.0" />
+          </div>
+
+          <div class="control-row" id="noise-row">
+            <div class="control-head">
+              <span>Noise Injection (Noisy Sine)</span>
+              <span id="val-noise" class="val">1.60 V</span>
+            </div>
+            <input id="sl-noise" type="range" min="0.2" max="4.0" step="0.1" value="1.6" />
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Passive Network (R &amp; C)</span></div>
+
+          <div class="control-row" id="ctrl-rin">
+            <div class="control-head">
+              <span id="lbl-rin">Input Resistor R_in</span>
+              <span id="val-rin" class="val">10.0 kΩ</span>
+            </div>
+            <input id="sl-rin" class="amber" type="range" min="1" max="50" step="0.5" value="10" />
+          </div>
+
+          <div class="control-row" id="ctrl-rf">
+            <div class="control-head">
+              <span id="lbl-rf">Feedback Resistor R_f</span>
+              <span id="val-rf" class="val">20.0 kΩ</span>
+            </div>
+            <input id="sl-rf" class="amber" type="range" min="1" max="100" step="0.5" value="20" />
+          </div>
+
+          <div class="control-row" id="ctrl-cap">
+            <div class="control-head">
+              <span id="lbl-cap">Capacitor C</span>
+              <span id="val-cap" class="val">0.10 µF</span>
+            </div>
+            <input id="sl-cap" class="mint" type="range" min="0.02" max="0.50" step="0.01" value="0.10" />
+          </div>
+
+          <p class="note-small">Tip: You can also <strong>click &amp; drag vertically</strong> directly on R_in, R_f, or C inside the schematic to tune them live.</p>
+        </div>
+      </div>
+
+      <!-- TAB 3: OP-AMP & VISUALS -->
+      <div id="tab-opamp" class="tab-pane">
+        <div class="section">
+          <div class="section-title"><span>Power Rails &amp; Non-Idealities</span></div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Supply Rails (+V_cc / −V_ee)</span>
+              <span id="val-rail" class="val">±12.0 V</span>
+            </div>
+            <input id="sl-rail" class="amber" type="range" min="5" max="15" step="0.5" value="12" />
+          </div>
+
+          <label class="toggle-row">
+            <span>Slew-Rate Limiter (Trapezoid Edge)</span>
+            <input id="chk-slew" type="checkbox" />
+            <span class="switch amber"></span>
+          </label>
+
+          <div class="control-row" id="slew-slider-row">
+            <div class="control-head">
+              <span>Slew Rate Limit</span>
+              <span id="val-slew-rate" class="val">12.0 V/ms</span>
+            </div>
+            <input id="sl-slew-rate" class="amber" type="range" min="3" max="40" step="1" value="12" />
+          </div>
+
+          <div class="btn-row">
+            <button id="btn-demo-clip" class="btn amber">Test Rail Clip</button>
+            <button id="btn-demo-slew" class="btn">Test Slew Limit</button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Visual &amp; Scope Overlays</span></div>
+          <label class="toggle-row">
+            <span>Voltage-Colored Wires</span>
+            <input id="chk-wire-color" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Animated Current Particles</span>
+            <input id="chk-particles" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Floating Node-Voltage Badges</span>
+            <input id="chk-badges" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Show V₋ Trace on Scope</span>
+            <input id="chk-vm-trace" type="checkbox" />
+            <span class="switch"></span>
+          </label>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Audio Monitor (Web Audio)</span></div>
+          <p class="note-small">
+            Unmute Audio in the bottom bar to hear the live output waveform at its true frequency—listen to integration soften square waves into mellow triangles, or overdrive the rails into clipping harmonics.
+          </p>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Bottom-Left Hint -->
+  <div class="panel hint-pill">
+    <div><kbd>Space</kbd> Pause · <kbd>1</kbd>–<kbd>8</kbd> Topologies · <kbd>H</kbd> Cinema · <kbd>M</kbd> Audio</div>
+    <div><strong>Drag R/C</strong> on schematic to tune · <strong>Hover scope</strong> to probe</div>
+  </div>
+
+  <!-- Bottom Transport Bar -->
+  <div class="panel bottom-bar">
+    <button id="btn-play" class="bar-btn active">⏸ Pause</button>
+    <button id="btn-reset" class="bar-btn">↺ Reset</button>
+    <div class="bar-divider"></div>
+    <button class="bar-btn speed-btn" data-speed="0.25">0.25×</button>
+    <button class="bar-btn speed-btn" data-speed="0.5">0.5×</button>
+    <button class="bar-btn speed-btn active" data-speed="1">1×</button>
+    <button class="bar-btn speed-btn" data-speed="2">2×</button>
+    <div class="bar-divider"></div>
+    <button id="btn-sound" class="bar-btn">🔇 Audio</button>
+    <button id="btn-toggle-drawer" class="bar-btn active">Controls</button>
+    <button id="btn-zen" class="bar-btn" title="Hide HUD (H)">Cinema</button>
+  </div>
+
+  <button id="btn-zen-restore" class="panel bar-btn zen-restore">Show HUD (H)</button>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  /* =========================================================================
+   * TOPOLOGY DEFINITIONS & PRESET METADATA
+   * ========================================================================= */
+  const TOPOLOGIES = {
+    inverting: {
+      name: 'Inverting Amp',
+      short: 'Inverting',
+      eq: 'V_out = −(R_f / R_in) · V_in',
+      desc: 'Negative feedback locks V₋ to Virtual Ground (0 V). Input current I_in = V_in / R_in flows directly across R_f, inverting and scaling V_in.',
+      defaults: { wave: 'sine', amp: 2.5, freq: 220, offset: 0, rin: 10, rf: 20, cap: 0.10 },
+      usesRin: true, usesRf: true, usesCap: false, hasInput: true, negFeedback: true,
+      rinLabel: 'Input Resistor R_in', rfLabel: 'Feedback Resistor R_f', capLabel: 'Capacitor C'
+    },
+    non_inverting: {
+      name: 'Non-Inverting Amp',
+      short: 'Non-Inverting',
+      eq: 'V_out = (1 + R_f / R_in) · V_in',
+      desc: 'Signal drives the high-impedance (+) input directly. Feedback divider forces V₋ to track V₊ = V_in with in-phase gain ≥ 1.',
+      defaults: { wave: 'sine', amp: 2.0, freq: 220, offset: 0, rin: 10, rf: 20, cap: 0.10 },
+      usesRin: true, usesRf: true, usesCap: false, hasInput: true, negFeedback: true,
+      rinLabel: 'Ground Resistor R_in', rfLabel: 'Feedback Resistor R_f', capLabel: 'Capacitor C'
+    },
+    follower: {
+      name: 'Voltage Follower',
+      short: 'Buffer',
+      eq: 'V_out = V_in   (A_v = 1, Z_in → ∞)',
+      desc: '100% direct negative feedback copies V_in to V_out without loading the source. Ideal impedance buffer and isolation stage.',
+      defaults: { wave: 'square', amp: 4.5, freq: 220, offset: 0, rin: 10, rf: 20, cap: 0.10 },
+      usesRin: false, usesRf: false, usesCap: false, hasInput: true, negFeedback: true,
+      rinLabel: 'Input Resistor R_in', rfLabel: 'Feedback Resistor R_f', capLabel: 'Capacitor C'
+    },
+    summing: {
+      name: 'Summing Mixer',
+      short: 'Summing',
+      eq: 'V_out = −(R_f/R₁ · V₁ + R_f/R₂ · V₂)',
+      desc: 'Two independent inputs converge at the Virtual Ground summing junction without cross-talk, weighted by R_f/R₁ and R_f/R₂.',
+      defaults: { wave: 'sine', amp: 2.2, freq: 220, offset: 0, rin: 10, rf: 15, cap: 0.10, wave2: 'sine', amp2: 1.6, freq2: 660, rin2: 10 },
+      usesRin: true, usesRf: true, usesCap: false, hasInput: true, negFeedback: true,
+      rinLabel: 'Ch1 Resistor R₁', rfLabel: 'Feedback Resistor R_f', capLabel: 'Capacitor C'
+    },
+    integrator: {
+      name: 'Analog Integrator',
+      short: 'Integrator',
+      eq: 'V_out = −(1 / R_in·C) ∫ V_in dt',
+      desc: 'Feedback capacitor accumulates charge from I_in = V_in / R_in. Turns Square waves into crisp Triangles, and Sines into −Cosines!',
+      defaults: { wave: 'square', amp: 3.0, freq: 220, offset: 0, rin: 10, rf: 20, cap: 0.10 },
+      usesRin: true, usesRf: false, usesCap: true, hasInput: true, negFeedback: true,
+      rinLabel: 'Input Resistor R_in', rfLabel: 'Feedback Resistor R_f', capLabel: 'Feedback Capacitor C'
+    },
+    differentiator: {
+      name: 'Analog Differentiator',
+      short: 'Differentiator',
+      eq: 'V_out = −R_f·C · (dV_in / dt)',
+      desc: 'Input capacitor conducts current proportional to dV_in/dt. Turns Triangle ramps into crisp Square waves, and Squares into sharp impulse spikes!',
+      defaults: { wave: 'triangle', amp: 3.0, freq: 220, offset: 0, rin: 10, rf: 20, cap: 0.10 },
+      usesRin: false, usesRf: true, usesCap: true, hasInput: true, negFeedback: true,
+      rinLabel: 'Input Resistor R_in', rfLabel: 'Feedback Resistor R_f', capLabel: 'Input Capacitor C'
+    },
+    schmitt: {
+      name: 'Schmitt Trigger',
+      short: 'Schmitt',
+      eq: 'V_TH± = ±V_sat · R_in / (R_in + R_f)',
+      desc: 'Positive feedback to (+) creates dual switching thresholds (hysteresis), rejecting noise on a messy sine wave to output a rock-solid square wave.',
+      defaults: { wave: 'noisy', amp: 5.0, freq: 180, offset: 0, rin: 10, rf: 25, cap: 0.10, noiseAmp: 1.8 },
+      usesRin: true, usesRf: true, usesCap: false, hasInput: true, negFeedback: false,
+      rinLabel: 'Threshold Divider R_in', rfLabel: 'Hysteresis Feedback R_f', capLabel: 'Capacitor C'
+    },
+    wien: {
+      name: 'Wien-Bridge Oscillator',
+      short: 'Wien Osc',
+      eq: 'f₀ = 1 / (2πRC),  Gain ≥ 3 (R_f ≥ 2R_in)',
+      desc: 'Zero external input! Dual RC bridge creates 0° phase shift at f₀ while R_f/R_in ≥ 2 meets the Barkhausen criterion for self-sustaining sine waves.',
+      defaults: { wave: 'sine', amp: 0, freq: 220, offset: 0, rin: 10, rf: 22, cap: 0.10 },
+      usesRin: true, usesRf: true, usesCap: true, hasInput: false, negFeedback: true,
+      rinLabel: 'Bridge & Gain R (R_in)', rfLabel: 'Feedback Gain R_f', capLabel: 'Wien Capacitors C'
+    }
+  };
+
+  const TOPO_KEYS = ['inverting', 'non_inverting', 'follower', 'summing', 'integrator', 'differentiator', 'schmitt', 'wien'];
+
+  /* =========================================================================
+   * SIMULATION STATE
+   * ========================================================================= */
+  const state = {
+    topo: 'inverting',
+    wave: 'sine',
+    amp: 2.5,
+    freq: 220,
+    offset: 0.0,
+    noiseAmp: 1.6,
+    wave2: 'sine',
+    amp2: 1.8,
+    freq2: 660,
+    rin2: 10.0, // kOhm
+    rin: 10.0,  // kOhm
+    rf: 20.0,   // kOhm
+    cap: 0.10,  // uF
+    rail: 12.0, // +/- V
+    slewEnabled: false,
+    slewRate: 12.0, // V/ms
+    playing: true,
+    speed: 1.0,
+    soundOn: false,
+    drawerOpen: true,
+    zenMode: false,
+    showWireColor: true,
+    showParticles: true,
+    showBadges: true,
+    showVmTrace: false,
+
+    // Live circuit electrical states (in real engineering seconds)
+    tCirc: 0,
+    vin: 0,
+    vin2: 0,
+    vp: 0,
+    vm: 0,
+    vout: 0,
+    voutIdeal: 0,
+    iIn: 0,     // mA
+    iIn2: 0,    // mA
+    iFb: 0,     // mA
+    clipped: false,
+    slewLimited: false,
+
+    // Integrator / Differentiator / Schmitt / Wien internal states
+    intVc: 0,
+    diffVc: 0,
+    schmittState: 1,
+    wienVp: 0.08,
+    wienVs: 0.0,
+    wienEnv: 0.1,
+    noiseSeed: 0,
+
+    // Rolling waveform history for scope & transfer curve
+    history: [],
+    maxHistory: 520,
+    scopeWindowSec: 0.012, // 12 ms visible across scope
+    vinPk: 2.5,
+    voutPk: 5.0,
+
+    // Visual animation
+    wireFlowPhase: 0,
+    pulsePhase: 0,
+    hitTargets: [], // interactive schematic component boxes
+    hoveredComp: null,
+    draggingComp: null,
+    dragStartY: 0,
+    dragStartVal: 0,
+    mouseX: -1,
+    mouseY: -1,
+    scopeRect: null,
+    transferRect: null,
+    schematicRect: null
+  };
+
+  /* =========================================================================
+   * DETERMINISTIC SMOOTH NOISE & WAVEFORM GENERATOR
+   * ========================================================================= */
+  function hashNoise(idx) {
+    let x = Math.sin(idx * 127.1 + 311.7) * 43758.5453123;
+    return (x - Math.floor(x)) * 2 - 1;
+  }
+
+  function smoothNoise(t, freq) {
+    // Band-limited deterministic noise so scope trace looks authentically ragged & consistent
+    const rate = freq * 19.5;
+    const u = t * rate;
+    const i = Math.floor(u);
+    const f = u - i;
+    const s = f * f * (3 - 2 * f);
+    const n1 = hashNoise(i) * (1 - s) + hashNoise(i + 1) * s;
+    const u2 = t * rate * 2.73;
+    const i2 = Math.floor(u2);
+    const f2 = u2 - i2;
+    const s2 = f2 * f2 * (3 - 2 * f2);
+    const n2 = hashNoise(i2 + 997) * (1 - s2) + hashNoise(i2 + 998) * s2;
+    return 0.65 * n1 + 0.35 * n2;
+  }
+
+  function evalWave(type, t, freq, amp, offset, noiseAmp) {
+    const phase = (t * freq) % 1;
+    const p = phase < 0 ? phase + 1 : phase;
+    let raw = 0;
+    if (type === 'sine') {
+      raw = Math.sin(2 * Math.PI * p);
+    } else if (type === 'square') {
+      // Softened rise/fall (~0.6% of period) for clean differentiator impulses & realistic edges
+      const edge = 0.008;
+      if (p < edge) raw = -1 + 2 * (p / edge);
+      else if (p < 0.5) raw = 1;
+      else if (p < 0.5 + edge) raw = 1 - 2 * ((p - 0.5) / edge);
+      else raw = -1;
+    } else if (type === 'triangle') {
+      if (p < 0.25) raw = 4 * p;
+      else if (p < 0.75) raw = 2 - 4 * p;
+      else raw = -4 + 4 * p;
+    } else if (type === 'sawtooth') {
+      const edge = 0.015;
+      if (p < 1 - edge) raw = -1 + 2 * (p / (1 - edge));
+      else raw = 1 - 2 * ((p - (1 - edge)) / edge);
+    } else if (type === 'noisy') {
+      raw = Math.sin(2 * Math.PI * p);
+      return offset + amp * raw + noiseAmp * smoothNoise(t, freq);
+    }
+    return offset + amp * raw;
+  }
+
+  /* =========================================================================
+   * CORE OP-AMP CIRCUIT STEP ENGINE (AUTHENTIC KCL + ODE + SLEW + RAILS)
+   * ========================================================================= */
+  const A_OL = 100000; // Open-loop DC gain (100 dB)
+
+  function stepCircuit(ctxObj, dt) {
+    // dt is in real engineering seconds
+    const R_in = ctxObj.rin * 1e3;   // Ohms
+    const R_f = ctxObj.rf * 1e3;     // Ohms
+    const R_in2 = ctxObj.rin2 * 1e3; // Ohms
+    const C = ctxObj.cap * 1e-6;     // Farads
+    const Vsat = ctxObj.rail;
+    const maxSR = ctxObj.slewEnabled ? (ctxObj.slewRate * 1e3) : 1.5e6; // V/s
+
+    ctxObj.tCirc += dt;
+    const t = ctxObj.tCirc;
+
+    let vin = 0;
+    let vin2 = 0;
+    if (ctxObj.topo !== 'wien') {
+      vin = evalWave(ctxObj.wave, t, ctxObj.freq, ctxObj.amp, ctxObj.offset, ctxObj.noiseAmp);
+    }
+    if (ctxObj.topo === 'summing') {
+      vin2 = evalWave(ctxObj.wave2, t, ctxObj.freq2, ctxObj.amp2, 0, 0);
+    }
+
+    let vp = 0;
+    let vm = 0;
+    let voutTarget = 0;
+    let iIn = 0;   // Amps
+    let iIn2 = 0;  // Amps
+    let iFb = 0;   // Amps
+
+    if (ctxObj.topo === 'inverting') {
+      vp = 0;
+      const gainClosed = -(A_OL * R_f) / (R_in + R_f + A_OL * R_in);
+      voutTarget = gainClosed * vin;
+    } else if (ctxObj.topo === 'non_inverting') {
+      vp = vin;
+      const beta = R_in / (R_in + R_f);
+      const gainClosed = A_OL / (1 + A_OL * beta);
+      voutTarget = gainClosed * vin;
+    } else if (ctxObj.topo === 'follower') {
+      vp = vin;
+      voutTarget = (A_OL / (1 + A_OL)) * vin;
+    } else if (ctxObj.topo === 'summing') {
+      vp = 0;
+      const g1 = 1 / R_in;
+      const g2 = 1 / R_in2;
+      const gf = 1 / R_f;
+      // Exact finite-A_OL summing junction
+      voutTarget = -((vin * g1 + vin2 * g2) / (gf + (g1 + g2 + gf) / A_OL));
+    } else if (ctxObj.topo === 'integrator') {
+      vp = 0;
+      // Bleed resistor prevents unbounded numeric drift at 0 DC offset while allowing visible DC ramp
+      const R_bleed = 35 * R_in;
+      // Current into summing node assuming virtual ground (corrected if saturated)
+      const vmPrev = ctxObj.vm;
+      const iInNow = (vin - vmPrev) / R_in;
+      const dVc = (iInNow - ctxObj.intVc / R_bleed) / C;
+      ctxObj.intVc += dVc * dt;
+      // Soft bound internal charge when rail-clamped for long periods
+      const maxVc = Vsat * 1.45;
+      if (ctxObj.intVc > maxVc) ctxObj.intVc = maxVc;
+      if (ctxObj.intVc < -maxVc) ctxObj.intVc = -maxVc;
+      voutTarget = -ctxObj.intVc;
+    } else if (ctxObj.topo === 'differentiator') {
+      vp = 0;
+      const Rs = Math.max(80, 0.032 * R_f);
+      const vmPrev = ctxObj.vm;
+      // Implicit Euler step for stiff series RC stability
+      const alpha = dt / (Rs * C);
+      ctxObj.diffVc = (ctxObj.diffVc + alpha * (vin - vmPrev)) / (1 + alpha);
+      const iCap = (vin - ctxObj.diffVc - vmPrev) / Rs;
+      voutTarget = -iCap * R_f;
+    } else if (ctxObj.topo === 'schmitt') {
+      const beta = R_in / (R_in + R_f);
+      const vth = beta * Vsat;
+      if (ctxObj.schmittState > 0 && vin > vth) {
+        ctxObj.schmittState = -1;
+      } else if (ctxObj.schmittState < 0 && vin < -vth) {
+        ctxObj.schmittState = 1;
+      }
+      voutTarget = ctxObj.schmittState * Vsat;
+    } else if (ctxObj.topo === 'wien') {
+      // Exact 2nd-order Wien-Bridge RC network
+      const RC = R_in * C;
+      const voutPrev = ctxObj.vout;
+      // Semi-implicit RK2 on Wien bridge nodes
+      const k1s = (voutPrev - ctxObj.wienVs - ctxObj.wienVp) / RC;
+      const k1p = (voutPrev - ctxObj.wienVs - 2 * ctxObj.wienVp) / RC;
+      const vsMid = ctxObj.wienVs + 0.5 * dt * k1s;
+      const vpMid = ctxObj.wienVp + 0.5 * dt * k1p;
+      const k2s = (voutPrev - vsMid - vpMid) / RC;
+      const k2p = (voutPrev - vsMid - 2 * vpMid) / RC;
+      ctxObj.wienVs += dt * k2s;
+      ctxObj.wienVp += dt * k2p;
+
+      // Tiny thermal noise kick so oscillation always self-starts when gain >= 3
+      if (Math.abs(ctxObj.wienVp) < 1e-4 && Math.abs(ctxObj.wienVs) < 1e-4) {
+        ctxObj.wienVp += 0.015;
+      }
+
+      // Smooth thermal/JFET AGC envelope tracker (stabilizes clean sine when R_f slightly > 2*R_in)
+      const instMag = Math.hypot(ctxObj.wienVp, ctxObj.wienVs);
+      const tauEnv = 3.5 * RC;
+      ctxObj.wienEnv += (instMag - ctxObj.wienEnv) * Math.min(1, dt / tauEnv);
+
+      // Gain = 1 + R_f / R_in with gentle lamp/JFET stabilization
+      const ratio = R_f / R_in;
+      const agcTarget = Vsat * 0.24; // ~2.9V at V+, ~8.6V at Vout when R_f = 22k
+      const agcScale = 1 / (1 + 0.085 * Math.pow(ctxObj.wienEnv / Math.max(0.5, agcTarget), 2));
+      const effGain = 1 + ratio * agcScale;
+      vp = ctxObj.wienVp;
+      voutTarget = effGain * vp;
+      vin = vp; // Scope Ch1 shows V+ feedback node
+    }
+
+    // Apply supply rail saturation clamp
+    let clipped = false;
+    let vClamped = voutTarget;
+    if (vClamped > Vsat) {
+      vClamped = Vsat;
+      clipped = true;
+    } else if (vClamped < -Vsat) {
+      vClamped = -Vsat;
+      clipped = true;
+    }
+
+    // Apply slew-rate limiter
+    const maxDelta = maxSR * dt;
+    const diffOut = vClamped - ctxObj.vout;
+    let slewLimited = false;
+    let voutNew = vClamped;
+    if (Math.abs(diffOut) > maxDelta) {
+      voutNew = ctxObj.vout + Math.sign(diffOut) * maxDelta;
+      if (ctxObj.slewEnabled && Math.abs(diffOut) > maxDelta * 1.05) {
+        slewLimited = true;
+      }
+    }
+    ctxObj.vout = voutNew;
+    ctxObj.voutIdeal = voutTarget;
+    ctxObj.clipped = clipped && (ctxObj.topo !== 'schmitt'); // Schmitt intentionally rails
+    ctxObj.slewLimited = slewLimited;
+
+    // Recompute exact physical V+, V- and branch currents from actual Vout!
+    if (ctxObj.topo === 'inverting') {
+      vp = 0;
+      const gIn = 1 / R_in, gF = 1 / R_f;
+      vm = (vin * gIn + voutNew * gF) / (gIn + gF);
+      iIn = (vin - vm) / R_in;
+      iFb = (vm - voutNew) / R_f;
+    } else if (ctxObj.topo === 'non_inverting') {
+      vp = vin;
+      vm = voutNew * (R_in / (R_in + R_f));
+      iFb = (voutNew - vm) / R_f;
+      iIn = vm / R_in;
+    } else if (ctxObj.topo === 'follower') {
+      vp = vin;
+      vm = voutNew;
+      iIn = 0;
+      iFb = 0;
+    } else if (ctxObj.topo === 'summing') {
+      vp = 0;
+      const g1 = 1 / R_in, g2 = 1 / R_in2, gf = 1 / R_f;
+      vm = (vin * g1 + vin2 * g2 + voutNew * gf) / (g1 + g2 + gf);
+      iIn = (vin - vm) / R_in;
+      iIn2 = (vin2 - vm) / R_in2;
+      iFb = (vm - voutNew) / R_f;
+    } else if (ctxObj.topo === 'integrator') {
+      vp = 0;
+      vm = voutNew + ctxObj.intVc;
+      iIn = (vin - vm) / R_in;
+      iFb = iIn;
+    } else if (ctxObj.topo === 'differentiator') {
+      vp = 0;
+      const Rs = Math.max(80, 0.032 * R_f);
+      const gS = 1 / Rs, gF = 1 / R_f;
+      vm = ((vin - ctxObj.diffVc) * gS + voutNew * gF) / (gS + gF);
+      iIn = (vin - ctxObj.diffVc - vm) / Rs;
+      iFb = (vm - voutNew) / R_f;
+    } else if (ctxObj.topo === 'schmitt') {
+      vm = vin;
+      const beta = R_in / (R_in + R_f);
+      vp = voutNew * beta;
+      iFb = (voutNew - vp) / R_f;
+      iIn = vp / R_in;
+    } else if (ctxObj.topo === 'wien') {
+      vp = ctxObj.wienVp;
+      vm = voutNew * (R_in / (R_in + R_f));
+      iIn = (voutNew - ctxObj.wienVs - vp) / R_in;
+      iFb = (voutNew - vm) / R_f;
+    }
+
+    ctxObj.vin = vin;
+    ctxObj.vin2 = vin2;
+    ctxObj.vp = vp;
+    ctxObj.vm = vm;
+    ctxObj.iIn = iIn * 1e3;   // mA
+    ctxObj.iIn2 = iIn2 * 1e3; // mA
+    ctxObj.iFb = iFb * 1e3;   // mA
+  }
+
+  function resetCircuitState() {
+    state.tCirc = 0;
+    state.intVc = 0;
+    state.diffVc = 0;
+    state.vout = 0;
+    state.vp = 0;
+    state.vm = 0;
+    state.schmittState = 1;
+    state.wienVp = 0.08;
+    state.wienVs = 0.0;
+    state.wienEnv = 0.1;
+    state.history = [];
+    // Pre-warm buffer so scope is immediately populated cleanly on load or topology switch
+    const preWarmSec = state.topo === 'wien' ? 0.09 : state.scopeWindowSec * 1.15;
+    const totalSteps = 520;
+    const stepDt = preWarmSec / totalSteps;
+    const subPerRec = 6;
+    for (let i = 0; i < totalSteps; i++) {
+      for (let s = 0; s < subPerRec; s++) {
+        stepCircuit(state, stepDt / subPerRec);
+      }
+      if (state.tCirc >= preWarmSec - state.scopeWindowSec) {
+        pushHistorySample();
+      }
+    }
+    syncAudioState();
+  }
+
+  function pushHistorySample() {
+    state.history.push({
+      t: state.tCirc,
+      vin: state.vin,
+      vin2: state.vin2,
+      vout: state.vout,
+      vm: state.vm,
+      vp: state.vp,
+      clipped: state.clipped,
+      slew: state.slewLimited
+    });
+    const minT = state.tCirc - state.scopeWindowSec;
+    while (state.history.length > 2 && state.history[0].t < minT) {
+      state.history.shift();
+    }
+    if (state.history.length > 720) {
+      state.history.splice(0, state.history.length - 720);
+    }
+  }
+
+  /* =========================================================================
+   * WEB AUDIO REAL-TIME OUTPUT MONITOR (MUTED BY DEFAULT)
+   * ========================================================================= */
+  let audioCtx = null;
+  let audioNode = null;
+  let masterGain = null;
+  const audioSim = {
+    topo: 'inverting',
+    wave: 'sine', amp: 2.5, freq: 220, offset: 0, noiseAmp: 1.6,
+    wave2: 'sine', amp2: 1.8, freq2: 660, rin2: 10,
+    rin: 10, rf: 20, cap: 0.10, rail: 12,
+    slewEnabled: false, slewRate: 12,
+    tCirc: 0, vin: 0, vin2: 0, vp: 0, vm: 0, vout: 0, voutIdeal: 0,
+    iIn: 0, iIn2: 0, iFb: 0, clipped: false, slewLimited: false,
+    intVc: 0, diffVc: 0, schmittState: 1, wienVp: 0.12, wienVs: 0, wienEnv: 0.15,
+    dcPrevX: 0, dcPrevY: 0
+  };
+
+  function syncAudioState() {
+    const topoChanged = audioSim.topo !== state.topo;
+    audioSim.topo = state.topo;
+    audioSim.wave = state.wave;
+    audioSim.amp = state.amp;
+    audioSim.freq = state.freq;
+    audioSim.offset = state.offset;
+    audioSim.noiseAmp = state.noiseAmp;
+    audioSim.wave2 = state.wave2;
+    audioSim.amp2 = state.amp2;
+    audioSim.freq2 = state.freq2;
+    audioSim.rin2 = state.rin2;
+    audioSim.rin = state.rin;
+    audioSim.rf = state.rf;
+    audioSim.cap = state.cap;
+    audioSim.rail = state.rail;
+    audioSim.slewEnabled = state.slewEnabled;
+    audioSim.slewRate = state.slewRate;
+    if (topoChanged) {
+      audioSim.intVc = 0;
+      audioSim.diffVc = 0;
+      audioSim.wienVp = 0.12;
+      audioSim.wienVs = 0;
+      audioSim.wienEnv = 0.15;
+    }
+  }
+
+  function toggleAudio() {
+    state.soundOn = !state.soundOn;
+    const btn = document.getElementById('btn-sound');
+    if (state.soundOn) {
+      if (!audioCtx) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) {
+          state.soundOn = false;
+          return;
+        }
+        audioCtx = new AC();
+        masterGain = audioCtx.createGain();
+        masterGain.gain.value = 0.0;
+        masterGain.connect(audioCtx.destination);
+
+        // Lightweight real-time audio processor running the exact op-amp topology
+        audioNode = audioCtx.createScriptProcessor(1024, 0, 1);
+        audioNode.onaudioprocess = (e) => {
+          const out = e.outputBuffer.getChannelData(0);
+          if (!state.soundOn || !state.playing) {
+            for (let i = 0; i < out.length; i++) out[i] = 0;
+            return;
+          }
+          const dt = 1 / audioCtx.sampleRate;
+          const invRail = 1 / Math.max(5, audioSim.rail);
+          for (let i = 0; i < out.length; i++) {
+            stepCircuit(audioSim, dt);
+            const raw = Math.max(-1, Math.min(1, audioSim.vout * invRail));
+            // DC-blocking high-pass filter to avoid speaker thumps
+            const y = raw - audioSim.dcPrevX + 0.996 * audioSim.dcPrevY;
+            audioSim.dcPrevX = raw;
+            audioSim.dcPrevY = y;
+            out[i] = Math.max(-0.9, Math.min(0.9, y));
+          }
+        };
+        audioNode.connect(masterGain);
+      }
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+      syncAudioState();
+      masterGain.gain.setTargetAtTime(0.11, audioCtx.currentTime, 0.04);
+      btn.textContent = '🔊 Audio';
+      btn.classList.add('sound-on');
+    } else {
+      if (audioCtx && masterGain) {
+        masterGain.gain.setTargetAtTime(0.0, audioCtx.currentTime, 0.03);
+      }
+      btn.textContent = '🔇 Audio';
+      btn.classList.remove('sound-on');
+    }
+  }
+
+  /* =========================================================================
+   * COLOR & FORMATTING HELPERS
+   * ========================================================================= */
+  function voltageColor(v, rail, enabled) {
+    if (!enabled) return '#7b97c7';
+    const norm = Math.max(-1, Math.min(1, v / Math.max(2, rail * 0.72)));
+    const a = Math.abs(norm);
+    if (a < 0.03) return '#6684b4';
+    if (norm > 0) {
+      // Cool slate -> electric amber -> incandescent gold
+      const r = Math.round(102 + (255 - 102) * Math.pow(a, 0.65));
+      const g = Math.round(132 + (194 - 132) * Math.pow(a, 0.75));
+      const b = Math.round(180 + (78 - 180) * Math.pow(a, 0.85));
+      return `rgb(${r},${g},${b})`;
+    } else {
+      // Cool slate -> vivid cyan -> ice electric blue
+      const r = Math.round(102 + (58 - 102) * Math.pow(a, 0.75));
+      const g = Math.round(132 + (224 - 132) * Math.pow(a, 0.65));
+      const b = Math.round(180 + (255 - 180) * Math.pow(a, 0.6));
+      return `rgb(${r},${g},${b})`;
+    }
+  }
+
+  function fmtV(v) {
+    if (Math.abs(v) < 0.005) return '0.00 V';
+    return (v > 0 ? '+' : '') + v.toFixed(2) + ' V';
+  }
+
+  function fmtShortV(v) {
+    if (Math.abs(v) < 0.005) return '0.0V';
+    return (v > 0 ? '+' : '') + v.toFixed(1) + 'V';
+  }
+
+  /* =========================================================================
+   * CANVAS SETUP & RESPONSIVE LAYOUT
+   * ========================================================================= */
+  const canvas = document.getElementById('sim-canvas');
+  const ctx = canvas.getContext('2d');
+  let W = window.innerWidth;
+  let H = window.innerHeight;
+  let DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+  function resizeCanvas() {
+    W = window.innerWidth;
+    H = window.innerHeight;
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.floor(W * DPR);
+    canvas.height = Math.floor(H * DPR);
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+  }
+  window.addEventListener('resize', resizeCanvas);
+  resizeCanvas();
+
+  function computeLayout() {
+    const hudVisible = !state.zenMode;
+    const isNarrow = W <= 940;
+    const rightPad = (hudVisible && state.drawerOpen && !isNarrow) ? 356 : 16;
+    const leftPad = 16;
+    const bottomPad = hudVisible ? 68 : 18;
+
+    let topHudH = 0;
+    if (hudVisible) {
+      const el = document.getElementById('top-left-panel');
+      topHudH = el ? el.getBoundingClientRect().height + 22 : 168;
+    } else {
+      topHudH = 16;
+    }
+
+    const workX = leftPad;
+    const workW = Math.max(320, W - leftPad - rightPad);
+    const workY = topHudH;
+    const workH = Math.max(260, H - workY - bottomPad);
+
+    // Split workspace vertically: Schematic on top (~55%), Scope + Transfer on bottom (~45%)
+    const gap = 12;
+    const schemH = Math.max(150, Math.floor(workH * 0.55));
+    const lowerY = workY + schemH + gap;
+    const lowerH = Math.max(115, workH - schemH - gap);
+
+    // Split lower stage horizontally: Dual-Trace Scope (~64%) + Transfer Curve (~36%)
+    const scopeW = Math.floor((workW - gap) * 0.64);
+    const transW = workW - gap - scopeW;
+
+    // Optional top-right banner area beside top-left telemetry card
+    let bannerRect = null;
+    if (hudVisible && !isNarrow) {
+      const el = document.getElementById('top-left-panel');
+      const tlW = el ? el.getBoundingClientRect().width : 426;
+      const bx = 14 + tlW + 12;
+      const bw = (W - rightPad) - bx;
+      if (bw >= 210) {
+        bannerRect = { x: bx, y: 14, w: bw, h: Math.max(110, topHudH - 22) };
+      }
+    }
+
+    state.schematicRect = { x: workX, y: workY, w: workW, h: schemH };
+    state.scopeRect = { x: workX, y: lowerY, w: scopeW, h: lowerH };
+    state.transferRect = { x: workX + scopeW + gap, y: lowerY, w: transW, h: lowerH };
+
+    return {
+      schematic: state.schematicRect,
+      scope: state.scopeRect,
+      transfer: state.transferRect,
+      banner: bannerRect
+    };
+  }
+
+  /* =========================================================================
+   * DRAWING PRIMITIVES (SCHEMATIC COMPONENTS, WIRES, PARTICLES, BADGES)
+   * ========================================================================= */
+  function roundRectPath(x, y, w, h, r) {
+    const rad = Math.min(r, w / 2, h / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + rad, y);
+    ctx.arcTo(x + w, y, x + w, y + h, rad);
+    ctx.arcTo(x + w, y + h, x, y + h, rad);
+    ctx.arcTo(x, y + h, x, y, rad);
+    ctx.arcTo(x, y, x + w, y, rad);
+    ctx.closePath();
+  }
+
+  function drawStageBezel(rect, title, subtitle) {
+    ctx.save();
+    roundRectPath(rect.x, rect.y, rect.w, rect.h, 13);
+    ctx.fillStyle = 'rgba(7, 11, 22, 0.72)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.14)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Subtle top highlight
+    ctx.beginPath();
+    ctx.moveTo(rect.x + 14, rect.y + 0.5);
+    ctx.lineTo(rect.x + rect.w - 14, rect.y + 0.5);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.06)';
+    ctx.stroke();
+
+    if (title) {
+      ctx.font = '700 10.5px ' + getComputedStyle(document.documentElement).getPropertyValue('--sans');
+      ctx.fillStyle = 'rgba(154, 169, 204, 0.85)';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      ctx.fillText(title.toUpperCase(), rect.x + 12, rect.y + 9);
+    }
+    if (subtitle) {
+      ctx.font = '600 10px ' + getComputedStyle(document.documentElement).getPropertyValue('--mono');
+      ctx.fillStyle = 'rgba(104, 120, 156, 0.9)';
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'top';
+      ctx.fillText(subtitle, rect.x + rect.w - 12, rect.y + 9);
+    }
+    ctx.restore();
+  }
+
+  function drawWire(points, voltage, currentMa, width) {
+    if (points.length < 2) return;
+    const col = voltageColor(voltage, state.rail, state.showWireColor);
+    const vNorm = Math.min(1, Math.abs(voltage) / Math.max(2, state.rail));
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    // Ambient glow for energized wires
+    if (state.showWireColor && vNorm > 0.06) {
+      ctx.beginPath();
+      ctx.moveTo(points[0][0], points[0][1]);
+      for (let i = 1; i < points.length; i++) ctx.lineTo(points[i][0], points[i][1]);
+      ctx.strokeStyle = col;
+      ctx.globalAlpha = 0.22 * vNorm;
+      ctx.lineWidth = (width || 2.6) + 6;
+      ctx.stroke();
+    }
+
+    // Core wire
+    ctx.globalAlpha = 0.95;
+    ctx.beginPath();
+    ctx.moveTo(points[0][0], points[0][1]);
+    for (let i = 1; i < points.length; i++) ctx.lineTo(points[i][0], points[i][1]);
+    ctx.strokeStyle = col;
+    ctx.lineWidth = width || 2.5;
+    ctx.stroke();
+    ctx.restore();
+
+    // Animated current particles along wire segments
+    if (state.showParticles && Math.abs(currentMa) > 0.004) {
+      drawCurrentParticles(points, currentMa, col);
+    }
+  }
+
+  function drawCurrentParticles(points, currentMa, col) {
+    // Compute cumulative segment lengths
+    const segs = [];
+    let totalLen = 0;
+    for (let i = 0; i < points.length - 1; i++) {
+      const dx = points[i + 1][0] - points[i][0];
+      const dy = points[i + 1][1] - points[i][1];
+      const len = Math.hypot(dx, dy);
+      if (len > 0.5) {
+        segs.push({ x0: points[i][0], y0: points[i][1], dx, dy, len, start: totalLen });
+        totalLen += len;
+      }
+    }
+    if (totalLen < 12) return;
+
+    const spacing = 28;
+    const dir = currentMa >= 0 ? 1 : -1;
+    const mag = Math.min(2.5, Math.abs(currentMa));
+    // Speed scales gently with current magnitude
+    const offset = ((state.wireFlowPhase * (18 + mag * 36) * dir) % spacing + spacing) % spacing;
+
+    ctx.save();
+    for (let d = offset; d < totalLen; d += spacing) {
+      // Find segment
+      let seg = segs[segs.length - 1];
+      for (let i = 0; i < segs.length; i++) {
+        if (d <= segs[i].start + segs[i].len) {
+          seg = segs[i];
+          break;
+        }
+      }
+      const frac = (d - seg.start) / seg.len;
+      const px = seg.x0 + seg.dx * frac;
+      const py = seg.y0 + seg.dy * frac;
+      const ang = Math.atan2(seg.dy * dir, seg.dx * dir);
+
+      ctx.save();
+      ctx.translate(px, py);
+      ctx.rotate(ang);
+      ctx.fillStyle = '#ffffff';
+      ctx.shadowColor = col;
+      ctx.shadowBlur = 7;
+      ctx.globalAlpha = Math.min(0.95, 0.35 + mag * 0.45);
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 3.6, 1.8, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
+  function drawResistor(x1, y1, x2, y2, label, valText, compKey, vAvg) {
+    const mx = (x1 + x2) * 0.5;
+    const my = (y1 + y2) * 0.5;
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const len = Math.hypot(dx, dy);
+    const ang = Math.atan2(dy, dx);
+    const bodyLen = Math.min(54, Math.max(34, len * 0.58));
+    const isHovered = state.hoveredComp === compKey || state.draggingComp === compKey;
+
+    if (compKey) {
+      state.hitTargets.push({
+        key: compKey,
+        cx: mx, cy: my, r: 28,
+        label, valText
+      });
+    }
+
+    ctx.save();
+    ctx.translate(mx, my);
+    ctx.rotate(ang);
+
+    // Subtle interactive highlight halo
+    if (isHovered) {
+      ctx.fillStyle = 'rgba(255, 190, 92, 0.14)';
+      roundRectPath(-bodyLen * 0.62, -15, bodyLen * 1.24, 30, 8);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255, 190, 92, 0.55)';
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+    }
+
+    // Dark backing capsule to cover underlying wire
+    ctx.fillStyle = '#070c19';
+    ctx.fillRect(-bodyLen * 0.52, -9, bodyLen * 1.04, 18);
+
+    // Zig-zag resistor symbol
+    const peaks = 6;
+    const step = bodyLen / peaks;
+    const amp = 7.5;
+    ctx.beginPath();
+    ctx.moveTo(-bodyLen * 0.5, 0);
+    for (let i = 0; i < peaks; i++) {
+      const px = -bodyLen * 0.5 + (i + 0.5) * step;
+      const py = (i % 2 === 0 ? -amp : amp);
+      ctx.lineTo(px, py);
+    }
+    ctx.lineTo(bodyLen * 0.5, 0);
+    ctx.strokeStyle = isHovered ? '#ffdf9e' : '#e6c17a';
+    ctx.lineWidth = isHovered ? 2.6 : 2.1;
+    ctx.lineJoin = 'round';
+    ctx.shadowColor = isHovered ? 'rgba(255, 190, 92, 0.7)' : 'rgba(255, 190, 92, 0.25)';
+    ctx.shadowBlur = isHovered ? 10 : 4;
+    ctx.stroke();
+    ctx.restore();
+
+    // Label (always horizontal & upright)
+    const vertical = Math.abs(dy) > Math.abs(dx);
+    ctx.save();
+    ctx.font = '700 10.5px ' + getComputedStyle(document.documentElement).getPropertyValue('--mono');
+    ctx.fillStyle = isHovered ? '#ffbe5c' : '#c9d7f5';
+    ctx.textAlign = vertical ? 'left' : 'center';
+    ctx.textBaseline = vertical ? 'middle' : 'bottom';
+    if (vertical) {
+      ctx.fillText(`${label}`, mx + 14, my - 6);
+      ctx.font = '600 9.8px ' + getComputedStyle(document.documentElement).getPropertyValue('--mono');
+      ctx.fillStyle = '#9aa9cc';
+      ctx.fillText(valText, mx + 14, my + 7);
+    } else {
+      ctx.fillText(`${label} = ${valText}`, mx, my - 13);
+    }
+    ctx.restore();
+  }
+
+  function drawCapacitor(x1, y1, x2, y2, label, valText, compKey) {
+    const mx = (x1 + x2) * 0.5;
+    const my = (y1 + y2) * 0.5;
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const ang = Math.atan2(dy, dx);
+    const isHovered = state.hoveredComp === compKey || state.draggingComp === compKey;
+
+    if (compKey) {
+      state.hitTargets.push({
+        key: compKey,
+        cx: mx, cy: my, r: 26,
+        label, valText
+      });
+    }
+
+    ctx.save();
+    ctx.translate(mx, my);
+    ctx.rotate(ang);
+
+    if (isHovered) {
+      ctx.fillStyle = 'rgba(74, 242, 178, 0.14)';
+      roundRectPath(-20, -18, 40, 36, 8);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(74, 242, 178, 0.55)';
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+    }
+
+    // Clear gap between plates
+    ctx.fillStyle = '#070c19';
+    ctx.fillRect(-7, -14, 14, 28);
+
+    // Parallel plates
+    ctx.strokeStyle = isHovered ? '#8affd4' : '#4af2b2';
+    ctx.lineWidth = isHovered ? 3.2 : 2.6;
+    ctx.shadowColor = 'rgba(74, 242, 178, 0.55)';
+    ctx.shadowBlur = isHovered ? 10 : 5;
+    ctx.beginPath();
+    ctx.moveTo(-5, -13);
+    ctx.lineTo(-5, 13);
+    ctx.moveTo(5, -13);
+    ctx.lineTo(5, 13);
+    ctx.stroke();
+    ctx.restore();
+
+    const vertical = Math.abs(dy) > Math.abs(dx);
+    ctx.save();
+    ctx.font = '700 10.5px ' + getComputedStyle(document.documentElement).getPropertyValue('--mono');
+    ctx.fillStyle = isHovered ? '#4af2b2' : '#b7f5de';
+    ctx.textAlign = vertical ? 'left' : 'center';
+    ctx.textBaseline = vertical ? 'middle' : 'bottom';
+    if (vertical) {
+      ctx.fillText(label, mx + 16, my - 6);
+      ctx.font = '600 9.8px ' + getComputedStyle(document.documentElement).getPropertyValue('--mono');
+      ctx.fillStyle = '#8ec9b5';
+      ctx.fillText(valText, mx + 16, my + 7);
+    } else {
+      ctx.fillText(`${label} = ${valText}`, mx, my - 16);
+    }
+    ctx.restore();
+  }
+
+  function drawGround(x, y) {
+    ctx.save();
+    ctx.strokeStyle = '#6882b0';
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x, y + 10);
+    ctx.moveTo(x - 11, y + 10);
+    ctx.lineTo(x + 11, y + 10);
+    ctx.moveTo(x - 7, y + 15);
+    ctx.lineTo(x + 7, y + 15);
+    ctx.moveTo(x - 3, y + 20);
+    ctx.lineTo(x + 3, y + 20);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawNodeDot(x, y, voltage, highlightMint) {
+    const col = highlightMint ? '#4af2b2' : voltageColor(voltage, state.rail, state.showWireColor);
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(x, y, 4.4, 0, Math.PI * 2);
+    ctx.fillStyle = col;
+    ctx.shadowColor = col;
+    ctx.shadowBlur = 9;
+    ctx.fill();
+    ctx.strokeStyle = '#040711';
+    ctx.lineWidth = 1.3;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawVoltageBadge(x, y, name, voltage, accentColor, align) {
+    if (!state.showBadges) return;
+    const text = `${name} ${fmtV(voltage)}`;
+    ctx.save();
+    ctx.font = '700 10.5px ' + getComputedStyle(document.documentElement).getPropertyValue('--mono');
+    const tw = ctx.measureText(text).width;
+    const bw = tw + 14;
+    const bh = 20;
+    let bx = x - bw * 0.5;
+    if (align === 'left') bx = x;
+    if (align === 'right') bx = x - bw;
+    const by = y - bh * 0.5;
+
+    roundRectPath(bx, by, bw, bh, 6);
+    ctx.fillStyle = 'rgba(6, 10, 22, 0.90)';
+    ctx.fill();
+    ctx.strokeStyle = accentColor || 'rgba(148, 179, 255, 0.35)';
+    ctx.lineWidth = 1.1;
+    ctx.stroke();
+
+    ctx.fillStyle = '#eef3ff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, bx + bw * 0.5, by + bh * 0.5 + 0.5);
+    ctx.restore();
+  }
+
+  function drawSourceBubble(x, y, label, voltage, accent) {
+    ctx.save();
+    const col = accent || '#58dcff';
+    ctx.beginPath();
+    ctx.arc(x, y, 16, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(7, 13, 28, 0.92)';
+    ctx.fill();
+    ctx.strokeStyle = col;
+    ctx.lineWidth = 2;
+    ctx.shadowColor = col;
+    ctx.shadowBlur = 10;
+    ctx.stroke();
+
+    // Mini sine symbol inside bubble
+    ctx.shadowBlur = 0;
+    ctx.beginPath();
+    for (let i = -8; i <= 8; i++) {
+      const sx = x + i;
+      const sy = y - Math.sin((i / 8) * Math.PI) * 5;
+      if (i === -8) ctx.moveTo(sx, sy);
+      else ctx.lineTo(sx, sy);
+    }
+    ctx.strokeStyle = col;
+    ctx.lineWidth = 1.6;
+    ctx.stroke();
+
+    ctx.font = '700 10px ' + getComputedStyle(document.documentElement).getPropertyValue('--mono');
+    ctx.fillStyle = col;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(label, x, y - 20);
+    ctx.restore();
+  }
+
+  /* =========================================================================
+   * OP-AMP TRIANGLE + POWER RAILS + VIRTUAL SHORT INDICATOR
+   * ========================================================================= */
+  function drawOpAmpCore(cx, cy, size, flipPlusTop) {
+    const halfH = size * 0.62;
+    const leftX = cx - size * 0.55;
+    const rightX = cx + size * 0.68;
+    const topPinY = cy - halfH * 0.48;
+    const botPinY = cy + halfH * 0.48;
+
+    const invY = flipPlusTop ? botPinY : topPinY;
+    const nonInvY = flipPlusTop ? topPinY : botPinY;
+
+    const vdiff = Math.abs(state.vp - state.vm);
+    const isPositiveFb = !TOPOLOGIES[state.topo].negFeedback;
+    const isBroken = state.clipped || state.slewLimited || (!isPositiveFb && vdiff > 0.06);
+
+    ctx.save();
+
+    // Power rail stubs (+Vcc top, -Vee bottom)
+    const railX = cx - size * 0.04;
+    const topRailY = cy - halfH * 0.68;
+    const botRailY = cy + halfH * 0.68;
+
+    // +V_cc stub
+    ctx.beginPath();
+    ctx.moveTo(railX, cy - halfH * 0.46);
+    ctx.lineTo(railX, topRailY - 18);
+    ctx.strokeStyle = state.clipped && state.vout > 0 ? '#ff6083' : 'rgba(255, 190, 92, 0.72)';
+    ctx.lineWidth = state.clipped && state.vout > 0 ? 3 : 2;
+    ctx.stroke();
+
+    ctx.font = '700 10px ' + getComputedStyle(document.documentElement).getPropertyValue('--mono');
+    ctx.fillStyle = state.clipped && state.vout > 0 ? '#ff7c99' : '#ffbe5c';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(`+V_cc (+${state.rail.toFixed(0)}V)`, railX, topRailY - 21);
+
+    // -V_ee stub
+    ctx.beginPath();
+    ctx.moveTo(railX, cy + halfH * 0.46);
+    ctx.lineTo(railX, botRailY + 18);
+    ctx.strokeStyle = state.clipped && state.vout < 0 ? '#ff6083' : 'rgba(88, 220, 255, 0.72)';
+    ctx.lineWidth = state.clipped && state.vout < 0 ? 3 : 2;
+    ctx.stroke();
+
+    ctx.fillStyle = state.clipped && state.vout < 0 ? '#ff7c99' : '#58dcff';
+    ctx.textBaseline = 'top';
+    ctx.fillText(`−V_ee (−${state.rail.toFixed(0)}V)`, railX, botRailY + 21);
+
+    // Ambient halo behind op-amp triangle
+    const glowGrad = ctx.createRadialGradient(cx, cy, 8, cx, cy, size * 1.15);
+    if (state.clipped) {
+      glowGrad.addColorStop(0, 'rgba(255, 96, 131, 0.28)');
+      glowGrad.addColorStop(1, 'rgba(255, 96, 131, 0)');
+    } else if (isPositiveFb) {
+      glowGrad.addColorStop(0, 'rgba(167, 139, 250, 0.24)');
+      glowGrad.addColorStop(1, 'rgba(167, 139, 250, 0)');
+    } else {
+      glowGrad.addColorStop(0, 'rgba(88, 220, 255, 0.18)');
+      glowGrad.addColorStop(1, 'rgba(88, 220, 255, 0)');
+    }
+    ctx.fillStyle = glowGrad;
+    ctx.beginPath();
+    ctx.arc(cx, cy, size * 1.15, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Op-amp triangle body
+    ctx.beginPath();
+    ctx.moveTo(leftX, cy - halfH);
+    ctx.lineTo(rightX, cy);
+    ctx.lineTo(leftX, cy + halfH);
+    ctx.closePath();
+
+    const bodyGrad = ctx.createLinearGradient(leftX, cy - halfH, rightX, cy + halfH);
+    bodyGrad.addColorStop(0, 'rgba(16, 26, 48, 0.96)');
+    bodyGrad.addColorStop(1, 'rgba(9, 15, 30, 0.96)');
+    ctx.fillStyle = bodyGrad;
+    ctx.fill();
+
+    ctx.strokeStyle = state.clipped
+      ? '#ff6083'
+      : state.slewLimited
+      ? '#ffbe5c'
+      : isPositiveFb
+      ? '#a78bfa'
+      : '#6ee7ff';
+    ctx.lineWidth = state.clipped ? 2.8 : 2.3;
+    ctx.shadowColor = ctx.strokeStyle;
+    ctx.shadowBlur = state.clipped ? 18 : 10;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // Subtle internal label
+    ctx.font = '700 9.5px ' + getComputedStyle(document.documentElement).getPropertyValue('--mono');
+    ctx.fillStyle = 'rgba(154, 169, 204, 0.45)';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('A_OL', cx + size * 0.04, cy - 5);
+    ctx.fillText('100dB', cx + size * 0.04, cy + 7);
+
+    // + and - symbols inside triangle
+    ctx.font = '800 17px ' + getComputedStyle(document.documentElement).getPropertyValue('--mono');
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#ffbe5c';
+    ctx.fillText('−', leftX + 14, invY);
+    ctx.fillStyle = '#58dcff';
+    ctx.fillText('+', leftX + 14, nonInvY);
+
+    // Zero input current micro-tags (Golden Rule #1)
+    ctx.font = '600 8.5px ' + getComputedStyle(document.documentElement).getPropertyValue('--mono');
+    ctx.fillStyle = 'rgba(120, 150, 200, 0.65)';
+    ctx.textAlign = 'right';
+    ctx.fillText('I≈0', leftX - 4, invY - 7);
+    ctx.fillText('I≈0', leftX - 4, nonInvY + 8);
+
+    // =====================================================================
+    // GLOWING "VIRTUAL SHORT (V- ≈ V+)" BALANCE INDICATOR BETWEEN INPUTS!
+    // =====================================================================
+    const bridgeX = leftX - 18;
+    const pulse = 0.5 + 0.5 * Math.sin(state.pulsePhase * 6);
+
+    if (isPositiveFb) {
+      // Schmitt trigger: positive feedback hysteresis bridge
+      ctx.beginPath();
+      ctx.setLineDash([3, 3]);
+      ctx.moveTo(bridgeX, topPinY + 5);
+      ctx.lineTo(bridgeX, botPinY - 5);
+      ctx.strokeStyle = 'rgba(167, 139, 250, 0.78)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.setLineDash([]);
+    } else if (!isBroken) {
+      // Healthy Virtual Short glow arc
+      ctx.beginPath();
+      ctx.moveTo(bridgeX, topPinY + 4);
+      ctx.lineTo(bridgeX, botPinY - 4);
+      ctx.strokeStyle = `rgba(74, 242, 178, ${0.42 + 0.28 * pulse})`;
+      ctx.lineWidth = 5;
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.setLineDash([4, 3]);
+      ctx.moveTo(bridgeX, topPinY + 4);
+      ctx.lineTo(bridgeX, botPinY - 4);
+      ctx.strokeStyle = '#6bffca';
+      ctx.lineWidth = 1.8;
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Tiny pill badge on virtual short bridge
+      const tag = Math.abs(state.vp) < 0.02 ? 'V₋ = 0V' : 'V₋ ≈ V₊';
+      ctx.font = '700 8.5px ' + getComputedStyle(document.documentElement).getPropertyValue('--mono');
+      const tw = ctx.measureText(tag).width + 8;
+      roundRectPath(bridgeX - tw - 5, cy - 8, tw, 16, 4);
+      ctx.fillStyle = 'rgba(7, 28, 24, 0.92)';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(74, 242, 178, 0.6)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.fillStyle = '#6bffca';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(tag, bridgeX - tw * 0.5 - 5, cy + 0.5);
+    } else {
+      // BROKEN virtual short (Clipping / Slew overload) — flashing amber/rose!
+      const warnCol = state.clipped ? '#ff6083' : '#ffbe5c';
+      ctx.beginPath();
+      ctx.setLineDash([3, 4]);
+      ctx.moveTo(bridgeX, topPinY + 4);
+      ctx.lineTo(bridgeX, botPinY - 4);
+      ctx.strokeStyle = warnCol;
+      ctx.globalAlpha = 0.65 + 0.35 * pulse;
+      ctx.lineWidth = 2.4;
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 1;
+
+      const tag = state.clipped ? 'CLIPPED!' : 'SLEW!';
+      ctx.font = '800 8.8px ' + getComputedStyle(document.documentElement).getPropertyValue('--mono');
+      const tw = ctx.measureText(tag).width + 10;
+      roundRectPath(bridgeX - tw - 5, cy - 8.5, tw, 17, 4);
+      ctx.fillStyle = state.clipped ? 'rgba(54, 10, 22, 0.95)' : 'rgba(46, 30, 8, 0.95)';
+      ctx.fill();
+      ctx.strokeStyle = warnCol;
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+      ctx.fillStyle = warnCol;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(tag, bridgeX - tw * 0.5 - 5, cy + 0.5);
+    }
+
+    ctx.restore();
+
+    return {
+      invPin: [leftX, invY],
+      nonInvPin: [leftX, nonInvY],
+      outPin: [rightX, cy]
+    };
+  }
+
+  /* =========================================================================
+   * RENDER THE 8 ILLUMINATED OP-AMP SCHEMATICS
+   * ========================================================================= */
+  function renderSchematic(rect) {
+    state.hitTargets = [];
+    const topo = TOPOLOGIES[state.topo];
+    const modeSub = state.topo === 'wien'
+      ? `f₀ = ${(1 / (2 * Math.PI * state.rin * 1e3 * state.cap * 1e-6)).toFixed(1)} Hz`
+      : `${state.wave.toUpperCase()} · ${state.freq} Hz`;
+    drawStageBezel(rect, `Live Illuminated Schematic — ${topo.name}`, modeSub);
+
+    const cx = rect.x + rect.w * 0.54;
+    const cy = rect.y + rect.h * 0.56;
+    const size = Math.max(66, Math.min(96, rect.h * 0.34, rect.w * 0.13));
+
+    const spanX = Math.min(rect.w * 0.25, size * 2.15);
+    const fbRise = Math.min(rect.h * 0.31, size * 1.18);
+    const outTapX = cx + size * 0.68 + Math.min(54, rect.w * 0.06);
+    const outEndX = Math.min(rect.x + rect.w - 28, outTapX + Math.min(72, rect.w * 0.08));
+
+    const flipPlusTop = (state.topo === 'schmitt' || state.topo === 'wien');
+    const pins = drawOpAmpCore(cx, cy, size, flipPlusTop);
+
+    const invX = pins.invPin[0];
+    const invY = pins.invPin[1];
+    const nonX = pins.nonInvPin[0];
+    const nonY = pins.nonInvPin[1];
+    const outX = pins.outPin[0];
+    const outY = pins.outPin[1];
+
+    const sumX = invX - Math.min(64, spanX * 0.42);
+    const srcX = Math.max(rect.x + 42, sumX - Math.min(130, spanX * 0.78));
+    const fbY = cy - fbRise;
+
+    // Output wire always goes from outPin -> outTapX -> outEndX
+    drawWire([[outX, outY], [outTapX, outY], [outEndX, outY]], state.vout, state.iFb * 0.5, 2.8);
+    drawNodeDot(outTapX, outY, state.vout, false);
+    drawNodeDot(outEndX, outY, state.vout, false);
+
+    if (state.topo === 'inverting') {
+      // Input -> Rin -> sumX -> invPin
+      drawWire([[srcX + 16, invY], [sumX, invY]], state.vin, state.iIn, 2.6);
+      drawWire([[sumX, invY], [invX, invY]], state.vm, 0, 2.5);
+      // Feedback loop: sumX -> up -> Rf -> down -> outTapX
+      drawWire([[sumX, invY], [sumX, fbY], [outTapX, fbY], [outTapX, outY]], (state.vm + state.vout) * 0.5, state.iFb, 2.5);
+      // Non-inverting to GND
+      const gndX = nonX - 30;
+      const gndY = nonY + 26;
+      drawWire([[nonX, nonY], [gndX, nonY], [gndX, gndY]], 0, 0, 2.3);
+      drawGround(gndX, gndY);
+
+      drawSourceBubble(srcX, invY, 'V_in', state.vin, '#58dcff');
+      drawResistor(srcX + 20, invY, sumX - 6, invY, 'R_in', `${state.rin.toFixed(1)}kΩ`, 'rin', state.vin);
+      drawResistor(sumX + 14, fbY, outTapX - 14, fbY, 'R_f', `${state.rf.toFixed(1)}kΩ`, 'rf', state.vout);
+
+      drawNodeDot(sumX, invY, state.vm, !state.clipped && Math.abs(state.vm) < 0.05);
+      drawVoltageBadge(srcX, invY + 32, 'V_in', state.vin, '#58dcff');
+      drawVoltageBadge(sumX, invY - 22, 'V₋', state.vm, state.clipped ? '#ff6083' : '#4af2b2');
+      drawVoltageBadge(gndX - 42, nonY, 'V₊', 0, '#4af2b2');
+      drawVoltageBadge(outEndX - 10, outY + 28, 'V_out', state.vout, '#ffbe5c', 'right');
+    } else if (state.topo === 'non_inverting') {
+      // V_in directly to + pin
+      drawWire([[srcX + 16, nonY], [nonX, nonY]], state.vin, 0, 2.6);
+      drawSourceBubble(srcX, nonY, 'V_in', state.vin, '#58dcff');
+
+      // Feedback loop from outTapX -> fbY -> sumX -> invPin
+      drawWire([[sumX, invY], [invX, invY]], state.vm, 0, 2.5);
+      drawWire([[outTapX, outY], [outTapX, fbY], [sumX, fbY], [sumX, invY]], (state.vout + state.vm) * 0.5, state.iFb, 2.5);
+      // R_in from sumX down to GND (routed cleanly to the left of V_in wire)
+      const gndBranchX = sumX - 58;
+      const gndY = nonY + 34;
+      drawWire([[sumX, invY], [gndBranchX, invY], [gndBranchX, gndY]], state.vm * 0.5, state.iIn, 2.4);
+      drawGround(gndBranchX, gndY);
+
+      drawResistor(sumX + 14, fbY, outTapX - 14, fbY, 'R_f', `${state.rf.toFixed(1)}kΩ`, 'rf', state.vout);
+      drawResistor(gndBranchX, invY + 8, gndBranchX, gndY - 8, 'R_in', `${state.rin.toFixed(1)}kΩ`, 'rin', state.vm);
+
+      drawNodeDot(sumX, invY, state.vm, !state.clipped);
+      drawVoltageBadge(srcX, nonY + 32, 'V_in=V₊', state.vp, '#58dcff');
+      drawVoltageBadge(sumX + 6, invY - 22, 'V₋', state.vm, state.clipped ? '#ff6083' : '#4af2b2');
+      drawVoltageBadge(outEndX - 10, outY + 28, 'V_out', state.vout, '#ffbe5c', 'right');
+    } else if (state.topo === 'follower') {
+      // Direct unity wire from outTapX -> fbY -> sumX -> invPin
+      drawWire([[outTapX, outY], [outTapX, fbY], [sumX, fbY], [sumX, invY], [invX, invY]], state.vout, 0, 2.6);
+      // V_in directly into + pin
+      drawWire([[srcX + 16, nonY], [nonX, nonY]], state.vin, 0, 2.6);
+      drawSourceBubble(srcX, nonY, 'V_in', state.vin, '#58dcff');
+
+      // Label unity feedback wire
+      ctx.save();
+      ctx.font = '700 10.5px ' + getComputedStyle(document.documentElement).getPropertyValue('--mono');
+      ctx.fillStyle = '#4af2b2';
+      ctx.textAlign = 'center';
+      ctx.fillText('100% DIRECT FEEDBACK (A_v = 1)', (sumX + outTapX) * 0.5, fbY - 10);
+      ctx.restore();
+
+      drawVoltageBadge(srcX, nonY + 32, 'V_in=V₊', state.vp, '#58dcff');
+      drawVoltageBadge(sumX, invY - 20, 'V₋', state.vm, state.clipped ? '#ff6083' : '#4af2b2');
+      drawVoltageBadge(outEndX - 10, outY + 28, 'V_out', state.vout, '#ffbe5c', 'right');
+    } else if (state.topo === 'summing') {
+      const y1 = invY - 24;
+      const y2 = invY + 22;
+      // Branch 1: V1 -> R1 -> sumX
+      drawWire([[srcX + 16, y1], [sumX, y1], [sumX, invY]], state.vin, state.iIn, 2.5);
+      // Branch 2: V2 -> R2 -> sumX
+      drawWire([[srcX + 16, y2], [sumX, y2], [sumX, invY]], state.vin2, state.iIn2, 2.5);
+      // Sum node -> invPin
+      drawWire([[sumX, invY], [invX, invY]], state.vm, 0, 2.5);
+      // Feedback loop
+      drawWire([[sumX, invY], [sumX, fbY], [outTapX, fbY], [outTapX, outY]], (state.vm + state.vout) * 0.5, state.iFb, 2.5);
+      // + to GND
+      const gndX = nonX - 28;
+      const gndY = nonY + 24;
+      drawWire([[nonX, nonY], [gndX, nonY], [gndX, gndY]], 0, 0, 2.3);
+      drawGround(gndX, gndY);
+
+      drawSourceBubble(srcX, y1, 'V₁', state.vin, '#58dcff');
+      drawSourceBubble(srcX, y2, 'V₂', state.vin2, '#a78bfa');
+      drawResistor(srcX + 20, y1, sumX - 6, y1, 'R₁', `${state.rin.toFixed(1)}kΩ`, 'rin', state.vin);
+      drawResistor(srcX + 20, y2, sumX - 6, y2, 'R₂', `${state.rin2.toFixed(1)}kΩ`, 'rin2', state.vin2);
+      drawResistor(sumX + 14, fbY, outTapX - 14, fbY, 'R_f', `${state.rf.toFixed(1)}kΩ`, 'rf', state.vout);
+
+      drawNodeDot(sumX, invY, state.vm, !state.clipped && Math.abs(state.vm) < 0.05);
+      drawVoltageBadge(sumX + 18, invY - 20, 'V₋(Σ)', state.vm, state.clipped ? '#ff6083' : '#4af2b2');
+      drawVoltageBadge(outEndX - 10, outY + 28, 'V_out', state.vout, '#ffbe5c', 'right');
+    } else if (state.topo === 'integrator') {
+      // Input -> Rin -> sumX -> invPin
+      drawWire([[srcX + 16, invY], [sumX, invY]], state.vin, state.iIn, 2.6);
+      drawWire([[sumX, invY], [invX, invY]], state.vm, 0, 2.5);
+      // Feedback capacitor C
+      drawWire([[sumX, invY], [sumX, fbY], [outTapX, fbY], [outTapX, outY]], (state.vm + state.vout) * 0.5, state.iFb, 2.5);
+      // + to GND
+      const gndX = nonX - 30;
+      const gndY = nonY + 26;
+      drawWire([[nonX, nonY], [gndX, nonY], [gndX, gndY]], 0, 0, 2.3);
+      drawGround(gndX, gndY);
+
+      drawSourceBubble(srcX, invY, 'V_in', state.vin, '#58dcff');
+      drawResistor(srcX + 20, invY, sumX - 6, invY, 'R_in', `${state.rin.toFixed(1)}kΩ`, 'rin', state.vin);
+      drawCapacitor(sumX + 16, fbY, outTapX - 16, fbY, 'C', `${state.cap.toFixed(2)}µF`, 'cap');
+
+      drawNodeDot(sumX, invY, state.vm, !state.clipped && Math.abs(state.vm) < 0.05);
+      drawVoltageBadge(srcX, invY + 32, 'V_in', state.vin, '#58dcff');
+      drawVoltageBadge(sumX, invY - 22, 'V₋', state.vm, state.clipped ? '#ff6083' : '#4af2b2');
+      drawVoltageBadge(outEndX - 10, outY + 28, 'V_out', state.vout, '#ffbe5c', 'right');
+    } else if (state.topo === 'differentiator') {
+      // Input -> C -> sumX -> invPin
+      drawWire([[srcX + 16, invY], [sumX, invY]], state.vin, state.iIn, 2.6);
+      drawWire([[sumX, invY], [invX, invY]], state.vm, 0, 2.5);
+      // Feedback resistor Rf
+      drawWire([[sumX, invY], [sumX, fbY], [outTapX, fbY], [outTapX, outY]], (state.vm + state.vout) * 0.5, state.iFb, 2.5);
+      // + to GND
+      const gndX = nonX - 30;
+      const gndY = nonY + 26;
+      drawWire([[nonX, nonY], [gndX, nonY], [gndX, gndY]], 0, 0, 2.3);
+      drawGround(gndX, gndY);
+
+      drawSourceBubble(srcX, invY, 'V_in', state.vin, '#58dcff');
+      drawCapacitor(srcX + 20, invY, sumX - 6, invY, 'C', `${state.cap.toFixed(2)}µF`, 'cap');
+      drawResistor(sumX + 14, fbY, outTapX - 14, fbY, 'R_f', `${state.rf.toFixed(1)}kΩ`, 'rf', state.vout);
+
+      drawNodeDot(sumX, invY, state.vm, !state.clipped && Math.abs(state.vm) < 0.05);
+      drawVoltageBadge(srcX, invY + 32, 'V_in', state.vin, '#58dcff');
+      drawVoltageBadge(sumX, invY - 22, 'V₋', state.vm, state.clipped ? '#ff6083' : '#4af2b2');
+      drawVoltageBadge(outEndX - 10, outY + 28, 'V_out', state.vout, '#ffbe5c', 'right');
+    } else if (state.topo === 'schmitt') {
+      // Plus pin is on TOP! Positive feedback Rf from outTapX -> fbY -> sumX -> nonInvPin (+)
+      drawWire([[outTapX, outY], [outTapX, fbY], [sumX, fbY], [sumX, nonY], [nonX, nonY]], (state.vout + state.vp) * 0.5, state.iFb, 2.6);
+      // Divider resistor Rin from sumX left & down to GND
+      const gndBranchX = sumX - 56;
+      const gndY = invY + 32;
+      drawWire([[sumX, nonY], [gndBranchX, nonY], [gndBranchX, gndY]], state.vp * 0.5, state.iIn, 2.4);
+      drawGround(gndBranchX, gndY);
+
+      // Noisy input V_in -> inverting pin (-) on bottom
+      drawWire([[srcX + 16, invY], [invX, invY]], state.vin, 0, 2.6);
+      drawSourceBubble(srcX, invY, 'V_in', state.vin, '#58dcff');
+
+      drawResistor(sumX + 14, fbY, outTapX - 14, fbY, 'R_f (+FB)', `${state.rf.toFixed(1)}kΩ`, 'rf', state.vout);
+      drawResistor(gndBranchX, nonY + 8, gndBranchX, gndY - 8, 'R_in', `${state.rin.toFixed(1)}kΩ`, 'rin', state.vp);
+
+      drawNodeDot(sumX, nonY, state.vp, false);
+      drawVoltageBadge(srcX, invY + 32, 'V_in=V₋', state.vm, '#58dcff');
+      drawVoltageBadge(sumX + 8, nonY - 22, 'V₊(TH)', state.vp, '#a78bfa');
+      drawVoltageBadge(outEndX - 10, outY + 28, 'V_out', state.vout, '#ffbe5c', 'right');
+    } else if (state.topo === 'wien') {
+      // Plus pin is on TOP (Wien RC bridge), Minus pin on BOTTOM (gain Rf / Rin)
+      const botFbY = Math.min(rect.y + rect.h - 24, cy + fbRise * 0.92);
+      const wienNodeX = sumX - 10;
+
+      // Positive feedback Wien series branch: outTapX -> fbY -> (R series C) -> wienNodeX -> nonInvPin (+)
+      drawWire([[outTapX, outY], [outTapX, fbY], [wienNodeX, fbY], [wienNodeX, nonY], [nonX, nonY]], (state.vout + state.vp) * 0.5, state.iIn, 2.5);
+      // Parallel R || C from wienNodeX to GND (to the left)
+      const parRx = wienNodeX - 58;
+      const parCx = wienNodeX - 118;
+      const gndY = invY + 34;
+      drawWire([[wienNodeX, nonY], [parCx, nonY]], state.vp, state.iIn * 0.5, 2.3);
+      drawWire([[parRx, nonY], [parRx, gndY]], state.vp * 0.5, state.iIn * 0.4, 2.2);
+      drawWire([[parCx, nonY], [parCx, gndY]], state.vp * 0.5, state.iIn * 0.4, 2.2);
+      drawWire([[parCx, gndY], [parRx, gndY]], 0, 0, 2.2);
+      drawGround((parCx + parRx) * 0.5, gndY);
+
+      // Draw series R & C along top feedback path
+      const midTopX = (wienNodeX + outTapX) * 0.5;
+      drawResistor(wienNodeX + 12, fbY, midTopX - 6, fbY, 'R', `${state.rin.toFixed(1)}kΩ`, 'rin', state.vp);
+      drawCapacitor(midTopX + 8, fbY, outTapX - 12, fbY, 'C', `${state.cap.toFixed(2)}µF`, 'cap');
+
+      // Draw parallel R and C on left
+      drawResistor(parRx, nonY + 8, parRx, gndY - 8, 'R', `${state.rin.toFixed(1)}kΩ`, 'rin', state.vp);
+      drawCapacitor(parCx, nonY + 8, parCx, gndY - 8, 'C', `${state.cap.toFixed(2)}µF`, 'cap');
+
+      // Negative feedback gain loop on bottom: outTapX -> botFbY -> sumX -> invPin (-)
+      drawWire([[outTapX, outY], [outTapX, botFbY], [sumX, botFbY], [sumX, invY], [invX, invY]], (state.vout + state.vm) * 0.5, state.iFb, 2.4);
+      const gndNegX = sumX - 24;
+      drawWire([[sumX, botFbY], [gndNegX, botFbY]], state.vm * 0.5, state.iFb, 2.2);
+      drawGround(gndNegX, botFbY);
+
+      drawResistor(sumX + 14, botFbY, outTapX - 14, botFbY, 'R_f', `${state.rf.toFixed(1)}kΩ`, 'rf', state.vout);
+
+      drawNodeDot(wienNodeX, nonY, state.vp, false);
+      drawNodeDot(sumX, invY, state.vm, !state.clipped);
+      drawVoltageBadge(wienNodeX + 10, nonY - 22, 'V₊', state.vp, '#58dcff');
+      drawVoltageBadge(sumX + 6, invY + 20, 'V₋', state.vm, '#4af2b2');
+      drawVoltageBadge(outEndX - 10, outY - 26, 'V_out', state.vout, '#ffbe5c', 'right');
+    }
+  }
+
+  /* =========================================================================
+   * TOP-RIGHT EQUATION & VIRTUAL-SHORT METER BANNER (WHEN SPACE PERMITS)
+   * ========================================================================= */
+  function renderTopBanner(rect) {
+    if (!rect) return;
+    const topo = TOPOLOGIES[state.topo];
+    drawStageBezel(rect, 'Analog Transfer Function & Virtual-Short Monitor', `A_OL = 100 dB`);
+
+    const padX = rect.x + 14;
+    const eqY = rect.y + 30;
+    ctx.save();
+    ctx.font = '700 14.5px ' + getComputedStyle(document.documentElement).getPropertyValue('--mono');
+    ctx.fillStyle = '#ffbe5c';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText(topo.eq, padX, eqY);
+
+    // Subtle live differential balance bar: V+ vs V-
+    const barY = rect.y + Math.min(rect.h - 40, 58);
+    const barW = Math.min(rect.w - 28, 420);
+    const barH = 12;
+
+    ctx.font = '600 9.5px ' + getComputedStyle(document.documentElement).getPropertyValue('--mono');
+    ctx.fillStyle = '#9aa9cc';
+    ctx.fillText('VIRTUAL SHORT BALANCE  |V₊ − V₋|', padX, barY - 13);
+
+    const vdiff = Math.abs(state.vp - state.vm);
+    const isPosFb = !topo.negFeedback;
+    const errRatio = Math.min(1, vdiff / Math.max(1, state.rail * 0.5));
+
+    // Track
+    roundRectPath(padX, barY, barW, barH, 6);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.06)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.16)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Center tick (perfect virtual short = 0V error)
+    const midX = padX + barW * 0.5;
+    ctx.strokeStyle = 'rgba(74, 242, 178, 0.5)';
+    ctx.beginPath();
+    ctx.moveTo(midX, barY - 2);
+    ctx.lineTo(midX, barY + barH + 2);
+    ctx.stroke();
+
+    // Signed deflection bar
+    const signedDiff = Math.max(-1, Math.min(1, (state.vp - state.vm) / Math.max(1, state.rail * 0.5)));
+    const fillCol = isPosFb
+      ? '#a78bfa'
+      : state.clipped
+      ? '#ff6083'
+      : state.slewLimited
+      ? '#ffbe5c'
+      : '#4af2b2';
+
+    const deflectW = Math.max(4, Math.abs(signedDiff) * (barW * 0.48));
+    const fillX = signedDiff >= 0 ? midX : midX - deflectW;
+    roundRectPath(fillX, barY + 2, deflectW, barH - 4, 4);
+    ctx.fillStyle = fillCol;
+    ctx.shadowColor = fillCol;
+    ctx.shadowBlur = 8;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Right status text under bar
+    const statusMsg = isPosFb
+      ? `Positive Feedback Hysteresis: V_TH = ±${(state.rail * state.rin / (state.rin + state.rf)).toFixed(2)} V`
+      : state.clipped
+      ? `RAIL SATURATION! Feedback loop opened — ΔV = ${(vdiff).toFixed(2)} V`
+      : state.slewLimited
+      ? `SLEW-RATE LIMITING! Output lagging input edge — ΔV = ${(vdiff).toFixed(2)} V`
+      : `Golden Rule #2 Active: V₋ tracks V₊ within ${(vdiff * 1000).toFixed(2)} mV`;
+
+    ctx.font = '600 10.5px ' + getComputedStyle(document.documentElement).getPropertyValue('--sans');
+    ctx.fillStyle = fillCol;
+    ctx.fillText(statusMsg, padX, barY + 18);
+    ctx.restore();
+  }
+
+  /* =========================================================================
+   * DUAL-TRACE OSCILLOSCOPE
+   * ========================================================================= */
+  function renderOscilloscope(rect) {
+    const ch1Name = state.topo === 'wien' ? 'V₊ (FB)' : (state.topo === 'summing' ? 'V₁' : 'V_in');
+    const msTotal = (state.scopeWindowSec * 1000).toFixed(1);
+    drawStageBezel(rect, 'Dual-Trace Oscilloscope', `${msTotal} ms span · ±${state.rail.toFixed(0)}V rails`);
+
+    const padL = 42, padR = 14, padT = 28, padB = 22;
+    const gx = rect.x + padL;
+    const gy = rect.y + padT;
+    const gw = Math.max(60, rect.w - padL - padR);
+    const gh = Math.max(40, rect.h - padT - padB);
+
+    const vMax = Math.max(state.rail * 1.18, 6);
+    const vToY = (v) => gy + gh * 0.5 - (v / vMax) * (gh * 0.48);
+
+    ctx.save();
+    // Scope phosphor screen backdrop
+    roundRectPath(gx, gy, gw, gh, 7);
+    ctx.fillStyle = '#050914';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.14)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.rect(gx, gy, gw, gh);
+    ctx.clip();
+
+    // Graticule grid (10x4 divisions)
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.08)';
+    ctx.lineWidth = 1;
+    for (let i = 1; i < 10; i++) {
+      const x = gx + (gw * i) / 10;
+      ctx.beginPath();
+      ctx.moveTo(x, gy);
+      ctx.lineTo(x, gy + gh);
+      ctx.stroke();
+    }
+    for (let j = 1; j < 4; j++) {
+      const y = gy + (gh * j) / 4;
+      ctx.beginPath();
+      ctx.moveTo(gx, y);
+      ctx.lineTo(gx + gw, y);
+      ctx.stroke();
+    }
+
+    // 0V center axis
+    const zeroY = vToY(0);
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.22)';
+    ctx.beginPath();
+    ctx.moveTo(gx, zeroY);
+    ctx.lineTo(gx + gw, zeroY);
+    ctx.stroke();
+
+    // Dashed +V_sat and -V_sat clipping rails
+    const yPosSat = vToY(state.rail);
+    const yNegSat = vToY(-state.rail);
+    ctx.save();
+    ctx.setLineDash([5, 4]);
+    ctx.strokeStyle = state.clipped ? 'rgba(255, 96, 131, 0.85)' : 'rgba(255, 96, 131, 0.45)';
+    ctx.lineWidth = state.clipped ? 1.5 : 1.1;
+    ctx.beginPath();
+    ctx.moveTo(gx, yPosSat);
+    ctx.lineTo(gx + gw, yPosSat);
+    ctx.moveTo(gx, yNegSat);
+    ctx.lineTo(gx + gw, yNegSat);
+    ctx.stroke();
+    ctx.restore();
+
+    // Schmitt trigger hysteresis threshold lines V_TH+ / V_TH-
+    if (state.topo === 'schmitt') {
+      const vth = state.rail * (state.rin / (state.rin + state.rf));
+      const yThP = vToY(vth);
+      const yThN = vToY(-vth);
+      ctx.save();
+      ctx.setLineDash([3, 4]);
+      ctx.strokeStyle = 'rgba(167, 139, 250, 0.72)';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(gx, yThP);
+      ctx.lineTo(gx + gw, yThP);
+      ctx.moveTo(gx, yThN);
+      ctx.lineTo(gx + gw, yThN);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.font = '600 9px ' + getComputedStyle(document.documentElement).getPropertyValue('--mono');
+      ctx.fillStyle = '#c8b6ff';
+      ctx.textAlign = 'right';
+      ctx.fillText(`+V_TH (+${vth.toFixed(1)}V)`, gx + gw - 5, yThP - 3);
+      ctx.fillText(`−V_TH (−${vth.toFixed(1)}V)`, gx + gw - 5, yThN + 10);
+      ctx.restore();
+    }
+
+    // Plot history traces
+    const hist = state.history;
+    if (hist.length >= 2) {
+      const tEnd = hist[hist.length - 1].t;
+      const tStart = tEnd - state.scopeWindowSec;
+      const tToX = (t) => gx + ((t - tStart) / state.scopeWindowSec) * gw;
+
+      // Optional Ch2 V2 trace in Summing mode
+      if (state.topo === 'summing') {
+        ctx.save();
+        ctx.setLineDash([4, 3]);
+        ctx.beginPath();
+        for (let i = 0; i < hist.length; i++) {
+          const x = tToX(hist[i].t);
+          const y = vToY(hist[i].vin2);
+          if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        }
+        ctx.strokeStyle = 'rgba(167, 139, 250, 0.78)';
+        ctx.lineWidth = 1.6;
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // Optional V- trace
+      if (state.showVmTrace) {
+        ctx.beginPath();
+        for (let i = 0; i < hist.length; i++) {
+          const x = tToX(hist[i].t);
+          const y = vToY(hist[i].vm);
+          if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        }
+        ctx.strokeStyle = 'rgba(74, 242, 178, 0.85)';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+
+      // Channel 1: V_in (Cyan)
+      ctx.save();
+      ctx.beginPath();
+      for (let i = 0; i < hist.length; i++) {
+        const x = tToX(hist[i].t);
+        const y = vToY(hist[i].vin);
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.strokeStyle = '#58dcff';
+      ctx.lineWidth = 2.0;
+      ctx.shadowColor = 'rgba(88, 220, 255, 0.55)';
+      ctx.shadowBlur = 7;
+      ctx.stroke();
+      ctx.restore();
+
+      // Channel 2: V_out (Amber, glowing)
+      ctx.save();
+      ctx.beginPath();
+      for (let i = 0; i < hist.length; i++) {
+        const x = tToX(hist[i].t);
+        const y = vToY(hist[i].vout);
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.strokeStyle = '#ffbe5c';
+      ctx.lineWidth = 2.4;
+      ctx.shadowColor = 'rgba(255, 190, 92, 0.65)';
+      ctx.shadowBlur = 9;
+      ctx.stroke();
+      ctx.restore();
+
+      // Highlight clipped segments on V_out in rose
+      ctx.save();
+      ctx.strokeStyle = '#ff6083';
+      ctx.lineWidth = 2.8;
+      for (let i = 1; i < hist.length; i++) {
+        if (hist[i].clipped && hist[i - 1].clipped) {
+          ctx.beginPath();
+          ctx.moveTo(tToX(hist[i - 1].t), vToY(hist[i - 1].vout));
+          ctx.lineTo(tToX(hist[i].t), vToY(hist[i].vout));
+          ctx.stroke();
+        }
+      }
+      ctx.restore();
+
+      // Live rightmost beam dots
+      const last = hist[hist.length - 1];
+      const lx = tToX(last.t);
+      drawScopeDot(lx, vToY(last.vin), '#58dcff');
+      drawScopeDot(lx, vToY(last.vout), last.clipped ? '#ff6083' : '#ffbe5c');
+
+      // Interactive hover probe crosshair
+      if (state.mouseX >= gx && state.mouseX <= gx + gw && state.mouseY >= gy && state.mouseY <= gy + gh) {
+        const hoverT = tStart + ((state.mouseX - gx) / gw) * state.scopeWindowSec;
+        // Find nearest sample
+        let best = hist[0], bestD = Infinity;
+        for (let i = 0; i < hist.length; i++) {
+          const d = Math.abs(hist[i].t - hoverT);
+          if (d < bestD) { bestD = d; best = hist[i]; }
+        }
+        const px = tToX(best.t);
+        ctx.save();
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+        ctx.setLineDash([3, 3]);
+        ctx.beginPath();
+        ctx.moveTo(px, gy);
+        ctx.lineTo(px, gy + gh);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        drawScopeDot(px, vToY(best.vin), '#58dcff');
+        drawScopeDot(px, vToY(best.vout), '#ffbe5c');
+
+        const tip = `${ch1Name}: ${fmtV(best.vin)}  |  V_out: ${fmtV(best.vout)}`;
+        ctx.font = '700 10px ' + getComputedStyle(document.documentElement).getPropertyValue('--mono');
+        const tw = ctx.measureText(tip).width + 14;
+        const tx = Math.min(gx + gw - tw - 4, Math.max(gx + 4, px - tw * 0.5));
+        roundRectPath(tx, gy + 5, tw, 20, 5);
+        ctx.fillStyle = 'rgba(6, 10, 22, 0.92)';
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(148, 179, 255, 0.35)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        ctx.fillStyle = '#eef3ff';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(tip, tx + tw * 0.5, gy + 15.5);
+        ctx.restore();
+      }
+    }
+    ctx.restore();
+
+    // Y-axis tick labels (outside clip)
+    ctx.save();
+    ctx.font = '600 9.2px ' + getComputedStyle(document.documentElement).getPropertyValue('--mono');
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#ff7d99';
+    ctx.fillText(`+${state.rail.toFixed(0)}V`, gx - 5, yPosSat);
+    ctx.fillText(`-${state.rail.toFixed(0)}V`, gx - 5, yNegSat);
+    ctx.fillStyle = '#68789c';
+    ctx.fillText('0V', gx - 5, zeroY);
+
+    // Legend along bottom of scope bezel
+    const legY = gy + gh + 11;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#58dcff';
+    ctx.fillText(`● ${ch1Name}`, gx + 2, legY);
+    ctx.fillStyle = '#ffbe5c';
+    ctx.fillText(`● V_out`, gx + 76, legY);
+    if (state.topo === 'summing') {
+      ctx.fillStyle = '#a78bfa';
+      ctx.fillText(`┈ V₂`, gx + 140, legY);
+    } else if (state.showVmTrace) {
+      ctx.fillStyle = '#4af2b2';
+      ctx.fillText(`● V₋`, gx + 140, legY);
+    }
+    ctx.fillStyle = 'rgba(255, 96, 131, 0.85)';
+    ctx.textAlign = 'right';
+    ctx.fillText(`┄ ±V_sat`, gx + gw, legY);
+    ctx.restore();
+  }
+
+  function drawScopeDot(x, y, col) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(x, y, 4.2, 0, Math.PI * 2);
+    ctx.fillStyle = '#ffffff';
+    ctx.shadowColor = col;
+    ctx.shadowBlur = 10;
+    ctx.fill();
+    ctx.strokeStyle = col;
+    ctx.lineWidth = 1.8;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /* =========================================================================
+   * VOLTAGE TRANSFER CHARACTERISTIC (V_out vs V_in / HYSTERESIS LOOP)
+   * ========================================================================= */
+  function renderTransferCurve(rect) {
+    const xLabel = state.topo === 'wien' ? 'V₊' : (state.topo === 'summing' ? 'V₁' : 'V_in');
+    const sub = state.topo === 'schmitt'
+      ? 'Hysteresis Loop'
+      : (state.topo === 'integrator' || state.topo === 'differentiator' ? '90° Phase Loop' : `V_out vs ${xLabel}`);
+    drawStageBezel(rect, 'Transfer Curve', sub);
+
+    const padL = 34, padR = 14, padT = 28, padB = 22;
+    const gx = rect.x + padL;
+    const gy = rect.y + padT;
+    const gw = Math.max(50, rect.w - padL - padR);
+    const gh = Math.max(40, rect.h - padT - padB);
+
+    const vOutMax = Math.max(state.rail * 1.18, 6);
+    const vInSpan = Math.max(
+      state.topo === 'wien' ? state.rail * 0.45 : Math.max(state.amp + Math.abs(state.offset) + (state.wave === 'noisy' ? state.noiseAmp : 0), 3.5),
+      state.topo === 'schmitt' ? state.rail * 0.85 : 3.5
+    ) * 1.18;
+
+    const toX = (vin) => gx + gw * 0.5 + (vin / vInSpan) * (gw * 0.46);
+    const toY = (vout) => gy + gh * 0.5 - (vout / vOutMax) * (gh * 0.46);
+
+    ctx.save();
+    roundRectPath(gx, gy, gw, gh, 7);
+    ctx.fillStyle = '#050914';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.14)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.rect(gx, gy, gw, gh);
+    ctx.clip();
+
+    // Axes
+    const cx = gx + gw * 0.5;
+    const cy = gy + gh * 0.5;
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.18)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(gx, cy); ctx.lineTo(gx + gw, cy);
+    ctx.moveTo(cx, gy); ctx.lineTo(cx, gy + gh);
+    ctx.stroke();
+
+    // Dashed ±V_sat rails
+    ctx.save();
+    ctx.setLineDash([4, 4]);
+    ctx.strokeStyle = 'rgba(255, 96, 131, 0.42)';
+    ctx.beginPath();
+    ctx.moveTo(gx, toY(state.rail)); ctx.lineTo(gx + gw, toY(state.rail));
+    ctx.moveTo(gx, toY(-state.rail)); ctx.lineTo(gx + gw, toY(-state.rail));
+    ctx.stroke();
+    ctx.restore();
+
+    // Ideal theoretical transfer line for DC gain topologies or hysteresis box for Schmitt
+    if (state.topo === 'inverting' || state.topo === 'non_inverting' || state.topo === 'follower') {
+      const gain = state.topo === 'inverting'
+        ? -(state.rf / state.rin)
+        : state.topo === 'non_inverting'
+        ? (1 + state.rf / state.rin)
+        : 1;
+      ctx.save();
+      ctx.strokeStyle = 'rgba(88, 220, 255, 0.28)';
+      ctx.lineWidth = 1.4;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      for (let i = 0; i <= 80; i++) {
+        const vi = -vInSpan + (2 * vInSpan * i) / 80;
+        const vo = Math.max(-state.rail, Math.min(state.rail, gain * vi));
+        const px = toX(vi), py = toY(vo);
+        if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+      ctx.restore();
+    } else if (state.topo === 'schmitt') {
+      const vth = state.rail * (state.rin / (state.rin + state.rf));
+      const xL = toX(-vth), xR = toX(vth);
+      const yT = toY(state.rail), yB = toY(-state.rail);
+      ctx.save();
+      ctx.strokeStyle = 'rgba(167, 139, 250, 0.35)';
+      ctx.lineWidth = 1.4;
+      ctx.setLineDash([3, 3]);
+      ctx.strokeRect(xL, yT, xR - xL, yB - yT);
+      ctx.setLineDash([]);
+      // Directional hysteresis arrows on top & bottom rails
+      ctx.fillStyle = '#c8b6ff';
+      ctx.font = '700 10px ' + getComputedStyle(document.documentElement).getPropertyValue('--mono');
+      ctx.textAlign = 'center';
+      ctx.fillText('→', (xL + xR) * 0.5, yT + 10);
+      ctx.fillText('←', (xL + xR) * 0.5, yB - 3);
+      ctx.restore();
+    }
+
+    // Persistent glowing XY phosphor trace from history
+    const hist = state.history;
+    if (hist.length >= 2) {
+      for (let i = 1; i < hist.length; i++) {
+        const age = i / hist.length;
+        ctx.beginPath();
+        ctx.moveTo(toX(hist[i - 1].vin), toY(hist[i - 1].vout));
+        ctx.lineTo(toX(hist[i].vin), toY(hist[i].vout));
+        const isClip = hist[i].clipped;
+        ctx.strokeStyle = isClip
+          ? `rgba(255, 96, 131, ${0.22 + 0.75 * age})`
+          : state.topo === 'schmitt'
+          ? `rgba(167, 139, 250, ${0.20 + 0.78 * age})`
+          : `rgba(255, 190, 92, ${0.18 + 0.80 * age})`;
+        ctx.lineWidth = 1.5 + age * 1.1;
+        ctx.stroke();
+      }
+      const last = hist[hist.length - 1];
+      drawScopeDot(toX(last.vin), toY(last.vout), last.clipped ? '#ff6083' : '#ffbe5c');
+    }
+
+    ctx.restore();
+
+    // Axis labels
+    ctx.save();
+    ctx.font = '600 9.2px ' + getComputedStyle(document.documentElement).getPropertyValue('--mono');
+    ctx.fillStyle = '#9aa9cc';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`${xLabel} (±${vInSpan.toFixed(0)}V)`, gx + gw * 0.5, gy + gh + 11);
+
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#ffbe5c';
+    ctx.fillText(`+${state.rail.toFixed(0)}`, gx - 4, toY(state.rail));
+    ctx.fillText(`-${state.rail.toFixed(0)}`, gx - 4, toY(-state.rail));
+    ctx.restore();
+  }
+
+  /* =========================================================================
+   * BACKGROUND DRAFTING GRID & COMPONENT HOVER TOOLTIP
+   * ========================================================================= */
+  function renderBackground() {
+    ctx.fillStyle = '#040711';
+    ctx.fillRect(0, 0, W, H);
+
+    // Subtle atmospheric vignette glow
+    const grad = ctx.createRadialGradient(W * 0.42, H * 0.36, 40, W * 0.45, H * 0.45, Math.max(W, H) * 0.8);
+    grad.addColorStop(0, 'rgba(26, 44, 88, 0.24)');
+    grad.addColorStop(0.55, 'rgba(10, 18, 38, 0.12)');
+    grad.addColorStop(1, 'rgba(3, 5, 11, 0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+
+    // Precision blueprint dot/line grid
+    const step = 32;
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.032)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let x = 0; x < W; x += step) {
+      ctx.moveTo(x + 0.5, 0);
+      ctx.lineTo(x + 0.5, H);
+    }
+    for (let y = 0; y < H; y += step) {
+      ctx.moveTo(0, y + 0.5);
+      ctx.lineTo(W, y + 0.5);
+    }
+    ctx.stroke();
+  }
+
+  function renderCompTooltip() {
+    const key = state.draggingComp || state.hoveredComp;
+    if (!key) return;
+    const target = state.hitTargets.find(t => t.key === key);
+    if (!target) return;
+
+    const hint = state.draggingComp ? 'Dragging to tune…' : 'Drag ↑/↓ to tune';
+    const text = `${target.label} = ${target.valText}  ·  ${hint}`;
+    ctx.save();
+    ctx.font = '700 10.5px ' + getComputedStyle(document.documentElement).getPropertyValue('--mono');
+    const tw = ctx.measureText(text).width + 16;
+    const tx = Math.max(12, Math.min(W - tw - 12, target.cx - tw * 0.5));
+    const ty = Math.max(12, target.cy - 44);
+    roundRectPath(tx, ty, tw, 22, 6);
+    ctx.fillStyle = 'rgba(8, 14, 28, 0.94)';
+    ctx.fill();
+    ctx.strokeStyle = key === 'cap' ? '#4af2b2' : '#ffbe5c';
+    ctx.lineWidth = 1.1;
+    ctx.stroke();
+    ctx.fillStyle = '#eef3ff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, tx + tw * 0.5, ty + 11.5);
+    ctx.restore();
+  }
+
+  /* =========================================================================
+   * TELEMETRY DOM UPDATE
+   * ========================================================================= */
+  function updateTelemetry() {
+    const hist = state.history;
+    let vinMax = 0, voutMax = 0;
+    for (let i = 0; i < hist.length; i++) {
+      const ai = Math.abs(hist[i].vin);
+      const ao = Math.abs(hist[i].vout);
+      if (ai > vinMax) vinMax = ai;
+      if (ao > voutMax) voutMax = ao;
+    }
+    state.vinPk = vinMax;
+    state.voutPk = voutMax;
+
+    // Closed-loop gain readout
+    const telGain = document.getElementById('tel-gain');
+    if (state.topo === 'inverting') {
+      const av = -(state.rf / state.rin);
+      const db = 20 * Math.log10(Math.abs(av));
+      telGain.textContent = `${av.toFixed(2)}× (${db >= 0 ? '+' : ''}${db.toFixed(1)} dB)`;
+    } else if (state.topo === 'non_inverting') {
+      const av = 1 + state.rf / state.rin;
+      const db = 20 * Math.log10(av);
+      telGain.textContent = `+${av.toFixed(2)}× (+${db.toFixed(1)} dB)`;
+    } else if (state.topo === 'follower') {
+      telGain.textContent = '+1.00× (0.0 dB)';
+    } else if (state.topo === 'summing') {
+      const g1 = -(state.rf / state.rin);
+      const g2 = -(state.rf / state.rin2);
+      telGain.textContent = `${g1.toFixed(1)}× / ${g2.toFixed(1)}×`;
+    } else if (state.topo === 'integrator') {
+      const fc = 1 / (2 * Math.PI * state.rin * 1e3 * state.cap * 1e-6);
+      const avMag = fc / Math.max(1, state.freq);
+      const db = 20 * Math.log10(Math.max(1e-3, avMag));
+      telGain.textContent = `${avMag.toFixed(2)}× (${db >= 0 ? '+' : ''}${db.toFixed(1)} dB)`;
+    } else if (state.topo === 'differentiator') {
+      const fc = 1 / (2 * Math.PI * state.rf * 1e3 * state.cap * 1e-6);
+      const avMag = state.freq / Math.max(1, fc);
+      const db = 20 * Math.log10(Math.max(1e-3, avMag));
+      telGain.textContent = `${avMag.toFixed(2)}× (${db >= 0 ? '+' : ''}${db.toFixed(1)} dB)`;
+    } else if (state.topo === 'schmitt') {
+      const vth = state.rail * (state.rin / (state.rin + state.rf));
+      telGain.textContent = `V_TH ±${vth.toFixed(2)} V`;
+    } else if (state.topo === 'wien') {
+      const g = 1 + state.rf / state.rin;
+      telGain.textContent = `Loop ${(g / 3).toFixed(2)}× (G=${g.toFixed(1)})`;
+    }
+
+    document.getElementById('tel-vin-pk').textContent = `${vinMax.toFixed(2)} V`;
+    document.getElementById('tel-vout-pk').textContent = `${voutMax.toFixed(2)} V`;
+
+    // V+ - V- differential error
+    const vdiff = state.vp - state.vm;
+    const vdiffAbs = Math.abs(vdiff);
+    const elDiff = document.getElementById('tel-vdiff');
+    if (vdiffAbs < 0.1) {
+      elDiff.textContent = `${(vdiff * 1000).toFixed(2)} mV`;
+    } else {
+      elDiff.textContent = `${vdiff >= 0 ? '+' : ''}${vdiff.toFixed(2)} V`;
+    }
+    elDiff.className = 'tele-val ' + (
+      !TOPOLOGIES[state.topo].negFeedback ? 'violet'
+      : vdiffAbs > 0.08 ? 'rose' : 'mint'
+    );
+
+    // Slew state
+    const elSlew = document.getElementById('tel-slew');
+    if (!state.slewEnabled) {
+      elSlew.textContent = 'Ideal (Fast)';
+      elSlew.className = 'tele-val mint';
+    } else if (state.slewLimited) {
+      elSlew.textContent = 'SLEW LIMIT!';
+      elSlew.className = 'tele-val amber';
+    } else {
+      elSlew.textContent = `${state.slewRate.toFixed(0)} V/ms OK`;
+      elSlew.className = 'tele-val cyan';
+    }
+
+    // Extra card (f0 for Wien/Integrator/Differentiator, Hysteresis for Schmitt, Rails otherwise)
+    const exLbl = document.getElementById('tel-extra-label');
+    const exVal = document.getElementById('tel-extra-val');
+    if (state.topo === 'wien') {
+      const f0 = 1 / (2 * Math.PI * state.rin * 1e3 * state.cap * 1e-6);
+      exLbl.textContent = 'Osc Freq f₀';
+      exVal.textContent = `${f0.toFixed(1)} Hz`;
+      exVal.className = 'tele-val mint';
+    } else if (state.topo === 'integrator' || state.topo === 'differentiator') {
+      const R = (state.topo === 'integrator' ? state.rin : state.rf) * 1e3;
+      const tauMs = R * state.cap * 1e-3;
+      exLbl.textContent = 'Time Const RC';
+      exVal.textContent = `${tauMs.toFixed(2)} ms`;
+      exVal.className = 'tele-val cyan';
+    } else if (state.topo === 'schmitt') {
+      const hyst = 2 * state.rail * (state.rin / (state.rin + state.rf));
+      exLbl.textContent = 'Hysteresis Band';
+      exVal.textContent = `${hyst.toFixed(2)} V`;
+      exVal.className = 'tele-val violet';
+    } else {
+      exLbl.textContent = 'Supply Rails';
+      exVal.textContent = `±${state.rail.toFixed(1)} V`;
+      exVal.className = 'tele-val';
+    }
+
+    // Saturation Status Badge
+    const satPill = document.getElementById('sat-status');
+    const recentClip = hist.slice(-45).some(s => s.clipped);
+    if (state.topo === 'schmitt') {
+      satPill.textContent = 'Hysteresis Comparator';
+      satPill.className = 'status-pill violet';
+    } else if (state.clipped || recentClip) {
+      satPill.textContent = 'RAIL CLIPPING!';
+      satPill.className = 'status-pill danger';
+    } else if (state.slewLimited) {
+      satPill.textContent = 'Slew-Rate Limiting';
+      satPill.className = 'status-pill warn';
+    } else if (state.topo === 'wien' && (state.rf / state.rin) < 1.98) {
+      satPill.textContent = 'Loop Gain < 3 (Damped)';
+      satPill.className = 'status-pill warn';
+    } else {
+      satPill.textContent = 'Linear · Virtual Short OK';
+      satPill.className = 'status-pill';
+    }
+
+    // Instantaneous node strip
+    document.getElementById('tel-vp').textContent = fmtV(state.vp);
+    document.getElementById('tel-vm').textContent = fmtV(state.vm);
+    document.getElementById('tel-vout-now').textContent = fmtV(state.vout);
+  }
+
+  /* =========================================================================
+   * INTERACTIVE CANVAS EVENTS (DRAG R/C ON SCHEMATIC + HOVER SCOPE)
+   * ========================================================================= */
+  canvas.addEventListener('pointermove', (e) => {
+    const r = canvas.getBoundingClientRect();
+    state.mouseX = e.clientX - r.left;
+    state.mouseY = e.clientY - r.top;
+
+    if (state.draggingComp) {
+      const dy = state.dragStartY - state.mouseY; // drag up increases value
+      const key = state.draggingComp;
+      if (key === 'rin') {
+        state.rin = Math.max(1, Math.min(50, Math.round((state.dragStartVal + dy * 0.16) * 2) / 2));
+      } else if (key === 'rf') {
+        state.rf = Math.max(1, Math.min(100, Math.round((state.dragStartVal + dy * 0.30) * 2) / 2));
+      } else if (key === 'rin2') {
+        state.rin2 = Math.max(2, Math.min(50, Math.round((state.dragStartVal + dy * 0.16) * 2) / 2));
+      } else if (key === 'cap') {
+        state.cap = Math.max(0.02, Math.min(0.50, Math.round((state.dragStartVal + dy * 0.0018) * 100) / 100));
+      }
+      syncSlidersFromState();
+      syncAudioState();
+      return;
+    }
+
+    // Check hit targets on schematic
+    let found = null;
+    for (let i = 0; i < state.hitTargets.length; i++) {
+      const t = state.hitTargets[i];
+      if (Math.hypot(state.mouseX - t.cx, state.mouseY - t.cy) <= t.r) {
+        found = t.key;
+        break;
+      }
+    }
+    state.hoveredComp = found;
+    canvas.classList.toggle('interactive-hover', !!found);
+
+    const sr = state.scopeRect;
+    const onScope = !found && sr &&
+      state.mouseX >= sr.x && state.mouseX <= sr.x + sr.w &&
+      state.mouseY >= sr.y && state.mouseY <= sr.y + sr.h;
+    canvas.classList.toggle('scope-hover', !!onScope);
+  });
+
+  canvas.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    if (state.hoveredComp) {
+      state.draggingComp = state.hoveredComp;
+      state.dragStartY = state.mouseY;
+      state.dragStartVal = state[state.draggingComp];
+      canvas.setPointerCapture(e.pointerId);
+    }
+  });
+
+  canvas.addEventListener('pointerup', (e) => {
+    if (state.draggingComp) {
+      state.draggingComp = null;
+      try { canvas.releasePointerCapture(e.pointerId); } catch (_) {}
+    }
+  });
+
+  canvas.addEventListener('pointerleave', () => {
+    state.mouseX = -1;
+    state.mouseY = -1;
+    if (!state.draggingComp) state.hoveredComp = null;
+  });
+
+  /* =========================================================================
+   * UI WIRING & STATE SYNCHRONIZATION
+   * ========================================================================= */
+  function syncSlidersFromState() {
+    document.getElementById('sl-amp').value = state.amp;
+    document.getElementById('val-amp').textContent = `${state.amp.toFixed(2)} V`;
+
+    document.getElementById('sl-freq').value = state.freq;
+    document.getElementById('val-freq').textContent = `${state.freq.toFixed(0)} Hz`;
+
+    document.getElementById('sl-offset').value = state.offset;
+    document.getElementById('val-offset').textContent = `${state.offset >= 0 ? '+' : ''}${state.offset.toFixed(2)} V`;
+
+    document.getElementById('sl-noise').value = state.noiseAmp;
+    document.getElementById('val-noise').textContent = `${state.noiseAmp.toFixed(2)} V`;
+    document.getElementById('noise-row').classList.toggle('dimmed', state.wave !== 'noisy');
+
+    document.getElementById('sl-amp2').value = state.amp2;
+    document.getElementById('val-amp2').textContent = `${state.amp2.toFixed(2)} V`;
+
+    document.getElementById('sl-freq2').value = state.freq2;
+    document.getElementById('val-freq2').textContent = `${state.freq2.toFixed(0)} Hz`;
+
+    document.getElementById('sl-rin2').value = state.rin2;
+    document.getElementById('val-rin2').textContent = `${state.rin2.toFixed(1)} kΩ`;
+
+    document.getElementById('sl-rin').value = state.rin;
+    document.getElementById('val-rin').textContent = `${state.rin.toFixed(1)} kΩ`;
+
+    document.getElementById('sl-rf').value = state.rf;
+    document.getElementById('val-rf').textContent = `${state.rf.toFixed(1)} kΩ`;
+
+    document.getElementById('sl-cap').value = state.cap;
+    document.getElementById('val-cap').textContent = `${state.cap.toFixed(2)} µF`;
+
+    document.getElementById('sl-rail').value = state.rail;
+    document.getElementById('val-rail').textContent = `±${state.rail.toFixed(1)} V`;
+
+    document.getElementById('chk-slew').checked = state.slewEnabled;
+    document.getElementById('sl-slew-rate').value = state.slewRate;
+    document.getElementById('val-slew-rate').textContent = `${state.slewRate.toFixed(1)} V/ms`;
+    document.getElementById('slew-slider-row').classList.toggle('dimmed', !state.slewEnabled);
+
+    // Highlight active waveform buttons
+    document.querySelectorAll('#wave-row .seg-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.wave === state.wave);
+    });
+    document.querySelectorAll('#wave2-row .seg-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.wave2 === state.wave2);
+      b.classList.toggle('violet', b.dataset.wave2 === state.wave2);
+    });
+  }
+
+  function applyTopology(topoKey, applyDefaults) {
+    if (!TOPOLOGIES[topoKey]) return;
+    state.topo = topoKey;
+    const t = TOPOLOGIES[topoKey];
+
+    if (applyDefaults && t.defaults) {
+      const d = t.defaults;
+      if (d.wave) state.wave = d.wave;
+      if (typeof d.amp === 'number' && t.hasInput) state.amp = d.amp;
+      if (typeof d.freq === 'number') state.freq = d.freq;
+      if (typeof d.offset === 'number') state.offset = d.offset;
+      if (typeof d.rin === 'number') state.rin = d.rin;
+      if (typeof d.rf === 'number') state.rf = d.rf;
+      if (typeof d.cap === 'number') state.cap = d.cap;
+      if (typeof d.noiseAmp === 'number') state.noiseAmp = d.noiseAmp;
+      if (d.wave2) state.wave2 = d.wave2;
+      if (typeof d.amp2 === 'number') state.amp2 = d.amp2;
+      if (typeof d.freq2 === 'number') state.freq2 = d.freq2;
+      if (typeof d.rin2 === 'number') state.rin2 = d.rin2;
+    }
+
+    // Update UI badges, formulas, component labels & visibility
+    document.getElementById('topo-badge').textContent = t.name;
+    document.getElementById('formula-eq').textContent = t.eq;
+    document.getElementById('formula-desc').textContent = t.desc;
+
+    document.querySelectorAll('#topo-grid .preset-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.topo === topoKey);
+    });
+
+    document.getElementById('summing-section').classList.toggle('hidden', topoKey !== 'summing');
+    document.getElementById('signal-gen-section').classList.toggle('dimmed', !t.hasInput);
+
+    document.getElementById('lbl-rin').textContent = t.rinLabel;
+    document.getElementById('lbl-rf').textContent = t.rfLabel;
+    document.getElementById('lbl-cap').textContent = t.capLabel;
+    document.getElementById('ctrl-rin').classList.toggle('dimmed', !t.usesRin);
+    document.getElementById('ctrl-rf').classList.toggle('dimmed', !t.usesRf);
+    document.getElementById('ctrl-cap').classList.toggle('dimmed', !t.usesCap);
+
+    // Choose optimal scope window (~2.6 cycles)
+    const refFreq = topoKey === 'wien'
+      ? Math.max(60, 1 / (2 * Math.PI * state.rin * 1e3 * state.cap * 1e-6))
+      : state.freq;
+    state.scopeWindowSec = Math.max(0.004, Math.min(0.032, 2.6 / refFreq));
+
+    syncSlidersFromState();
+    resetCircuitState();
+  }
+
+  // Drawer tabs
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const target = btn.dataset.tab;
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b === btn));
+      document.querySelectorAll('.tab-pane').forEach(p => p.classList.toggle('active', p.id === `tab-${target}`));
+    });
+  });
+
+  // Topology buttons
+  document.querySelectorAll('#topo-grid .preset-btn').forEach(btn => {
+    btn.addEventListener('click', () => applyTopology(btn.dataset.topo, true));
+  });
+
+  // Waveform buttons
+  document.querySelectorAll('#wave-row .seg-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.wave = btn.dataset.wave;
+      syncSlidersFromState();
+      syncAudioState();
+    });
+  });
+
+  document.querySelectorAll('#wave2-row .seg-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.wave2 = btn.dataset.wave2;
+      syncSlidersFromState();
+      syncAudioState();
+    });
+  });
+
+  // Sliders
+  function bindSlider(id, prop, onChange) {
+    const el = document.getElementById(id);
+    el.addEventListener('input', () => {
+      state[prop] = parseFloat(el.value);
+      if (onChange) onChange();
+      syncSlidersFromState();
+      syncAudioState();
+    });
+  }
+
+  bindSlider('sl-amp', 'amp');
+  bindSlider('sl-freq', 'freq', () => {
+    if (state.topo !== 'wien') {
+      state.scopeWindowSec = Math.max(0.004, Math.min(0.032, 2.6 / state.freq));
+    }
+  });
+  bindSlider('sl-offset', 'offset');
+  bindSlider('sl-noise', 'noiseAmp');
+  bindSlider('sl-amp2', 'amp2');
+  bindSlider('sl-freq2', 'freq2');
+  bindSlider('sl-rin2', 'rin2');
+  bindSlider('sl-rin', 'rin');
+  bindSlider('sl-rf', 'rf');
+  bindSlider('sl-cap', 'cap');
+  bindSlider('sl-rail', 'rail');
+  bindSlider('sl-slew-rate', 'slewRate');
+
+  // Checkboxes
+  document.getElementById('chk-slew').addEventListener('change', (e) => {
+    state.slewEnabled = e.target.checked;
+    syncSlidersFromState();
+    syncAudioState();
+  });
+  document.getElementById('chk-wire-color').addEventListener('change', (e) => { state.showWireColor = e.target.checked; });
+  document.getElementById('chk-particles').addEventListener('change', (e) => { state.showParticles = e.target.checked; });
+  document.getElementById('chk-badges').addEventListener('change', (e) => { state.showBadges = e.target.checked; });
+  document.getElementById('chk-vm-trace').addEventListener('change', (e) => { state.showVmTrace = e.target.checked; });
+
+  // Quick Demo buttons
+  document.getElementById('btn-demo-clip').addEventListener('click', () => {
+    applyTopology('inverting', true);
+    state.amp = 5.5;
+    state.rf = 35;
+    state.rail = 10;
+    state.slewEnabled = false;
+    syncSlidersFromState();
+    resetCircuitState();
+  });
+
+  document.getElementById('btn-demo-slew').addEventListener('click', () => {
+    applyTopology('follower', true);
+    state.wave = 'square';
+    state.amp = 6.5;
+    state.freq = 320;
+    state.slewEnabled = true;
+    state.slewRate = 11;
+    state.scopeWindowSec = 2.6 / state.freq;
+    syncSlidersFromState();
+    resetCircuitState();
+  });
+
+  // Transport bar controls
+  function togglePlay() {
+    state.playing = !state.playing;
+    const btn = document.getElementById('btn-play');
+    btn.textContent = state.playing ? '⏸ Pause' : '▶ Play';
+    btn.classList.toggle('active', state.playing);
+  }
+  document.getElementById('btn-play').addEventListener('click', togglePlay);
+  document.getElementById('btn-reset').addEventListener('click', () => applyTopology(state.topo, true));
+
+  document.querySelectorAll('.speed-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.speed = parseFloat(btn.dataset.speed);
+      document.querySelectorAll('.speed-btn').forEach(b => b.classList.toggle('active', b === btn));
+    });
+  });
+
+  document.getElementById('btn-sound').addEventListener('click', toggleAudio);
+
+  function toggleDrawer() {
+    state.drawerOpen = !state.drawerOpen;
+    document.getElementById('drawer').classList.toggle('collapsed', !state.drawerOpen);
+    document.getElementById('btn-toggle-drawer').classList.toggle('active', state.drawerOpen);
+  }
+  document.getElementById('btn-toggle-drawer').addEventListener('click', toggleDrawer);
+
+  function toggleZen() {
+    state.zenMode = !state.zenMode;
+    document.body.classList.toggle('zen-mode', state.zenMode);
+  }
+  document.getElementById('btn-zen').addEventListener('click', toggleZen);
+  document.getElementById('btn-zen-restore').addEventListener('click', toggleZen);
+
+  // Keyboard shortcuts
+  window.addEventListener('keydown', (e) => {
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+    if (e.code === 'Space') {
+      e.preventDefault();
+      togglePlay();
+    } else if (e.key === 'h' || e.key === 'H') {
+      toggleZen();
+    } else if (e.key === 'r' || e.key === 'R') {
+      applyTopology(state.topo, true);
+    } else if (e.key === 'm' || e.key === 'M') {
+      toggleAudio();
+    } else if (e.key >= '1' && e.key <= '8') {
+      const idx = parseInt(e.key, 10) - 1;
+      if (TOPO_KEYS[idx]) applyTopology(TOPO_KEYS[idx], true);
+    }
+  });
+
+  /* =========================================================================
+   * MAIN HIGH-DPI ANIMATION LOOP
+   * ========================================================================= */
+  let lastFrameTime = performance.now();
+  let telemetryTick = 0;
+
+  function tick(now) {
+    const dtReal = Math.min(0.05, (now - lastFrameTime) / 1000);
+    lastFrameTime = now;
+
+    if (state.playing) {
+      // Visual slow-motion timebase: ~1.6 ms of real circuit time per wall-clock second at 1x
+      // so a 220 Hz wave visibly breathes across the wires & scope in real time!
+      const circDtTotal = dtReal * 0.0018 * state.speed;
+      const samplesPerFrame = 8;
+      const subPerSample = 6;
+      const dtSub = circDtTotal / (samplesPerFrame * subPerSample);
+      for (let k = 0; k < samplesPerFrame; k++) {
+        for (let s = 0; s < subPerSample; s++) {
+          stepCircuit(state, dtSub);
+        }
+        pushHistorySample();
+      }
+      state.wireFlowPhase += dtReal * state.speed;
+      state.pulsePhase += dtReal;
+    }
+
+    // Render full high-DPI frame
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    renderBackground();
+
+    const layout = computeLayout();
+    renderTopBanner(layout.banner);
+    renderSchematic(layout.schematic);
+    renderOscilloscope(layout.scope);
+    renderTransferCurve(layout.transfer);
+    renderCompTooltip();
+
+    telemetryTick++;
+    if (telemetryTick % 3 === 0) {
+      updateTelemetry();
+    }
+
+    requestAnimationFrame(tick);
+  }
+
+  // Initialize!
+  applyTopology('inverting', true);
+  updateTelemetry();
+  requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>

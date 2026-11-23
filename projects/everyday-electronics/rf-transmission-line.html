@@ -1,0 +1,3041 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Waveguide — RF Transmission Lines, Reflections &amp; Smith Chart</title>
+<style>
+  :root {
+    --bg-deep: #040711;
+    --panel-bg: rgba(9, 13, 24, 0.78);
+    --panel-bg-strong: rgba(8, 12, 22, 0.92);
+    --panel-border: rgba(148, 179, 255, 0.16);
+    --panel-border-hi: rgba(148, 179, 255, 0.36);
+    --text-main: #eef3ff;
+    --text-dim: #9aa9cc;
+    --text-muted: #68789c;
+    --accent-amber: #ffbe5c;
+    --accent-cyan: #58dcff;
+    --accent-mint: #4af2b2;
+    --accent-rose: #ff6083;
+    --accent-violet: #a78bfa;
+    --radius-lg: 14px;
+    --radius-md: 10px;
+    --radius-sm: 7px;
+    --mono: ui-monospace, "Cascadia Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Inter, Helvetica, Arial, sans-serif;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg-deep);
+    color: var(--text-main);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    touch-action: none;
+  }
+
+  #sim-canvas {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    cursor: default;
+  }
+  #sim-canvas.smith-hover {
+    cursor: grab;
+  }
+  #sim-canvas.smith-drag {
+    cursor: grabbing;
+  }
+  #sim-canvas.probe-hover {
+    cursor: crosshair;
+  }
+
+  /* HUD Layer */
+  .hud {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 10;
+  }
+  body.zen-mode .hud > :not(.zen-restore) {
+    opacity: 0;
+    pointer-events: none !important;
+  }
+
+  .panel {
+    pointer-events: auto;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-lg);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    transition: opacity 0.25s ease, transform 0.25s ease;
+  }
+
+  /* Top-Left Brand + Telemetry */
+  .top-left {
+    position: fixed;
+    top: 14px;
+    left: 14px;
+    width: min(426px, calc(100vw - 368px));
+    min-width: 290px;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .brand-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .brand-title-wrap {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .brand-title {
+    font-size: 16px;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    background: linear-gradient(120deg, #e8faff 0%, #58dcff 48%, #a78bfa 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .mode-badge {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 999px;
+    border: 1px solid rgba(88, 220, 255, 0.4);
+    background: rgba(88, 220, 255, 0.12);
+    color: var(--accent-cyan);
+  }
+  .mode-badge.tdr {
+    border-color: rgba(255, 190, 92, 0.45);
+    background: rgba(255, 190, 92, 0.14);
+    color: var(--accent-amber);
+  }
+
+  .status-pill {
+    font-size: 10px;
+    font-weight: 750;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: rgba(74, 242, 178, 0.14);
+    color: var(--accent-mint);
+    border: 1px solid rgba(74, 242, 178, 0.38);
+    white-space: nowrap;
+  }
+  .status-pill.good {
+    background: rgba(88, 220, 255, 0.15);
+    color: var(--accent-cyan);
+    border-color: rgba(88, 220, 255, 0.4);
+  }
+  .status-pill.warn {
+    background: rgba(255, 190, 92, 0.16);
+    color: var(--accent-amber);
+    border-color: rgba(255, 190, 92, 0.42);
+  }
+  .status-pill.danger {
+    background: rgba(255, 96, 131, 0.18);
+    color: var(--accent-rose);
+    border-color: rgba(255, 96, 131, 0.48);
+  }
+
+  .telemetry-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+  }
+
+  .tele-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(148, 179, 255, 0.1);
+    border-radius: var(--radius-sm);
+    padding: 5px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .tele-label {
+    font-size: 9px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+  }
+
+  .tele-val {
+    font-family: var(--mono);
+    font-size: 12.2px;
+    font-weight: 700;
+    color: var(--text-main);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .tele-val.amber { color: var(--accent-amber); }
+  .tele-val.cyan { color: var(--accent-cyan); }
+  .tele-val.mint { color: var(--accent-mint); }
+  .tele-val.rose { color: var(--accent-rose); }
+  .tele-val.violet { color: var(--accent-violet); }
+
+  .power-bar-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+  .power-track {
+    flex: 1;
+    height: 6px;
+    border-radius: 999px;
+    background: rgba(255, 96, 131, 0.35);
+    overflow: hidden;
+    border: 1px solid rgba(148, 179, 255, 0.14);
+  }
+  .power-fill {
+    height: 100%;
+    width: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #58dcff, #4af2b2);
+    transition: width 0.12s ease;
+  }
+
+  .meta-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding-top: 4px;
+    border-top: 1px solid rgba(148, 179, 255, 0.1);
+    font-size: 10.5px;
+    color: var(--text-dim);
+    font-family: var(--mono);
+    flex-wrap: wrap;
+  }
+  .meta-row span strong {
+    color: var(--text-main);
+    font-weight: 600;
+  }
+
+  /* Right Control Drawer */
+  .drawer {
+    position: fixed;
+    top: 14px;
+    right: 14px;
+    bottom: 14px;
+    width: 330px;
+    max-width: calc(100vw - 28px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: transform 0.25s ease, opacity 0.25s ease;
+  }
+  .drawer.collapsed {
+    transform: translateX(calc(100% + 24px));
+    pointer-events: none;
+  }
+
+  .drawer-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+    padding: 8px 8px 6px;
+    border-bottom: 1px solid var(--panel-border);
+    background: rgba(4, 7, 15, 0.45);
+  }
+
+  .tab-btn {
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    padding: 7px 5px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .tab-btn:hover {
+    color: var(--text-main);
+    background: rgba(255, 255, 255, 0.04);
+  }
+  .tab-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.16);
+    border-color: rgba(88, 220, 255, 0.42);
+  }
+
+  .drawer-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 13px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .drawer-body::-webkit-scrollbar {
+    width: 5px;
+  }
+  .drawer-body::-webkit-scrollbar-thumb {
+    background: rgba(148, 179, 255, 0.22);
+    border-radius: 999px;
+  }
+
+  .tab-pane {
+    display: none;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .tab-pane.active {
+    display: flex;
+  }
+
+  .section {
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(148, 179, 255, 0.11);
+    border-radius: var(--radius-md);
+    padding: 10px 11px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .section-title {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  /* Presets grid */
+  .preset-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .preset-btn {
+    text-align: left;
+    padding: 7px 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(148, 179, 255, 0.14);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-main);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .preset-btn:hover {
+    border-color: rgba(88, 220, 255, 0.45);
+    background: rgba(88, 220, 255, 0.08);
+  }
+  .preset-btn.active {
+    border-color: var(--accent-cyan);
+    background: rgba(88, 220, 255, 0.15);
+  }
+  .preset-name {
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+  .preset-sub {
+    font-size: 9.5px;
+    color: var(--text-muted);
+    line-height: 1.25;
+  }
+
+  /* Sliders */
+  .control-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .control-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11.2px;
+    color: var(--text-dim);
+  }
+  .control-head .val {
+    font-family: var(--mono);
+    font-size: 11.2px;
+    color: var(--text-main);
+    font-weight: 650;
+  }
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 5px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.18);
+    outline: none;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent-cyan);
+    border: 2px solid #08101f;
+    box-shadow: 0 0 10px rgba(88, 220, 255, 0.65);
+    cursor: pointer;
+  }
+  input[type="range"].amber::-webkit-slider-thumb {
+    background: var(--accent-amber);
+    box-shadow: 0 0 10px rgba(255, 190, 92, 0.65);
+  }
+  input[type="range"].violet::-webkit-slider-thumb {
+    background: var(--accent-violet);
+    box-shadow: 0 0 10px rgba(167, 139, 250, 0.65);
+  }
+
+  /* Segmented pills */
+  .seg-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(56px, 1fr));
+    gap: 4px;
+  }
+  .seg-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-dim);
+    font-size: 10.8px;
+    font-weight: 650;
+    padding: 6px 5px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-align: center;
+  }
+  .seg-btn:hover {
+    color: #fff;
+    border-color: rgba(148, 179, 255, 0.35);
+  }
+  .seg-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.18);
+    border-color: var(--accent-cyan);
+  }
+  .seg-btn.active.amber {
+    background: rgba(255, 190, 92, 0.18);
+    border-color: var(--accent-amber);
+    color: #ffdfaa;
+  }
+
+  /* Action Buttons */
+  .btn-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .btn {
+    border: 1px solid rgba(148, 179, 255, 0.22);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-main);
+    font-size: 11.5px;
+    font-weight: 700;
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+  .btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 179, 255, 0.45);
+  }
+  .btn:active {
+    transform: scale(0.98);
+  }
+  .btn.primary {
+    background: linear-gradient(135deg, rgba(88, 220, 255, 0.28), rgba(56, 140, 255, 0.24));
+    border-color: rgba(88, 220, 255, 0.55);
+    color: #e6f9ff;
+  }
+  .btn.primary:hover {
+    background: linear-gradient(135deg, rgba(88, 220, 255, 0.42), rgba(56, 140, 255, 0.36));
+  }
+  .btn.amber {
+    background: linear-gradient(135deg, rgba(255, 190, 92, 0.28), rgba(255, 120, 60, 0.22));
+    border-color: rgba(255, 190, 92, 0.58);
+    color: #fff3db;
+  }
+  .btn.amber:hover {
+    background: linear-gradient(135deg, rgba(255, 190, 92, 0.42), rgba(255, 120, 60, 0.32));
+  }
+
+  /* Toggle switches */
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 11.2px;
+    color: var(--text-dim);
+    cursor: pointer;
+  }
+  .toggle-row input {
+    display: none;
+  }
+  .switch {
+    width: 34px;
+    height: 18px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.2);
+    border: 1px solid rgba(148, 179, 255, 0.25);
+    position: relative;
+    transition: all 0.18s ease;
+    flex-shrink: 0;
+  }
+  .switch::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #c8d7f5;
+    transition: transform 0.18s ease, background 0.18s ease;
+  }
+  .toggle-row input:checked + .switch {
+    background: rgba(88, 220, 255, 0.32);
+    border-color: var(--accent-cyan);
+  }
+  .toggle-row input:checked + .switch::after {
+    transform: translateX(16px);
+    background: #fff;
+  }
+  .toggle-row.mint input:checked + .switch {
+    background: rgba(74, 242, 178, 0.32);
+    border-color: var(--accent-mint);
+  }
+
+  .legend-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 6px;
+    vertical-align: middle;
+  }
+
+  .qw-box {
+    background: rgba(167, 139, 250, 0.08);
+    border: 1px solid rgba(167, 139, 250, 0.28);
+    border-radius: var(--radius-sm);
+    padding: 8px 9px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 10.5px;
+    color: var(--text-dim);
+  }
+  .qw-box strong {
+    color: #e6dcff;
+    font-family: var(--mono);
+  }
+
+  /* Bottom Transport Bar */
+  .bottom-bar {
+    position: fixed;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 7px 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: nowrap;
+  }
+
+  .bar-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-main);
+    font-size: 11.2px;
+    font-weight: 650;
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    white-space: nowrap;
+  }
+  .bar-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 179, 255, 0.4);
+  }
+  .bar-btn.active {
+    background: rgba(88, 220, 255, 0.2);
+    border-color: var(--accent-cyan);
+    color: #fff;
+  }
+  .bar-btn.pulse-btn {
+    background: rgba(255, 190, 92, 0.16);
+    border-color: rgba(255, 190, 92, 0.45);
+    color: #ffe3b3;
+  }
+  .bar-btn.pulse-btn:hover {
+    background: rgba(255, 190, 92, 0.28);
+    border-color: var(--accent-amber);
+  }
+
+  .bar-divider {
+    width: 1px;
+    height: 20px;
+    background: rgba(148, 179, 255, 0.16);
+    margin: 0 2px;
+  }
+
+  /* Bottom-left interaction hint */
+  .hint-pill {
+    position: fixed;
+    bottom: 14px;
+    left: 14px;
+    padding: 7px 11px;
+    font-size: 10.8px;
+    color: var(--text-dim);
+    max-width: 320px;
+    line-height: 1.45;
+  }
+  .hint-pill kbd {
+    font-family: var(--mono);
+    font-size: 9.8px;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #fff;
+  }
+
+  .zen-restore {
+    position: fixed;
+    bottom: 14px;
+    right: 14px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+  }
+  body.zen-mode .zen-restore {
+    opacity: 0.9;
+    pointer-events: auto;
+  }
+
+  .note-small {
+    font-size: 10.3px;
+    color: var(--text-muted);
+    line-height: 1.38;
+  }
+
+  @media (max-width: 960px) {
+    .top-left {
+      width: calc(100vw - 28px);
+      max-width: none;
+    }
+    .drawer {
+      top: auto;
+      bottom: 62px;
+      height: 50vh;
+      width: calc(100vw - 28px);
+    }
+    .hint-pill {
+      display: none;
+    }
+  }
+</style>
+</head>
+<body>
+<canvas id="sim-canvas"></canvas>
+
+<div class="hud">
+  <!-- Top-Left Telemetry -->
+  <div id="top-left-panel" class="panel top-left">
+    <div class="brand-row">
+      <div class="brand-title-wrap">
+        <div class="brand-title">Waveguide</div>
+        <span id="mode-badge" class="mode-badge">CW RF Sine</span>
+      </div>
+      <span id="match-badge" class="status-pill">Perfect Match</span>
+    </div>
+
+    <div class="telemetry-grid">
+      <div class="tele-card">
+        <span class="tele-label">Reflection &Gamma;</span>
+        <span id="tel-gamma" class="tele-val cyan">0.000 &ang;0.0&deg;</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">VSWR</span>
+        <span id="tel-vswr" class="tele-val mint">1.00 : 1</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Return Loss</span>
+        <span id="tel-rl" class="tele-val amber">&infin; dB</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Load Z&#8343;</span>
+        <span id="tel-zl" class="tele-val">50.0 + j0.0 &Omega;</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Power Delivered</span>
+        <span id="tel-pdel" class="tele-val mint">100.0%</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Power Reflected</span>
+        <span id="tel-pref" class="tele-val rose">0.0%</span>
+      </div>
+    </div>
+
+    <div class="power-bar-wrap">
+      <span>P&#8339;</span>
+      <div class="power-track"><div id="power-fill" class="power-fill"></div></div>
+      <span id="tel-pbar" style="font-family:var(--mono); color:var(--text-main);">100%</span>
+    </div>
+
+    <div class="meta-row">
+      <span>Z&#8320;: <strong>50 &Omega;</strong></span>
+      <span>f: <strong id="tel-freq">1.50 GHz</strong></span>
+      <span>&lambda;: <strong id="tel-lambda">13.3 cm</strong></span>
+      <span>Z&#7522;&#8345;: <strong id="tel-zin" style="color:var(--accent-cyan);">50.0 &Omega;</strong></span>
+    </div>
+  </div>
+
+  <!-- Right Control Drawer -->
+  <aside id="drawer" class="panel drawer">
+    <div class="drawer-tabs">
+      <button class="tab-btn active" data-tab="source">Source &amp; RF</button>
+      <button class="tab-btn" data-tab="load">Load &amp; &lambda;/4</button>
+      <button class="tab-btn" data-tab="waves">Waveforms</button>
+    </div>
+
+    <div class="drawer-body">
+      <!-- TAB 1: SOURCE & PRESETS -->
+      <div id="tab-source" class="tab-pane active">
+        <div class="section">
+          <div class="section-title"><span>Curated RF Lab Presets</span></div>
+          <div class="preset-grid">
+            <button class="preset-btn active" data-preset="matched">
+              <span class="preset-name">50 &Omega; Match</span>
+              <span class="preset-sub">VSWR 1.00 pure traveling wave</span>
+            </button>
+            <button class="preset-btn" data-preset="open">
+              <span class="preset-name">Open Circuit</span>
+              <span class="preset-sub">&Gamma; = +1 in-phase reflection</span>
+            </button>
+            <button class="preset-btn" data-preset="short">
+              <span class="preset-name">Short Circuit</span>
+              <span class="preset-sub">&Gamma; = &minus;1 inverted reflection</span>
+            </button>
+            <button class="preset-btn" data-preset="qwave">
+              <span class="preset-name">200 &Omega; + &lambda;/4</span>
+              <span class="preset-sub">Quarter-wave matching stub</span>
+            </button>
+            <button class="preset-btn" data-preset="tdr">
+              <span class="preset-name">TDR Fault Echo</span>
+              <span class="preset-sub">Time-domain cable locator</span>
+            </button>
+            <button class="preset-btn" data-preset="reactive">
+              <span class="preset-name">50 + j75 &Omega;</span>
+              <span class="preset-sub">Reactive inductive phase shift</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Excitation Mode</span></div>
+          <div class="seg-row" id="exc-mode-row">
+            <button class="seg-btn active" data-excmode="cw">CW Sine</button>
+            <button class="seg-btn amber" data-excmode="gaussian">TDR Pulse</button>
+            <button class="seg-btn amber" data-excmode="step">TDR Step</button>
+          </div>
+
+          <div class="btn-row">
+            <button id="btn-fire-pulse" class="btn amber">&#9889; Fire Pulse</button>
+            <button id="btn-clear-line" class="btn">Clear Line</button>
+          </div>
+
+          <label class="toggle-row">
+            <span>Auto-Repeat TDR Pulse</span>
+            <input id="chk-auto-tdr" type="checkbox" />
+            <span class="switch"></span>
+          </label>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Generator &amp; Cable</span></div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>RF Frequency (f)</span>
+              <span id="val-freq" class="val">1.50 GHz</span>
+            </div>
+            <input id="sl-freq" type="range" min="0.50" max="3.00" step="0.05" value="1.50" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Source Impedance (Z&#8347;)</span>
+              <span id="val-zs" class="val">50 &Omega;</span>
+            </div>
+            <input id="sl-zs" class="amber" type="range" min="5" max="200" step="5" value="50" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Line Attenuation (&alpha;)</span>
+              <span id="val-alpha" class="val">0.00 Np/m</span>
+            </div>
+            <input id="sl-alpha" class="violet" type="range" min="0" max="1.60" step="0.05" value="0" />
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 2: LOAD & MATCHING -->
+      <div id="tab-load" class="tab-pane">
+        <div class="section">
+          <div class="section-title"><span>Load Termination Z&#8343;</span></div>
+          <div class="seg-row" id="load-type-row">
+            <button class="seg-btn active" data-ltype="matched">50 &Omega;</button>
+            <button class="seg-btn" data-ltype="open">Open &infin;</button>
+            <button class="seg-btn" data-ltype="short">Short 0</button>
+            <button class="seg-btn" data-ltype="custom">Custom</button>
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Load Resistance (R&#8343;)</span>
+              <span id="val-rl" class="val">50 &Omega;</span>
+            </div>
+            <input id="sl-rl" type="range" min="0" max="300" step="1" value="50" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Load Reactance (X&#8343;)</span>
+              <span id="val-xl" class="val">0 &Omega;</span>
+            </div>
+            <input id="sl-xl" class="violet" type="range" min="-200" max="200" step="1" value="0" />
+          </div>
+
+          <div class="btn-row">
+            <button id="btn-ind-load" class="btn">+j75 &Omega; Ind</button>
+            <button id="btn-cap-load" class="btn">&minus;j75 &Omega; Cap</button>
+          </div>
+
+          <p class="note-small">
+            <strong>Interactive Smith Chart:</strong> Click &amp; drag the impedance marker anywhere inside the Smith Chart to set complex <em>R + jX</em> live.
+          </p>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Quarter-Wave (&lambda;/4) Transformer</span></div>
+          <label class="toggle-row mint">
+            <span>Insert &lambda;/4 Matching Section</span>
+            <input id="chk-qwave" type="checkbox" />
+            <span class="switch"></span>
+          </label>
+
+          <div class="qw-box">
+            <div>Section Z&#8344; = &radic;(Z&#8320;&middot;R&#8343;): <strong id="val-zm">50.0 &Omega;</strong></div>
+            <div>Physical Length (&lambda;/4): <strong id="val-qlen">3.33 cm</strong></div>
+            <div>Transformed Z&#7522;&#8345;: <strong id="val-qzin">50.0 + j0.0 &Omega;</strong></div>
+          </div>
+
+          <p class="note-small">
+            A &lambda;/4 section of impedance <em>Z&#8344; = &radic;(Z&#8320;&middot;Z&#8343;)</em> causes reflections from both boundaries to arrive 180&deg; out of phase and destructively cancel, achieving <strong>VSWR = 1.00</strong> for real loads.
+          </p>
+        </div>
+      </div>
+
+      <!-- TAB 3: WAVEFORMS & VISUALS -->
+      <div id="tab-waves" class="tab-pane">
+        <div class="section">
+          <div class="section-title"><span>Oscilloscope Traces</span></div>
+
+          <label class="toggle-row">
+            <span><span class="legend-dot" style="background:#7ceeff;"></span>Total Voltage V(z,t)</span>
+            <input id="chk-vtot" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+
+          <label class="toggle-row">
+            <span><span class="legend-dot" style="background:#ffbe5c;"></span>Standing-Wave Envelope |V|&#8344;&#8336;&#8339;</span>
+            <input id="chk-env" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+
+          <label class="toggle-row">
+            <span><span class="legend-dot" style="background:#ff6083;"></span>Current Wave I(z,t) &middot; Z&#8320;</span>
+            <input id="chk-curr" type="checkbox" />
+            <span class="switch"></span>
+          </label>
+
+          <label class="toggle-row">
+            <span><span class="legend-dot" style="background:#4af2b2;"></span>Forward Wave V&#8314;(z,t)</span>
+            <input id="chk-vfwd" type="checkbox" />
+            <span class="switch"></span>
+          </label>
+
+          <label class="toggle-row">
+            <span><span class="legend-dot" style="background:#a78bfa;"></span>Reflected Wave V&#8315;(z,t)</span>
+            <input id="chk-vref" type="checkbox" />
+            <span class="switch"></span>
+          </label>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Coax &amp; Smith Chart</span></div>
+
+          <label class="toggle-row">
+            <span>Dielectric E-Field &amp; Power Flow</span>
+            <input id="chk-efield" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+
+          <label class="toggle-row">
+            <span>VSWR Circle &amp; Phase Sweep</span>
+            <input id="chk-vswr-ring" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+
+          <label class="toggle-row">
+            <span>Voltage Node / Antinode Markers</span>
+            <input id="chk-nodes" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+
+          <p class="note-small">
+            FDTD solver integrates Telegrapher&rsquo;s Equations (&part;V/&part;z = &minus;L&prime;&part;I/&part;t, &part;I/&part;z = &minus;C&prime;&part;V/&part;t) across 260 cells using an unconditionally passive bilinear complex termination.
+          </p>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Bottom-Left Hint -->
+  <div class="panel hint-pill">
+    <div><strong>Drag Smith Chart</strong> to tune Z&#8343; &middot; <strong>Hover cable</strong> to probe</div>
+    <div><kbd>Space</kbd> Pause &middot; <kbd>F</kbd> TDR Pulse &middot; <kbd>Q</kbd> &lambda;/4 Stub &middot; <kbd>H</kbd> Cinema</div>
+  </div>
+
+  <!-- Bottom Transport Bar -->
+  <div class="panel bottom-bar">
+    <button id="btn-play" class="bar-btn active">&#9208; Pause</button>
+    <button id="btn-bar-pulse" class="bar-btn pulse-btn" title="Fire TDR Pulse (F)">&#9889; Pulse</button>
+    <button id="btn-reset" class="bar-btn">&#8634; Reset</button>
+    <div class="bar-divider"></div>
+    <button class="bar-btn speed-btn" data-speed="0.25">0.25&times;</button>
+    <button class="bar-btn speed-btn" data-speed="0.5">0.5&times;</button>
+    <button class="bar-btn speed-btn active" data-speed="1">1&times;</button>
+    <button class="bar-btn speed-btn" data-speed="2">2&times;</button>
+    <div class="bar-divider"></div>
+    <button id="btn-sound" class="bar-btn">&#128263; Audio</button>
+    <button id="btn-toggle-drawer" class="bar-btn active">Controls</button>
+    <button id="btn-zen" class="bar-btn" title="Hide HUD (H)">Cinema</button>
+  </div>
+
+  <button id="btn-zen-restore" class="panel bar-btn zen-restore">Show HUD (H)</button>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // =========================================================================
+  // PHYSICAL CONSTANTS & 260-CELL 1D FDTD TELEGRAPHER'S EQUATIONS ENGINE
+  // =========================================================================
+  const N = 260;                  // Number of transmission line FDTD cells
+  const Z0 = 50.0;                // Characteristic impedance (Ohms)
+  const VP_PHYS = 2.0e8;          // Phase velocity in PTFE coax (0.667 c)
+  const COURANT = 0.96;           // Courant number S = v_p * dt / dz (strictly <= 1)
+  const DZ_PHYS = (VP_PHYS / 1.5e9) / 64; // 2.0833 mm per cell -> 54.17 cm total line
+  const CABLE_LEN_M = N * DZ_PHYS;        // 0.54167 m
+  const DT_PHYS = COURANT * DZ_PHYS / VP_PHYS; // ~10.0 ps per FDTD step
+
+  // Simulation state
+  const state = {
+    playing: true,
+    speed: 1.0,
+    preset: 'matched',
+    excMode: 'cw',          // 'cw' | 'gaussian' | 'step'
+    autoTdr: false,
+    freqGHz: 1.50,
+    zs: 50.0,               // Source impedance (Ohms)
+    alphaNp: 0.0,           // Attenuation (Np/m)
+    loadType: 'matched',    // 'matched' | 'open' | 'short' | 'custom'
+    rl: 50.0,               // Load resistance (Ohms)
+    xl: 0.0,                // Load reactance (Ohms)
+    qwaveOn: false,         // Quarter-wave matching transformer enabled
+
+    // Overlays
+    showVtot: true,
+    showEnv: true,
+    showCurr: false,
+    showVfwd: false,
+    showVref: false,
+    showEfield: true,
+    showVswrRing: true,
+    showNodes: true,
+
+    // UI & interaction
+    drawerOpen: true,
+    zenMode: false,
+    audioOn: false,
+    smithDragging: false,
+    smithHover: false,
+    probeCell: -1,
+    probeActive: false,
+
+    // FDTD step counters & TDR tracking
+    stepCount: 0,
+    phase: 0,
+    pulseActive: false,
+    pulseOriginStep: -1e9,
+    echoHeard: false,
+    lastEchoPeak: 0,
+    lastEchoSign: 0,
+    lastEchoDelayNs: 0,
+    autoTdrCooldown: 0,
+
+    // Smooth visual layout interpolation
+    stageRightCurr: 0,
+    flashPulse: 0,
+    flashEcho: 0
+  };
+
+  // FDTD Arrays
+  const V = new Float64Array(N + 1);
+  const I = new Float64Array(N);
+  const Iprev = new Float64Array(N);
+  const Zcell = new Float64Array(N);
+  const Znode = new Float64Array(N + 1);
+
+  // Decomposed & Envelope Arrays
+  const Vfwd = new Float64Array(N + 1);
+  const Vref = new Float64Array(N + 1);
+  const Icent = new Float64Array(N + 1);
+  const Venv = new Float64Array(N + 1);
+  const VpeakA = new Float64Array(N + 1);
+  const VpeakB = new Float64Array(N + 1);
+  let peakStepCounter = 0;
+
+  // Lumped reactive load internal memory states
+  let loadIL = 0.0;
+  let loadVC = 0.0;
+
+  // Derived RF line configuration (recomputed when params change)
+  const rf = {
+    lambdaCells: 64,
+    lambdaCm: 13.33,
+    omegaStep: 0,
+    qwCells: 16,
+    qwStart: N - 16,
+    zm: 50.0,
+    // Complex raw reflection coeff at load
+    gammaL_r: 0,
+    gammaL_i: 0,
+    // Effective input impedance & reflection coeff (including lambda/4 if enabled)
+    zin_r: 50.0,
+    zin_i: 0.0,
+    gammaIn_r: 0,
+    gammaIn_i: 0,
+    gammaMag: 0,
+    gammaDeg: 0,
+    vswr: 1.0,
+    returnLossDb: Infinity,
+    pDelPct: 100.0,
+    pRefPct: 0.0
+  };
+
+  // Complex arithmetic helpers
+  function cAdd(ar, ai, br, bi) { return [ar + br, ai + bi]; }
+  function cSub(ar, ai, br, bi) { return [ar - br, ai - bi]; }
+  function cMul(ar, ai, br, bi) { return [ar * br - ai * bi, ar * bi + ai * br]; }
+  function cDiv(ar, ai, br, bi) {
+    const d = br * br + bi * bi;
+    if (d < 1e-18) return [1e9, 0];
+    return [(ar * br + ai * bi) / d, (ai * br - ar * bi) / d];
+  }
+
+  function updateRFParameters() {
+    // Exact wavelength in cells: lambda = v_p / f / dz
+    rf.lambdaCells = (VP_PHYS / (state.freqGHz * 1e9)) / DZ_PHYS;
+    rf.lambdaCm = (VP_PHYS / (state.freqGHz * 1e9)) * 100.0;
+    rf.omegaStep = (2.0 * Math.PI * COURANT) / rf.lambdaCells;
+
+    // Quarter-wave section geometry & impedance
+    rf.qwCells = Math.max(4, Math.min(115, Math.round(rf.lambdaCells / 4)));
+    rf.qwStart = N - rf.qwCells;
+
+    if (state.loadType === 'open') {
+      rf.zm = Z0;
+    } else if (state.loadType === 'short') {
+      rf.zm = Z0;
+    } else {
+      const rEff = state.rl > 1 ? state.rl : Math.hypot(state.rl, state.xl);
+      rf.zm = Math.max(10, Math.min(240, Math.sqrt(Z0 * Math.max(2, rEff))));
+    }
+
+    // Fill spatial cell impedance Zcell[0..N-1]
+    for (let k = 0; k < N; k++) {
+      if (state.qwaveOn && k >= rf.qwStart && state.loadType !== 'open' && state.loadType !== 'short') {
+        Zcell[k] = rf.zm;
+      } else {
+        Zcell[k] = Z0;
+      }
+    }
+
+    // Fill node effective impedance (harmonic mean of adjacent cells)
+    Znode[0] = Zcell[0];
+    Znode[N] = Zcell[N - 1];
+    for (let k = 1; k < N; k++) {
+      const yAvg = 0.5 * (1.0 / Zcell[k - 1] + 1.0 / Zcell[k]);
+      Znode[k] = 1.0 / yAvg;
+    }
+
+    // Analytical reflection coefficient at Load Z_L (normalized to Z0)
+    if (state.loadType === 'open') {
+      rf.gammaL_r = 1.0;
+      rf.gammaL_i = 0.0;
+    } else if (state.loadType === 'short') {
+      rf.gammaL_r = -1.0;
+      rf.gammaL_i = 0.0;
+    } else {
+      const [gr, gi] = cDiv(state.rl - Z0, state.xl, state.rl + Z0, state.xl);
+      rf.gammaL_r = gr;
+      rf.gammaL_i = gi;
+    }
+
+    // Effective input impedance seen by main 50-Ohm line (through lambda/4 if active)
+    if (state.qwaveOn && state.loadType !== 'open' && state.loadType !== 'short') {
+      const betaL = (2.0 * Math.PI * rf.qwCells) / rf.lambdaCells;
+      const cosB = Math.cos(betaL);
+      const sinB = Math.sin(betaL);
+      // Z_in = Zm * (Z_L * cos(bL) + j * Zm * sin(bL)) / (Zm * cos(bL) + j * Z_L * sin(bL))
+      const numR = state.rl * cosB;
+      const numI = state.xl * cosB + rf.zm * sinB;
+      const denR = rf.zm * cosB - state.xl * sinB;
+      const denI = state.rl * sinB;
+      const [zr, zi] = cDiv(numR, numI, denR, denI);
+      rf.zin_r = rf.zm * zr;
+      rf.zin_i = rf.zm * zi;
+      const [gir, gii] = cDiv(rf.zin_r - Z0, rf.zin_i, rf.zin_r + Z0, rf.zin_i);
+      rf.gammaIn_r = gir;
+      rf.gammaIn_i = gii;
+    } else if (state.loadType === 'open') {
+      rf.zin_r = Infinity;
+      rf.zin_i = 0;
+      rf.gammaIn_r = 1.0;
+      rf.gammaIn_i = 0.0;
+    } else if (state.loadType === 'short') {
+      rf.zin_r = 0;
+      rf.zin_i = 0;
+      rf.gammaIn_r = -1.0;
+      rf.gammaIn_i = 0.0;
+    } else {
+      rf.zin_r = state.rl;
+      rf.zin_i = state.xl;
+      rf.gammaIn_r = rf.gammaL_r;
+      rf.gammaIn_i = rf.gammaL_i;
+    }
+
+    // Scalar RF telemetry from effective main-line Gamma_in
+    const mag = Math.min(1.0, Math.hypot(rf.gammaIn_r, rf.gammaIn_i));
+    rf.gammaMag = mag < 1e-4 ? 0 : mag;
+    let deg = Math.atan2(rf.gammaIn_i, rf.gammaIn_r) * (180 / Math.PI);
+    if (Math.abs(deg) < 0.05 || rf.gammaMag === 0) deg = 0;
+    rf.gammaDeg = deg;
+
+    if (rf.gammaMag >= 0.9995) {
+      rf.vswr = Infinity;
+      rf.returnLossDb = 0.0;
+      rf.pRefPct = 100.0;
+      rf.pDelPct = 0.0;
+    } else {
+      rf.vswr = (1.0 + rf.gammaMag) / (1.0 - rf.gammaMag);
+      rf.returnLossDb = rf.gammaMag < 1e-4 ? Infinity : -20.0 * Math.log10(rf.gammaMag);
+      rf.pRefPct = rf.gammaMag * rf.gammaMag * 100.0;
+      rf.pDelPct = 100.0 - rf.pRefPct;
+    }
+  }
+
+  function clearFields() {
+    V.fill(0);
+    I.fill(0);
+    Iprev.fill(0);
+    Vfwd.fill(0);
+    Vref.fill(0);
+    Icent.fill(0);
+    Venv.fill(0);
+    VpeakA.fill(0);
+    VpeakB.fill(0);
+    loadIL = 0;
+    loadVC = 0;
+    peakStepCounter = 0;
+    state.pulseActive = false;
+    state.echoHeard = false;
+    state.lastEchoPeak = 0;
+  }
+
+  // Source open-circuit EMF V_src(t) -> 2*V0 yields incident amplitude V0 on matched source Z_S = Z0
+  function sampleSourceEMF(stepFloat) {
+    if (state.excMode === 'cw') {
+      // Soft ramp-in over 16 steps for clean initial wavefront
+      const ramp = Math.min(1.0, stepFloat / 16.0);
+      return 2.0 * ramp * Math.sin(rf.omegaStep * stepFloat);
+    }
+    if (!state.pulseActive) return 0.0;
+    const elapsed = stepFloat - state.pulseOriginStep;
+    if (elapsed < 0) return 0.0;
+
+    if (state.excMode === 'gaussian') {
+      const center = 26.0;
+      const sigma = 7.2;
+      const arg = (elapsed - center) / sigma;
+      if (arg > 6.5) return 0.0;
+      return 2.0 * Math.exp(-0.5 * arg * arg);
+    } else {
+      // Smooth raised-cosine / tanh TDR step edge
+      const center = 18.0;
+      const width = 4.2;
+      return 1.0 * (1.0 + Math.tanh((elapsed - center) / width));
+    }
+  }
+
+  // Advance FDTD solver by exactly one leapfrog step
+  function stepFDTD() {
+    const a = 0.5 * state.alphaNp * DZ_PHYS * COURANT;
+    const cLoss = (1.0 - a) / (1.0 + a);
+    const cProp = COURANT / (1.0 + a);
+
+    // 1. Save previous I and update half-node currents I[0..N-1]
+    for (let k = 0; k < N; k++) {
+      const ik = I[k];
+      Iprev[k] = ik;
+      I[k] = cLoss * ik - (cProp / Zcell[k]) * (V[k + 1] - V[k]);
+    }
+
+    // 2. Update interior voltage nodes V[1..N-1]
+    for (let k = 1; k < N; k++) {
+      V[k] = cLoss * V[k] - cProp * Znode[k] * (I[k] - I[k - 1]);
+    }
+
+    // 3. Source boundary V[0] with Thevenin impedance Z_S
+    const vSrc = sampleSourceEMF(state.stepCount + 0.5);
+    const bS = (COURANT * Zcell[0]) / Math.max(0.5, state.zs);
+    V[0] = ((1.0 - a - bS) * V[0] + 2.0 * bS * vSrc - 2.0 * COURANT * Zcell[0] * I[0]) / (1.0 + a + bS);
+
+    // 4. Exact Complex Load Boundary V[N] (unconditionally passive bilinear)
+    const zEnd = Zcell[N - 1];
+    if (state.loadType === 'open') {
+      V[N] = ((1.0 - a) * V[N] + 2.0 * COURANT * zEnd * I[N - 1]) / (1.0 + a);
+      loadIL = 0;
+      loadVC = 0;
+    } else if (state.loadType === 'short') {
+      V[N] = 0.0;
+      loadIL = I[N - 1];
+      loadVC = 0;
+    } else {
+      const RL = Math.max(0.0, state.rl);
+      const XL = state.xl;
+      const tanHalf = Math.tan(Math.min(1.45, Math.max(1e-4, 0.5 * rf.omegaStep)));
+
+      if (Math.abs(XL) < 0.05) {
+        // Pure Resistive Load
+        if (RL < 0.05) {
+          V[N] = 0.0;
+        } else {
+          const bL = (COURANT * zEnd) / RL;
+          V[N] = ((1.0 - a - bL) * V[N] + 2.0 * COURANT * zEnd * I[N - 1]) / (1.0 + a + bL);
+        }
+        loadIL = RL > 0.05 ? V[N] / RL : I[N - 1];
+        loadVC = 0;
+      } else if (XL > 0) {
+        // Series R_L + jX_L (Inductive, bilinear pre-warped to exact Z_L at f0)
+        const alphaL = XL / tanHalf;
+        const denom = RL + alphaL;
+        const Geq = 0.5 / denom;
+        const HL = alphaL / denom;
+        const kG = 2.0 * COURANT * zEnd * Geq;
+        const vOld = V[N];
+        const vNew = ((1.0 - a - kG) * vOld + 2.0 * COURANT * zEnd * (I[N - 1] - HL * loadIL)) / (1.0 + a + kG);
+        V[N] = vNew;
+        loadIL = (vNew + vOld + (alphaL - RL) * loadIL) / denom;
+        loadVC = 0;
+      } else {
+        // Series R_L - j|X_L| (Capacitive, bilinear pre-warped to exact Z_L at f0)
+        const betaC = Math.abs(XL) * tanHalf;
+        const denom = RL + betaC;
+        const Geq = 0.5 / denom;
+        const kG = 2.0 * COURANT * zEnd * Geq;
+        const vOld = V[N];
+        const vNew = ((1.0 - a - kG) * vOld + 2.0 * COURANT * zEnd * (I[N - 1] + 2.0 * Geq * loadVC)) / (1.0 + a + kG);
+        V[N] = vNew;
+        const iHalf = Geq * (vNew + vOld - 2.0 * loadVC);
+        loadVC = loadVC + 2.0 * betaC * iHalf;
+        loadIL = iHalf;
+      }
+    }
+
+    // 5. Space-time centered Current & Exact Forward/Reflected Decomposition
+    const halfPeriodSteps = Math.max(12, Math.round(rf.lambdaCells / (2.0 * COURANT)));
+    peakStepCounter++;
+    const swapEnvelope = peakStepCounter >= halfPeriodSteps;
+    if (swapEnvelope) peakStepCounter = 0;
+
+    for (let k = 0; k <= N; k++) {
+      let ic;
+      if (k === 0) {
+        ic = 0.5 * (Iprev[0] + I[0]);
+      } else if (k === N) {
+        ic = 0.5 * (Iprev[N - 1] + I[N - 1]);
+      } else {
+        ic = 0.25 * (Iprev[k - 1] + I[k - 1] + Iprev[k] + I[k]);
+      }
+      Icent[k] = ic;
+      const zk = Znode[k];
+      Vfwd[k] = 0.5 * (V[k] + zk * ic);
+      Vref[k] = 0.5 * (V[k] - zk * ic);
+
+      const absV = Math.abs(V[k]);
+      if (state.excMode === 'cw') {
+        if (absV > VpeakA[k]) VpeakA[k] = absV;
+        if (swapEnvelope) {
+          VpeakB[k] = VpeakA[k];
+          VpeakA[k] = absV;
+        }
+        const target = Math.max(VpeakA[k], VpeakB[k]);
+        Venv[k] += (target - Venv[k]) * 0.14;
+      } else {
+        // In TDR mode, hold transient peak smoothly with gentle fade
+        Venv[k] = Math.max(Venv[k] * 0.9965, absV);
+      }
+    }
+
+    // 6. TDR Echo Return Detection near source (for audio ping & readout)
+    if (state.excMode !== 'cw' && state.pulseActive && !state.echoHeard) {
+      const elapsed = state.stepCount - state.pulseOriginStep;
+      const roundTripSteps = (2.0 * N) / COURANT;
+      if (elapsed > roundTripSteps * 0.86) {
+        const probeVref = Vref[10];
+        if (Math.abs(probeVref) > 0.045) {
+          state.echoHeard = true;
+          state.lastEchoPeak = Math.min(1.0, Math.abs(probeVref));
+          state.lastEchoSign = Math.sign(probeVref);
+          state.lastEchoDelayNs = roundTripSteps * DT_PHYS * 1e9;
+          state.flashEcho = 1.0;
+          if (state.audioOn) playEchoPing(state.lastEchoPeak, state.lastEchoSign);
+        } else if (elapsed > roundTripSteps + 55) {
+          state.echoHeard = true;
+          state.lastEchoPeak = 0;
+          state.lastEchoSign = 0;
+          state.lastEchoDelayNs = roundTripSteps * DT_PHYS * 1e9;
+        }
+      }
+    }
+
+    // Auto-repeat TDR pulse
+    if (state.excMode !== 'cw' && state.autoTdr) {
+      const elapsed = state.stepCount - state.pulseOriginStep;
+      const cycleLen = Math.round((2.65 * N) / COURANT);
+      if (!state.pulseActive || elapsed >= cycleLen) {
+        triggerTDRPulse(false);
+      }
+    }
+
+    state.stepCount++;
+  }
+
+  function triggerTDRPulse(forceMode = false) {
+    if (forceMode && state.excMode === 'cw') {
+      state.excMode = 'gaussian';
+      clearFields();
+      syncUI();
+    }
+    if (state.excMode === 'step') {
+      clearFields();
+    }
+    state.pulseActive = true;
+    state.pulseOriginStep = state.stepCount;
+    state.echoHeard = false;
+    state.flashPulse = 1.0;
+    if (state.audioOn) playLaunchPing();
+  }
+
+  // =========================================================================
+  // OPTIONAL WEB AUDIO ENGINE (MUTED BY DEFAULT)
+  // =========================================================================
+  let audioCtx = null;
+
+  function ensureAudio() {
+    if (!audioCtx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) audioCtx = new AC();
+    }
+    if (audioCtx && audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+  }
+
+  function playLaunchPing() {
+    if (!state.audioOn) return;
+    ensureAudio();
+    if (!audioCtx) return;
+    const now = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(1420, now);
+    osc.frequency.exponentialRampToValueAtTime(920, now + 0.075);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.linearRampToValueAtTime(0.08, now + 0.006);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.09);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(now);
+    osc.stop(now + 0.1);
+  }
+
+  function playEchoPing(mag, sign) {
+    if (!state.audioOn || mag < 0.04) return;
+    ensureAudio();
+    if (!audioCtx) return;
+    const now = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'triangle';
+    const baseFreq = sign >= 0 ? 1180 : 620;
+    osc.frequency.setValueAtTime(baseFreq, now);
+    osc.frequency.exponentialRampToValueAtTime(baseFreq * (sign >= 0 ? 1.12 : 0.85), now + 0.12);
+    const amp = Math.min(0.12, 0.02 + mag * 0.095);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.linearRampToValueAtTime(amp, now + 0.008);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.16);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(now);
+    osc.stop(now + 0.17);
+  }
+
+  function playMatchSnapClick() {
+    if (!state.audioOn) return;
+    ensureAudio();
+    if (!audioCtx) return;
+    const now = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(880, now);
+    osc.frequency.exponentialRampToValueAtTime(1320, now + 0.05);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.linearRampToValueAtTime(0.045, now + 0.005);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.06);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(now);
+    osc.stop(now + 0.07);
+  }
+
+  // =========================================================================
+  // PRESETS
+  // =========================================================================
+  function applyPreset(name) {
+    state.preset = name;
+    state.alphaNp = 0.0;
+    state.zs = 50.0;
+    state.freqGHz = 1.50;
+    state.autoTdr = false;
+
+    if (name === 'matched') {
+      state.excMode = 'cw';
+      state.loadType = 'matched';
+      state.rl = 50;
+      state.xl = 0;
+      state.qwaveOn = false;
+      state.showEnv = true;
+      state.showCurr = false;
+      state.showVfwd = false;
+      state.showVref = false;
+    } else if (name === 'open') {
+      state.excMode = 'cw';
+      state.loadType = 'open';
+      state.rl = 300;
+      state.xl = 0;
+      state.qwaveOn = false;
+      state.showEnv = true;
+      state.showCurr = true;
+      state.showVfwd = false;
+      state.showVref = false;
+    } else if (name === 'short') {
+      state.excMode = 'cw';
+      state.loadType = 'short';
+      state.rl = 0;
+      state.xl = 0;
+      state.qwaveOn = false;
+      state.showEnv = true;
+      state.showCurr = true;
+      state.showVfwd = false;
+      state.showVref = false;
+    } else if (name === 'qwave') {
+      state.excMode = 'cw';
+      state.loadType = 'custom';
+      state.rl = 200;
+      state.xl = 0;
+      state.qwaveOn = true;
+      state.showEnv = true;
+      state.showCurr = false;
+      state.showVfwd = false;
+      state.showVref = true;
+    } else if (name === 'tdr') {
+      state.excMode = 'gaussian';
+      state.loadType = 'open';
+      state.rl = 300;
+      state.xl = 0;
+      state.qwaveOn = false;
+      state.autoTdr = true;
+      state.showEnv = false;
+      state.showCurr = false;
+      state.showVfwd = true;
+      state.showVref = true;
+    } else if (name === 'reactive') {
+      state.excMode = 'cw';
+      state.loadType = 'custom';
+      state.rl = 50;
+      state.xl = 75;
+      state.qwaveOn = false;
+      state.showEnv = true;
+      state.showCurr = true;
+      state.showVfwd = false;
+      state.showVref = false;
+    }
+
+    updateRFParameters();
+    clearFields();
+    if (state.excMode === 'cw') {
+      // Pre-warm FDTD so standing waves / traveling waves are immediately crisp on preset switch
+      for (let s = 0; s < 420; s++) stepFDTD();
+    } else {
+      triggerTDRPulse(false);
+    }
+    syncUI();
+  }
+
+  // =========================================================================
+  // CANVAS & GEOMETRY LAYOUT
+  // =========================================================================
+  const canvas = document.getElementById('sim-canvas');
+  const ctx = canvas.getContext('2d');
+  let W = window.innerWidth;
+  let H = window.innerHeight;
+  let DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+  // Live layout rectangles for hit-testing & rendering
+  const layout = {
+    scope: { x: 20, y: 210, w: 600, h: 280 },
+    coax:  { x: 20, y: 505, w: 600, h: 150 },
+    smith: { cx: 800, cy: 400, r: 160 }
+  };
+
+  function resizeCanvas() {
+    W = window.innerWidth;
+    H = window.innerHeight;
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.round(W * DPR);
+    canvas.height = Math.round(H * DPR);
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    if (state.stageRightCurr === 0) {
+      state.stageRightCurr = (state.drawerOpen && !state.zenMode && W > 960) ? W - 358 : W - 22;
+    }
+  }
+
+  function computeLayout() {
+    const targetRight = (state.drawerOpen && !state.zenMode && W > 960) ? W - 358 : W - 22;
+    state.stageRightCurr += (targetRight - state.stageRightCurr) * 0.18;
+
+    const stageLeft = 18;
+    const stageRight = Math.max(stageLeft + 320, state.stageRightCurr);
+    const stageW = stageRight - stageLeft;
+
+    const topPanel = document.getElementById('top-left-panel');
+    let teleBottom = 200;
+    let teleRight = 445;
+    if (!state.zenMode && topPanel) {
+      const rect = topPanel.getBoundingClientRect();
+      teleBottom = rect.bottom + 14;
+      teleRight = rect.right + 16;
+    } else if (state.zenMode) {
+      teleBottom = 26;
+      teleRight = 26;
+    }
+
+    const stageBottom = state.zenMode ? H - 24 : (W <= 960 && state.drawerOpen ? H * 0.48 : H - 72);
+    const leftTop = teleBottom;
+    const availH = Math.max(220, stageBottom - leftTop);
+
+    if (stageW >= 740) {
+      // Side-by-side desktop layout: Scope+Coax on left (~61%), Smith Chart on right (~39%)
+      const smithColW = Math.min(430, Math.max(270, stageW * 0.37));
+      const leftW = stageW - smithColW - 18;
+
+      const scopeH = Math.max(130, availH * 0.62);
+      const coaxH = Math.max(96, availH - scopeH - 12);
+
+      layout.scope.x = stageLeft;
+      layout.scope.y = leftTop;
+      layout.scope.w = leftW;
+      layout.scope.h = scopeH;
+
+      layout.coax.x = stageLeft;
+      layout.coax.y = leftTop + scopeH + 12;
+      layout.coax.w = leftW;
+      layout.coax.h = coaxH;
+
+      const smithLeft = stageLeft + leftW + 18;
+      const smithTop = (smithLeft >= teleRight) ? 22 : teleBottom;
+      const smithAvailH = Math.max(180, stageBottom - smithTop);
+      const rMaxW = smithColW * 0.43;
+      const rMaxH = smithAvailH * 0.39;
+      layout.smith.r = Math.max(78, Math.min(205, rMaxW, rMaxH));
+      layout.smith.cx = smithLeft + smithColW * 0.5;
+      layout.smith.cy = smithTop + smithAvailH * 0.50;
+    } else {
+      // Compact vertical layout for narrow viewports
+      const scopeH = Math.max(115, availH * 0.40);
+      const coaxH = Math.max(76, availH * 0.22);
+      const smithTop = leftTop + scopeH + coaxH + 20;
+      const smithAvailH = Math.max(130, stageBottom - smithTop);
+
+      layout.scope.x = stageLeft;
+      layout.scope.y = leftTop;
+      layout.scope.w = stageW;
+      layout.scope.h = scopeH;
+
+      layout.coax.x = stageLeft;
+      layout.coax.y = leftTop + scopeH + 10;
+      layout.coax.w = stageW;
+      layout.coax.h = coaxH;
+
+      layout.smith.r = Math.max(58, Math.min(130, stageW * 0.34, smithAvailH * 0.40));
+      layout.smith.cx = stageLeft + stageW * 0.5;
+      layout.smith.cy = smithTop + smithAvailH * 0.5;
+    }
+  }
+
+  // =========================================================================
+  // RENDERING: BACKGROUND, OSCILLOSCOPE, COAXIAL LINE & LIVE SMITH CHART
+  // =========================================================================
+  function drawBackdrop() {
+    ctx.fillStyle = '#040711';
+    ctx.fillRect(0, 0, W, H);
+
+    // Subtle deep RF lab ambient radial vignette
+    const grad = ctx.createRadialGradient(
+      layout.scope.x + layout.scope.w * 0.45,
+      layout.scope.y + layout.scope.h * 0.5,
+      40,
+      W * 0.45,
+      H * 0.5,
+      Math.max(W, H) * 0.85
+    );
+    grad.addColorStop(0, 'rgba(26, 48, 88, 0.22)');
+    grad.addColorStop(0.55, 'rgba(10, 18, 36, 0.12)');
+    grad.addColorStop(1, 'rgba(3, 5, 11, 0.85)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+
+    // Subtle engineering dot/line blueprint grid
+    ctx.strokeStyle = 'rgba(110, 150, 230, 0.04)';
+    ctx.lineWidth = 1;
+    const step = 44;
+    ctx.beginPath();
+    for (let x = 0; x < W; x += step) {
+      ctx.moveTo(x + 0.5, 0);
+      ctx.lineTo(x + 0.5, H);
+    }
+    for (let y = 0; y < H; y += step) {
+      ctx.moveTo(0, y + 0.5);
+      ctx.lineTo(W, y + 0.5);
+    }
+    ctx.stroke();
+  }
+
+  function drawRoundedPanel(x, y, w, h, r, fill, stroke) {
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, h, r);
+    ctx.fillStyle = fill;
+    ctx.fill();
+    if (stroke) {
+      ctx.strokeStyle = stroke;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+  }
+
+  function drawOscilloscope() {
+    const s = layout.scope;
+    drawRoundedPanel(s.x, s.y, s.w, s.h, 14, 'rgba(7, 11, 22, 0.72)', 'rgba(148, 179, 255, 0.15)');
+
+    const padL = 48;
+    const padR = 24;
+    const padT = 30;
+    const padB = 28;
+    const gx = s.x + padL;
+    const gy = s.y + padT;
+    const gw = s.w - padL - padR;
+    const gh = s.h - padT - padB;
+    const midY = gy + gh * 0.5;
+    const vScale = (gh * 0.44) / 2.2; // ±2.2 V full vertical scale
+
+    // Header label inside oscilloscope
+    ctx.font = '700 10.5px ui-monospace, Menlo, Consolas, monospace';
+    ctx.fillStyle = '#8fa7d4';
+    ctx.textAlign = 'left';
+    ctx.fillText('TRANSMISSION LINE WAVEFORMS  ·  1D FDTD TELEGRAPHER SOLVER (260 CELLS)', s.x + 14, s.y + 18);
+
+    // TDR status readout on top-right of scope
+    if (state.excMode !== 'cw') {
+      const rtNs = ((2 * N / COURANT) * DT_PHYS * 1e9).toFixed(2);
+      let echoTxt = `TDR ROUND-TRIP: ${rtNs} ns (${(CABLE_LEN_M * 100).toFixed(1)} cm)`;
+      if (state.echoHeard) {
+        if (state.lastEchoPeak < 0.04) {
+          echoTxt = `ECHO: ZERO (MATCHED) · ${rtNs} ns`;
+        } else {
+          const signStr = state.lastEchoSign >= 0 ? '+' : '−';
+          echoTxt = `ECHO: ${signStr}${(state.lastEchoPeak * 100).toFixed(0)}% · Δt = ${rtNs} ns`;
+        }
+      }
+      ctx.textAlign = 'right';
+      ctx.fillStyle = state.flashEcho > 0.05 ? '#ffbe5c' : '#9cc7ff';
+      ctx.fillText(echoTxt, s.x + s.w - 14, s.y + 18);
+    } else {
+      // Compact trace legend on top-right
+      ctx.textAlign = 'right';
+      const items = [];
+      if (state.showVtot) items.push({ t: 'V(z,t)', c: '#8cf0ff' });
+      if (state.showEnv) items.push({ t: '|V|max', c: '#ffbe5c' });
+      if (state.showCurr) items.push({ t: 'I·Z₀', c: '#ff6083' });
+      if (state.showVfwd) items.push({ t: 'V⁺', c: '#4af2b2' });
+      if (state.showVref) items.push({ t: 'V⁻', c: '#a78bfa' });
+      let rx = s.x + s.w - 14;
+      for (let i = items.length - 1; i >= 0; i--) {
+        ctx.fillStyle = items[i].c;
+        ctx.fillText(items[i].t, rx, s.y + 18);
+        rx -= ctx.measureText(items[i].t).width + 14;
+      }
+    }
+
+    // Quarter-Wave Transformer Highlight Zone inside scope
+    if (state.qwaveOn && state.loadType !== 'open' && state.loadType !== 'short') {
+      const qx = gx + (rf.qwStart / N) * gw;
+      const qw = ((N - rf.qwStart) / N) * gw;
+      const qGrad = ctx.createLinearGradient(qx, gy, qx + qw, gy);
+      qGrad.addColorStop(0, 'rgba(167, 139, 250, 0.16)');
+      qGrad.addColorStop(1, 'rgba(74, 242, 178, 0.14)');
+      ctx.fillStyle = qGrad;
+      ctx.fillRect(qx, gy, qw, gh);
+
+      ctx.strokeStyle = 'rgba(167, 139, 250, 0.55)';
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(qx, gy);
+      ctx.lineTo(qx, gy + gh);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.font = '700 9.5px ui-monospace, Menlo, Consolas, monospace';
+      ctx.fillStyle = '#d8c8ff';
+      ctx.textAlign = 'center';
+      ctx.fillText(`λ/4 (${rf.zm.toFixed(0)}Ω)`, qx + qw * 0.5, gy + 12);
+    }
+
+    // Horizontal voltage graticule (+2V, +1V, 0V, -1V, -2V)
+    const vTicks = [-2, -1, 0, 1, 2];
+    ctx.font = '10px ui-monospace, Menlo, Consolas, monospace';
+    ctx.textAlign = 'right';
+    for (const vt of vTicks) {
+      const y = midY - vt * vScale;
+      ctx.strokeStyle = vt === 0 ? 'rgba(148, 179, 255, 0.30)' : 'rgba(148, 179, 255, 0.09)';
+      ctx.lineWidth = vt === 0 ? 1.2 : 1;
+      ctx.beginPath();
+      ctx.moveTo(gx, y);
+      ctx.lineTo(gx + gw, y);
+      ctx.stroke();
+
+      ctx.fillStyle = vt === 0 ? '#9ab0da' : '#5e7197';
+      ctx.fillText((vt > 0 ? '+' : '') + vt + 'V', gx - 7, y + 3.5);
+    }
+
+    // Vertical wavelength gridlines measured back from Load (d = 0 at Load)
+    const totalLambda = N / rf.lambdaCells;
+    const halfStep = totalLambda > 5 ? 1.0 : 0.5;
+    ctx.textAlign = 'center';
+    for (let dLam = 0; dLam <= totalLambda + 0.01; dLam += halfStep) {
+      const kPos = N - dLam * rf.lambdaCells;
+      if (kPos < -1) break;
+      const x = gx + (kPos / N) * gw;
+      ctx.strokeStyle = dLam === 0 ? 'rgba(255, 190, 92, 0.25)' : 'rgba(148, 179, 255, 0.08)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x, gy);
+      ctx.lineTo(x, gy + gh);
+      ctx.stroke();
+
+      ctx.fillStyle = dLam === 0 ? '#ffbe5c' : '#6378a1';
+      const label = dLam === 0 ? 'LOAD' : `-${dLam.toFixed(dLam % 1 === 0 ? 0 : 1)}λ`;
+      ctx.fillText(label, x, gy + gh + 16);
+    }
+    ctx.fillStyle = '#58dcff';
+    ctx.textAlign = 'left';
+    ctx.fillText('SRC', gx, gy + gh + 16);
+
+    // Helper to stroke a trace array clipped cleanly inside scope bounds
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(gx - 2, gy - 2, gw + 4, gh + 4);
+    ctx.clip();
+
+    const plotCurve = (arr, scaleFactor, color, lineW, dash, glowColor) => {
+      ctx.beginPath();
+      for (let k = 0; k <= N; k++) {
+        const x = gx + (k / N) * gw;
+        const y = midY - arr[k] * scaleFactor * vScale;
+        if (k === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.setLineDash(dash || []);
+      if (glowColor) {
+        ctx.save();
+        ctx.strokeStyle = glowColor;
+        ctx.lineWidth = lineW + 4.5;
+        ctx.stroke();
+        ctx.restore();
+      }
+      ctx.strokeStyle = color;
+      ctx.lineWidth = lineW;
+      ctx.stroke();
+      ctx.setLineDash([]);
+    };
+
+    // 1. Standing-Wave Envelope ±|V(z)|_max
+    if (state.showEnv) {
+      // Soft amber envelope fill
+      ctx.beginPath();
+      for (let k = 0; k <= N; k++) {
+        const x = gx + (k / N) * gw;
+        const y = midY - Venv[k] * vScale;
+        if (k === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      for (let k = N; k >= 0; k--) {
+        const x = gx + (k / N) * gw;
+        const y = midY + Venv[k] * vScale;
+        ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(255, 190, 92, 0.055)';
+      ctx.fill();
+
+      plotCurve(Venv, 1.0, 'rgba(255, 190, 92, 0.85)', 1.5, [6, 4], null);
+      plotCurve(Venv, -1.0, 'rgba(255, 190, 92, 0.55)', 1.3, [6, 4], null);
+    }
+
+    // 2. Forward Wave V+
+    if (state.showVfwd) {
+      plotCurve(Vfwd, 1.0, 'rgba(74, 242, 178, 0.82)', 1.7, [], 'rgba(74, 242, 178, 0.14)');
+    }
+
+    // 3. Reflected Wave V-
+    if (state.showVref) {
+      plotCurve(Vref, 1.0, 'rgba(167, 139, 250, 0.88)', 1.7, [], 'rgba(167, 139, 250, 0.16)');
+    }
+
+    // 4. Current Wave I(z,t) * Z0
+    if (state.showCurr) {
+      plotCurve(Icent, Z0, 'rgba(255, 96, 131, 0.90)', 1.9, [], 'rgba(255, 96, 131, 0.18)');
+    }
+
+    // 5. Total Voltage Wave V(z,t) — Hero Trace
+    if (state.showVtot) {
+      plotCurve(V, 1.0, '#d6f8ff', 2.4, [], 'rgba(88, 220, 255, 0.34)');
+    }
+
+    // 6. Standing-wave Node / Antinode Markers in CW mode when reflected wave exists
+    if (state.showNodes && state.excMode === 'cw' && rf.gammaMag > 0.12) {
+      const scanEnd = state.qwaveOn ? Math.max(10, rf.qwStart - 4) : N - 4;
+      let maxIdx = -1, minIdx = -1;
+      let maxVal = -1, minVal = 999;
+      const scanStart = Math.max(8, scanEnd - Math.round(rf.lambdaCells * 0.65));
+      for (let k = scanStart; k <= scanEnd; k++) {
+        if (Venv[k] > maxVal) { maxVal = Venv[k]; maxIdx = k; }
+        if (Venv[k] < minVal) { minVal = Venv[k]; minIdx = k; }
+      }
+      if (maxIdx > 0 && maxVal > 0.2 && (maxVal - minVal) > 0.12) {
+        const mx = gx + (maxIdx / N) * gw;
+        const my = midY - maxVal * vScale;
+        ctx.fillStyle = '#ffbe5c';
+        ctx.beginPath();
+        ctx.arc(mx, my, 3.6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.font = '700 9.5px ui-monospace, Menlo, Consolas, monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(`Vmax ${maxVal.toFixed(2)}`, mx, Math.max(gy + 12, my - 8));
+
+        const nx = gx + (minIdx / N) * gw;
+        const ny = midY - minVal * vScale;
+        ctx.fillStyle = '#ff6083';
+        ctx.beginPath();
+        ctx.arc(nx, ny, 3.6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillText(`Vmin ${minVal.toFixed(2)}`, nx, Math.max(gy + 12, ny - 8));
+      }
+    }
+
+    // 7. Interactive Hover Probe Crosshair
+    if (state.probeActive && state.probeCell >= 0 && state.probeCell <= N) {
+      const pk = state.probeCell;
+      const px = gx + (pk / N) * gw;
+      const py = midY - V[pk] * vScale;
+
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+      ctx.setLineDash([3, 3]);
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(px, gy);
+      ctx.lineTo(px, gy + gh);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(px, py, 4.2, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Floating probe tooltip
+      const distCm = (pk * DZ_PHYS * 100).toFixed(1);
+      const distLam = ((N - pk) / rf.lambdaCells).toFixed(2);
+      const tipW = 162;
+      const tipH = 54;
+      const tipX = (px + tipW + 14 < gx + gw) ? px + 10 : px - tipW - 10;
+      const tipY = gy + 8;
+      drawRoundedPanel(tipX, tipY, tipW, tipH, 7, 'rgba(6, 10, 20, 0.90)', 'rgba(88, 220, 255, 0.45)');
+      ctx.font = '650 10px ui-monospace, Menlo, Consolas, monospace';
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#9db4df';
+      ctx.fillText(`z=${distCm}cm (-${distLam}λ)`, tipX + 8, tipY + 15);
+      ctx.fillStyle = '#8cf0ff';
+      ctx.fillText(`V=${V[pk] >= 0 ? '+' : ''}${V[pk].toFixed(2)}V  |V|=${Venv[pk].toFixed(2)}`, tipX + 8, tipY + 31);
+      ctx.fillStyle = '#ff7b9a';
+      ctx.fillText(`I=${(Icent[pk] * 1000).toFixed(1)}mA  V⁻=${Vref[pk].toFixed(2)}V`, tipX + 8, tipY + 46);
+    }
+
+    ctx.restore();
+  }
+
+  function drawCoaxGraphic() {
+    const c = layout.coax;
+    drawRoundedPanel(c.x, c.y, c.w, c.h, 14, 'rgba(7, 11, 22, 0.72)', 'rgba(148, 179, 255, 0.15)');
+
+    ctx.font = '700 10px ui-monospace, Menlo, Consolas, monospace';
+    ctx.fillStyle = '#8fa7d4';
+    ctx.textAlign = 'left';
+    ctx.fillText('COAXIAL WAVEGUIDE CROSS-SECTION  ·  DIELECTRIC E-FIELD & POYNTING FLOW', c.x + 14, c.y + 17);
+
+    const padL = 62;
+    const padR = 76;
+    const lineX0 = c.x + padL;
+    const lineW = c.w - padL - padR;
+    const midY = c.y + c.h * 0.56;
+    const outerHalfH = Math.min(34, c.h * 0.26);
+    const shieldThick = Math.max(4, outerHalfH * 0.17);
+    const baseCoreHalfH = Math.max(4, outerHalfH * 0.22);
+
+    // 1. Dielectric Core Illuminated by Live E-Field Polarity V(z,t)
+    const segs = 130;
+    const segW = lineW / segs;
+    for (let s = 0; s < segs; s++) {
+      const k = Math.min(N, Math.round((s / segs) * N));
+      const vVal = V[k];
+      const norm = Math.max(-1, Math.min(1, vVal / 1.45));
+      const intensity = Math.abs(norm);
+      const sx = lineX0 + s * segW;
+
+      if (state.showEfield) {
+        const r = norm >= 0 ? Math.round(20 + 68 * intensity) : Math.round(40 + 215 * intensity);
+        const g = norm >= 0 ? Math.round(40 + 185 * intensity) : Math.round(18 + 62 * intensity);
+        const b = norm >= 0 ? Math.round(70 + 185 * intensity) : Math.round(45 + 100 * intensity);
+        const a = 0.16 + 0.62 * intensity;
+        ctx.fillStyle = `rgba(${r},${g},${b},${a.toFixed(3)})`;
+      } else {
+        ctx.fillStyle = 'rgba(28, 42, 72, 0.38)';
+      }
+      ctx.fillRect(sx, midY - outerHalfH + shieldThick, segW + 0.8, (outerHalfH - shieldThick) * 2);
+    }
+
+    // 2. Transverse Electric Field Vector Arrows inside dielectric
+    if (state.showEfield) {
+      const numArrows = 26;
+      for (let i = 1; i < numArrows; i++) {
+        const frac = i / numArrows;
+        const k = Math.round(frac * N);
+        const vVal = V[k];
+        if (Math.abs(vVal) < 0.14) continue;
+        const ax = lineX0 + frac * lineW;
+        const alpha = Math.min(0.85, Math.abs(vVal) * 0.55);
+        const col = vVal > 0 ? `rgba(140, 240, 255, ${alpha})` : `rgba(255, 115, 150, ${alpha})`;
+        ctx.strokeStyle = col;
+        ctx.lineWidth = 1.25;
+        const yIn = baseCoreHalfH + 3;
+        const yOut = outerHalfH - shieldThick - 3;
+
+        // Upper dielectric E-field line (outward for +V, inward for -V)
+        ctx.beginPath();
+        ctx.moveTo(ax, midY - yIn);
+        ctx.lineTo(ax, midY - yOut);
+        // Lower dielectric E-field line
+        ctx.moveTo(ax, midY + yIn);
+        ctx.lineTo(ax, midY + yOut);
+        ctx.stroke();
+
+        // Tiny directional arrowheads
+        const dir = vVal > 0 ? 1 : -1;
+        ctx.beginPath();
+        const tipUp = vVal > 0 ? midY - yOut : midY - yIn;
+        ctx.moveTo(ax - 2.5, tipUp + dir * 3.5);
+        ctx.lineTo(ax, tipUp);
+        ctx.lineTo(ax + 2.5, tipUp + dir * 3.5);
+        const tipDn = vVal > 0 ? midY + yOut : midY + yIn;
+        ctx.moveTo(ax - 2.5, tipDn - dir * 3.5);
+        ctx.lineTo(ax, tipDn);
+        ctx.lineTo(ax + 2.5, tipDn - dir * 3.5);
+        ctx.stroke();
+      }
+    }
+
+    // 3. Outer Metallic Coaxial Shield (Top & Bottom)
+    const shieldGradTop = ctx.createLinearGradient(0, midY - outerHalfH, 0, midY - outerHalfH + shieldThick);
+    shieldGradTop.addColorStop(0, '#8ba2c7');
+    shieldGradTop.addColorStop(0.5, '#3b4e70');
+    shieldGradTop.addColorStop(1, '#1c273d');
+    ctx.fillStyle = shieldGradTop;
+    ctx.fillRect(lineX0, midY - outerHalfH, lineW, shieldThick);
+
+    const shieldGradBot = ctx.createLinearGradient(0, midY + outerHalfH - shieldThick, 0, midY + outerHalfH);
+    shieldGradBot.addColorStop(0, '#1c273d');
+    shieldGradBot.addColorStop(0.5, '#3b4e70');
+    shieldGradBot.addColorStop(1, '#8ba2c7');
+    ctx.fillStyle = shieldGradBot;
+    ctx.fillRect(lineX0, midY + outerHalfH - shieldThick, lineW, shieldThick);
+
+    // 4. Inner Center Copper Conductor (physically changes thickness in lambda/4 section!)
+    const drawConductorSegment = (xStart, width, halfH, isMatchedStub) => {
+      const cGrad = ctx.createLinearGradient(0, midY - halfH, 0, midY + halfH);
+      if (isMatchedStub) {
+        cGrad.addColorStop(0, '#d8c4ff');
+        cGrad.addColorStop(0.45, '#a78bfa');
+        cGrad.addColorStop(1, '#583d9e');
+      } else {
+        cGrad.addColorStop(0, '#ffe3b3');
+        cGrad.addColorStop(0.45, '#e89d54');
+        cGrad.addColorStop(1, '#7a451d');
+      }
+      ctx.fillStyle = cGrad;
+      ctx.fillRect(xStart, midY - halfH, width, halfH * 2);
+    };
+
+    if (state.qwaveOn && state.loadType !== 'open' && state.loadType !== 'short') {
+      const splitPx = (rf.qwStart / N) * lineW;
+      drawConductorSegment(lineX0, splitPx, baseCoreHalfH, false);
+      // Coax physics: lower Z_m -> thicker inner conductor, higher Z_m -> thinner inner conductor
+      const ratio = Math.max(0.42, Math.min(1.85, Z0 / rf.zm));
+      const stubHalfH = Math.max(2.2, Math.min(outerHalfH - shieldThick - 4, baseCoreHalfH * Math.pow(ratio, 0.55)));
+      drawConductorSegment(lineX0 + splitPx, lineW - splitPx, stubHalfH, true);
+
+      // Bracket label beneath coax
+      ctx.strokeStyle = 'rgba(167, 139, 250, 0.7)';
+      ctx.lineWidth = 1.2;
+      const by = midY + outerHalfH + 7;
+      ctx.beginPath();
+      ctx.moveTo(lineX0 + splitPx, by - 3);
+      ctx.lineTo(lineX0 + splitPx, by);
+      ctx.lineTo(lineX0 + lineW, by);
+      ctx.lineTo(lineX0 + lineW, by - 3);
+      ctx.stroke();
+      ctx.font = '700 9px ui-monospace, Menlo, Consolas, monospace';
+      ctx.fillStyle = '#c9b8ff';
+      ctx.textAlign = 'center';
+      ctx.fillText(`λ/4 Zₘ=${rf.zm.toFixed(0)}Ω`, lineX0 + splitPx + (lineW - splitPx) * 0.5, by + 11);
+    } else {
+      drawConductorSegment(lineX0, lineW, baseCoreHalfH, false);
+    }
+
+    // Current glow overlay along center conductor
+    if (state.showEfield) {
+      for (let s = 0; s < segs; s++) {
+        const k = Math.min(N, Math.round((s / segs) * N));
+        const iNorm = Math.min(1, Math.abs(Icent[k] * Z0) / 1.5);
+        if (iNorm > 0.08) {
+          ctx.fillStyle = `rgba(255, 245, 210, ${(iNorm * 0.45).toFixed(3)})`;
+          ctx.fillRect(lineX0 + s * segW, midY - baseCoreHalfH * 0.6, segW + 0.6, baseCoreHalfH * 1.2);
+        }
+      }
+    }
+
+    // 5. Left Endpoint: RF Signal Generator Block (V_S, Z_S)
+    const srcCx = c.x + 31;
+    const srcR = 19;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(srcCx, midY, srcR, 0, Math.PI * 2);
+    ctx.fillStyle = state.flashPulse > 0.05
+      ? `rgba(255, 190, 92, ${(0.22 + state.flashPulse * 0.35).toFixed(2)})`
+      : 'rgba(14, 24, 44, 0.92)';
+    ctx.fill();
+    ctx.strokeStyle = state.excMode === 'cw' ? '#58dcff' : '#ffbe5c';
+    ctx.lineWidth = 1.8;
+    ctx.stroke();
+
+    // Waveform glyph inside source circle
+    ctx.beginPath();
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1.6;
+    if (state.excMode === 'cw') {
+      for (let i = -9; i <= 9; i++) {
+        const gx = srcCx + i;
+        const gy = midY - Math.sin((i / 9) * Math.PI) * 6.5;
+        if (i === -9) ctx.moveTo(gx, gy);
+        else ctx.lineTo(gx, gy);
+      }
+    } else if (state.excMode === 'gaussian') {
+      for (let i = -9; i <= 9; i++) {
+        const gx = srcCx + i;
+        const gy = midY + 5 - Math.exp(-0.5 * (i / 2.8) * (i / 2.8)) * 12;
+        if (i === -9) ctx.moveTo(gx, gy);
+        else ctx.lineTo(gx, gy);
+      }
+    } else {
+      ctx.moveTo(srcCx - 9, midY + 5);
+      ctx.lineTo(srcCx - 2, midY + 5);
+      ctx.lineTo(srcCx - 2, midY - 6);
+      ctx.lineTo(srcCx + 9, midY - 6);
+    }
+    ctx.stroke();
+
+    // Connector flange from generator to coax
+    ctx.strokeStyle = '#9bb8e8';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(srcCx + srcR, midY);
+    ctx.lineTo(lineX0, midY);
+    ctx.stroke();
+
+    ctx.font = '700 9.5px ui-monospace, Menlo, Consolas, monospace';
+    ctx.fillStyle = '#8fa7d4';
+    ctx.textAlign = 'center';
+    ctx.fillText(`Zₛ=${state.zs}Ω`, srcCx, midY + srcR + 13);
+    ctx.restore();
+
+    // 6. Right Endpoint: Dynamic Schematic Load Termination Z_L
+    const loadX = lineX0 + lineW;
+    const boxX = loadX + 12;
+    const boxW = 54;
+    const boxH = outerHalfH * 2 + 4;
+    const boxY = midY - boxH * 0.5;
+
+    // Connecting leads from coax end to load terminal
+    ctx.strokeStyle = '#a9c2eb';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(loadX, midY);
+    ctx.lineTo(boxX + 10, midY);
+    ctx.moveTo(loadX, midY + outerHalfH - shieldThick * 0.5);
+    ctx.lineTo(boxX + 10, midY + outerHalfH - shieldThick * 0.5);
+    ctx.stroke();
+
+    // Load enclosure
+    const loadGlow = rf.gammaMag > 0.6 ? 'rgba(255, 96, 131, 0.45)' : (rf.gammaMag < 0.08 ? 'rgba(74, 242, 178, 0.45)' : 'rgba(255, 190, 92, 0.4)');
+    drawRoundedPanel(boxX, boxY, boxW, boxH, 8, 'rgba(10, 16, 30, 0.92)', loadGlow);
+
+    const lx = boxX + boxW * 0.5;
+    ctx.strokeStyle = '#eef5ff';
+    ctx.lineWidth = 1.8;
+    if (state.loadType === 'open') {
+      // Open circuit terminals
+      ctx.beginPath();
+      ctx.moveTo(lx, boxY + 10);
+      ctx.lineTo(lx, midY - 7);
+      ctx.moveTo(lx, midY + 7);
+      ctx.lineTo(lx, boxY + boxH - 10);
+      ctx.stroke();
+      ctx.fillStyle = '#ff6083';
+      ctx.beginPath();
+      ctx.arc(lx, midY - 7, 3, 0, Math.PI * 2);
+      ctx.arc(lx, midY + 7, 3, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (state.loadType === 'short') {
+      // Bold short-circuit jumper
+      ctx.strokeStyle = '#ff6083';
+      ctx.lineWidth = 3.2;
+      ctx.beginPath();
+      ctx.moveTo(lx, boxY + 9);
+      ctx.lineTo(lx, boxY + boxH - 9);
+      ctx.stroke();
+    } else {
+      // Resistor zigzag + optional L/C glyph
+      const hasX = Math.abs(state.xl) >= 1;
+      const topY = boxY + 8;
+      const botY = boxY + boxH - 8;
+      const rEnd = hasX ? midY - 1 : botY - 5;
+
+      ctx.strokeStyle = '#58dcff';
+      ctx.beginPath();
+      ctx.moveTo(lx, topY);
+      const zigTop = topY + 5;
+      const zigSteps = 4;
+      const zigH = Math.max(10, (rEnd - zigTop) / zigSteps);
+      ctx.lineTo(lx, zigTop);
+      for (let i = 0; i < zigSteps; i++) {
+        const yy = zigTop + (i + 0.5) * zigH;
+        ctx.lineTo(lx + (i % 2 === 0 ? 6 : -6), yy);
+      }
+      ctx.lineTo(lx, rEnd);
+      ctx.stroke();
+
+      if (hasX && state.xl > 0) {
+        // Inductor coils
+        ctx.strokeStyle = '#a78bfa';
+        ctx.beginPath();
+        const coilStart = rEnd + 2;
+        const coilR = Math.min(4.5, (botY - coilStart - 4) / 6);
+        for (let i = 0; i < 3; i++) {
+          ctx.arc(lx, coilStart + coilR + i * coilR * 2, coilR, -Math.PI / 2, Math.PI / 2);
+        }
+        ctx.stroke();
+      } else if (hasX && state.xl < 0) {
+        // Capacitor plates
+        ctx.strokeStyle = '#4af2b2';
+        const capY = (rEnd + botY) * 0.5;
+        ctx.beginPath();
+        ctx.moveTo(lx, rEnd);
+        ctx.lineTo(lx, capY - 3);
+        ctx.moveTo(lx - 8, capY - 3);
+        ctx.lineTo(lx + 8, capY - 3);
+        ctx.moveTo(lx - 8, capY + 3);
+        ctx.lineTo(lx + 8, capY + 3);
+        ctx.moveTo(lx, capY + 3);
+        ctx.lineTo(lx, botY);
+        ctx.stroke();
+      } else {
+        ctx.strokeStyle = '#58dcff';
+        ctx.beginPath();
+        ctx.moveTo(lx, rEnd);
+        ctx.lineTo(lx, botY);
+        ctx.stroke();
+      }
+    }
+
+    ctx.font = '700 9.5px ui-monospace, Menlo, Consolas, monospace';
+    ctx.fillStyle = '#c8d7f5';
+    ctx.textAlign = 'center';
+    const shortLoadLabel = state.loadType === 'open'
+      ? 'OPEN ∞'
+      : state.loadType === 'short'
+        ? 'SHORT 0Ω'
+        : `${Math.round(state.rl)}${state.xl === 0 ? 'Ω' : (state.xl > 0 ? `+j${Math.round(state.xl)}` : `-j${Math.abs(Math.round(state.xl))}`)}`;
+    ctx.fillText(shortLoadLabel, lx, boxY + boxH + 12);
+
+    // Probe indicator line on coax too!
+    if (state.probeActive && state.probeCell >= 0 && state.probeCell <= N) {
+      const px = lineX0 + (state.probeCell / N) * lineW;
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+      ctx.setLineDash([2, 2]);
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(px, midY - outerHalfH - 6);
+      ctx.lineTo(px, midY + outerHalfH + 6);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  }
+
+  function drawSmithChart() {
+    const { cx, cy, r } = layout.smith;
+    const panelPad = 24;
+    const panelX = cx - r - panelPad;
+    const panelY = cy - r - 38;
+    const panelW = (r + panelPad) * 2;
+    const panelH = (r + panelPad) * 2 + 34;
+
+    drawRoundedPanel(panelX, panelY, panelW, panelH, 16, 'rgba(7, 11, 22, 0.76)',
+      state.smithDragging ? 'rgba(88, 220, 255, 0.55)' : 'rgba(148, 179, 255, 0.16)');
+
+    // Header
+    ctx.font = '700 10.5px ui-monospace, Menlo, Consolas, monospace';
+    ctx.fillStyle = '#9bb2de';
+    ctx.textAlign = 'center';
+    ctx.fillText('LIVE INTERACTIVE SMITH CHART  (DRAG Zʟ)', cx, panelY + 20);
+
+    // Unit Disk Backdrop
+    const diskGrad = ctx.createRadialGradient(cx, cy, r * 0.05, cx, cy, r);
+    diskGrad.addColorStop(0, 'rgba(22, 38, 68, 0.55)');
+    diskGrad.addColorStop(1, 'rgba(6, 10, 22, 0.88)');
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fillStyle = diskGrad;
+    ctx.fill();
+
+    // Clip all interior Smith Chart gridlines strictly to |Gamma| <= 1
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.clip();
+
+    // 1. Constant Resistance (r) Circles: center = (r/(r+1), 0), radius = 1/(r+1)
+    const rVals = [0.2, 0.5, 1.0, 2.0, 5.0];
+    for (const rv of rVals) {
+      const cr = r / (rv + 1);
+      const ccx = cx + (rv / (rv + 1)) * r;
+      ctx.beginPath();
+      ctx.arc(ccx, cy, cr, 0, Math.PI * 2);
+      ctx.strokeStyle = rv === 1.0 ? 'rgba(88, 220, 255, 0.34)' : 'rgba(130, 165, 235, 0.16)';
+      ctx.lineWidth = rv === 1.0 ? 1.35 : 1.0;
+      ctx.stroke();
+    }
+
+    // 2. Constant Reactance (x) Arcs: center = (1, 1/x), radius = 1/|x|
+    const xVals = [0.2, 0.5, 1.0, 2.0, 5.0];
+    for (const xv of xVals) {
+      const xr = r / xv;
+      const xcx = cx + r;
+      // Inductive (+jx, upper half-plane -> canvas y < cy)
+      ctx.beginPath();
+      ctx.arc(xcx, cy - xr, xr, 0, Math.PI * 2);
+      ctx.strokeStyle = xv === 1.0 ? 'rgba(167, 139, 250, 0.30)' : 'rgba(130, 165, 235, 0.14)';
+      ctx.lineWidth = xv === 1.0 ? 1.2 : 0.95;
+      ctx.stroke();
+
+      // Capacitive (-jx, lower half-plane -> canvas y > cy)
+      ctx.beginPath();
+      ctx.arc(xcx, cy + xr, xr, 0, Math.PI * 2);
+      ctx.strokeStyle = xv === 1.0 ? 'rgba(74, 242, 178, 0.26)' : 'rgba(130, 165, 235, 0.14)';
+      ctx.lineWidth = xv === 1.0 ? 1.2 : 0.95;
+      ctx.stroke();
+    }
+
+    // Horizontal Pure Resistance Axis (x = 0)
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.32)';
+    ctx.lineWidth = 1.1;
+    ctx.beginPath();
+    ctx.moveTo(cx - r, cy);
+    ctx.lineTo(cx + r, cy);
+    ctx.stroke();
+
+    // Subtle r-value labels along real axis
+    ctx.font = '600 9px ui-monospace, Menlo, Consolas, monospace';
+    ctx.fillStyle = 'rgba(160, 185, 235, 0.65)';
+    ctx.textAlign = 'center';
+    for (const rv of [0.2, 0.5, 1, 2, 5]) {
+      const gx = cx + ((rv - 1) / (rv + 1)) * r;
+      ctx.fillText(String(rv), gx, cy - 4);
+    }
+
+    // 3. Constant-VSWR Circle for active reflection |Gamma_in|
+    if (state.showVswrRing && rf.gammaMag > 0.015) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, rf.gammaMag * r, 0, Math.PI * 2);
+      ctx.setLineDash([5, 4]);
+      ctx.strokeStyle = rf.gammaMag > 0.7 ? 'rgba(255, 96, 131, 0.65)' : 'rgba(255, 190, 92, 0.62)';
+      ctx.lineWidth = 1.6;
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // 4. Quarter-Wave Transformation Arc (from raw Z_L to transformed Z_in)
+    if (state.qwaveOn && state.loadType !== 'open' && state.loadType !== 'short') {
+      const lx = cx + rf.gammaL_r * r;
+      const ly = cy - rf.gammaL_i * r;
+      const ix = cx + rf.gammaIn_r * r;
+      const iy = cy - rf.gammaIn_i * r;
+
+      // Plot exact intermediate impedance trace along the lambda/4 transformer!
+      ctx.beginPath();
+      const steps = 36;
+      const betaLFull = (2.0 * Math.PI * rf.qwCells) / rf.lambdaCells;
+      for (let i = 0; i <= steps; i++) {
+        const bL = (i / steps) * betaLFull;
+        const cB = Math.cos(bL), sB = Math.sin(bL);
+        const [zr, zi] = cDiv(state.rl * cB, state.xl * cB + rf.zm * sB, rf.zm * cB - state.xl * sB, state.rl * sB);
+        const [gr, gi] = cDiv(rf.zm * zr - Z0, rf.zm * zi, rf.zm * zr + Z0, rf.zm * zi);
+        const px = cx + gr * r;
+        const py = cy - gi * r;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.strokeStyle = 'rgba(167, 139, 250, 0.85)';
+      ctx.lineWidth = 2.2;
+      ctx.setLineDash([4, 3]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Ghost dot for raw mismatched Z_L
+      ctx.beginPath();
+      ctx.arc(lx, ly, 5.5, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255, 190, 92, 0.25)';
+      ctx.fill();
+      ctx.strokeStyle = '#ffbe5c';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      // Label raw Z_L
+      ctx.font = '700 9px ui-monospace, Menlo, Consolas, monospace';
+      ctx.fillStyle = '#ffbe5c';
+      ctx.textAlign = 'left';
+      ctx.fillText('Zʟ', lx + 8, ly - 6);
+
+      // Matched Z_in dot
+      ctx.beginPath();
+      ctx.arc(ix, iy, 6.5, 0, Math.PI * 2);
+      ctx.fillStyle = '#4af2b2';
+      ctx.fill();
+    }
+
+    // 5. Probe impedance rotation point on VSWR circle when hovering transmission line!
+    if (state.probeActive && state.probeCell >= 0 && state.probeCell <= N) {
+      const dCells = N - state.probeCell;
+      const theta = -4.0 * Math.PI * (dCells / rf.lambdaCells);
+      const cosT = Math.cos(theta), sinT = Math.sin(theta);
+      const pr = rf.gammaIn_r * cosT - rf.gammaIn_i * sinT;
+      const pi = rf.gammaIn_r * sinT + rf.gammaIn_i * cosT;
+      const px = cx + pr * r;
+      const py = cy - pi * r;
+      ctx.beginPath();
+      ctx.arc(px, py, 4.5, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffffff';
+      ctx.fill();
+      ctx.strokeStyle = '#58dcff';
+      ctx.lineWidth = 1.6;
+      ctx.stroke();
+    }
+
+    // 6. Glowing Reflection Coefficient Vector Γ (from center 50Ω to active point)
+    const activeGr = state.qwaveOn ? rf.gammaIn_r : rf.gammaL_r;
+    const activeGi = state.qwaveOn ? rf.gammaIn_i : rf.gammaL_i;
+    const ax = cx + activeGr * r;
+    const ay = cy - activeGi * r;
+
+    // Bullseye center (50 Ohm Match)
+    ctx.beginPath();
+    ctx.arc(cx, cy, 3.8, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(74, 242, 178, 0.85)';
+    ctx.fill();
+
+    if (Math.hypot(activeGr, activeGi) > 0.02) {
+      const vecColor = rf.gammaMag > 0.7 ? '#ff6083' : (rf.gammaMag > 0.25 ? '#ffbe5c' : '#58dcff');
+      // Glow pass
+      ctx.strokeStyle = vecColor + '55';
+      ctx.lineWidth = 6;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(ax, ay);
+      ctx.stroke();
+
+      // Core vector
+      ctx.strokeStyle = vecColor;
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(ax, ay);
+      ctx.stroke();
+
+      // Arrowhead
+      const ang = Math.atan2(ay - cy, ax - cx);
+      ctx.fillStyle = vecColor;
+      ctx.beginPath();
+      ctx.moveTo(ax, ay);
+      ctx.lineTo(ax - 9 * Math.cos(ang - 0.36), ay - 9 * Math.sin(ang - 0.36));
+      ctx.lineTo(ax - 9 * Math.cos(ang + 0.36), ay - 9 * Math.sin(ang + 0.36));
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    ctx.restore(); // End unit circle clip
+
+    // Outer Rim Ring (|Gamma| = 1)
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.45)';
+    ctx.lineWidth = 1.6;
+    ctx.stroke();
+
+    // Rim Labels: Short, Open, +jX (Inductive), -jX (Capacitive)
+    ctx.font = '700 9.5px ui-monospace, Menlo, Consolas, monospace';
+    ctx.fillStyle = '#9db4df';
+    ctx.textAlign = 'center';
+    ctx.fillText('+j50Ω (IND)', cx, cy - r - 6);
+    ctx.fillText('−j50Ω (CAP)', cx, cy + r + 14);
+    ctx.textAlign = 'right';
+    ctx.fillText('0Ω', cx - r - 5, cy + 3);
+    ctx.textAlign = 'left';
+    ctx.fillText('∞', cx + r + 5, cy + 3);
+
+    // Draggable Load Handle (drawn outside clip so it stays full & crisp on rim!)
+    const hx = cx + rf.gammaL_r * r;
+    const hy = cy - rf.gammaL_i * r;
+
+    // Pulsing halo
+    const haloR = state.smithDragging ? 17 : (state.smithHover ? 15 : 12);
+    const haloGrad = ctx.createRadialGradient(hx, hy, 2, hx, hy, haloR);
+    haloGrad.addColorStop(0, 'rgba(88, 220, 255, 0.72)');
+    haloGrad.addColorStop(1, 'rgba(88, 220, 255, 0)');
+    ctx.fillStyle = haloGrad;
+    ctx.beginPath();
+    ctx.arc(hx, hy, haloR, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.arc(hx, hy, state.smithDragging ? 7.5 : 6.2, 0, Math.PI * 2);
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+    ctx.strokeStyle = '#58dcff';
+    ctx.lineWidth = 2.4;
+    ctx.stroke();
+
+    // Compact live Gamma & Z readout at bottom of Smith panel
+    ctx.font = '650 10px ui-monospace, Menlo, Consolas, monospace';
+    ctx.fillStyle = '#b4c7ec';
+    ctx.textAlign = 'center';
+    const footText = `|Γ|=${rf.gammaMag.toFixed(3)}  ∠${rf.gammaDeg.toFixed(1)}°  ·  VSWR ${rf.vswr === Infinity ? '∞' : rf.vswr.toFixed(2)}`;
+    ctx.fillText(footText, cx, panelY + panelH - 8);
+  }
+
+  // =========================================================================
+  // INTERACTION: SMITH CHART DRAG & CABLE PROBE
+  // =========================================================================
+  function setLoadFromSmithPoint(px, py) {
+    const { cx, cy, r } = layout.smith;
+    let gr = (px - cx) / r;
+    let gi = -(py - cy) / r; // Invert Y back to math convention
+    const mag = Math.hypot(gr, gi);
+    if (mag > 0.998) {
+      gr = (gr / mag) * 0.998;
+      gi = (gi / mag) * 0.998;
+    }
+
+    // Soft magnetic snaps for textbook reference points
+    if (Math.hypot(gr, gi) < 0.042) {
+      const wasMatched = state.loadType === 'matched';
+      state.loadType = 'matched';
+      state.rl = 50;
+      state.xl = 0;
+      if (!wasMatched) playMatchSnapClick();
+    } else if (Math.hypot(gr - 1, gi) < 0.055) {
+      state.loadType = 'open';
+      state.rl = 300;
+      state.xl = 0;
+    } else if (Math.hypot(gr + 1, gi) < 0.055) {
+      state.loadType = 'short';
+      state.rl = 0;
+      state.xl = 0;
+    } else {
+      // Exact inverse Möbius transform: z = (1 + Gamma) / (1 - Gamma)
+      const [zr, zi] = cDiv(1 + gr, gi, 1 - gr, -gi);
+      state.loadType = 'custom';
+      state.rl = Math.max(0, Math.min(300, Math.round(zr * Z0)));
+      state.xl = Math.max(-200, Math.min(200, Math.round(zi * Z0)));
+    }
+
+    state.preset = '';
+    updateRFParameters();
+    syncUI();
+  }
+
+  function getPointerPos(e) {
+    const rect = canvas.getBoundingClientRect();
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  }
+
+  function isInsideSmith(x, y) {
+    const { cx, cy, r } = layout.smith;
+    return Math.hypot(x - cx, y - cy) <= r + 18;
+  }
+
+  function updateProbeFromPoint(x, y) {
+    const s = layout.scope;
+    const c = layout.coax;
+    const gx = s.x + 48;
+    const gw = s.w - 72;
+    const cx0 = c.x + 62;
+    const cw = c.w - 138;
+
+    if (x >= gx && x <= gx + gw && y >= s.y + 26 && y <= s.y + s.h - 20) {
+      state.probeActive = true;
+      state.probeCell = Math.max(0, Math.min(N, Math.round(((x - gx) / gw) * N)));
+    } else if (x >= cx0 && x <= cx0 + cw && y >= c.y + 18 && y <= c.y + c.h - 10) {
+      state.probeActive = true;
+      state.probeCell = Math.max(0, Math.min(N, Math.round(((x - cx0) / cw) * N)));
+    } else {
+      state.probeActive = false;
+      state.probeCell = -1;
+    }
+  }
+
+  canvas.addEventListener('pointerdown', (e) => {
+    const { x, y } = getPointerPos(e);
+    if (isInsideSmith(x, y)) {
+      state.smithDragging = true;
+      canvas.setPointerCapture(e.pointerId);
+      canvas.classList.add('smith-drag');
+      setLoadFromSmithPoint(x, y);
+    }
+  });
+
+  canvas.addEventListener('pointermove', (e) => {
+    const { x, y } = getPointerPos(e);
+    if (state.smithDragging) {
+      setLoadFromSmithPoint(x, y);
+      return;
+    }
+    state.smithHover = isInsideSmith(x, y);
+    updateProbeFromPoint(x, y);
+    canvas.classList.toggle('smith-hover', state.smithHover);
+    canvas.classList.toggle('probe-hover', !state.smithHover && state.probeActive);
+  });
+
+  function endSmithDrag(e) {
+    if (state.smithDragging) {
+      state.smithDragging = false;
+      canvas.classList.remove('smith-drag');
+      if (e && e.pointerId !== undefined && canvas.hasPointerCapture(e.pointerId)) {
+        canvas.releasePointerCapture(e.pointerId);
+      }
+    }
+  }
+  canvas.addEventListener('pointerup', endSmithDrag);
+  canvas.addEventListener('pointercancel', endSmithDrag);
+  canvas.addEventListener('pointerleave', () => {
+    state.probeActive = false;
+    state.probeCell = -1;
+    state.smithHover = false;
+    canvas.classList.remove('smith-hover', 'probe-hover');
+  });
+
+  // =========================================================================
+  // UI SYNCHRONIZATION & EVENT HANDLERS
+  // =========================================================================
+  const elModeBadge = document.getElementById('mode-badge');
+  const elMatchBadge = document.getElementById('match-badge');
+  const elTelGamma = document.getElementById('tel-gamma');
+  const elTelVswr = document.getElementById('tel-vswr');
+  const elTelRl = document.getElementById('tel-rl');
+  const elTelZl = document.getElementById('tel-zl');
+  const elTelPdel = document.getElementById('tel-pdel');
+  const elTelPref = document.getElementById('tel-pref');
+  const elPowerFill = document.getElementById('power-fill');
+  const elTelPbar = document.getElementById('tel-pbar');
+  const elTelFreq = document.getElementById('tel-freq');
+  const elTelLambda = document.getElementById('tel-lambda');
+  const elTelZin = document.getElementById('tel-zin');
+
+  const elSlFreq = document.getElementById('sl-freq');
+  const elValFreq = document.getElementById('val-freq');
+  const elSlZs = document.getElementById('sl-zs');
+  const elValZs = document.getElementById('val-zs');
+  const elSlAlpha = document.getElementById('sl-alpha');
+  const elValAlpha = document.getElementById('val-alpha');
+  const elSlRl = document.getElementById('sl-rl');
+  const elValRl = document.getElementById('val-rl');
+  const elSlXl = document.getElementById('sl-xl');
+  const elValXl = document.getElementById('val-xl');
+
+  const elChkAutoTdr = document.getElementById('chk-auto-tdr');
+  const elChkQwave = document.getElementById('chk-qwave');
+  const elValZm = document.getElementById('val-zm');
+  const elValQlen = document.getElementById('val-qlen');
+  const elValQzin = document.getElementById('val-qzin');
+
+  const elChkVtot = document.getElementById('chk-vtot');
+  const elChkEnv = document.getElementById('chk-env');
+  const elChkCurr = document.getElementById('chk-curr');
+  const elChkVfwd = document.getElementById('chk-vfwd');
+  const elChkVref = document.getElementById('chk-vref');
+  const elChkEfield = document.getElementById('chk-efield');
+  const elChkVswrRing = document.getElementById('chk-vswr-ring');
+  const elChkNodes = document.getElementById('chk-nodes');
+
+  const elDrawer = document.getElementById('drawer');
+  const elBtnPlay = document.getElementById('btn-play');
+  const elBtnSound = document.getElementById('btn-sound');
+  const elBtnToggleDrawer = document.getElementById('btn-toggle-drawer');
+
+  function formatComplexOhms(r, x) {
+    if (!Number.isFinite(r)) return '∞ Ω (Open)';
+    if (r < 0.05 && Math.abs(x) < 0.05) return '0.0 Ω (Short)';
+    const sign = x >= 0 ? '+' : '−';
+    return `${r.toFixed(1)} ${sign} j${Math.abs(x).toFixed(1)} Ω`;
+  }
+
+  function syncTelemetry() {
+    // Mode badge
+    if (state.excMode === 'cw') {
+      elModeBadge.textContent = state.qwaveOn ? 'CW + λ/4 Stub' : 'CW RF Sine';
+      elModeBadge.classList.remove('tdr');
+    } else {
+      elModeBadge.textContent = state.excMode === 'gaussian' ? 'TDR Pulse' : 'TDR Step';
+      elModeBadge.classList.add('tdr');
+    }
+
+    // Match Quality Badge
+    elMatchBadge.className = 'status-pill';
+    if (rf.vswr <= 1.06) {
+      elMatchBadge.textContent = 'Perfect Match';
+    } else if (rf.vswr <= 1.55) {
+      elMatchBadge.textContent = 'Good Match';
+      elMatchBadge.classList.add('good');
+    } else if (rf.vswr <= 3.2) {
+      elMatchBadge.textContent = 'High Reflection!';
+      elMatchBadge.classList.add('warn');
+    } else if (rf.vswr < 25) {
+      elMatchBadge.textContent = 'High Reflection!';
+      elMatchBadge.classList.add('danger');
+    } else {
+      elMatchBadge.textContent = 'Total Standing Wave';
+      elMatchBadge.classList.add('danger');
+    }
+
+    elTelGamma.textContent = `${rf.gammaMag.toFixed(3)} ∠${rf.gammaDeg.toFixed(1)}°`;
+    elTelVswr.textContent = rf.vswr === Infinity ? '∞ : 1' : `${rf.vswr.toFixed(2)} : 1`;
+    elTelVswr.className = 'tele-val ' + (rf.vswr <= 1.2 ? 'mint' : (rf.vswr <= 2.5 ? 'amber' : 'rose'));
+    elTelRl.textContent = rf.returnLossDb === Infinity ? '∞ dB' : `${rf.returnLossDb.toFixed(1)} dB`;
+
+    if (state.loadType === 'open') {
+      elTelZl.textContent = '∞ Ω (Open)';
+    } else if (state.loadType === 'short') {
+      elTelZl.textContent = '0.0 Ω (Short)';
+    } else {
+      elTelZl.textContent = formatComplexOhms(state.rl, state.xl);
+    }
+
+    elTelPdel.textContent = `${rf.pDelPct.toFixed(1)}%`;
+    elTelPref.textContent = `${rf.pRefPct.toFixed(1)}%`;
+    elPowerFill.style.width = `${rf.pDelPct.toFixed(1)}%`;
+    elTelPbar.textContent = `${rf.pDelPct.toFixed(0)}%`;
+
+    elTelFreq.textContent = `${state.freqGHz.toFixed(2)} GHz`;
+    elTelLambda.textContent = `${rf.lambdaCm.toFixed(1)} cm`;
+    elTelZin.textContent = Number.isFinite(rf.zin_r)
+      ? `${rf.zin_r.toFixed(1)}${Math.abs(rf.zin_i) < 0.2 ? '' : (rf.zin_i > 0 ? `+j${rf.zin_i.toFixed(0)}` : `−j${Math.abs(rf.zin_i).toFixed(0)}`)} Ω`
+      : '∞ Ω';
+
+    // Quarter-wave box
+    elValZm.textContent = (state.loadType === 'open' || state.loadType === 'short')
+      ? 'N/A (Open/Short)'
+      : `${rf.zm.toFixed(1)} Ω`;
+    elValQlen.textContent = `${(rf.qwCells * DZ_PHYS * 100).toFixed(2)} cm`;
+    elValQzin.textContent = formatComplexOhms(rf.zin_r, rf.zin_i);
+  }
+
+  function syncUI() {
+    elSlFreq.value = state.freqGHz;
+    elValFreq.textContent = `${state.freqGHz.toFixed(2)} GHz`;
+    elSlZs.value = state.zs;
+    elValZs.textContent = `${state.zs} Ω`;
+    elSlAlpha.value = state.alphaNp;
+    elValAlpha.textContent = `${state.alphaNp.toFixed(2)} Np/m`;
+
+    elSlRl.value = state.rl;
+    elValRl.textContent = state.loadType === 'open' ? '∞ Ω' : `${state.rl} Ω`;
+    elSlXl.value = state.xl;
+    elValXl.textContent = state.xl === 0 ? '0 Ω' : `${state.xl > 0 ? '+' : '−'}j${Math.abs(state.xl)} Ω`;
+
+    elChkAutoTdr.checked = state.autoTdr;
+    elChkQwave.checked = state.qwaveOn;
+    elChkVtot.checked = state.showVtot;
+    elChkEnv.checked = state.showEnv;
+    elChkCurr.checked = state.showCurr;
+    elChkVfwd.checked = state.showVfwd;
+    elChkVref.checked = state.showVref;
+    elChkEfield.checked = state.showEfield;
+    elChkVswrRing.checked = state.showVswrRing;
+    elChkNodes.checked = state.showNodes;
+
+    document.querySelectorAll('.preset-btn').forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.preset === state.preset);
+    });
+    document.querySelectorAll('#exc-mode-row .seg-btn').forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.excmode === state.excMode);
+    });
+    document.querySelectorAll('#load-type-row .seg-btn').forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.ltype === state.loadType);
+    });
+    document.querySelectorAll('.speed-btn').forEach((btn) => {
+      btn.classList.toggle('active', parseFloat(btn.dataset.speed) === state.speed);
+    });
+
+    elBtnPlay.textContent = state.playing ? '⏸ Pause' : '▶ Play';
+    elBtnPlay.classList.toggle('active', state.playing);
+    elBtnSound.textContent = state.audioOn ? '🔊 Audio' : '🔇 Audio';
+    elBtnSound.classList.toggle('active', state.audioOn);
+    elBtnToggleDrawer.classList.toggle('active', state.drawerOpen);
+    elDrawer.classList.toggle('collapsed', !state.drawerOpen);
+
+    syncTelemetry();
+  }
+
+  // Drawer tabs
+  document.querySelectorAll('.tab-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach((b) => b.classList.remove('active'));
+      document.querySelectorAll('.tab-pane').forEach((p) => p.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+    });
+  });
+
+  // Preset buttons
+  document.querySelectorAll('.preset-btn').forEach((btn) => {
+    btn.addEventListener('click', () => applyPreset(btn.dataset.preset));
+  });
+
+  // Excitation mode buttons
+  document.querySelectorAll('#exc-mode-row .seg-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      state.excMode = btn.dataset.excmode;
+      state.preset = '';
+      clearFields();
+      if (state.excMode !== 'cw') {
+        triggerTDRPulse(false);
+      }
+      syncUI();
+    });
+  });
+
+  // Load type buttons
+  document.querySelectorAll('#load-type-row .seg-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const lt = btn.dataset.ltype;
+      state.loadType = lt;
+      state.preset = '';
+      if (lt === 'matched') { state.rl = 50; state.xl = 0; }
+      else if (lt === 'open') { state.rl = 300; state.xl = 0; }
+      else if (lt === 'short') { state.rl = 0; state.xl = 0; }
+      updateRFParameters();
+      syncUI();
+    });
+  });
+
+  // Sliders
+  elSlFreq.addEventListener('input', () => {
+    state.freqGHz = parseFloat(elSlFreq.value);
+    state.preset = '';
+    updateRFParameters();
+    syncUI();
+  });
+  elSlZs.addEventListener('input', () => {
+    state.zs = parseFloat(elSlZs.value);
+    state.preset = '';
+    syncUI();
+  });
+  elSlAlpha.addEventListener('input', () => {
+    state.alphaNp = parseFloat(elSlAlpha.value);
+    state.preset = '';
+    syncUI();
+  });
+  elSlRl.addEventListener('input', () => {
+    state.rl = parseFloat(elSlRl.value);
+    state.loadType = (state.rl === 50 && state.xl === 0) ? 'matched' : (state.rl === 0 && state.xl === 0 ? 'short' : 'custom');
+    state.preset = '';
+    updateRFParameters();
+    syncUI();
+  });
+  elSlXl.addEventListener('input', () => {
+    state.xl = parseFloat(elSlXl.value);
+    state.loadType = (state.rl === 50 && state.xl === 0) ? 'matched' : (state.rl === 0 && state.xl === 0 ? 'short' : 'custom');
+    state.preset = '';
+    updateRFParameters();
+    syncUI();
+  });
+
+  // Quick reactive buttons
+  document.getElementById('btn-ind-load').addEventListener('click', () => {
+    state.loadType = 'custom';
+    state.rl = 50;
+    state.xl = 75;
+    state.preset = '';
+    updateRFParameters();
+    syncUI();
+  });
+  document.getElementById('btn-cap-load').addEventListener('click', () => {
+    state.loadType = 'custom';
+    state.rl = 50;
+    state.xl = -75;
+    state.preset = '';
+    updateRFParameters();
+    syncUI();
+  });
+
+  // Pulse & Clear buttons
+  document.getElementById('btn-fire-pulse').addEventListener('click', () => triggerTDRPulse(true));
+  document.getElementById('btn-bar-pulse').addEventListener('click', () => triggerTDRPulse(true));
+  document.getElementById('btn-clear-line').addEventListener('click', () => clearFields());
+
+  // Toggles
+  elChkAutoTdr.addEventListener('change', () => { state.autoTdr = elChkAutoTdr.checked; });
+  elChkQwave.addEventListener('change', () => {
+    state.qwaveOn = elChkQwave.checked;
+    if (state.qwaveOn && (state.loadType === 'open' || state.loadType === 'short')) {
+      // Auto-select 200 Ohm so user immediately sees lambda/4 magic!
+      state.loadType = 'custom';
+      state.rl = 200;
+      state.xl = 0;
+    }
+    updateRFParameters();
+    syncUI();
+  });
+  elChkVtot.addEventListener('change', () => { state.showVtot = elChkVtot.checked; });
+  elChkEnv.addEventListener('change', () => { state.showEnv = elChkEnv.checked; });
+  elChkCurr.addEventListener('change', () => { state.showCurr = elChkCurr.checked; });
+  elChkVfwd.addEventListener('change', () => { state.showVfwd = elChkVfwd.checked; });
+  elChkVref.addEventListener('change', () => { state.showVref = elChkVref.checked; });
+  elChkEfield.addEventListener('change', () => { state.showEfield = elChkEfield.checked; });
+  elChkVswrRing.addEventListener('change', () => { state.showVswrRing = elChkVswrRing.checked; });
+  elChkNodes.addEventListener('change', () => { state.showNodes = elChkNodes.checked; });
+
+  // Transport bar
+  elBtnPlay.addEventListener('click', () => {
+    state.playing = !state.playing;
+    syncUI();
+  });
+  document.getElementById('btn-reset').addEventListener('click', () => {
+    applyPreset(state.preset || 'matched');
+  });
+  document.querySelectorAll('.speed-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      state.speed = parseFloat(btn.dataset.speed);
+      syncUI();
+    });
+  });
+  elBtnSound.addEventListener('click', () => {
+    state.audioOn = !state.audioOn;
+    if (state.audioOn) ensureAudio();
+    syncUI();
+  });
+  elBtnToggleDrawer.addEventListener('click', () => {
+    state.drawerOpen = !state.drawerOpen;
+    syncUI();
+  });
+
+  function toggleZen() {
+    state.zenMode = !state.zenMode;
+    document.body.classList.toggle('zen-mode', state.zenMode);
+  }
+  document.getElementById('btn-zen').addEventListener('click', toggleZen);
+  document.getElementById('btn-zen-restore').addEventListener('click', toggleZen);
+
+  // Keyboard shortcuts
+  window.addEventListener('keydown', (e) => {
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+    if (e.code === 'Space') {
+      e.preventDefault();
+      state.playing = !state.playing;
+      syncUI();
+    } else if (e.key === 'h' || e.key === 'H') {
+      toggleZen();
+    } else if (e.key === 'f' || e.key === 'F') {
+      triggerTDRPulse(true);
+    } else if (e.key === 'r' || e.key === 'R') {
+      applyPreset(state.preset || 'matched');
+    } else if (e.key === 'q' || e.key === 'Q') {
+      elChkQwave.checked = !elChkQwave.checked;
+      elChkQwave.dispatchEvent(new Event('change'));
+    }
+  });
+
+  window.addEventListener('resize', resizeCanvas);
+
+  // =========================================================================
+  // MAIN ANIMATION LOOP
+  // =========================================================================
+  let stepAccumulator = 0;
+
+  function frame() {
+    if (state.playing) {
+      // Base 3.2 FDTD steps per 60fps frame -> smooth, visually readable RF propagation
+      stepAccumulator += 3.2 * state.speed;
+      const stepsToRun = Math.min(18, Math.floor(stepAccumulator));
+      stepAccumulator -= stepsToRun;
+      for (let i = 0; i < stepsToRun; i++) {
+        stepFDTD();
+      }
+    }
+
+    if (state.flashPulse > 0) state.flashPulse = Math.max(0, state.flashPulse - 0.04);
+    if (state.flashEcho > 0) state.flashEcho = Math.max(0, state.flashEcho - 0.025);
+
+    computeLayout();
+
+    ctx.save();
+    ctx.scale(DPR, DPR);
+    drawBackdrop();
+    drawOscilloscope();
+    drawCoaxGraphic();
+    drawSmithChart();
+    ctx.restore();
+
+    requestAnimationFrame(frame);
+  }
+
+  // Boot simulation
+  resizeCanvas();
+  applyPreset('matched');
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

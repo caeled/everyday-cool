@@ -1,0 +1,4025 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>NE555 — Inside the 555 Timer IC & Oscillator Bench</title>
+<style>
+  :root {
+    --bg-deep: #040711;
+    --panel-bg: rgba(9, 14, 26, 0.80);
+    --panel-bg-strong: rgba(8, 12, 24, 0.92);
+    --panel-border: rgba(148, 179, 255, 0.16);
+    --panel-border-hi: rgba(148, 179, 255, 0.36);
+    --text-main: #eef3ff;
+    --text-dim: #9aa9cc;
+    --text-muted: #68789c;
+    --accent-amber: #ffbe5c;
+    --accent-cyan: #58dcff;
+    --accent-mint: #4af2b2;
+    --accent-rose: #ff6083;
+    --accent-violet: #a78bfa;
+    --radius-lg: 14px;
+    --radius-md: 10px;
+    --radius-sm: 7px;
+    --mono: ui-monospace, "Cascadia Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Inter, Helvetica, Arial, sans-serif;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg-deep);
+    color: var(--text-main);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    touch-action: none;
+  }
+
+  #sim-canvas {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    cursor: default;
+  }
+  #sim-canvas.interactive-hover {
+    cursor: pointer;
+  }
+  #sim-canvas.panning {
+    cursor: grabbing;
+  }
+
+  /* HUD Layer */
+  .hud {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 10;
+  }
+  body.zen-mode .hud > :not(.zen-restore) {
+    opacity: 0;
+    pointer-events: none !important;
+  }
+
+  .panel {
+    pointer-events: auto;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-lg);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.52), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    transition: opacity 0.25s ease, transform 0.25s ease;
+  }
+
+  /* Top-Left Telemetry Card */
+  .top-left {
+    position: fixed;
+    top: 14px;
+    left: 14px;
+    width: min(400px, calc(100vw - 368px));
+    min-width: 280px;
+    padding: 11px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .brand-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .brand-title-wrap {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .brand-title {
+    font-size: 16px;
+    font-weight: 850;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+    background: linear-gradient(120deg, #fff5dc 0%, #ffbe5c 45%, #58dcff 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .mode-badge {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 999px;
+    border: 1px solid rgba(88, 220, 255, 0.42);
+    background: rgba(88, 220, 255, 0.12);
+    color: var(--accent-cyan);
+  }
+  .mode-badge.mono {
+    border-color: rgba(255, 190, 92, 0.45);
+    background: rgba(255, 190, 92, 0.14);
+    color: var(--accent-amber);
+  }
+  .mode-badge.pwm {
+    border-color: rgba(167, 139, 250, 0.48);
+    background: rgba(167, 139, 250, 0.15);
+    color: var(--accent-violet);
+  }
+
+  .status-pill {
+    font-size: 10px;
+    font-weight: 750;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: rgba(74, 242, 178, 0.14);
+    color: var(--accent-mint);
+    border: 1px solid rgba(74, 242, 178, 0.36);
+    white-space: nowrap;
+  }
+  .status-pill.discharging {
+    background: rgba(255, 190, 92, 0.15);
+    color: var(--accent-amber);
+    border-color: rgba(255, 190, 92, 0.42);
+  }
+  .status-pill.reset {
+    background: rgba(255, 96, 131, 0.18);
+    color: var(--accent-rose);
+    border-color: rgba(255, 96, 131, 0.48);
+  }
+  .status-pill.idle {
+    background: rgba(148, 179, 255, 0.12);
+    color: var(--text-dim);
+    border-color: rgba(148, 179, 255, 0.3);
+  }
+
+  .telemetry-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 5px;
+  }
+
+  .tele-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(148, 179, 255, 0.1);
+    border-radius: var(--radius-sm);
+    padding: 5px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+
+  .tele-label {
+    font-size: 9px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .tele-val {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--text-main);
+    white-space: nowrap;
+  }
+  .tele-val.amber { color: var(--accent-amber); }
+  .tele-val.cyan { color: var(--accent-cyan); }
+  .tele-val.mint { color: var(--accent-mint); }
+  .tele-val.rose { color: var(--accent-rose); }
+  .tele-val.dim { color: var(--text-dim); }
+
+  /* Capacitor Voltage Meter Bar with 1/3 and 2/3 Vcc markers */
+  .vc-meter-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 10.5px;
+    color: var(--text-dim);
+  }
+  .vc-track {
+    position: relative;
+    flex: 1;
+    height: 8px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.07);
+    border: 1px solid rgba(148, 179, 255, 0.14);
+    overflow: visible;
+  }
+  .vc-fill {
+    height: 100%;
+    width: 0%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #58dcff 0%, #4af2b2 45%, #ffbe5c 100%);
+    box-shadow: 0 0 10px rgba(255, 190, 92, 0.35);
+  }
+  .vc-tick {
+    position: absolute;
+    top: -3px;
+    bottom: -3px;
+    width: 2px;
+    border-radius: 1px;
+    pointer-events: none;
+  }
+  .vc-tick.trig {
+    background: var(--accent-cyan);
+    box-shadow: 0 0 6px var(--accent-cyan);
+  }
+  .vc-tick.th {
+    background: var(--accent-rose);
+    box-shadow: 0 0 6px var(--accent-rose);
+  }
+
+  .clock-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding-top: 4px;
+    border-top: 1px solid rgba(148, 179, 255, 0.1);
+    font-size: 10.5px;
+    color: var(--text-dim);
+    font-family: var(--mono);
+  }
+  .clock-row span strong {
+    color: var(--text-main);
+    font-weight: 600;
+  }
+
+  /* Right Control Drawer (330px) */
+  .drawer {
+    position: fixed;
+    top: 14px;
+    right: 14px;
+    bottom: 14px;
+    width: 330px;
+    max-width: calc(100vw - 28px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: transform 0.25s ease, opacity 0.25s ease;
+  }
+  .drawer.collapsed {
+    transform: translateX(calc(100% + 24px));
+    pointer-events: none;
+  }
+
+  .drawer-tabs {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 4px;
+    padding: 8px 8px 6px;
+    border-bottom: 1px solid var(--panel-border);
+    background: rgba(4, 7, 15, 0.45);
+  }
+
+  .tab-btn {
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 11.5px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    padding: 7px 6px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .tab-btn:hover {
+    color: var(--text-main);
+    background: rgba(255, 255, 255, 0.04);
+  }
+  .tab-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.16);
+    border-color: rgba(88, 220, 255, 0.4);
+  }
+
+  .drawer-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 11px 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .drawer-body::-webkit-scrollbar {
+    width: 5px;
+  }
+  .drawer-body::-webkit-scrollbar-thumb {
+    background: rgba(148, 179, 255, 0.22);
+    border-radius: 999px;
+  }
+
+  .tab-pane {
+    display: none;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .tab-pane.active {
+    display: flex;
+  }
+
+  .section {
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(148, 179, 255, 0.11);
+    border-radius: var(--radius-md);
+    padding: 10px 11px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .section-title {
+    font-size: 10px;
+    font-weight: 750;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  /* Presets grid */
+  .preset-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .preset-btn {
+    text-align: left;
+    padding: 7px 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(148, 179, 255, 0.14);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-main);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .preset-btn:hover {
+    border-color: rgba(255, 190, 92, 0.45);
+    background: rgba(255, 190, 92, 0.08);
+  }
+  .preset-btn.active {
+    border-color: var(--accent-amber);
+    background: rgba(255, 190, 92, 0.14);
+  }
+  .preset-name {
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+  .preset-sub {
+    font-size: 9.5px;
+    color: var(--text-muted);
+    line-height: 1.2;
+  }
+
+  /* Segmented pills */
+  .seg-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+  }
+  .seg-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-dim);
+    font-size: 11px;
+    font-weight: 650;
+    padding: 6px 5px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-align: center;
+  }
+  .seg-btn:hover {
+    color: #fff;
+    border-color: rgba(148, 179, 255, 0.35);
+  }
+  .seg-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.18);
+    border-color: var(--accent-cyan);
+  }
+  .seg-btn.active.amber {
+    background: rgba(255, 190, 92, 0.18);
+    border-color: var(--accent-amber);
+    color: #ffdfaa;
+  }
+  .seg-btn.active.violet {
+    background: rgba(167, 139, 250, 0.22);
+    border-color: var(--accent-violet);
+    color: #ede6ff;
+  }
+
+  /* Sliders */
+  .control-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .control-row.disabled {
+    opacity: 0.42;
+    pointer-events: none;
+  }
+
+  .control-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+  .control-head .val {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-main);
+    font-weight: 650;
+  }
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 5px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.18);
+    outline: none;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent-cyan);
+    border: 2px solid #08101f;
+    box-shadow: 0 0 10px rgba(88, 220, 255, 0.65);
+    cursor: pointer;
+  }
+  input[type="range"].amber::-webkit-slider-thumb {
+    background: var(--accent-amber);
+    box-shadow: 0 0 10px rgba(255, 190, 92, 0.65);
+  }
+  input[type="range"].violet::-webkit-slider-thumb {
+    background: var(--accent-violet);
+    box-shadow: 0 0 10px rgba(167, 139, 250, 0.65);
+  }
+  input[type="range"].mint::-webkit-slider-thumb {
+    background: var(--accent-mint);
+    box-shadow: 0 0 10px rgba(74, 242, 178, 0.65);
+  }
+
+  /* Buttons */
+  .btn-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .btn {
+    border: 1px solid rgba(148, 179, 255, 0.22);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-main);
+    font-size: 11.5px;
+    font-weight: 700;
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+  .btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 179, 255, 0.45);
+  }
+  .btn:active {
+    transform: scale(0.98);
+  }
+  .btn.trigger-btn {
+    background: linear-gradient(135deg, rgba(88, 220, 255, 0.28), rgba(74, 242, 178, 0.22));
+    border-color: rgba(88, 220, 255, 0.6);
+    color: #e9fbff;
+    box-shadow: 0 0 16px rgba(88, 220, 255, 0.18);
+  }
+  .btn.trigger-btn:hover {
+    background: linear-gradient(135deg, rgba(88, 220, 255, 0.42), rgba(74, 242, 178, 0.34));
+  }
+  .btn.trigger-btn.firing {
+    background: linear-gradient(135deg, rgba(74, 242, 178, 0.52), rgba(88, 220, 255, 0.45));
+    border-color: #4af2b2;
+    box-shadow: 0 0 22px rgba(74, 242, 178, 0.45);
+  }
+  .btn.reset-pin-btn {
+    background: rgba(255, 96, 131, 0.12);
+    border-color: rgba(255, 96, 131, 0.4);
+    color: #ffc8d5;
+  }
+  .btn.reset-pin-btn:hover {
+    background: rgba(255, 96, 131, 0.22);
+  }
+  .btn.reset-pin-btn.active {
+    background: rgba(255, 96, 131, 0.36);
+    border-color: var(--accent-rose);
+    color: #fff;
+    box-shadow: 0 0 18px rgba(255, 96, 131, 0.42);
+  }
+
+  /* Toggle Switches */
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11px;
+    color: var(--text-dim);
+    cursor: pointer;
+    gap: 8px;
+  }
+  .toggle-row input {
+    display: none;
+  }
+  .switch {
+    width: 34px;
+    height: 18px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.2);
+    border: 1px solid rgba(148, 179, 255, 0.25);
+    position: relative;
+    transition: all 0.18s ease;
+    flex-shrink: 0;
+  }
+  .switch::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #c8d7f5;
+    transition: transform 0.18s ease, background 0.18s ease;
+  }
+  .toggle-row input:checked + .switch {
+    background: rgba(88, 220, 255, 0.32);
+    border-color: var(--accent-cyan);
+  }
+  .toggle-row input:checked + .switch::after {
+    transform: translateX(16px);
+    background: #fff;
+  }
+
+  /* Internal Node Monitor Table */
+  .node-table {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 5px;
+    font-family: var(--mono);
+    font-size: 10.5px;
+  }
+  .node-cell {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(148, 179, 255, 0.1);
+    border-radius: 6px;
+    padding: 5px 7px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .node-cell .k {
+    color: var(--text-muted);
+    font-size: 9.5px;
+  }
+  .node-cell .v {
+    color: var(--text-main);
+    font-weight: 700;
+  }
+
+  .formula-box {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--text-dim);
+    background: rgba(4, 8, 18, 0.65);
+    border: 1px solid rgba(148, 179, 255, 0.12);
+    border-radius: var(--radius-sm);
+    padding: 8px 9px;
+    line-height: 1.55;
+  }
+  .formula-box strong {
+    color: var(--accent-amber);
+  }
+  .formula-box .hl {
+    color: var(--accent-cyan);
+  }
+
+  /* Bottom Transport Bar */
+  .bottom-bar {
+    position: fixed;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 7px 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: nowrap;
+  }
+
+  .bar-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-main);
+    font-size: 11.5px;
+    font-weight: 650;
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    white-space: nowrap;
+  }
+  .bar-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 179, 255, 0.4);
+  }
+  .bar-btn.active {
+    background: rgba(88, 220, 255, 0.2);
+    border-color: var(--accent-cyan);
+    color: #fff;
+  }
+  .bar-btn.audio-on {
+    background: rgba(74, 242, 178, 0.22);
+    border-color: var(--accent-mint);
+    color: #e6fff5;
+  }
+
+  .bar-divider {
+    width: 1px;
+    height: 20px;
+    background: rgba(148, 179, 255, 0.16);
+    margin: 0 2px;
+  }
+
+  /* Bottom-Left Interaction Hint */
+  .hint-pill {
+    position: fixed;
+    bottom: 14px;
+    left: 14px;
+    padding: 7px 11px;
+    font-size: 10.5px;
+    color: var(--text-dim);
+    max-width: 325px;
+    line-height: 1.45;
+  }
+  .hint-pill kbd {
+    font-family: var(--mono);
+    font-size: 9.5px;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #fff;
+  }
+
+  /* Floating Component Hover Tooltip */
+  .probe-tooltip {
+    position: fixed;
+    pointer-events: none;
+    z-index: 25;
+    max-width: 260px;
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+    background: rgba(7, 11, 22, 0.94);
+    border: 1px solid rgba(88, 220, 255, 0.42);
+    box-shadow: 0 8px 26px rgba(0, 0, 0, 0.65);
+    backdrop-filter: blur(10px);
+    opacity: 0;
+    transform: translateY(4px);
+    transition: opacity 0.14s ease, transform 0.14s ease;
+  }
+  .probe-tooltip.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  .probe-title {
+    font-size: 11px;
+    font-weight: 750;
+    color: var(--accent-cyan);
+    margin-bottom: 2px;
+  }
+  .probe-val {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--accent-amber);
+    margin-bottom: 3px;
+  }
+  .probe-desc {
+    font-size: 10px;
+    color: var(--text-dim);
+    line-height: 1.35;
+  }
+
+  .zen-restore {
+    position: fixed;
+    bottom: 14px;
+    right: 14px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+  }
+  body.zen-mode .zen-restore {
+    opacity: 0.9;
+    pointer-events: auto;
+  }
+
+  .note-small {
+    font-size: 10px;
+    color: var(--text-muted);
+    line-height: 1.35;
+  }
+
+  @media (max-width: 960px) {
+    .top-left {
+      width: calc(100vw - 28px);
+      max-width: none;
+    }
+    .drawer {
+      top: auto;
+      bottom: 62px;
+      height: 50vh;
+      width: calc(100vw - 28px);
+    }
+    .hint-pill {
+      display: none;
+    }
+    .bottom-bar {
+      max-width: calc(100vw - 20px);
+      overflow-x: auto;
+    }
+  }
+</style>
+</head>
+<body>
+<canvas id="sim-canvas"></canvas>
+
+<div class="hud">
+  <!-- Top-Left Telemetry Card -->
+  <div class="panel top-left">
+    <div class="brand-row">
+      <div class="brand-title-wrap">
+        <div class="brand-title">NE555 Bench</div>
+        <span id="mode-badge" class="mode-badge">Astable</span>
+      </div>
+      <span id="state-pill" class="status-pill">Charging ↑</span>
+    </div>
+
+    <div class="telemetry-grid">
+      <div class="tele-card">
+        <span class="tele-label">Frequency f</span>
+        <span id="tel-freq" class="tele-val cyan">0.99 Hz</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Period T</span>
+        <span id="tel-period" class="tele-val">1012 ms</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Duty Cycle</span>
+        <span id="tel-duty" class="tele-val amber">53.4%</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Live V_C</span>
+        <span id="tel-vc" class="tele-val amber">4.50 V</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Output Pin 3</span>
+        <span id="tel-vout" class="tele-val mint">HIGH</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Disch NPN (7)</span>
+        <span id="tel-disch" class="tele-val dim">OFF</span>
+      </div>
+    </div>
+
+    <div class="vc-meter-wrap">
+      <span style="font-family:var(--mono); font-size:10px; color:var(--text-muted);">V_C</span>
+      <div class="vc-track">
+        <div id="vc-fill" class="vc-fill"></div>
+        <div id="vc-tick-trig" class="vc-tick trig" style="left:33.3%;" title="1/3 Vcc Trigger"></div>
+        <div id="vc-tick-th" class="vc-tick th" style="left:66.7%;" title="2/3 Vcc Threshold"></div>
+      </div>
+      <span id="tel-vcc-max" style="font-family:var(--mono); font-size:10px; color:var(--text-main);">9.0V</span>
+    </div>
+
+    <div class="clock-row">
+      <span>t<sub>H</sub>: <strong id="tel-th">541 ms</strong></span>
+      <span>t<sub>L</sub>: <strong id="tel-tl">471 ms</strong></span>
+      <span>Ref: <strong id="tel-refs" style="color:var(--accent-cyan);">3.0 / 6.0 V</strong></span>
+    </div>
+  </div>
+
+  <!-- Collapsible 330px Right Drawer -->
+  <aside id="drawer" class="panel drawer">
+    <div class="drawer-tabs">
+      <button class="tab-btn active" data-tab="bench">Circuit & RC</button>
+      <button class="tab-btn" data-tab="internals">X-Ray & Logic</button>
+    </div>
+
+    <div class="drawer-body">
+      <!-- TAB 1: CIRCUIT & RC -->
+      <div id="tab-bench" class="tab-pane active">
+        <div class="section">
+          <div class="section-title"><span>Curated Presets</span></div>
+          <div class="preset-grid">
+            <button class="preset-btn active" data-preset="blinker">
+              <span class="preset-name">1 Hz LED Blinker</span>
+              <span class="preset-sub">Watch every gate flip live</span>
+            </button>
+            <button class="preset-btn" data-preset="fast">
+              <span class="preset-name">Fast Astable</span>
+              <span class="preset-sub">10 Hz brisk clock wave</span>
+            </button>
+            <button class="preset-btn" data-preset="monostable">
+              <span class="preset-name">Monostable Shot</span>
+              <span class="preset-sub">Precision 1.1·R₁·C pulse</span>
+            </button>
+            <button class="preset-btn" data-preset="synth">
+              <span class="preset-name">Atari Synth 440Hz</span>
+              <span class="preset-sub">Concert A4 square tone</span>
+            </button>
+            <button class="preset-btn" data-preset="pwm">
+              <span class="preset-name">Pin-5 PWM Sweep</span>
+              <span class="preset-sub">V_ctrl dimmer modulation</span>
+            </button>
+            <button class="preset-btn" data-preset="duty50">
+              <span class="preset-name">50% Diode Bypass</span>
+              <span class="preset-sub">Exact symmetric square</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">
+            <span>Topology & Pin Actions</span>
+            <span id="mode-note" style="font-family:var(--mono); color:var(--accent-cyan); font-size:9.5px;">SELF-OSC</span>
+          </div>
+          <div class="seg-row" id="mode-seg">
+            <button class="seg-btn active" data-mode="astable">Astable</button>
+            <button class="seg-btn" data-mode="monostable">Monostable</button>
+            <button class="seg-btn" data-mode="pwm">Pin-5 PWM</button>
+          </div>
+          <div class="btn-row">
+            <button id="btn-trigger" class="btn trigger-btn">⚡ Trigger (Pin 2)</button>
+            <button id="btn-pin4-reset" class="btn reset-pin-btn">⛔ Reset (Pin 4)</button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>External Components</span></div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Supply Voltage V<sub>cc</sub> (Pin 8)</span>
+              <span id="val-vcc" class="val">9.0 V</span>
+            </div>
+            <input id="sl-vcc" class="amber" type="range" min="5" max="15" step="0.1" value="9.0" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Upper Resistor R₁</span>
+              <span id="val-r1" class="val">10.0 kΩ</span>
+            </div>
+            <input id="sl-r1" type="range" min="2" max="6" step="0.01" value="4.0" />
+          </div>
+
+          <div class="control-row" id="row-r2">
+            <div class="control-head">
+              <span>Lower Resistor R₂</span>
+              <span id="val-r2" class="val">68.0 kΩ</span>
+            </div>
+            <input id="sl-r2" type="range" min="2" max="6" step="0.01" value="4.8325" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Timing Capacitor C</span>
+              <span id="val-c" class="val">10.0 µF</span>
+            </div>
+            <input id="sl-c" class="mint" type="range" min="-9" max="-3" step="0.01" value="-5.0" />
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">
+            <span>Control Voltage (Pin 5) & Timebase</span>
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Pin 5 V<sub>ctrl</sub> (Threshold)</span>
+              <span id="val-vctrl" class="val">6.00 V (2/3 Vcc)</span>
+            </div>
+            <input id="sl-vctrl" class="violet" type="range" min="0.18" max="0.90" step="0.005" value="0.6667" />
+          </div>
+
+          <label class="toggle-row">
+            <span>Auto PWM Sweep LFO on Pin 5</span>
+            <input id="chk-pwm-sweep" type="checkbox" />
+            <span class="switch"></span>
+          </label>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Timebase Scale</span>
+              <span id="val-timebase" class="val">1.00× Real-Time</span>
+            </div>
+            <input id="sl-timebase" class="amber" type="range" min="-3.3" max="0.7" step="0.01" value="0" />
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 2: X-RAY & LOGIC -->
+      <div id="tab-internals" class="tab-pane">
+        <div class="section">
+          <div class="section-title"><span>Circuit Enhancements</span></div>
+          <label class="toggle-row">
+            <span>Bypass Diode D₁ across R₂ (≤50% Duty)</span>
+            <input id="chk-diode" type="checkbox" />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Pin 5 External Override Active</span>
+            <input id="chk-pin5-override" type="checkbox" />
+            <span class="switch"></span>
+          </label>
+          <div class="control-row">
+            <div class="control-head">
+              <span>PWM LFO Sweep Rate</span>
+              <span id="val-lfo" class="val">0.35 Hz</span>
+            </div>
+            <input id="sl-lfo" class="violet" type="range" min="0.1" max="1.5" step="0.05" value="0.35" />
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>X-Ray Visual Layers</span></div>
+          <label class="toggle-row">
+            <span>Animated Current Flow Dots</span>
+            <input id="chk-current" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Internal Die Voltage Badges</span>
+            <input id="chk-badges" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Scope 1/3 & 2/3 Vcc Rails</span>
+            <input id="chk-rails" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Live Internal Die State</span></div>
+          <div class="node-table">
+            <div class="node-cell"><span class="k">V_th (2/3)</span><span id="nd-vth" class="v">6.00 V</span></div>
+            <div class="node-cell"><span class="k">V_trig (1/3)</span><span id="nd-vtrig" class="v">3.00 V</span></div>
+            <div class="node-cell"><span class="k">COMP1 → R</span><span id="nd-comp1" class="v">0 LOW</span></div>
+            <div class="node-cell"><span class="k">COMP2 → S</span><span id="nd-comp2" class="v">0 LOW</span></div>
+            <div class="node-cell"><span class="k">Latch Q</span><span id="nd-q" class="v">1 HIGH</span></div>
+            <div class="node-cell"><span class="k">Latch Q̄</span><span id="nd-qbar" class="v">0 LOW</span></div>
+            <div class="node-cell"><span class="k">Pin 7 NPN</span><span id="nd-npn" class="v">OFF</span></div>
+            <div class="node-cell"><span class="k">I_C Current</span><span id="nd-ic" class="v">+58 µA</span></div>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Exact NE555 Equations</span></div>
+          <div id="formula-box" class="formula-box">
+            <strong>Astable Mode:</strong><br/>
+            t<sub>H</sub> = 0.693 · (R₁ + R₂) · C<br/>
+            t<sub>L</sub> = 0.693 · R₂ · C<br/>
+            Duty = <span class="hl">(R₁ + R₂) / (R₁ + 2R₂)</span>
+          </div>
+          <div class="note-small">
+            Three internal 5 kΩ resistors divide V<sub>cc</sub> into 2/3 V<sub>cc</sub> and 1/3 V<sub>cc</sub> — giving the iconic "555" name (per classic lore) and making timing independent of V<sub>cc</sub>!
+          </div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Floating Hover Inspection Tooltip -->
+  <div id="probe-tooltip" class="probe-tooltip">
+    <div id="probe-title" class="probe-title">Threshold Comparator</div>
+    <div id="probe-val" class="probe-val">V+ = 4.50V | V- = 6.00V</div>
+    <div id="probe-desc" class="probe-desc">Resets internal SR flip-flop the instant V_C crosses 2/3 V_cc.</div>
+  </div>
+
+  <!-- Bottom-Left Hints -->
+  <div class="panel hint-pill">
+    <div><kbd>Space</kbd> Pause · <kbd>T</kbd> Trigger Pin 2 · <kbd>R</kbd> Reset Pin 4 · <kbd>H</kbd> Cinema</div>
+    <div><strong>Click Pin 2 / Pin 4</strong> on chip · <strong>Hover blocks</strong> to inspect · <strong>Scroll</strong> zoom</div>
+  </div>
+
+  <!-- Bottom-Center Transport Bar -->
+  <div class="panel bottom-bar">
+    <button id="btn-play" class="bar-btn active">⏸ Pause</button>
+    <button id="btn-reset" class="bar-btn">↺ Reset</button>
+    <div class="bar-divider"></div>
+    <button class="bar-btn speed-btn" data-speed="0.02">Slow</button>
+    <button class="bar-btn speed-btn" data-speed="0.25">0.25×</button>
+    <button class="bar-btn speed-btn active" data-speed="1">1×</button>
+    <button class="bar-btn speed-btn" data-speed="2">2×</button>
+    <div class="bar-divider"></div>
+    <button id="btn-sound" class="bar-btn" title="Toggle NE555 square-wave audio synth">🔇 Audio</button>
+    <button id="btn-toggle-drawer" class="bar-btn active">Controls</button>
+    <button id="btn-zen" class="bar-btn" title="Hide HUD (H)">Cinema</button>
+  </div>
+
+  <button id="btn-zen-restore" class="panel bar-btn zen-restore">Show HUD (H)</button>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // =========================================================================
+  // CANVAS SETUP & BACKGROUND GRID CACHE
+  // =========================================================================
+  const canvas = document.getElementById('sim-canvas');
+  const ctx = canvas.getContext('2d', { alpha: false });
+  let W = window.innerWidth;
+  let H = window.innerHeight;
+  let DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+  const bgCanvas = document.createElement('canvas');
+  const bgCtx = bgCanvas.getContext('2d');
+
+  function buildBackground() {
+    bgCanvas.width = Math.max(1, Math.floor(W * DPR));
+    bgCanvas.height = Math.max(1, Math.floor(H * DPR));
+    bgCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
+
+    // Deep obsidian blueprint backdrop (#040711)
+    const rad = bgCtx.createRadialGradient(W * 0.42, H * 0.36, 40, W * 0.45, H * 0.5, Math.max(W, H) * 0.85);
+    rad.addColorStop(0, '#0a1226');
+    rad.addColorStop(0.55, '#050915');
+    rad.addColorStop(1, '#03050c');
+    bgCtx.fillStyle = rad;
+    bgCtx.fillRect(0, 0, W, H);
+
+    // Subtle PCB micro-grid
+    const step = 28;
+    bgCtx.strokeStyle = 'rgba(110, 155, 255, 0.035)';
+    bgCtx.lineWidth = 1;
+    bgCtx.beginPath();
+    for (let x = 0; x < W; x += step) {
+      bgCtx.moveTo(x + 0.5, 0);
+      bgCtx.lineTo(x + 0.5, H);
+    }
+    for (let y = 0; y < H; y += step) {
+      bgCtx.moveTo(0, y + 0.5);
+      bgCtx.lineTo(W, y + 0.5);
+    }
+    bgCtx.stroke();
+
+    // Accent major intersections
+    bgCtx.fillStyle = 'rgba(120, 175, 255, 0.08)';
+    for (let x = 0; x < W; x += step * 4) {
+      for (let y = 0; y < H; y += step * 4) {
+        bgCtx.fillRect(x - 1, y - 1, 2, 2);
+      }
+    }
+  }
+
+  function resize() {
+    W = window.innerWidth;
+    H = window.innerHeight;
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.floor(W * DPR);
+    canvas.height = Math.floor(H * DPR);
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    buildBackground();
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  // =========================================================================
+  // PRESETS & SIMULATION STATE
+  // =========================================================================
+  const PRESETS = {
+    blinker: {
+      name: '1 Hz LED Blinker',
+      mode: 'astable',
+      vcc: 9.0,
+      r1: 10000,
+      r2: 68000,
+      c: 10e-6,
+      diodeBypass: false,
+      pin5Override: false,
+      vCtrlRatio: 2 / 3,
+      pwmSweep: false,
+      timeScale: 1.0
+    },
+    fast: {
+      name: 'Fast Astable',
+      mode: 'astable',
+      vcc: 9.0,
+      r1: 10000,
+      r2: 10000,
+      c: 4.7e-6,
+      diodeBypass: false,
+      pin5Override: false,
+      vCtrlRatio: 2 / 3,
+      pwmSweep: false,
+      timeScale: 1.0
+    },
+    monostable: {
+      name: 'Monostable Shot',
+      mode: 'monostable',
+      vcc: 9.0,
+      r1: 100000,
+      r2: 10000,
+      c: 10e-6,
+      diodeBypass: false,
+      pin5Override: false,
+      vCtrlRatio: 2 / 3,
+      pwmSweep: false,
+      timeScale: 1.0
+    },
+    synth: {
+      name: 'Atari Synth 440Hz',
+      mode: 'astable',
+      vcc: 9.0,
+      r1: 1800,
+      r2: 15500,
+      c: 100e-9,
+      diodeBypass: false,
+      pin5Override: false,
+      vCtrlRatio: 2 / 3,
+      pwmSweep: false,
+      timeScale: 1.0
+    },
+    pwm: {
+      name: 'Pin-5 PWM Sweep',
+      mode: 'pwm',
+      vcc: 12.0,
+      r1: 4700,
+      r2: 10000,
+      c: 2.2e-6,
+      diodeBypass: false,
+      pin5Override: true,
+      vCtrlRatio: 0.66,
+      pwmSweep: true,
+      timeScale: 1.0
+    },
+    duty50: {
+      name: '50% Diode Bypass',
+      mode: 'astable',
+      vcc: 9.0,
+      r1: 47000,
+      r2: 47000,
+      c: 10e-6,
+      diodeBypass: true,
+      pin5Override: false,
+      vCtrlRatio: 2 / 3,
+      pwmSweep: false,
+      timeScale: 1.0
+    }
+  };
+
+  const state = {
+    preset: 'blinker',
+    mode: 'astable', // 'astable' | 'monostable' | 'pwm'
+    running: true,
+    drawerOpen: true,
+    zenMode: false,
+
+    // Electrical parameters
+    vcc: 9.0,
+    r1: 10000,
+    r2: 68000,
+    c: 10e-6,
+    diodeBypass: false,
+    pin5Override: false,
+    vCtrlRatio: 2 / 3, // ratio of Vcc when Pin 5 overridden
+    pwmSweep: false,
+    lfoRate: 0.35,
+    lfoPhase: 0,
+    timeScale: 1.0,
+
+    // Live electrical nodes
+    simTime: 0,
+    vc: 3.1,
+    vPin2: 3.1,
+    vPin6: 3.1,
+    vPin7: 3.1,
+    vTh: 6.0,
+    vTrig: 3.0,
+    comp1Out: 0, // Threshold comparator -> R
+    comp2Out: 0, // Trigger comparator -> S
+    latchQ: 1,   // Q -> Output HIGH
+    latchQBar: 0,// Qbar -> Discharge NPN ON
+    vOut: 9.0,
+    iCap: 0,     // Amps (+ charging, - discharging)
+    iR1: 0,      // Amps down through R1
+    iDiv: 0,     // Amps down 3x5k divider
+
+    // Pin interactive controls
+    triggerManual: false,
+    triggerPulseTimer: 0, // real-seconds visual hold for click/button
+    resetPinLow: false,
+
+    // Visual animations & flashes
+    comp1Flash: 0,
+    comp2Flash: 0,
+    flipFlash: 0,
+    speakerPulse: 0,
+    ledGlow: 0.9,
+    ledAvg: 0.5,
+    flowChargePhase: 0,
+    flowDischPhase: 0,
+    flowR1Phase: 0,
+    flowOutPhase: 0,
+    flowDivPhase: 0,
+    edgeCountThisFrame: 0,
+    lastEdgeDir: 0,
+
+    // Visual layer toggles
+    showCurrent: true,
+    showBadges: true,
+    showRails: true,
+
+    // Scope state
+    scopeFrozen: false,
+    scopeMode: 'roll', // auto 'roll' or 'trig'
+    scopeHistory: [],  // { t, vc, vout, vth, vtrig, vcc }
+    scopeSpan: 2.5,    // seconds displayed across scope width
+
+    // Camera / pan-zoom for circuit area
+    camZoom: 1.0,
+    camPanX: 0,
+    camPanY: 0,
+    layoutShift: 0, // smoothly eases when drawer collapses
+
+    // Hover & pointer
+    mouseX: -999,
+    mouseY: -999,
+    hoveredId: null,
+    isPanning: false,
+    panStartX: 0,
+    panStartY: 0,
+    panOriginX: 0,
+    panOriginY: 0
+  };
+
+  // =========================================================================
+  // FORMATTING HELPERS
+  // =========================================================================
+  function fmtOhms(r) {
+    if (r >= 1e6) return (r / 1e6).toFixed(2) + ' MΩ';
+    if (r >= 1e3) return (r / 1e3).toFixed(r >= 1e5 ? 0 : 1) + ' kΩ';
+    return Math.round(r) + ' Ω';
+  }
+
+  function fmtFarads(c) {
+    if (c >= 1e-3) return (c * 1e3).toFixed(2) + ' mF';
+    if (c >= 1e-6) return (c * 1e6).toFixed(c >= 100e-6 ? 0 : 1) + ' µF';
+    return (c * 1e9).toFixed(c >= 100e-9 ? 0 : 1) + ' nF';
+  }
+
+  function fmtFreq(f) {
+    if (!isFinite(f) || f <= 0) return '—';
+    if (f >= 1e6) return (f / 1e6).toFixed(2) + ' MHz';
+    if (f >= 1e3) return (f / 1e3).toFixed(2) + ' kHz';
+    if (f >= 100) return f.toFixed(1) + ' Hz';
+    if (f >= 10) return f.toFixed(2) + ' Hz';
+    return f.toFixed(2) + ' Hz';
+  }
+
+  function fmtTime(t) {
+    if (!isFinite(t) || t <= 0) return '—';
+    if (t >= 10) return t.toFixed(1) + ' s';
+    if (t >= 1) return t.toFixed(2) + ' s';
+    if (t >= 1e-3) return (t * 1e3).toFixed(t >= 0.1 ? 0 : 1) + ' ms';
+    if (t >= 1e-6) return (t * 1e6).toFixed(1) + ' µs';
+    return (t * 1e9).toFixed(0) + ' ns';
+  }
+
+  function fmtCurrent(amps) {
+    const abs = Math.abs(amps);
+    const sign = amps >= 0 ? '+' : '−';
+    if (abs < 1e-7) return '0.0 µA';
+    if (abs >= 1e-3) return sign + (abs * 1e3).toFixed(2) + ' mA';
+    return sign + (abs * 1e6).toFixed(1) + ' µA';
+  }
+
+  // =========================================================================
+  // ANALYTICAL NE555 TIMING CALCULATIONS
+  // =========================================================================
+  function getThresholds() {
+    const vTh = (state.pin5Override || state.mode === 'pwm')
+      ? Math.max(0.15 * state.vcc, Math.min(0.92 * state.vcc, state.vcc * state.vCtrlRatio))
+      : (2 / 3) * state.vcc;
+    const vTrig = 0.5 * vTh;
+    return { vTh, vTrig };
+  }
+
+  function computeTheoreticalMetrics() {
+    const { vTh, vTrig } = getThresholds();
+    const vcc = state.vcc;
+
+    if (state.mode === 'monostable') {
+      const ratio = Math.max(1.02, vcc / Math.max(0.05, vcc - vTh));
+      const tPulse = state.r1 * state.c * Math.log(ratio);
+      return {
+        isMonostable: true,
+        tHigh: tPulse,
+        tLow: 0,
+        period: tPulse,
+        freq: 0,
+        duty: state.latchQ ? 100 : 0,
+        vTh,
+        vTrig
+      };
+    }
+
+    const rChg = state.diodeBypass ? state.r1 : (state.r1 + state.r2);
+    const rDis = state.r2;
+    const ratioH = Math.max(1.01, (vcc - vTrig) / Math.max(0.05, vcc - vTh));
+    const ratioL = Math.max(1.01, vTh / Math.max(0.05, vTrig)); // always 2.0
+    const tHigh = rChg * state.c * Math.log(ratioH);
+    const tLow = rDis * state.c * Math.log(ratioL);
+    const period = tHigh + tLow;
+    const freq = period > 0 ? 1 / period : 0;
+    const duty = period > 0 ? (tHigh / period) * 100 : 50;
+    return {
+      isMonostable: false,
+      tHigh,
+      tLow,
+      period,
+      freq,
+      duty,
+      vTh,
+      vTrig
+    };
+  }
+
+  // =========================================================================
+  // WEB AUDIO ENGINE (MUTED BY DEFAULT — AUTHENTIC 555 PULSE SYNTH + CLICKS)
+  // =========================================================================
+  const audio = {
+    enabled: false,
+    ctx: null,
+    masterGain: null,
+    sawOsc: null,
+    dcOffset: null,
+    shaper: null,
+    lpFilter: null,
+    synthGain: null,
+    initialized: false
+  };
+
+  function initAudio() {
+    if (audio.initialized) return;
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+    const ac = new AudioCtx();
+    audio.ctx = ac;
+
+    // Master output gain
+    const master = ac.createGain();
+    master.gain.value = 0.0;
+    master.connect(ac.destination);
+    audio.masterGain = master;
+
+    // Authentic Variable-Duty Pulse Generator:
+    // Sawtooth (-1..+1) + DC Offset (2*duty - 1) -> Hard Step WaveShaper -> LP Filter
+    const saw = ac.createOscillator();
+    saw.type = 'sawtooth';
+    saw.frequency.value = 440;
+
+    const dc = ac.createConstantSource();
+    dc.offset.value = 0.0;
+
+    const sumGain = ac.createGain();
+    sumGain.gain.value = 0.5;
+
+    const shaper = ac.createWaveShaper();
+    const nCurve = 1024;
+    const curve = new Float32Array(nCurve);
+    for (let i = 0; i < nCurve; i++) {
+      const x = (i / (nCurve - 1)) * 2 - 1;
+      // Softly antialias-rounded step for warm analog 555 piezo feel
+      curve[i] = Math.tanh(x * 48);
+    }
+    shaper.curve = curve;
+    shaper.oversample = '2x';
+
+    const lp = ac.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 3400;
+    lp.Q.value = 0.8;
+
+    const synthGain = ac.createGain();
+    synthGain.gain.value = 0.0;
+
+    saw.connect(sumGain);
+    dc.connect(sumGain);
+    sumGain.connect(shaper);
+    shaper.connect(lp);
+    lp.connect(synthGain);
+    synthGain.connect(master);
+
+    saw.start();
+    dc.start();
+
+    audio.sawOsc = saw;
+    audio.dcOffset = dc;
+    audio.shaper = shaper;
+    audio.lpFilter = lp;
+    audio.synthGain = synthGain;
+    audio.initialized = true;
+  }
+
+  function playEdgeClick(rising) {
+    if (!audio.enabled || !audio.ctx || audio.ctx.state !== 'running') return;
+    const ac = audio.ctx;
+    const now = ac.currentTime;
+    const osc = ac.createOscillator();
+    const g = ac.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(rising ? 620 : 340, now);
+    osc.frequency.exponentialRampToValueAtTime(rising ? 160 : 95, now + 0.028);
+    g.gain.setValueAtTime(rising ? 0.16 : 0.09, now);
+    g.gain.exponentialRampToValueAtTime(0.0008, now + 0.032);
+    osc.connect(g);
+    g.connect(audio.masterGain);
+    osc.start(now);
+    osc.stop(now + 0.036);
+  }
+
+  function updateAudioSynth(metrics) {
+    if (!audio.initialized || !audio.ctx) return;
+    const now = audio.ctx.currentTime;
+    if (!audio.enabled || !state.running || state.resetPinLow) {
+      audio.masterGain.gain.setTargetAtTime(0.0, now, 0.02);
+      audio.synthGain.gain.setTargetAtTime(0.0, now, 0.02);
+      return;
+    }
+
+    audio.masterGain.gain.setTargetAtTime(0.75, now, 0.02);
+
+    // Effective audible frequency reflects timebase scaling too!
+    const effFreq = metrics.isMonostable ? 0 : metrics.freq * state.timeScale;
+    if (effFreq >= 22 && effFreq <= 14000) {
+      // Continuous variable-duty square wave synth
+      audio.sawOsc.frequency.setTargetAtTime(effFreq, now, 0.012);
+      const dutyFrac = Math.max(0.06, Math.min(0.94, metrics.duty / 100));
+      audio.dcOffset.offset.setTargetAtTime(2 * dutyFrac - 1, now, 0.015);
+      audio.synthGain.gain.setTargetAtTime(0.11, now, 0.02);
+    } else {
+      // Below 22 Hz: mute continuous oscillator, rely on crisp edge clicks
+      audio.synthGain.gain.setTargetAtTime(0.0, now, 0.025);
+    }
+  }
+
+  function toggleAudio() {
+    if (!audio.initialized) initAudio();
+    audio.enabled = !audio.enabled;
+    if (audio.ctx && audio.enabled && audio.ctx.state === 'suspended') {
+      audio.ctx.resume();
+    }
+    const btn = document.getElementById('btn-sound');
+    btn.textContent = audio.enabled ? '🔊 Audio' : '🔇 Audio';
+    btn.classList.toggle('audio-on', audio.enabled);
+    updateAudioSynth(computeTheoreticalMetrics());
+  }
+
+  // =========================================================================
+  // EXACT EVENT-DRIVEN EXPONENTIAL RC + NE555 LOGIC STEPPER
+  // =========================================================================
+  function evaluateInternalLogic(allowSound) {
+    const { vTh, vTrig } = getThresholds();
+    state.vTh = vTh;
+    state.vTrig = vTrig;
+
+    const triggerActive = state.triggerManual || state.triggerPulseTimer > 0;
+    if (state.mode === 'monostable') {
+      state.vPin2 = triggerActive ? 0.0 : state.vcc;
+    } else {
+      state.vPin2 = triggerActive ? 0.0 : state.vc;
+    }
+    state.vPin6 = state.vc;
+
+    const prevQ = state.latchQ;
+    const prevComp1 = state.comp1Out;
+    const prevComp2 = state.comp2Out;
+
+    // Upper Threshold Comparator: + = Pin 6 (V_C), - = V_th (2/3 Vcc)
+    state.comp1Out = state.vPin6 >= vTh - 1e-6 ? 1 : 0;
+    // Lower Trigger Comparator: + = V_trig (1/3 Vcc), - = Pin 2
+    state.comp2Out = state.vPin2 <= vTrig + 1e-6 ? 1 : 0;
+
+    if (state.comp1Out && !prevComp1) state.comp1Flash = 1.0;
+    if (state.comp2Out && !prevComp2) state.comp2Flash = 1.0;
+
+    // SR Flip-Flop with active-low Pin 4 /RESET
+    if (state.resetPinLow) {
+      state.latchQ = 0;
+    } else if (state.comp2Out === 1) {
+      // Trigger overrides Threshold in real NE555
+      state.latchQ = 1;
+    } else if (state.comp1Out === 1) {
+      state.latchQ = 0;
+    }
+
+    state.latchQBar = state.latchQ ? 0 : 1;
+    state.vOut = state.latchQ ? state.vcc : 0.0;
+
+    if (state.latchQ !== prevQ) {
+      state.flipFlash = 1.0;
+      state.edgeCountThisFrame++;
+      state.lastEdgeDir = state.latchQ ? 1 : -1;
+      if (state.latchQ) state.speakerPulse = 1.0;
+      if (allowSound) {
+        const metrics = computeTheoreticalMetrics();
+        const effFreq = metrics.isMonostable ? 0 : metrics.freq * state.timeScale;
+        if (effFreq < 22) {
+          playEdgeClick(state.latchQ === 1);
+        }
+      }
+    }
+  }
+
+  function updateBranchCurrents() {
+    const vcc = state.vcc;
+    state.iDiv = vcc / 15000; // Three 5kΩ resistors in series
+
+    if (state.mode === 'monostable') {
+      if (state.latchQ === 1) {
+        // Charging through R1, Pin 7 Hi-Z
+        state.iCap = (vcc - state.vc) / state.r1;
+        state.iR1 = state.iCap;
+        state.vPin7 = state.vc;
+      } else {
+        // Discharge NPN ON: Pin 7 pulled near GND (~15Ω saturation)
+        const rSat = 18;
+        state.iCap = -state.vc / rSat;
+        state.iR1 = vcc / state.r1;
+        state.vPin7 = Math.min(0.15, state.vc);
+      }
+    } else {
+      if (state.latchQ === 1) {
+        // Charging: NPN OFF
+        const rChg = state.diodeBypass ? state.r1 : (state.r1 + state.r2);
+        state.iCap = (vcc - state.vc) / rChg;
+        state.iR1 = state.iCap;
+        state.vPin7 = state.diodeBypass ? state.vc : (state.vc + state.iCap * state.r2);
+      } else {
+        // Discharging: NPN ON (Pin 7 shorted to GND)
+        state.iCap = -state.vc / state.r2;
+        state.iR1 = vcc / state.r1;
+        state.vPin7 = 0.05;
+      }
+    }
+  }
+
+  function pushScopeSample(t) {
+    if (state.scopeFrozen) return;
+    state.scopeHistory.push({
+      t,
+      vc: state.vc,
+      vout: state.vOut,
+      vth: state.vTh,
+      vtrig: state.vTrig,
+      vcc: state.vcc
+    });
+    // Trim history cleanly to keep ~650 samples
+    const maxLen = 720;
+    if (state.scopeHistory.length > maxLen) {
+      state.scopeHistory.splice(0, state.scopeHistory.length - maxLen);
+    }
+  }
+
+  function stepPhysics(realDt) {
+    // Decay visual flashes
+    state.comp1Flash = Math.max(0, state.comp1Flash - realDt * 3.8);
+    state.comp2Flash = Math.max(0, state.comp2Flash - realDt * 3.8);
+    state.flipFlash = Math.max(0, state.flipFlash - realDt * 3.2);
+    state.speakerPulse = Math.max(0, state.speakerPulse - realDt * 4.5);
+
+    if (state.triggerPulseTimer > 0) {
+      state.triggerPulseTimer = Math.max(0, state.triggerPulseTimer - realDt);
+    }
+
+    if (!state.running) {
+      evaluateInternalLogic(false);
+      updateBranchCurrents();
+      return;
+    }
+
+    // Optional PWM LFO sweep on Pin 5
+    if (state.pwmSweep) {
+      state.lfoPhase += realDt * state.lfoRate * Math.PI * 2;
+      state.pin5Override = true;
+      state.vCtrlRatio = 0.56 + 0.28 * Math.sin(state.lfoPhase); // sweeps 0.28..0.84 Vcc
+      const slVctrl = document.getElementById('sl-vctrl');
+      if (slVctrl) slVctrl.value = state.vCtrlRatio.toFixed(3);
+    }
+
+    const metrics = computeTheoreticalMetrics();
+    const simDtTotal = realDt * state.timeScale;
+    state.edgeCountThisFrame = 0;
+
+    // Choose smart scope span based on period
+    const targetSpan = metrics.isMonostable
+      ? Math.max(0.4, Math.min(8.0, metrics.period * 2.6))
+      : Math.max(1e-5, Math.min(6.0, metrics.period * 3.4));
+    state.scopeSpan += (targetSpan - state.scopeSpan) * Math.min(1, realDt * 8);
+
+    // Choose Rolling vs Triggered Scope mode automatically
+    const effFreq = metrics.isMonostable ? 0 : metrics.freq * state.timeScale;
+    state.scopeMode = (!metrics.isMonostable && effFreq >= 5.5) ? 'trig' : 'roll';
+
+    // Exact event-driven analytical exponential stepping!
+    // Cap total sub-events per frame for high-frequency audio synth (e.g. 440Hz)
+    // For very fast cycles (many cycles per frame), advance modulo exact phase for last few cycles
+    // so oscilloscope history stays razor sharp without burning CPU!
+    let dtRem = simDtTotal;
+    if (!metrics.isMonostable && metrics.period > 0 && dtRem > metrics.period * 4.5 && !state.resetPinLow) {
+      const skipCycles = Math.floor((dtRem - metrics.period * 3.5) / metrics.period);
+      const skipTime = skipCycles * metrics.period;
+      state.simTime += skipTime;
+      dtRem -= skipTime;
+      // Clear stale rolling buffer if we skipped huge time so triggered scope has crisp contiguous samples
+      if (state.scopeHistory.length > 0 && (state.simTime - state.scopeHistory[state.scopeHistory.length - 1].t) > state.scopeSpan * 0.5) {
+        state.scopeHistory.length = 0;
+      }
+    }
+
+    const desiredSampleStep = Math.max(state.scopeSpan / 220, dtRem / 40);
+    let maxGuard = 180;
+    let highTimeAcc = 0;
+
+    while (dtRem > 1e-12 && maxGuard-- > 0) {
+      evaluateInternalLogic(true);
+      const { vTh, vTrig } = getThresholds();
+
+      // Determine active RC target and time constant
+      let vTarget = 0;
+      let tau = 1e-3;
+      if (state.mode === 'monostable') {
+        if (state.latchQ === 1) {
+          vTarget = state.vcc;
+          tau = state.r1 * state.c;
+        } else {
+          vTarget = 0;
+          tau = Math.max(1e-6, 18 * state.c); // Fast NPN saturation dump
+        }
+      } else {
+        if (state.latchQ === 1) {
+          vTarget = state.vcc;
+          tau = (state.diodeBypass ? state.r1 : (state.r1 + state.r2)) * state.c;
+        } else {
+          vTarget = 0;
+          tau = state.r2 * state.c;
+        }
+      }
+      tau = Math.max(1e-9, tau);
+
+      // Compute exact analytical crossing time of V_th (rising) or V_trig (falling)
+      let dtStep = Math.min(dtRem, desiredSampleStep);
+      let crossedEvent = false;
+
+      if (state.latchQ === 1 && state.vc < vTh && vTarget > vTh) {
+        const dtCross = -tau * Math.log((vTh - vTarget) / (state.vc - vTarget));
+        if (dtCross > 0 && dtCross <= dtStep) {
+          dtStep = dtCross;
+          crossedEvent = 'th';
+        }
+      } else if (state.latchQ === 0 && state.mode !== 'monostable' && state.vc > vTrig && vTarget < vTrig) {
+        const dtCross = -tau * Math.log((vTrig - vTarget) / (state.vc - vTarget));
+        if (dtCross > 0 && dtCross <= dtStep) {
+          dtStep = dtCross;
+          crossedEvent = 'trig';
+        }
+      }
+
+      // Advance capacitor voltage analytically
+      if (crossedEvent === 'th') {
+        state.vc = vTh + 1e-6;
+      } else if (crossedEvent === 'trig') {
+        state.vc = vTrig - 1e-6;
+      } else {
+        state.vc = vTarget + (state.vc - vTarget) * Math.exp(-dtStep / tau);
+      }
+
+      if (state.latchQ === 1) highTimeAcc += dtStep;
+      state.simTime += dtStep;
+      dtRem -= dtStep;
+
+      if (crossedEvent) {
+        // Record sample right before & right after edge for crisp vertical square-wave edge on scope!
+        pushScopeSample(state.simTime);
+        evaluateInternalLogic(true);
+        pushScopeSample(state.simTime);
+      } else {
+        pushScopeSample(state.simTime);
+      }
+    }
+
+    evaluateInternalLogic(true);
+    updateBranchCurrents();
+
+    // Smooth LED persistence glow (shows PWM dimming realistically at >20Hz!)
+    const frameHighFrac = simDtTotal > 0 ? Math.min(1, highTimeAcc / Math.max(1e-12, simDtTotal - dtRem)) : state.latchQ;
+    const targetGlow = (effFreq > 18 && !state.resetPinLow) ? (metrics.duty / 100) : frameHighFrac;
+    const ledAlpha = effFreq > 18 ? Math.min(1, realDt * 12) : Math.min(1, realDt * 28);
+    state.ledGlow += (targetGlow - state.ledGlow) * ledAlpha;
+
+    // Advance animated current dot phases visually (scaled nicely so flow is readable at all R/C values)
+    const visualRate = Math.min(2.6, Math.max(0.35, 0.75 + Math.log10(Math.max(1e-6, Math.abs(state.iCap) * 1e4 + 1)) * 0.45));
+    const speedMul = Math.min(2.2, Math.max(0.25, Math.sqrt(Math.max(0.02, state.timeScale))));
+    if (state.latchQ === 1 && Math.abs(state.iCap) > 1e-9) {
+      state.flowChargePhase = (state.flowChargePhase + realDt * 1.15 * visualRate * speedMul) % 1;
+      state.flowR1Phase = (state.flowR1Phase + realDt * 1.15 * visualRate * speedMul) % 1;
+      state.flowOutPhase = (state.flowOutPhase + realDt * 1.65 * speedMul) % 1;
+    } else if (state.latchQ === 0) {
+      if (Math.abs(state.iCap) > 1e-8) {
+        state.flowDischPhase = (state.flowDischPhase + realDt * 1.35 * visualRate * speedMul) % 1;
+      }
+      state.flowR1Phase = (state.flowR1Phase + realDt * 1.05 * visualRate * speedMul) % 1;
+    }
+    state.flowDivPhase = (state.flowDivPhase + realDt * 0.55) % 1;
+
+    updateAudioSynth(metrics);
+  }
+
+  // =========================================================================
+  // RESPONSIVE STAGE LAYOUT & INTERACTIVE HIT REGIONS
+  // =========================================================================
+  let hitRegions = []; // populated every frame in screen coordinates
+
+  function getLayout() {
+    const targetDrawerW = (state.drawerOpen && !state.zenMode && W > 960) ? 344 : 0;
+    state.layoutShift += (targetDrawerW - state.layoutShift) * 0.16;
+
+    const leftPad = 18;
+    const rightPad = 18 + state.layoutShift;
+    const availW = Math.max(320, W - leftPad - rightPad);
+
+    const bottomBarH = state.zenMode ? 18 : 66;
+    const topSafeY = state.zenMode ? 14 : 16;
+
+    // Embedded Oscilloscope rectangle at bottom of usable viewport
+    const scopeH = Math.max(150, Math.min(228, Math.floor((H - bottomBarH - topSafeY) * 0.31)));
+    const scopeW = Math.min(availW - 8, 1080);
+    const scopeX = leftPad + (availW - scopeW) * 0.5;
+    const scopeY = H - bottomBarH - scopeH - 8;
+
+    // Circuit Bench occupies space above scope
+    const benchTop = topSafeY;
+    const benchBottom = scopeY - 10;
+    const benchH = Math.max(220, benchBottom - benchTop);
+
+    // Avoid overlapping top-left HUD card when not in zen mode
+    const hudSafeX = (!state.zenMode && W > 960) ? 14 + Math.min(400, W - 368) : 0;
+    const hudSafeY = (!state.zenMode) ? 200 : 0;
+
+    // Virtual circuit design space is 980 x 480 centered at (0, 0)
+    const designW = 980;
+    const designH = 470;
+
+    // Compute best center & scale so circuit fits cleanly
+    let benchCenterX = leftPad + availW * 0.5;
+    let benchCenterY = benchTop + benchH * 0.52;
+
+    // If top-left HUD overlaps left-upper region on medium screens, nudge gracefully
+    let effW = availW;
+    let effH = benchH;
+    if (!state.zenMode && W > 960 && benchH < 520 && availW > 840) {
+      // Shift slightly down/right so R1/Vcc rail never sits behind telemetry card
+      const overlapShiftY = Math.max(0, (hudSafeY - benchTop) * 0.32);
+      benchCenterY = benchTop + overlapShiftY + (benchH - overlapShiftY) * 0.5;
+      effH = benchH - overlapShiftY * 0.72;
+    } else if (!state.zenMode && W <= 960) {
+      const topOff = 195;
+      benchCenterY = topOff + Math.max(100, (scopeY - topOff) * 0.5);
+      effH = Math.max(180, scopeY - topOff - 12);
+    }
+
+    const baseScale = Math.min(effW / designW, effH / designH) * 0.96;
+    const scale = Math.max(0.32, Math.min(1.45, baseScale)) * state.camZoom;
+
+    return {
+      cx: benchCenterX + state.camPanX,
+      cy: benchCenterY + state.camPanY,
+      scale,
+      scope: { x: scopeX, y: scopeY, w: scopeW, h: scopeH },
+      availW
+    };
+  }
+
+  // Convert virtual circuit coordinates to screen coordinates
+  function toScreen(lx, ly, layout) {
+    return {
+      x: layout.cx + lx * layout.scale,
+      y: layout.cy + ly * layout.scale
+    };
+  }
+
+  function registerHit(id, x, y, w, h, layout, meta) {
+    const p1 = toScreen(x, y, layout);
+    const p2 = toScreen(x + w, y + h, layout);
+    hitRegions.push({
+      id,
+      sx: Math.min(p1.x, p2.x),
+      sy: Math.min(p1.y, p2.y),
+      sw: Math.abs(p2.x - p1.x),
+      sh: Math.abs(p2.y - p1.y),
+      ...meta
+    });
+  }
+
+  // =========================================================================
+  // DRAWING PRIMITIVES (WIRES, RESISTORS, CAPACITOR, DIODE, TRANSISTOR, OPAMP)
+  // =========================================================================
+  function drawWire(points, color, width = 2.4, glow = 0) {
+    if (points.length < 2) return;
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    if (glow > 0) {
+      ctx.shadowColor = color;
+      ctx.shadowBlur = glow;
+    }
+    ctx.beginPath();
+    ctx.moveTo(points[0][0], points[0][1]);
+    for (let i = 1; i < points.length; i++) {
+      ctx.lineTo(points[i][0], points[i][1]);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawCurrentDots(points, phase, color, spacing = 30, radius = 3.1, reverse = false) {
+    if (!state.showCurrent || points.length < 2) return;
+    // Compute segment lengths
+    const segs = [];
+    let total = 0;
+    for (let i = 0; i < points.length - 1; i++) {
+      const dx = points[i + 1][0] - points[i][0];
+      const dy = points[i + 1][1] - points[i][1];
+      const len = Math.hypot(dx, dy);
+      if (len > 0.5) {
+        segs.push({ x0: points[i][0], y0: points[i][1], dx, dy, len, acc: total });
+        total += len;
+      }
+    }
+    if (total < 4) return;
+
+    const p = reverse ? (1 - (phase % 1)) : (phase % 1);
+    const offset = p * spacing;
+
+    ctx.save();
+    ctx.fillStyle = color;
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 8;
+
+    for (let d = offset; d < total; d += spacing) {
+      for (let s = 0; s < segs.length; s++) {
+        const seg = segs[s];
+        if (d >= seg.acc && d <= seg.acc + seg.len) {
+          const t = (d - seg.acc) / seg.len;
+          const x = seg.x0 + seg.dx * t;
+          const y = seg.y0 + seg.dy * t;
+          ctx.beginPath();
+          ctx.arc(x, y, radius, 0, Math.PI * 2);
+          ctx.fill();
+          break;
+        }
+      }
+    }
+    ctx.restore();
+  }
+
+  function drawJunction(x, y, color = '#94b3ff', r = 4) {
+    ctx.save();
+    ctx.fillStyle = color;
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 7;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawVerticalResistor(x, yTop, yBot, label, valueText, color, activeGlow = 0, dimmed = false) {
+    const midY = (yTop + yBot) * 0.5;
+    const zigH = Math.min(46, (yBot - yTop) * 0.62);
+    const zTop = midY - zigH * 0.5;
+    const zBot = midY + zigH * 0.5;
+    const amp = 9;
+    const turns = 6;
+
+    ctx.save();
+    if (dimmed) ctx.globalAlpha = 0.28;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2.4;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    if (activeGlow > 0) {
+      ctx.shadowColor = color;
+      ctx.shadowBlur = activeGlow;
+    }
+
+    ctx.beginPath();
+    ctx.moveTo(x, yTop);
+    ctx.lineTo(x, zTop);
+    const step = zigH / turns;
+    for (let i = 0; i < turns; i++) {
+      const yA = zTop + (i + 0.25) * step;
+      const yB = zTop + (i + 0.75) * step;
+      const dir = (i % 2 === 0) ? 1 : -1;
+      ctx.lineTo(x + dir * amp, yA);
+      ctx.lineTo(x - dir * amp, yB);
+    }
+    ctx.lineTo(x, zBot);
+    ctx.lineTo(x, yBot);
+    ctx.stroke();
+
+    // Label on left
+    ctx.shadowBlur = 0;
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#eef3ff';
+    ctx.font = '700 12px system-ui, sans-serif';
+    ctx.fillText(label, x - 16, midY - 7);
+    ctx.fillStyle = color;
+    ctx.font = '600 10.5px ui-monospace, monospace';
+    ctx.fillText(valueText, x - 16, midY + 8);
+    ctx.restore();
+  }
+
+  function drawHorizontalResistor(xLeft, xRight, y, label, valueText, color, glow = 0) {
+    const midX = (xLeft + xRight) * 0.5;
+    const zigW = Math.min(42, (xRight - xLeft) * 0.62);
+    const zL = midX - zigW * 0.5;
+    const zR = midX + zigW * 0.5;
+    const amp = 7.5;
+    const turns = 5;
+
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2.2;
+    ctx.lineJoin = 'round';
+    if (glow > 0) {
+      ctx.shadowColor = color;
+      ctx.shadowBlur = glow;
+    }
+    ctx.beginPath();
+    ctx.moveTo(xLeft, y);
+    ctx.lineTo(zL, y);
+    const step = zigW / turns;
+    for (let i = 0; i < turns; i++) {
+      const xA = zL + (i + 0.25) * step;
+      const xB = zL + (i + 0.75) * step;
+      const dir = (i % 2 === 0) ? -1 : 1;
+      ctx.lineTo(xA, y + dir * amp);
+      ctx.lineTo(xB, y - dir * amp);
+    }
+    ctx.lineTo(zR, y);
+    ctx.lineTo(xRight, y);
+    ctx.stroke();
+
+    ctx.shadowBlur = 0;
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#9aa9cc';
+    ctx.font = '600 10px ui-monospace, monospace';
+    ctx.fillText(label + ' ' + valueText, midX, y - 15);
+    ctx.restore();
+  }
+
+  function drawCapacitor(x, yTop, yBot, vc, vcc, label, valueText) {
+    const midY = (yTop + yBot) * 0.5;
+    const plateGap = 14;
+    const plateW = 36;
+    const frac = Math.max(0, Math.min(1, vc / Math.max(0.1, vcc)));
+
+    ctx.save();
+    // Leads
+    ctx.strokeStyle = '#ffbe5c';
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    ctx.moveTo(x, yTop);
+    ctx.lineTo(x, midY - plateGap * 0.5);
+    ctx.stroke();
+
+    ctx.strokeStyle = '#5f76a8';
+    ctx.beginPath();
+    ctx.moveTo(x, midY + plateGap * 0.5);
+    ctx.lineTo(x, yBot);
+    ctx.stroke();
+
+    // Glowing dielectric energy chamber between plates
+    const glowGrad = ctx.createLinearGradient(x, midY + plateGap * 0.5, x, midY - plateGap * 0.5);
+    glowGrad.addColorStop(0, `rgba(88, 220, 255, ${0.08 + frac * 0.35})`);
+    glowGrad.addColorStop(1, `rgba(255, 190, 92, ${0.15 + frac * 0.75})`);
+    ctx.fillStyle = glowGrad;
+    ctx.fillRect(x - plateW * 0.48, midY - plateGap * 0.5 + 1, plateW * 0.96, plateGap - 2);
+
+    // Visual charge bar inside dielectric
+    const barW = (plateW * 0.9) * frac;
+    ctx.fillStyle = '#ffbe5c';
+    ctx.shadowColor = '#ffbe5c';
+    ctx.shadowBlur = 10 * frac;
+    ctx.fillRect(x - barW * 0.5, midY - 2, barW, 4);
+
+    // Top plate (+)
+    ctx.strokeStyle = '#ffcf7d';
+    ctx.lineWidth = 3.2;
+    ctx.shadowColor = '#ffbe5c';
+    ctx.shadowBlur = 8 * frac;
+    ctx.beginPath();
+    ctx.moveTo(x - plateW * 0.5, midY - plateGap * 0.5);
+    ctx.lineTo(x + plateW * 0.5, midY - plateGap * 0.5);
+    ctx.stroke();
+
+    // Bottom plate (-)
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = '#8099cc';
+    ctx.lineWidth = 3.2;
+    ctx.beginPath();
+    ctx.moveTo(x - plateW * 0.5, midY + plateGap * 0.5);
+    ctx.lineTo(x + plateW * 0.5, midY + plateGap * 0.5);
+    ctx.stroke();
+
+    // + sign
+    ctx.fillStyle = '#ffbe5c';
+    ctx.font = '700 11px ui-monospace, monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText('+', x + plateW * 0.5 + 5, midY - plateGap * 0.5 + 3);
+
+    // Labels on left
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#eef3ff';
+    ctx.font = '700 12px system-ui, sans-serif';
+    ctx.fillText(label, x - 24, midY - 14);
+    ctx.fillStyle = '#4af2b2';
+    ctx.font = '600 10.5px ui-monospace, monospace';
+    ctx.fillText(valueText, x - 24, midY);
+    ctx.fillStyle = '#ffbe5c';
+    ctx.font = '700 11px ui-monospace, monospace';
+    ctx.fillText('V_C ' + vc.toFixed(2) + 'V', x - 24, midY + 15);
+    ctx.restore();
+  }
+
+  function drawGroundSymbol(x, y, color = '#687ea8') {
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x, y + 8);
+    ctx.moveTo(x - 12, y + 8);
+    ctx.lineTo(x + 12, y + 8);
+    ctx.moveTo(x - 7.5, y + 13);
+    ctx.lineTo(x + 7.5, y + 13);
+    ctx.moveTo(x - 3.5, y + 18);
+    ctx.lineTo(x + 3.5, y + 18);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawComparator(cx, cy, label, active, flash, activeColor, plusTop) {
+    const w = 52;
+    const h = 44;
+    const xL = cx - w * 0.5;
+    const xR = cx + w * 0.5;
+    const lit = active || flash > 0.1;
+    const intensity = active ? 1.0 : flash;
+
+    ctx.save();
+    if (lit) {
+      ctx.shadowColor = activeColor;
+      ctx.shadowBlur = 18 * intensity;
+    }
+    ctx.fillStyle = lit
+      ? (activeColor === '#ff6083' ? `rgba(255, 96, 131, ${0.18 + 0.22 * intensity})` : `rgba(88, 220, 255, ${0.18 + 0.22 * intensity})`)
+      : 'rgba(16, 26, 48, 0.85)';
+    ctx.strokeStyle = lit ? activeColor : 'rgba(148, 179, 255, 0.45)';
+    ctx.lineWidth = lit ? 2.4 : 1.7;
+
+    ctx.beginPath();
+    ctx.moveTo(xL, cy - h * 0.5);
+    ctx.lineTo(xR, cy);
+    ctx.lineTo(xL, cy + h * 0.5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // + and - signs
+    ctx.shadowBlur = 0;
+    ctx.font = '800 12px ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const topSign = plusTop ? '+' : '−';
+    const botSign = plusTop ? '−' : '+';
+    ctx.fillStyle = plusTop ? '#ffbe5c' : '#8fb2e8';
+    ctx.fillText(topSign, xL + 10, cy - 10);
+    ctx.fillStyle = plusTop ? '#8fb2e8' : '#58dcff';
+    ctx.fillText(botSign, xL + 10, cy + 10);
+
+    // Label below/above
+    ctx.fillStyle = lit ? '#ffffff' : '#9aa9cc';
+    ctx.font = '700 9.5px ui-monospace, monospace';
+    ctx.fillText(label, cx - 2, cy - h * 0.5 - 9);
+    ctx.restore();
+  }
+
+  function drawNPNTransistor(cx, cy, isOn) {
+    const r = 20;
+    ctx.save();
+    if (isOn) {
+      ctx.shadowColor = '#ffbe5c';
+      ctx.shadowBlur = 16;
+    }
+    ctx.fillStyle = isOn ? 'rgba(255, 190, 92, 0.18)' : 'rgba(15, 23, 42, 0.78)';
+    ctx.strokeStyle = isOn ? '#ffbe5c' : 'rgba(148, 179, 255, 0.42)';
+    ctx.lineWidth = isOn ? 2.2 : 1.6;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Base bar (on right, driven from SR Flip-Flop Qbar on right)
+    const stroke = isOn ? '#ffe1a8' : '#8ea3cc';
+    ctx.strokeStyle = stroke;
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    ctx.moveTo(cx + 6, cy - 10);
+    ctx.lineTo(cx + 6, cy + 10);
+    // Base lead going right
+    ctx.moveTo(cx + 6, cy);
+    ctx.lineTo(cx + r, cy);
+    // Collector lead going up-left then up
+    ctx.moveTo(cx + 6, cy - 5);
+    ctx.lineTo(cx - 8, cy - 12);
+    ctx.lineTo(cx - 8, cy - r);
+    // Emitter lead going down-left then down
+    ctx.moveTo(cx + 6, cy + 5);
+    ctx.lineTo(cx - 8, cy + 12);
+    ctx.lineTo(cx - 8, cy + r);
+    ctx.stroke();
+
+    // NPN Emitter arrow pointing outward (down-left)
+    ctx.fillStyle = stroke;
+    ctx.beginPath();
+    ctx.moveTo(cx - 8, cy + 12);
+    ctx.lineTo(cx - 1, cy + 11.5);
+    ctx.lineTo(cx - 3.5, cy + 6.5);
+    ctx.closePath();
+    ctx.fill();
+
+    // Status label
+    ctx.shadowBlur = 0;
+    ctx.font = '750 9.5px ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = isOn ? '#ffbe5c' : '#68789c';
+    ctx.fillText(isOn ? 'NPN ON' : 'NPN OFF', cx, cy + r + 13);
+    ctx.restore();
+  }
+
+  function drawBypassDiode(x, yTop, yBot, conducting) {
+    const midY = (yTop + yBot) * 0.5;
+    const color = conducting ? '#58dcff' : '#4f6285';
+    ctx.save();
+    if (conducting) {
+      ctx.shadowColor = '#58dcff';
+      ctx.shadowBlur = 14;
+    }
+    ctx.strokeStyle = color;
+    ctx.fillStyle = conducting ? 'rgba(88, 220, 255, 0.35)' : 'rgba(79, 98, 133, 0.18)';
+    ctx.lineWidth = 2.1;
+
+    // Leads
+    ctx.beginPath();
+    ctx.moveTo(x, yTop);
+    ctx.lineTo(x, midY - 9);
+    ctx.moveTo(x, midY + 9);
+    ctx.lineTo(x, yBot);
+    ctx.stroke();
+
+    // Triangle pointing DOWN (charging current flows down from Pin 7 node to C)
+    ctx.beginPath();
+    ctx.moveTo(x - 9, midY - 9);
+    ctx.lineTo(x + 9, midY - 9);
+    ctx.lineTo(x, midY + 9);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // Cathode bar
+    ctx.beginPath();
+    ctx.moveTo(x - 10, midY + 9);
+    ctx.lineTo(x + 10, midY + 9);
+    ctx.stroke();
+
+    ctx.shadowBlur = 0;
+    ctx.font = '700 10px ui-monospace, monospace';
+    ctx.fillStyle = conducting ? '#8ae9ff' : '#6f82a8';
+    ctx.textAlign = 'left';
+    ctx.fillText('D₁', x + 13, midY + 3);
+    ctx.restore();
+  }
+
+  // =========================================================================
+  // MAIN CIRCUIT & X-RAY NE555 IC RENDERER
+  // =========================================================================
+  function drawCircuitBench(layout) {
+    hitRegions = [];
+    ctx.save();
+    ctx.translate(layout.cx, layout.cy);
+    ctx.scale(layout.scale, layout.scale);
+
+    const isHigh = state.latchQ === 1;
+    const npnOn = state.latchQBar === 1;
+    const isMono = state.mode === 'monostable';
+    const isPwm = state.mode === 'pwm' || state.pin5Override;
+
+    // Key coordinates in virtual 980 x 470 bench space
+    const railTopY = -196;
+    const railBotY = 196;
+
+    // NE555 X-Ray Package bounds
+    const chipX = -175;
+    const chipY = -132;
+    const chipW = 390;
+    const chipH = 264;
+    const chipRight = chipX + chipW; // +215
+    const chipBot = chipY + chipH;   // +132
+
+    // Pin attachment coordinates on IC perimeter
+    const pin8 = { x: -75, y: chipY };          // Vcc (top-left-ish)
+    const pin4 = { x: 88, y: chipY };           // /RESET (top-right-ish)
+    const pin1 = { x: -75, y: chipBot };        // GND (bottom-left-ish)
+    const pin7 = { x: chipX, y: -62 };          // DISCHARGE (left-top)
+    const pin6 = { x: chipX, y: 2 };            // THRESHOLD (left-mid)
+    const pin2 = { x: chipX, y: 74 };           // TRIGGER (left-bot)
+    const pin3 = { x: chipRight, y: -22 };      // OUTPUT (right-upper)
+    const pin5 = { x: chipRight, y: 72 };       // CTRL VOLT (right-lower)
+
+    // External component column X
+    const rcX = -325;
+    const diodeX = -268;
+    const r1TopY = railTopY;
+    const node7Y = -62;
+    const nodeCY = 2;
+    const capTopY = 58;
+    const capBotY = railBotY;
+
+    // =====================================================================
+    // 1. POWER & GROUND RAILS
+    // =====================================================================
+    drawWire([[-435, railTopY], [440, railTopY]], 'rgba(255, 190, 92, 0.55)', 2.8, 6);
+    drawWire([[-435, railBotY], [440, railBotY]], 'rgba(110, 140, 195, 0.45)', 2.6, 0);
+
+    // Vcc badge on left of top rail
+    ctx.save();
+    ctx.fillStyle = 'rgba(255, 190, 92, 0.14)';
+    ctx.strokeStyle = 'rgba(255, 190, 92, 0.55)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.roundRect(-455, railTopY - 14, 92, 26, 7);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#ffcf7d';
+    ctx.font = '750 11.5px ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('+Vcc ' + state.vcc.toFixed(1) + 'V', -409, railTopY - 1);
+
+    // GND badge on left of bottom rail
+    ctx.fillStyle = 'rgba(104, 126, 168, 0.15)';
+    ctx.strokeStyle = 'rgba(130, 160, 215, 0.4)';
+    ctx.beginPath();
+    ctx.roundRect(-455, railBotY - 12, 76, 24, 7);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#9aa9cc';
+    ctx.font = '700 11px ui-monospace, monospace';
+    ctx.fillText('GND 0V', -417, railBotY);
+    drawGroundSymbol(-145, railBotY, '#768db8');
+    ctx.restore();
+
+    // =====================================================================
+    // 2. EXTERNAL WIRES & ANIMATED CURRENT PATHS (LEFT RC NETWORK)
+    // =====================================================================
+    // Pin 8 Vcc feed
+    drawWire([[pin8.x, railTopY], [pin8.x, pin8.y]], '#ffbe5c', 2.4, 5);
+    drawJunction(pin8.x, railTopY, '#ffbe5c', 4);
+    drawCurrentDots([[pin8.x, railTopY], [pin8.x, pin8.y]], state.flowDivPhase, '#ffcf7d', 24, 2.4);
+
+    // Pin 1 GND feed
+    drawWire([[pin1.x, pin1.y], [pin1.x, railBotY]], '#768db8', 2.4);
+    drawJunction(pin1.x, railBotY, '#768db8', 4);
+
+    // Pin 4 /RESET Switch wiring (top right of IC)
+    const rstSwitchY = -164;
+    const rstColor = state.resetPinLow ? '#ff6083' : '#4af2b2';
+    drawWire([[pin4.x, railTopY], [pin4.x, rstSwitchY - 10]], '#ffbe5c', 2);
+    drawWire([[pin4.x, rstSwitchY + 10], [pin4.x, pin4.y]], rstColor, 2.4, state.resetPinLow ? 10 : 4);
+    drawJunction(pin4.x, railTopY, '#ffbe5c', 3.5);
+
+    // Interactive Pin 4 Reset toggle badge on canvas
+    ctx.save();
+    ctx.fillStyle = state.resetPinLow ? 'rgba(255, 96, 131, 0.32)' : 'rgba(74, 242, 178, 0.14)';
+    ctx.strokeStyle = state.resetPinLow ? '#ff6083' : 'rgba(74, 242, 178, 0.55)';
+    ctx.lineWidth = 1.6;
+    if (state.hoveredId === 'pin4-reset') {
+      ctx.shadowColor = rstColor;
+      ctx.shadowBlur = 12;
+    }
+    ctx.beginPath();
+    ctx.roundRect(pin4.x - 42, rstSwitchY - 12, 84, 24, 6);
+    ctx.fill();
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = state.resetPinLow ? '#ffd2dc' : '#a8ffe0';
+    ctx.font = '750 10px ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(state.resetPinLow ? '⛔ RST: LOW' : 'RST: HIGH', pin4.x, rstSwitchY);
+    ctx.restore();
+    registerHit('pin4-reset', pin4.x - 44, rstSwitchY - 14, 88, 28, layout, {
+      clickable: true,
+      title: 'Pin 4 — Active-Low /RESET',
+      val: state.resetPinLow ? 'LOW (0.0V) — Forced Reset Active!' : `HIGH (${state.vcc.toFixed(1)}V) — Running`,
+      desc: 'Click to pull Pin 4 to GND, overriding both comparators to force Q=0, Output LOW, and Discharge NPN ON.'
+    });
+
+    // External RC network (Left side)
+    // Wire from Vcc rail to R1 top, then R1 down to node7Y
+    drawJunction(rcX, railTopY, '#ffbe5c', 4);
+    drawVerticalResistor(rcX, r1TopY + 10, node7Y - 6, 'R₁', fmtOhms(state.r1), '#ffbe5c', isHigh ? 6 : 10, false);
+    drawWire([[rcX, railTopY], [rcX, r1TopY + 10]], '#ffbe5c', 2.4);
+    drawWire([[rcX, node7Y - 6], [rcX, node7Y]], '#ffbe5c', 2.4);
+
+    if (isMono) {
+      // MONOSTABLE WIRING:
+      // Pin 7 and Pin 6 both tie to RC node (R1 -> C). R2 is bypassed visually!
+      drawWire([[rcX, node7Y], [rcX, capTopY]], '#ffbe5c', 2.5, isHigh ? 6 : 0);
+      drawWire([[rcX, node7Y], [pin7.x, pin7.y]], npnOn ? '#ff8b5a' : '#ffbe5c', 2.4, npnOn ? 8 : 0);
+      drawWire([[rcX, nodeCY], [pin6.x, pin6.y]], '#ffbe5c', 2.3);
+      drawJunction(rcX, node7Y, '#ffbe5c', 4.5);
+      drawJunction(rcX, nodeCY, '#ffbe5c', 4.5);
+
+      // Animated current dots in Monostable
+      if (isHigh) {
+        drawCurrentDots([[rcX, railTopY], [rcX, capTopY]], state.flowChargePhase, '#ffe099', 26, 3.0, false);
+      } else {
+        // R1 trickle into Pin 7
+        drawCurrentDots([[rcX, railTopY], [rcX, node7Y], [pin7.x, pin7.y]], state.flowR1Phase, '#ffbe5c', 28, 2.5, false);
+        // Fast discharge from C up to Pin 7 if vc > 0.08V
+        if (state.vc > 0.08) {
+          drawCurrentDots([[rcX, capTopY], [rcX, node7Y], [pin7.x, pin7.y]], state.flowDischPhase, '#ff6083', 22, 3.2, false);
+        }
+      }
+
+      // Pin 2 Trigger Pushbutton circuit (Pull-up to Vcc + Momentary switch to GND)
+      const trigBtnX = -246;
+      const trigBtnY = 122;
+      const trigPressed = state.triggerManual || state.triggerPulseTimer > 0;
+      const trigColor = trigPressed ? '#58dcff' : '#85a2d6';
+
+      // Pull-up stub label
+      drawWire([[trigBtnX, pin2.y], [pin2.x, pin2.y]], trigColor, 2.4, trigPressed ? 10 : 0);
+      drawWire([[trigBtnX, pin2.y], [trigBtnX, trigBtnY - 16]], trigColor, 2.2);
+      drawWire([[trigBtnX, trigBtnY + 16], [trigBtnX, railBotY]], '#768db8', 2.2);
+      drawJunction(trigBtnX, railBotY, '#768db8', 3.5);
+
+      // Draw tactile Trigger Pushbutton right on canvas
+      ctx.save();
+      ctx.fillStyle = trigPressed ? 'rgba(88, 220, 255, 0.34)' : 'rgba(88, 220, 255, 0.12)';
+      ctx.strokeStyle = trigPressed ? '#58dcff' : 'rgba(88, 220, 255, 0.6)';
+      ctx.lineWidth = 1.8;
+      if (trigPressed || state.hoveredId === 'pin2-trigger') {
+        ctx.shadowColor = '#58dcff';
+        ctx.shadowBlur = 14;
+      }
+      ctx.beginPath();
+      ctx.roundRect(trigBtnX - 42, trigBtnY - 16, 84, 32, 8);
+      ctx.fill();
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = trigPressed ? '#ffffff' : '#9eeeff';
+      ctx.font = '750 10.5px ui-monospace, monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(trigPressed ? '⚡ FIRED!' : '⚡ TRIG P2', trigBtnX, trigBtnY);
+      ctx.restore();
+
+      registerHit('pin2-trigger', trigBtnX - 44, trigBtnY - 18, 88, 36, layout, {
+        clickable: true,
+        title: 'Pin 2 — Monostable Trigger Button',
+        val: trigPressed ? 'PULLED LOW (0.0V) → Firing Pulse!' : `IDLE HIGH (${state.vcc.toFixed(1)}V)`,
+        desc: 'Click to pull Pin 2 below 1/3 Vcc and fire a single precision output pulse of T = 1.1·R₁·C.'
+      });
+    } else {
+      // ASTABLE / PWM WIRING:
+      // Pin 7 connects to node between R1 and R2
+      drawWire([[rcX, node7Y], [pin7.x, pin7.y]], npnOn ? '#ff7c6b' : '#ffbe5c', 2.4, npnOn ? 9 : 0);
+      drawJunction(rcX, node7Y, '#ffbe5c', 4.5);
+
+      // R2 between node7Y and nodeCY (extended down to capTopY)
+      const r2Color = isHigh ? (state.diodeBypass ? '#5a6e94' : '#4af2b2') : '#ff6083';
+      drawVerticalResistor(rcX, node7Y + 6, capTopY - 8, 'R₂', fmtOhms(state.r2), r2Color, isHigh && !state.diodeBypass ? 6 : (!isHigh ? 9 : 0), false);
+      drawWire([[rcX, node7Y], [rcX, node7Y + 6]], '#ffbe5c', 2.4);
+      drawWire([[rcX, capTopY - 8], [rcX, capTopY]], '#ffbe5c', 2.4);
+
+      // Optional Bypass Diode D1 across R2
+      if (state.diodeBypass) {
+        drawWire([[rcX, node7Y], [diodeX, node7Y], [diodeX, node7Y + 12]], isHigh ? '#58dcff' : '#4d6082', 2);
+        drawWire([[diodeX, capTopY - 16], [diodeX, capTopY - 4], [rcX, capTopY - 4]], isHigh ? '#58dcff' : '#4d6082', 2);
+        drawBypassDiode(diodeX, node7Y + 12, capTopY - 16, isHigh);
+        drawJunction(rcX, capTopY - 4, '#58dcff', 3.5);
+      }
+
+      // Pin 6 and Pin 2 tied together to C top node
+      const senseY = capTopY - 4;
+      const senseBusX = -218;
+      drawWire([[rcX, senseY], [senseBusX, senseY]], '#ffbe5c', 2.3);
+      drawWire([[senseBusX, pin6.y], [senseBusX, pin2.y]], '#ffbe5c', 2.3);
+      drawWire([[senseBusX, pin6.y], [pin6.x, pin6.y]], '#ffbe5c', 2.3, state.comp1Flash > 0.1 ? 12 : 0);
+      drawWire([[senseBusX, pin2.y], [pin2.x, pin2.y]], '#58dcff', 2.3, state.comp2Flash > 0.1 ? 12 : 0);
+      drawJunction(rcX, senseY, '#ffbe5c', 4.5);
+      drawJunction(senseBusX, senseY, '#ffbe5c', 3.5);
+
+      // Animated Current Dots: visibly reverse through R2 / C!
+      if (isHigh) {
+        // Charging: Vcc -> R1 -> (R2 or D1) -> C
+        if (state.diodeBypass) {
+          drawCurrentDots(
+            [[rcX, railTopY], [rcX, node7Y], [diodeX, node7Y], [diodeX, senseY], [rcX, senseY], [rcX, capTopY + 16]],
+            state.flowChargePhase, '#58dcff', 28, 3.1, false
+          );
+        } else {
+          drawCurrentDots(
+            [[rcX, railTopY], [rcX, capTopY + 16]],
+            state.flowChargePhase, '#4af2b2', 28, 3.1, false
+          );
+        }
+      } else {
+        // Discharging:
+        // 1) Vcc -> R1 -> Pin 7
+        drawCurrentDots(
+          [[rcX, railTopY], [rcX, node7Y], [pin7.x, pin7.y]],
+          state.flowR1Phase, '#ffbe5c', 28, 2.7, false
+        );
+        // 2) REVERSING OUT OF CAPACITOR: C -> up through R2 -> right into Pin 7!
+        drawCurrentDots(
+          [[rcX, capTopY + 10], [rcX, node7Y], [pin7.x, pin7.y]],
+          state.flowDischPhase, '#ff6083', 26, 3.3, false
+        );
+      }
+
+      // Allow clicking Pin 2 even in Astable mode for manual trigger pulse
+      registerHit('pin2-trigger', pin2.x - 30, pin2.y - 16, 40, 32, layout, {
+        clickable: true,
+        title: 'Pin 2 — Trigger Input (TRIG)',
+        val: `V_Pin2 = ${state.vPin2.toFixed(2)}V (Threshold ${state.vTrig.toFixed(2)}V)`,
+        desc: 'Tied to V_C in Astable mode. Click to momentarily pull Pin 2 LOW and force-SET the flip-flop!'
+      });
+    }
+
+    // Timing Capacitor C (always at rcX, capTopY .. capBotY)
+    drawCapacitor(rcX, capTopY, capBotY, state.vc, state.vcc, 'C', fmtFarads(state.c));
+    drawJunction(rcX, railBotY, '#768db8', 4);
+
+    // Direction arrow indicator badge beside C showing CHARGING vs DISCHARGING
+    ctx.save();
+    const arrowX = rcX + 26;
+    const arrowY = (capTopY + capBotY) * 0.5;
+    const chgActive = isHigh && Math.abs(state.iCap) > 1e-8;
+    const disActive = !isHigh && state.vc > 0.05;
+    if (chgActive || disActive) {
+      const col = chgActive ? '#4af2b2' : '#ff6083';
+      ctx.fillStyle = col;
+      ctx.font = '750 10px ui-monospace, monospace';
+      ctx.textAlign = 'left';
+      ctx.fillText(chgActive ? '↓ CHG' : '↑ DIS', arrowX, arrowY + 4);
+    }
+    ctx.restore();
+
+    // Register hit regions for R1, R2, C
+    registerHit('ext-r1', rcX - 68, r1TopY + 14, 92, node7Y - r1TopY - 22, layout, {
+      title: 'External Resistor R₁',
+      val: `${fmtOhms(state.r1)} · I = ${fmtCurrent(state.iR1)}`,
+      desc: isMono
+        ? 'Sets the Monostable charging time constant τ = R₁·C (Pulse width T = 1.1·R₁·C).'
+        : 'Charges C together with R₂ (or alone with Diode Bypass). During discharge, Pin 7 sinks Vcc/R₁.'
+    });
+    if (!isMono) {
+      registerHit('ext-r2', rcX - 68, node7Y + 8, 92, capTopY - node7Y - 14, layout, {
+        title: 'External Resistor R₂',
+        val: `${fmtOhms(state.r2)} · I_C = ${fmtCurrent(state.iCap)}`,
+        desc: 'Carries both charging and discharging currents — watch the dots reverse direction every half-cycle!'
+      });
+    }
+    registerHit('ext-c', rcX - 78, capTopY + 12, 106, capBotY - capTopY - 20, layout, {
+      title: 'Timing Capacitor C',
+      val: `${fmtFarads(state.c)} · V_C = ${state.vc.toFixed(2)}V`,
+      desc: 'Charges exponentially toward Vcc and discharges toward 0V between 1/3 Vcc and 2/3 Vcc.'
+    });
+
+    // =====================================================================
+    // 3. RIGHT SIDE: PIN 3 OUTPUT STAGE (LED + SPEAKER) & PIN 5 CTRL
+    // =====================================================================
+    const outX = 335;
+    const outColor = isHigh ? '#4af2b2' : '#4a5c80';
+
+    // Pin 3 -> 330Ω -> LED -> GND
+    drawWire([[pin3.x, pin3.y], [250, pin3.y]], outColor, 2.6, isHigh ? 10 : 0);
+    drawHorizontalResistor(250, 315, pin3.y, 'R_L', '330Ω', outColor, isHigh ? 6 : 0);
+    drawWire([[315, pin3.y], [outX, pin3.y], [outX, 16]], outColor, 2.5, isHigh ? 8 : 0);
+    drawWire([[outX, 62], [outX, railBotY]], '#687ea8', 2.3);
+    drawJunction(outX, railBotY, '#687ea8', 4);
+
+    if (isHigh) {
+      drawCurrentDots([[pin3.x, pin3.y], [outX, pin3.y], [outX, 22]], state.flowOutPhase, '#7dffce', 24, 2.8, false);
+    }
+
+    // Glowing Animated Output LED at (outX, 38)
+    const ledY = 38;
+    const g = state.ledGlow;
+    ctx.save();
+    // Outer ambient bloom
+    if (g > 0.03) {
+      const bloom = ctx.createRadialGradient(outX, ledY, 4, outX, ledY, 54 * (0.5 + 0.5 * g));
+      bloom.addColorStop(0, `rgba(74, 242, 178, ${0.75 * g})`);
+      bloom.addColorStop(0.4, `rgba(88, 220, 255, ${0.32 * g})`);
+      bloom.addColorStop(1, 'rgba(74, 242, 178, 0)');
+      ctx.fillStyle = bloom;
+      ctx.beginPath();
+      ctx.arc(outX, ledY, 54, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // LED dome
+    const domeGrad = ctx.createRadialGradient(outX - 5, ledY - 5, 2, outX, ledY, 17);
+    domeGrad.addColorStop(0, g > 0.1 ? `rgba(220, 255, 245, ${0.45 + 0.55 * g})` : '#334659');
+    domeGrad.addColorStop(0.55, g > 0.1 ? `rgba(74, 242, 178, ${0.3 + 0.7 * g})` : '#172336');
+    domeGrad.addColorStop(1, '#0c1826');
+    ctx.fillStyle = domeGrad;
+    ctx.strokeStyle = g > 0.15 ? '#7dffce' : '#4a6085';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(outX, ledY, 16, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Specular highlight
+    ctx.fillStyle = 'rgba(255,255,255,0.45)';
+    ctx.beginPath();
+    ctx.ellipse(outX - 5, ledY - 6, 4.5, 2.5, -0.6, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Label
+    ctx.fillStyle = g > 0.25 ? '#9dffd9' : '#7f93b8';
+    ctx.font = '750 10.5px ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('LED ' + Math.round(g * 100) + '%', outX, ledY + 30);
+    ctx.restore();
+
+    registerHit('ext-led', outX - 24, ledY - 24, 48, 56, layout, {
+      title: 'Output Indicator LED (Pin 3)',
+      val: `V_out = ${state.vOut.toFixed(1)}V · Brightness ${Math.round(g * 100)}%`,
+      desc: 'Driven by NE555 totem-pole output stage (up to 200 mA). Dims smoothly during high-frequency Pin-5 PWM!'
+    });
+
+    // Mini Speaker Load wired in parallel on far right (outX + 86, pin3.y + 4)
+    const spkX = 415;
+    const spkY = -22;
+    drawWire([[outX, pin3.y], [spkX - 20, spkY]], outColor, 2.1, isHigh ? 6 : 0);
+    drawJunction(outX, pin3.y, outColor, 3.5);
+    drawWire([[spkX - 10, spkY + 20], [spkX - 10, railBotY]], '#596d94', 1.8);
+    drawJunction(spkX - 10, railBotY, '#596d94', 3.5);
+
+    ctx.save();
+    const spkLit = isHigh || state.speakerPulse > 0.1;
+    ctx.strokeStyle = audio.enabled ? '#4af2b2' : (spkLit ? '#58dcff' : '#586d96');
+    ctx.fillStyle = spkLit ? 'rgba(88, 220, 255, 0.16)' : 'rgba(18, 28, 48, 0.8)';
+    ctx.lineWidth = 2;
+    // Magnet box
+    ctx.fillRect(spkX - 20, spkY - 9, 12, 18);
+    ctx.strokeRect(spkX - 20, spkY - 9, 12, 18);
+    // Cone
+    ctx.beginPath();
+    ctx.moveTo(spkX - 8, spkY - 9);
+    ctx.lineTo(spkX + 8, spkY - 20);
+    ctx.lineTo(spkX + 8, spkY + 20);
+    ctx.lineTo(spkX - 8, spkY + 9);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // Animated sound wave arcs
+    const waveEnergy = audio.enabled ? Math.max(0.4, state.speakerPulse, isHigh ? 0.85 : 0.1) : state.speakerPulse;
+    if (waveEnergy > 0.05) {
+      for (let w = 0; w < 3; w++) {
+        const r = 13 + w * 9 + (1 - waveEnergy) * 4;
+        ctx.strokeStyle = audio.enabled
+          ? `rgba(74, 242, 178, ${(0.7 - w * 0.2) * waveEnergy})`
+          : `rgba(88, 220, 255, ${(0.55 - w * 0.16) * waveEnergy})`;
+        ctx.lineWidth = 1.8;
+        ctx.beginPath();
+        ctx.arc(spkX + 9, spkY, r, -0.62, 0.62);
+        ctx.stroke();
+      }
+    }
+    ctx.fillStyle = audio.enabled ? '#4af2b2' : '#7f93b8';
+    ctx.font = '700 9.5px ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(audio.enabled ? 'SPK ON' : 'SPK MUTE', spkX - 2, spkY + 33);
+    ctx.restore();
+
+    registerHit('ext-spk', spkX - 24, spkY - 24, 52, 62, layout, {
+      clickable: true,
+      title: 'Output Piezo / Audio Speaker',
+      val: audio.enabled ? 'Web Audio UNMUTED' : 'Muted (Click to unmute)',
+      desc: 'Authentic NE555 square-wave synth synced to frequency & duty cycle (edge ticks below 22 Hz, tone above).'
+    });
+
+    // Pin 5 Control Voltage External Circuit (bottom-right of IC)
+    const p5X = 274;
+    const p5Col = isPwm ? '#a78bfa' : '#6c82ab';
+    drawWire([[pin5.x, pin5.y], [p5X, pin5.y], [p5X, 114]], p5Col, 2.2, isPwm ? 8 : 0);
+    drawWire([[p5X, 146], [p5X, railBotY]], '#687ea8', 2.0);
+    drawJunction(p5X, railBotY, '#687ea8', 3.5);
+
+    ctx.save();
+    if (isPwm) {
+      // Variable V_ctrl Voltage Source Circle
+      ctx.fillStyle = 'rgba(167, 139, 250, 0.22)';
+      ctx.strokeStyle = '#a78bfa';
+      ctx.lineWidth = 2;
+      ctx.shadowColor = '#a78bfa';
+      ctx.shadowBlur = 12;
+      ctx.beginPath();
+      ctx.arc(p5X, 130, 16, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#ede6ff';
+      ctx.font = '750 10px ui-monospace, monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(state.pwmSweep ? 'PWM~' : 'Vctl', p5X, 130);
+      ctx.fillStyle = '#c9b5ff';
+      ctx.font = '700 10px ui-monospace, monospace';
+      ctx.textAlign = 'left';
+      ctx.fillText(state.vTh.toFixed(2) + 'V', p5X + 22, 130);
+    } else {
+      // Standard 10nF bypass capacitor
+      ctx.strokeStyle = '#7b92bd';
+      ctx.lineWidth = 2.4;
+      ctx.beginPath();
+      ctx.moveTo(p5X - 11, 126);
+      ctx.lineTo(p5X + 11, 126);
+      ctx.moveTo(p5X - 11, 134);
+      ctx.lineTo(p5X + 11, 134);
+      ctx.moveTo(p5X, 114);
+      ctx.lineTo(p5X, 126);
+      ctx.moveTo(p5X, 134);
+      ctx.lineTo(p5X, 146);
+      ctx.stroke();
+      ctx.fillStyle = '#7f93b8';
+      ctx.font = '600 9.5px ui-monospace, monospace';
+      ctx.textAlign = 'left';
+      ctx.fillText('10nF', p5X + 15, 133);
+    }
+    ctx.restore();
+
+    registerHit('ext-pin5', p5X - 20, 108, 76, 46, layout, {
+      title: 'Pin 5 — Control Voltage (CTRL)',
+      val: isPwm ? `Driven at ${state.vTh.toFixed(2)}V (Trigger = ${state.vTrig.toFixed(2)}V)` : `Floating at 2/3 Vcc (${state.vTh.toFixed(2)}V)`,
+      desc: 'Directly overrides the 2/3 Vcc upper threshold node to modulate pulse width (PWM) & frequency.'
+    });
+
+    // =====================================================================
+    // 4. X-RAY 8-PIN DIP NE555 IC PACKAGE (CENTERPIECE!)
+    // =====================================================================
+    ctx.save();
+    // Soft outer X-ray aura
+    const aura = ctx.createRadialGradient(20, 0, 40, 20, 0, 260);
+    aura.addColorStop(0, isHigh ? 'rgba(74, 242, 178, 0.08)' : 'rgba(255, 190, 92, 0.07)');
+    aura.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = aura;
+    ctx.fillRect(chipX - 60, chipY - 60, chipW + 120, chipH + 120);
+
+    // Translucent dark epoxy X-ray IC body
+    const bodyGrad = ctx.createLinearGradient(chipX, chipY, chipX, chipBot);
+    bodyGrad.addColorStop(0, 'rgba(13, 21, 40, 0.88)');
+    bodyGrad.addColorStop(0.5, 'rgba(8, 13, 26, 0.92)');
+    bodyGrad.addColorStop(1, 'rgba(10, 17, 34, 0.88)');
+    ctx.fillStyle = bodyGrad;
+    ctx.strokeStyle = 'rgba(128, 178, 255, 0.44)';
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    ctx.roundRect(chipX, chipY, chipW, chipH, 12);
+    ctx.fill();
+    ctx.stroke();
+
+    // Inner bevel line
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.06)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(chipX + 5, chipY + 5, chipW - 10, chipH - 10, 8);
+    ctx.stroke();
+
+    // Iconic DIP-8 Left Orientation Notch & Pin-1 Dot
+    ctx.fillStyle = 'rgba(4, 7, 17, 0.9)';
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.4)';
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.arc(chipX, 0, 14, -Math.PI * 0.5, Math.PI * 0.5);
+    ctx.fill();
+    ctx.stroke();
+
+    // Subtle laser-etched NE555 watermark inside die
+    ctx.fillStyle = 'rgba(148, 179, 255, 0.07)';
+    ctx.font = '900 44px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('NE555', chipX + chipW * 0.52, chipY + 26);
+
+    ctx.fillStyle = 'rgba(148, 179, 255, 0.42)';
+    ctx.font = '700 9.5px ui-monospace, monospace';
+    ctx.textAlign = 'right';
+    ctx.fillText('X-RAY DIE VIEW · 8-PIN DIP', chipRight - 14, chipBot - 11);
+    ctx.restore();
+
+    // Draw Metallic 8 DIP Pin Pads & Numbers
+    const pinsMeta = [
+      { n: '8', lbl: 'VCC', p: pin8, side: 'top', col: '#ffbe5c' },
+      { n: '4', lbl: 'RST', p: pin4, side: 'top', col: rstColor },
+      { n: '1', lbl: 'GND', p: pin1, side: 'bot', col: '#7b92bd' },
+      { n: '7', lbl: 'DIS', p: pin7, side: 'left', col: npnOn ? '#ffbe5c' : '#8fa8d6' },
+      { n: '6', lbl: 'THR', p: pin6, side: 'left', col: state.comp1Out ? '#ff6083' : '#ffbe5c' },
+      { n: '2', lbl: 'TRG', p: pin2, side: 'left', col: state.comp2Out ? '#58dcff' : '#8fa8d6' },
+      { n: '3', lbl: 'OUT', p: pin3, side: 'right', col: isHigh ? '#4af2b2' : '#7b92bd' },
+      { n: '5', lbl: 'CTL', p: pin5, side: 'right', col: isPwm ? '#a78bfa' : '#8fa8d6' }
+    ];
+
+    for (const pm of pinsMeta) {
+      ctx.save();
+      ctx.fillStyle = '#182644';
+      ctx.strokeStyle = pm.col;
+      ctx.lineWidth = 1.6;
+      const pw = (pm.side === 'left' || pm.side === 'right') ? 22 : 28;
+      const ph = (pm.side === 'left' || pm.side === 'right') ? 16 : 16;
+      ctx.beginPath();
+      ctx.roundRect(pm.p.x - pw * 0.5, pm.p.y - ph * 0.5, pw, ph, 4);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = '#eef3ff';
+      ctx.font = '800 9.5px ui-monospace, monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(pm.n, pm.p.x, pm.p.y + 0.5);
+
+      ctx.fillStyle = 'rgba(185, 206, 245, 0.65)';
+      ctx.font = '700 8px ui-monospace, monospace';
+      if (pm.side === 'left') ctx.fillText(pm.lbl, pm.p.x - 21, pm.p.y - 10);
+      if (pm.side === 'right') ctx.fillText(pm.lbl, pm.p.x + 22, pm.p.y - 10);
+      if (pm.side === 'top') ctx.fillText(pm.lbl, pm.p.x + 26, pm.p.y - 8);
+      if (pm.side === 'bot') ctx.fillText(pm.lbl, pm.p.x + 26, pm.p.y + 8);
+      ctx.restore();
+    }
+
+    // =====================================================================
+    // 5. INTERNAL BLOCK 1: THREE 5 kΩ VOLTAGE DIVIDER RESISTORS
+    // =====================================================================
+    const divX = -75;
+    const divTop = chipY + 14;
+    const divBot = chipBot - 14;
+    const nodeAY = -36; // 2/3 Vcc node
+    const nodeBY = 44;  // 1/3 Vcc node
+
+    // Draw the three 5 kΩ internal resistors
+    const drawMiniRes = (x, y1, y2) => {
+      const m = (y1 + y2) * 0.5;
+      const zh = Math.min(34, (y2 - y1) * 0.62);
+      const zt = m - zh * 0.5;
+      ctx.save();
+      ctx.strokeStyle = '#9bb8eb';
+      ctx.lineWidth = 1.9;
+      ctx.beginPath();
+      ctx.moveTo(x, y1);
+      ctx.lineTo(x, zt);
+      const turns = 5;
+      const st = zh / turns;
+      for (let i = 0; i < turns; i++) {
+        const d = (i % 2 === 0) ? 1 : -1;
+        ctx.lineTo(x + d * 6, zt + (i + 0.25) * st);
+        ctx.lineTo(x - d * 6, zt + (i + 0.75) * st);
+      }
+      ctx.lineTo(x, zt + zh);
+      ctx.lineTo(x, y2);
+      ctx.stroke();
+
+      ctx.fillStyle = '#8fa8d6';
+      ctx.font = '700 9px ui-monospace, monospace';
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('5kΩ', x - 10, m);
+      ctx.restore();
+    };
+
+    drawWire([[divX, pin8.y + 8], [divX, divTop]], '#ffbe5c', 2);
+    drawMiniRes(divX, divTop, nodeAY);
+    drawMiniRes(divX, nodeAY, nodeBY);
+    drawMiniRes(divX, nodeBY, divBot);
+    drawWire([[divX, divBot], [divX, pin1.y - 8]], '#768db8', 2);
+    drawCurrentDots([[divX, divTop], [divX, divBot]], state.flowDivPhase, 'rgba(255, 207, 125, 0.75)', 36, 2.0, false);
+
+    drawJunction(divX, nodeAY, isPwm ? '#a78bfa' : '#ff6083', 4);
+    drawJunction(divX, nodeBY, '#58dcff', 4);
+
+    // Live Voltage Badges on 2/3 Vcc & 1/3 Vcc divider nodes!
+    if (state.showBadges) {
+      const drawNodeBadge = (x, y, text, color) => {
+        ctx.save();
+        ctx.fillStyle = 'rgba(5, 9, 20, 0.92)';
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.roundRect(x - 36, y - 9, 72, 18, 5);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = color;
+        ctx.font = '750 9px ui-monospace, monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(text, x, y + 0.5);
+        ctx.restore();
+      };
+      drawNodeBadge(divX - 44, nodeAY, (isPwm ? 'Vth ' : '⅔ ') + state.vTh.toFixed(2) + 'V', isPwm ? '#c4b0ff' : '#ff8aa3');
+      drawNodeBadge(divX - 44, nodeBY, (isPwm ? 'Vtr ' : '⅓ ') + state.vTrig.toFixed(2) + 'V', '#7ae6ff');
+    }
+
+    registerHit('ic-divider', divX - 65, divTop, 85, divBot - divTop, layout, {
+      title: '3 × 5 kΩ Internal Voltage Divider',
+      val: `2/3 Node: ${state.vTh.toFixed(2)}V | 1/3 Node: ${state.vTrig.toFixed(2)}V`,
+      desc: 'Three matched 5 kΩ resistors set the upper Threshold (2/3 Vcc) and lower Trigger (1/3 Vcc) references.'
+    });
+
+    // =====================================================================
+    // 6. INTERNAL BLOCK 2: UPPER THRESHOLD & LOWER TRIGGER COMPARATORS
+    // =====================================================================
+    const compX = 12;
+    const comp1Y = -44; // Threshold comparator
+    const comp2Y = 54;  // Trigger comparator
+
+    // Wires into Upper Threshold Comparator (COMP 1)
+    // (+) input (top): from Pin 6 (THRES)
+    drawWire([[pin6.x + 11, pin6.y], [-116, pin6.y], [-116, comp1Y - 10], [compX - 26, comp1Y - 10]], '#ffbe5c', 1.9, state.comp1Flash > 0.1 ? 10 : 0);
+    // (-) input (bottom): from 2/3 Vcc Node A
+    drawWire([[divX, nodeAY], [compX - 26, comp1Y + 10]], isPwm ? '#a78bfa' : '#ff6083', 1.9);
+
+    // Pin 5 Control Voltage internal bus to Node A (routed neatly below comparators / around right)
+    drawWire([[divX, nodeAY], [-42, nodeAY], [-42, 100], [pin5.x - 11, 100], [pin5.x - 11, pin5.y]], isPwm ? 'rgba(167, 139, 250, 0.85)' : 'rgba(167, 139, 250, 0.35)', 1.7, isPwm ? 7 : 0);
+
+    // Wires into Lower Trigger Comparator (COMP 2)
+    // (+) input (top): from 1/3 Vcc Node B
+    drawWire([[divX, nodeBY], [compX - 26, comp2Y - 10]], '#58dcff', 1.9);
+    // (-) input (bottom): from Pin 2 (TRIG)
+    drawWire([[pin2.x + 11, pin2.y], [-104, pin2.y], [-104, comp2Y + 10], [compX - 26, comp2Y + 10]], '#58dcff', 1.9, state.comp2Flash > 0.1 ? 10 : 0);
+
+    // Draw both comparators
+    drawComparator(compX, comp1Y, 'THRES COMP', state.comp1Out === 1, state.comp1Flash, '#ff6083', true);
+    drawComparator(compX, comp2Y, 'TRIG COMP', state.comp2Out === 1, state.comp2Flash, '#58dcff', true);
+
+    registerHit('ic-comp1', compX - 30, comp1Y - 26, 60, 52, layout, {
+      title: 'Upper Threshold Comparator (Pin 6)',
+      val: `V+ (V_C) = ${state.vPin6.toFixed(2)}V vs V− = ${state.vTh.toFixed(2)}V → R = ${state.comp1Out}`,
+      desc: 'Fires HIGH to RESET the flip-flop the exact millisecond V_C rises past 2/3 Vcc (or Pin 5 V_ctrl).'
+    });
+    registerHit('ic-comp2', compX - 30, comp2Y - 26, 60, 52, layout, {
+      title: 'Lower Trigger Comparator (Pin 2)',
+      val: `V+ = ${state.vTrig.toFixed(2)}V vs V− (Pin 2) = ${state.vPin2.toFixed(2)}V → S = ${state.comp2Out}`,
+      desc: 'Fires HIGH to SET the flip-flop the exact millisecond Pin 2 falls below 1/3 Vcc.'
+    });
+
+    // =====================================================================
+    // 7. INTERNAL BLOCK 3: SR FLIP-FLOP (R, S, /RST, Q, Q̄)
+    // =====================================================================
+    const ffX = 76;
+    const ffY = -56;
+    const ffW = 70;
+    const ffH = 118;
+
+    // Traces from Comparators to SR Flip-Flop R & S
+    const rWireLit = state.comp1Out === 1 || state.comp1Flash > 0.15;
+    const sWireLit = state.comp2Out === 1 || state.comp2Flash > 0.15;
+    drawWire([[compX + 26, comp1Y], [ffX, comp1Y]], rWireLit ? '#ff6083' : 'rgba(148, 179, 255, 0.35)', rWireLit ? 2.6 : 1.7, rWireLit ? 12 : 0);
+    drawWire([[compX + 26, comp2Y], [ffX, comp2Y]], sWireLit ? '#58dcff' : 'rgba(148, 179, 255, 0.35)', sWireLit ? 2.6 : 1.7, sWireLit ? 12 : 0);
+
+    // Trace from Pin 4 (/RESET) down into top of SR Flip-Flop
+    drawWire([[pin4.x, pin4.y + 8], [pin4.x, ffY]], state.resetPinLow ? '#ff6083' : 'rgba(74, 242, 178, 0.45)', state.resetPinLow ? 2.6 : 1.7, state.resetPinLow ? 12 : 0);
+
+    // Draw SR Flip-Flop Body
+    ctx.save();
+    const ffBorder = state.resetPinLow ? '#ff6083' : (isHigh ? '#4af2b2' : '#ffbe5c');
+    ctx.fillStyle = isHigh ? 'rgba(74, 242, 178, 0.12)' : 'rgba(255, 190, 92, 0.11)';
+    ctx.strokeStyle = ffBorder;
+    ctx.lineWidth = 2.1;
+    if (state.flipFlash > 0.1) {
+      ctx.shadowColor = ffBorder;
+      ctx.shadowBlur = 18 * state.flipFlash;
+    }
+    ctx.beginPath();
+    ctx.roundRect(ffX, ffY, ffW, ffH, 8);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#eef3ff';
+    ctx.font = '800 11px ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('SR', ffX + ffW * 0.5, ffY + 26);
+    ctx.fillStyle = '#9aa9cc';
+    ctx.font = '700 8.5px ui-monospace, monospace';
+    ctx.fillText('LATCH', ffX + ffW * 0.5, ffY + 38);
+
+    // Big live state badge inside SR Latch
+    ctx.fillStyle = state.resetPinLow ? '#ff6083' : (isHigh ? '#4af2b2' : '#ffbe5c');
+    ctx.font = '800 10.5px ui-monospace, monospace';
+    ctx.fillText(state.resetPinLow ? 'RST!' : (isHigh ? 'SET' : 'CLR'), ffX + ffW * 0.5, ffY + 62);
+
+    // Pin labels inside FF box
+    ctx.font = '750 10px ui-monospace, monospace';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = rWireLit ? '#ff6083' : '#9aa9cc';
+    ctx.fillText('R', ffX + 7, comp1Y + 3);
+    ctx.fillStyle = sWireLit ? '#58dcff' : '#9aa9cc';
+    ctx.fillText('S', ffX + 7, comp2Y + 3);
+
+    ctx.textAlign = 'right';
+    ctx.fillStyle = isHigh ? '#4af2b2' : '#68789c';
+    ctx.fillText('Q', ffX + ffW - 7, -22 + 3);
+    ctx.fillStyle = npnOn ? '#ffbe5c' : '#68789c';
+    ctx.fillText('Q̄', ffX + ffW - 7, 34 + 3);
+
+    // Active-low reset bubble at top of FF
+    ctx.strokeStyle = state.resetPinLow ? '#ff6083' : '#4af2b2';
+    ctx.fillStyle = '#091122';
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.arc(pin4.x, ffY - 3, 3.8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+
+    registerHit('ic-ff', ffX, ffY, ffW, ffH, layout, {
+      title: 'Internal SR Flip-Flop',
+      val: `R=${state.comp1Out} · S=${state.comp2Out} → Q=${state.latchQ} · Q̄=${state.latchQBar}`,
+      desc: 'Latches the timer state: Q drives the Pin 3 Output Stage, while Q̄ switches the Pin 7 NPN Discharge Transistor.'
+    });
+
+    // =====================================================================
+    // 8. INTERNAL BLOCK 4: OUTPUT DRIVER STAGE (PIN 3)
+    // =====================================================================
+    const drvX = 178;
+    const drvY = pin3.y; // -22
+
+    // Wire from Q to Output Driver -> Pin 3
+    drawWire([[ffX + ffW, drvY], [drvX - 15, drvY]], isHigh ? '#4af2b2' : '#4a5c80', isHigh ? 2.6 : 1.8, isHigh ? 10 : 0);
+    drawWire([[drvX + 16, drvY], [pin3.x - 11, drvY]], isHigh ? '#4af2b2' : '#4a5c80', isHigh ? 2.6 : 1.8, isHigh ? 10 : 0);
+
+    // Output Driver Buffer Triangle
+    ctx.save();
+    if (isHigh) {
+      ctx.shadowColor = '#4af2b2';
+      ctx.shadowBlur = 14;
+    }
+    ctx.fillStyle = isHigh ? 'rgba(74, 242, 178, 0.25)' : 'rgba(16, 26, 48, 0.88)';
+    ctx.strokeStyle = isHigh ? '#4af2b2' : 'rgba(148, 179, 255, 0.45)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(drvX - 15, drvY - 16);
+    ctx.lineTo(drvX + 16, drvY);
+    ctx.lineTo(drvX - 15, drvY + 16);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = isHigh ? '#b5ffe3' : '#7f93b8';
+    ctx.font = '700 8.5px ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('OUT', drvX - 1, drvY - 22);
+    ctx.restore();
+
+    registerHit('ic-out', drvX - 18, drvY - 20, 38, 40, layout, {
+      title: 'Output Driver Stage (Pin 3)',
+      val: isHigh ? `HIGH (+${state.vOut.toFixed(1)}V)` : 'LOW (0.0V)',
+      desc: 'High-current push-pull output buffer capable of sourcing or sinking up to 200 mA to drive LEDs & speakers.'
+    });
+
+    // =====================================================================
+    // 9. INTERNAL BLOCK 5: NPN DISCHARGE TRANSISTOR (PIN 7)
+    // =====================================================================
+    const npnX = -134;
+    const npnY = 82;
+
+    // Qbar trace from SR Flip-Flop right side -> routed underneath to NPN Base!
+    const qbarColor = npnOn ? '#ffbe5c' : 'rgba(148, 179, 255, 0.3)';
+    const qbarPath = [
+      [ffX + ffW, 34],
+      [ffX + ffW + 14, 34],
+      [ffX + ffW + 14, 114],
+      [npnX + 28, 114],
+      [npnX + 28, npnY],
+      [npnX + 20, npnY]
+    ];
+    drawWire(qbarPath, qbarColor, npnOn ? 2.3 : 1.5, npnOn ? 10 : 0);
+
+    // Pin 7 Collector trace inside IC: Pin 7 -> down to NPN Collector
+    const colPath = [
+      [pin7.x + 11, pin7.y],
+      [npnX - 8, pin7.y],
+      [npnX - 8, npnY - 20]
+    ];
+    drawWire(colPath, npnOn ? '#ff8b5a' : 'rgba(148, 179, 255, 0.35)', npnOn ? 2.5 : 1.7, npnOn ? 10 : 0);
+
+    // NPN Emitter trace to Pin 1 GND inside IC
+    const emitPath = [
+      [npnX - 8, npnY + 20],
+      [npnX - 8, chipBot - 14],
+      [pin1.x, chipBot - 14]
+    ];
+    drawWire(emitPath, npnOn ? '#ff8b5a' : '#5f76a8', npnOn ? 2.4 : 1.7, npnOn ? 8 : 0);
+    drawJunction(pin1.x, chipBot - 14, '#768db8', 3.5);
+
+    // Animated discharge current dots rushing straight through Pin 7 -> NPN -> GND!
+    if (npnOn) {
+      drawCurrentDots(
+        [[pin7.x + 11, pin7.y], [npnX - 8, pin7.y], [npnX - 8, chipBot - 14], [pin1.x, chipBot - 14], [pin1.x, railBotY]],
+        state.flowDischPhase, '#ffbe5c', 26, 2.9, false
+      );
+    }
+
+    drawNPNTransistor(npnX, npnY, npnOn);
+
+    registerHit('ic-npn', npnX - 24, npnY - 24, 48, 56, layout, {
+      title: 'Internal NPN Discharge Transistor (Pin 7)',
+      val: npnOn ? 'ON (Saturated → Shorting Pin 7 to GND)' : 'OFF (High-Z Open Circuit)',
+      desc: 'Driven by Q̄ from the SR Flip-Flop. Turns ON during output LOW to discharge capacitor C through R₂ to Ground.'
+    });
+
+    ctx.restore();
+  }
+
+  // =========================================================================
+  // EMBEDDED HIGH-DPI DUAL-CHANNEL OSCILLOSCOPE
+  // =========================================================================
+  function drawOscilloscope(layout) {
+    const { x, y, w, h } = layout.scope;
+    const padL = 54;
+    const padR = 16;
+    const padT = 28;
+    const padB = 14;
+    const sx = x + padL;
+    const sy = y + padT;
+    const sw = Math.max(120, w - padL - padR);
+    const sh = Math.max(90, h - padT - padB);
+
+    // Split screen vertically: Top 56% = CH1 V_C(t) Sawtooth, Bottom 38% = CH2 V_out(t) Square Wave
+    const ch1Top = sy + 6;
+    const ch1H = sh * 0.54;
+    const ch2Top = sy + sh * 0.64;
+    const ch2H = sh * 0.32;
+
+    ctx.save();
+    // Glassmorphic Oscilloscope Bezel
+    ctx.fillStyle = 'rgba(6, 10, 21, 0.88)';
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.22)';
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, h, 14);
+    ctx.fill();
+    ctx.stroke();
+
+    // Header Bar
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.03)';
+    ctx.beginPath();
+    ctx.roundRect(x + 1, y + 1, w - 2, padT - 2, [13, 13, 0, 0]);
+    ctx.fill();
+
+    // Header Legend & Badges
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'left';
+    ctx.font = '800 10.5px ui-monospace, monospace';
+    ctx.fillStyle = '#eef3ff';
+    ctx.fillText('DUAL-TRACE OSCILLOSCOPE', x + 14, y + 14);
+
+    // CH1 pill
+    ctx.fillStyle = '#ffbe5c';
+    ctx.fillRect(x + 186, y + 11, 10, 4);
+    ctx.font = '700 10px ui-monospace, monospace';
+    ctx.fillText('CH1: V_C (Cap)', x + 201, y + 14);
+
+    // CH2 pill
+    ctx.fillStyle = '#4af2b2';
+    ctx.fillRect(x + 306, y + 11, 10, 4);
+    ctx.fillText('CH2: V_OUT (Pin 3)', x + 321, y + 14);
+
+    // Right side timebase & trigger mode badge
+    ctx.textAlign = 'right';
+    const timePerDiv = state.scopeSpan / 10;
+    const trigLabel = state.scopeFrozen
+      ? '⏸ FROZEN'
+      : (state.scopeMode === 'trig' ? '▲ AUTO TRIG' : '● ROLLING');
+    ctx.fillStyle = state.scopeFrozen ? '#ff6083' : (state.scopeMode === 'trig' ? '#58dcff' : '#4af2b2');
+    ctx.fillText(`${trigLabel}  ·  ${fmtTime(timePerDiv)}/div`, x + w - 16, y + 14);
+
+    // Screen Background + Phosphor Graticule
+    ctx.fillStyle = '#040812';
+    ctx.strokeStyle = 'rgba(88, 220, 255, 0.16)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(sx, sy, sw, sh, 7);
+    ctx.fill();
+    ctx.stroke();
+
+    // Clip to scope screen
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect(sx, sy, sw, sh, 7);
+    ctx.clip();
+
+    // 10 vertical divisions
+    ctx.strokeStyle = 'rgba(110, 165, 255, 0.08)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let i = 1; i < 10; i++) {
+      const gx = sx + (sw * i) / 10;
+      ctx.moveTo(gx, sy);
+      ctx.lineTo(gx, sy + sh);
+    }
+    // Horizontal divider between CH1 & CH2
+    const splitY = sy + sh * 0.60;
+    ctx.moveTo(sx, splitY);
+    ctx.lineTo(sx + sw, splitY);
+    ctx.stroke();
+
+    // Dashed 2/3 Vcc & 1/3 Vcc Threshold Reference Rails on CH1
+    const vccMax = state.vcc;
+    const yFromV1 = (v) => ch1Top + ch1H * (1 - Math.max(0, Math.min(1, v / vccMax)));
+    const yFromV2 = (v) => ch2Top + ch2H * (1 - Math.max(0, Math.min(1, v / vccMax)));
+
+    if (state.showRails) {
+      const yTh = yFromV1(state.vTh);
+      const yTr = yFromV1(state.vTrig);
+
+      ctx.save();
+      ctx.setLineDash([5, 5]);
+      ctx.lineWidth = 1.2;
+
+      ctx.strokeStyle = 'rgba(255, 96, 131, 0.58)';
+      ctx.beginPath();
+      ctx.moveTo(sx, yTh);
+      ctx.lineTo(sx + sw, yTh);
+      ctx.stroke();
+
+      ctx.strokeStyle = 'rgba(88, 220, 255, 0.52)';
+      ctx.beginPath();
+      ctx.moveTo(sx, yTr);
+      ctx.lineTo(sx + sw, yTr);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Determine visible time window [tStart, tEnd]
+    const hist = state.scopeHistory;
+    if (hist.length >= 2) {
+      let tEnd = hist[hist.length - 1].t;
+      let tStart = tEnd - state.scopeSpan;
+
+      // Rising-edge trigger lock when in 'trig' mode
+      if (state.scopeMode === 'trig') {
+        // Search backward from near end for a clean rising edge of vout so waveform stands still
+        let trigIdx = -1;
+        const targetEnd = hist[hist.length - 1].t;
+        for (let i = hist.length - 2; i >= 1; i--) {
+          if (hist[i].vout > hist[i].vcc * 0.5 && hist[i - 1].vout <= hist[i - 1].vcc * 0.5) {
+            if (targetEnd - hist[i].t >= state.scopeSpan * 0.78) {
+              trigIdx = i;
+              break;
+            }
+          }
+        }
+        if (trigIdx !== -1) {
+          tStart = hist[trigIdx].t - state.scopeSpan * 0.10;
+          tEnd = tStart + state.scopeSpan;
+        }
+      }
+
+      const span = Math.max(1e-9, tEnd - tStart);
+      const xOf = (t) => sx + ((t - tStart) / span) * sw;
+
+      // Subtle vertical edge guide lines where V_out flips
+      ctx.strokeStyle = 'rgba(148, 179, 255, 0.12)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let i = 1; i < hist.length; i++) {
+        const prev = hist[i - 1];
+        const cur = hist[i];
+        if (cur.t < tStart || prev.t > tEnd) continue;
+        if ((cur.vout > cur.vcc * 0.5) !== (prev.vout > prev.vcc * 0.5)) {
+          const ex = xOf(cur.t);
+          ctx.moveTo(ex, ch1Top);
+          ctx.lineTo(ex, ch2Top + ch2H);
+        }
+      }
+      ctx.stroke();
+
+      // Dynamic Pin 5 Threshold Rail trace if sweeping in PWM mode!
+      if (state.pwmSweep && state.showRails) {
+        ctx.strokeStyle = 'rgba(167, 139, 250, 0.45)';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        let started = false;
+        for (let i = 0; i < hist.length; i++) {
+          const pt = hist[i];
+          if (pt.t < tStart - span * 0.05 || pt.t > tEnd + span * 0.05) continue;
+          const px = xOf(pt.t);
+          const py = yFromV1(pt.vth);
+          if (!started) { ctx.moveTo(px, py); started = true; }
+          else ctx.lineTo(px, py);
+        }
+        ctx.stroke();
+      }
+
+      // CH1 Trace: Capacitor Sawtooth V_C(t) in glowing Amber
+      ctx.save();
+      ctx.strokeStyle = '#ffbe5c';
+      ctx.lineWidth = 2.2;
+      ctx.shadowColor = 'rgba(255, 190, 92, 0.7)';
+      ctx.shadowBlur = 7;
+      ctx.beginPath();
+      let started1 = false;
+      let lastX1 = sx, lastY1 = ch1Top + ch1H;
+      for (let i = 0; i < hist.length; i++) {
+        const pt = hist[i];
+        if (pt.t < tStart - span * 0.05 || pt.t > tEnd + span * 0.05) continue;
+        const px = xOf(pt.t);
+        const py = yFromV1(pt.vc);
+        if (!started1) { ctx.moveTo(px, py); started1 = true; }
+        else ctx.lineTo(px, py);
+        lastX1 = px; lastY1 = py;
+      }
+      ctx.stroke();
+
+      // Leading glowing phosphor dot in rolling mode
+      if (state.scopeMode === 'roll' && started1) {
+        ctx.fillStyle = '#fff3d6';
+        ctx.beginPath();
+        ctx.arc(lastX1, lastY1, 3.6, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+
+      // CH2 Trace: Pin 3 Output Square Wave V_out(t) in glowing Mint/Cyan
+      ctx.save();
+      // Subtle area fill under HIGH pulses
+      ctx.fillStyle = 'rgba(74, 242, 178, 0.08)';
+      ctx.beginPath();
+      let started2 = false;
+      let firstX2 = sx;
+      let lastX2 = sx, lastY2 = ch2Top + ch2H;
+      for (let i = 0; i < hist.length; i++) {
+        const pt = hist[i];
+        if (pt.t < tStart - span * 0.05 || pt.t > tEnd + span * 0.05) continue;
+        const px = xOf(pt.t);
+        const py = yFromV2(pt.vout);
+        if (!started2) {
+          ctx.moveTo(px, ch2Top + ch2H);
+          ctx.lineTo(px, py);
+          firstX2 = px;
+          started2 = true;
+        } else {
+          ctx.lineTo(px, py);
+        }
+        lastX2 = px; lastY2 = py;
+      }
+      if (started2) {
+        ctx.lineTo(lastX2, ch2Top + ch2H);
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      ctx.strokeStyle = '#4af2b2';
+      ctx.lineWidth = 2.2;
+      ctx.shadowColor = 'rgba(74, 242, 178, 0.72)';
+      ctx.shadowBlur = 7;
+      ctx.beginPath();
+      started2 = false;
+      for (let i = 0; i < hist.length; i++) {
+        const pt = hist[i];
+        if (pt.t < tStart - span * 0.05 || pt.t > tEnd + span * 0.05) continue;
+        const px = xOf(pt.t);
+        const py = yFromV2(pt.vout);
+        if (!started2) { ctx.moveTo(px, py); started2 = true; }
+        else ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+
+      if (state.scopeMode === 'roll' && started2) {
+        ctx.fillStyle = '#d9fff0';
+        ctx.beginPath();
+        ctx.arc(lastX2, lastY2, 3.4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    ctx.restore(); // end clip
+
+    // Left Axis Voltage Labels (outside clip)
+    ctx.font = '700 9px ui-monospace, monospace';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+
+    ctx.fillStyle = '#9aa9cc';
+    ctx.fillText(vccMax.toFixed(0) + 'V', sx - 7, ch1Top + 2);
+    ctx.fillText('0V', sx - 7, ch1Top + ch1H);
+
+    if (state.showRails) {
+      ctx.fillStyle = '#ff8aa3';
+      ctx.fillText('⅔ ' + state.vTh.toFixed(1) + 'V', sx - 7, yFromV1(state.vTh));
+      ctx.fillStyle = '#6fe4ff';
+      ctx.fillText('⅓ ' + state.vTrig.toFixed(1) + 'V', sx - 7, yFromV1(state.vTrig));
+    }
+
+    ctx.fillStyle = '#4af2b2';
+    ctx.fillText('HI', sx - 7, ch2Top + 2);
+    ctx.fillStyle = '#68789c';
+    ctx.fillText('LO', sx - 7, ch2Top + ch2H);
+
+    // Register clickable scope area (click to freeze/unfreeze waveform)
+    hitRegions.push({
+      id: 'scope-screen',
+      sx, sy, sw, sh,
+      clickable: true,
+      title: 'Dual-Trace Oscilloscope',
+      val: state.scopeFrozen ? 'Trace FROZEN (Click to resume)' : `${fmtTime(timePerDiv)}/div · Click to freeze trace`,
+      desc: 'Plots Capacitor Sawtooth V_C(t) against 1/3 & 2/3 Vcc rails directly above Pin 3 Output V_out(t).'
+    });
+
+    ctx.restore();
+  }
+
+  // =========================================================================
+  // TELEMETRY & HUD UPDATES
+  // =========================================================================
+  const el = {
+    modeBadge: document.getElementById('mode-badge'),
+    statePill: document.getElementById('state-pill'),
+    telFreq: document.getElementById('tel-freq'),
+    telPeriod: document.getElementById('tel-period'),
+    telDuty: document.getElementById('tel-duty'),
+    telVc: document.getElementById('tel-vc'),
+    telVout: document.getElementById('tel-vout'),
+    telDisch: document.getElementById('tel-disch'),
+    vcFill: document.getElementById('vc-fill'),
+    vcTickTrig: document.getElementById('vc-tick-trig'),
+    vcTickTh: document.getElementById('vc-tick-th'),
+    telVccMax: document.getElementById('tel-vcc-max'),
+    telTh: document.getElementById('tel-th'),
+    telTl: document.getElementById('tel-tl'),
+    telRefs: document.getElementById('tel-refs'),
+    // Internals table
+    ndVth: document.getElementById('nd-vth'),
+    ndVtrig: document.getElementById('nd-vtrig'),
+    ndComp1: document.getElementById('nd-comp1'),
+    ndComp2: document.getElementById('nd-comp2'),
+    ndQ: document.getElementById('nd-q'),
+    ndQbar: document.getElementById('nd-qbar'),
+    ndNpn: document.getElementById('nd-npn'),
+    ndIc: document.getElementById('nd-ic'),
+    // Dynamic control readouts
+    valVcc: document.getElementById('val-vcc'),
+    valR1: document.getElementById('val-r1'),
+    valR2: document.getElementById('val-r2'),
+    valC: document.getElementById('val-c'),
+    valVctrl: document.getElementById('val-vctrl'),
+    valTimebase: document.getElementById('val-timebase'),
+    valLfo: document.getElementById('val-lfo'),
+    modeNote: document.getElementById('mode-note'),
+    formulaBox: document.getElementById('formula-box'),
+    rowR2: document.getElementById('row-r2'),
+    btnTrigger: document.getElementById('btn-trigger'),
+    btnPin4Reset: document.getElementById('btn-pin4-reset'),
+    // Tooltip
+    tooltip: document.getElementById('probe-tooltip'),
+    probeTitle: document.getElementById('probe-title'),
+    probeVal: document.getElementById('probe-val'),
+    probeDesc: document.getElementById('probe-desc')
+  };
+
+  function updateHUD() {
+    const m = computeTheoreticalMetrics();
+
+    // Mode badge
+    el.modeBadge.className = 'mode-badge' + (state.mode === 'monostable' ? ' mono' : state.mode === 'pwm' ? ' pwm' : '');
+    el.modeBadge.textContent = state.mode === 'monostable' ? 'Monostable' : state.mode === 'pwm' ? 'Pin-5 PWM' : (state.diodeBypass ? 'Astable 50%' : 'Astable');
+
+    // Status pill
+    if (state.resetPinLow) {
+      el.statePill.className = 'status-pill reset';
+      el.statePill.textContent = 'Reset Held';
+    } else if (state.mode === 'monostable' && state.latchQ === 0 && state.vc < 0.08) {
+      el.statePill.className = 'status-pill idle';
+      el.statePill.textContent = 'Idle · Ready';
+    } else if (state.latchQ === 1) {
+      el.statePill.className = 'status-pill';
+      el.statePill.textContent = state.mode === 'monostable' ? 'Pulse High ↑' : 'Charging ↑';
+    } else {
+      el.statePill.className = 'status-pill discharging';
+      el.statePill.textContent = 'Discharging ↓';
+    }
+
+    // Telemetry grid
+    el.telFreq.textContent = m.isMonostable ? 'ONE-SHOT' : fmtFreq(m.freq);
+    el.telPeriod.textContent = fmtTime(m.period);
+    el.telDuty.textContent = m.isMonostable
+      ? (state.latchQ ? Math.min(100, Math.round((state.vc / Math.max(0.1, state.vTh)) * 100)) + '% CHG' : 'WAIT TRIG')
+      : m.duty.toFixed(1) + '%';
+    el.telVc.textContent = state.vc.toFixed(2) + ' V';
+
+    el.telVout.textContent = state.latchQ ? `HIGH (${state.vcc.toFixed(0)}V)` : 'LOW (0V)';
+    el.telVout.className = 'tele-val ' + (state.latchQ ? 'mint' : 'dim');
+
+    el.telDisch.textContent = state.latchQBar ? 'ON (GND)' : 'OFF (Hi-Z)';
+    el.telDisch.className = 'tele-val ' + (state.latchQBar ? 'rose' : 'dim');
+
+    // V_C meter bar
+    const pct = Math.max(0, Math.min(100, (state.vc / state.vcc) * 100));
+    el.vcFill.style.width = pct.toFixed(1) + '%';
+    el.vcTickTrig.style.left = ((state.vTrig / state.vcc) * 100).toFixed(1) + '%';
+    el.vcTickTh.style.left = ((state.vTh / state.vcc) * 100).toFixed(1) + '%';
+    el.telVccMax.textContent = state.vcc.toFixed(1) + 'V';
+
+    el.telTh.textContent = fmtTime(m.tHigh);
+    el.telTl.textContent = m.isMonostable ? '—' : fmtTime(m.tLow);
+    el.telRefs.textContent = `${state.vTrig.toFixed(1)} / ${state.vTh.toFixed(1)} V`;
+
+    // V_ctrl slider readout (may sweep live in PWM mode)
+    const isOver = state.pin5Override || state.mode === 'pwm';
+    el.valVctrl.textContent = isOver
+      ? `${state.vTh.toFixed(2)} V (${Math.round((state.vTh / state.vcc) * 100)}%)`
+      : `${state.vTh.toFixed(2)} V (2/3 Vcc)`;
+
+    // Internal die state table
+    el.ndVth.textContent = state.vTh.toFixed(2) + ' V';
+    el.ndVtrig.textContent = state.vTrig.toFixed(2) + ' V';
+    el.ndComp1.textContent = state.comp1Out ? '1 HIGH' : '0 LOW';
+    el.ndComp1.style.color = state.comp1Out ? '#ff6083' : '#9aa9cc';
+    el.ndComp2.textContent = state.comp2Out ? '1 HIGH' : '0 LOW';
+    el.ndComp2.style.color = state.comp2Out ? '#58dcff' : '#9aa9cc';
+    el.ndQ.textContent = state.latchQ ? '1 HIGH' : '0 LOW';
+    el.ndQ.style.color = state.latchQ ? '#4af2b2' : '#9aa9cc';
+    el.ndQbar.textContent = state.latchQBar ? '1 HIGH' : '0 LOW';
+    el.ndQbar.style.color = state.latchQBar ? '#ffbe5c' : '#9aa9cc';
+    el.ndNpn.textContent = state.latchQBar ? 'ON · SAT' : 'OFF';
+    el.ndNpn.style.color = state.latchQBar ? '#ffbe5c' : '#68789c';
+    el.ndIc.textContent = fmtCurrent(state.iCap);
+    el.ndIc.style.color = state.iCap >= 0 ? '#4af2b2' : '#ff6083';
+
+    // Button states
+    el.btnTrigger.classList.toggle('firing', state.triggerManual || state.triggerPulseTimer > 0);
+    el.btnPin4Reset.classList.toggle('active', state.resetPinLow);
+  }
+
+  function updateFormulaAndModeUI() {
+    el.rowR2.classList.toggle('disabled', state.mode === 'monostable');
+    el.modeNote.textContent = state.mode === 'monostable'
+      ? 'ONE-SHOT'
+      : state.mode === 'pwm'
+        ? 'PIN-5 MOD'
+        : (state.diodeBypass ? 'DIODE 50%' : 'SELF-OSC');
+
+    if (state.mode === 'monostable') {
+      el.formulaBox.innerHTML =
+        '<strong>Monostable One-Shot:</strong><br/>' +
+        'T<sub>pulse</sub> = ln(3)·R₁·C ≈ <span class="hl">1.1 · R₁ · C</span><br/>' +
+        'Trigger when Pin 2 &lt; ⅓ V<sub>cc</sub><br/>' +
+        'Resets when V<sub>C</sub> hits ⅔ V<sub>cc</sub>';
+    } else if (state.diodeBypass) {
+      el.formulaBox.innerHTML =
+        '<strong>Astable + Bypass Diode D₁:</strong><br/>' +
+        't<sub>H</sub> = 0.693 · R₁ · C (via D₁)<br/>' +
+        't<sub>L</sub> = 0.693 · R₂ · C (via Pin 7)<br/>' +
+        'Duty = <span class="hl">R₁ / (R₁ + R₂)</span> (50% when R₁=R₂)';
+    } else if (state.mode === 'pwm' || state.pin5Override) {
+      el.formulaBox.innerHTML =
+        '<strong>Pin-5 Control Voltage (PWM):</strong><br/>' +
+        'V<sub>th</sub> = V<sub>Pin5</sub> · V<sub>trig</sub> = ½ V<sub>Pin5</sub><br/>' +
+        't<sub>H</sub> = (R₁+R₂)C · ln[(V<sub>cc</sub>−V<sub>trig</sub>)/(V<sub>cc</sub>−V<sub>th</sub>)]<br/>' +
+        't<sub>L</sub> = <span class="hl">0.693 · R₂ · C</span>';
+    } else {
+      el.formulaBox.innerHTML =
+        '<strong>Classic Astable Multivibrator:</strong><br/>' +
+        't<sub>H</sub> = 0.693 · (R₁ + R₂) · C<br/>' +
+        't<sub>L</sub> = 0.693 · R₂ · C<br/>' +
+        'Duty = <span class="hl">(R₁ + R₂) / (R₁ + 2R₂)</span>';
+    }
+
+    // Highlight active mode segmented button
+    document.querySelectorAll('#mode-seg .seg-btn').forEach(b => {
+      const m = b.dataset.mode;
+      b.classList.toggle('active', m === state.mode);
+      b.classList.toggle('amber', m === 'monostable' && m === state.mode);
+      b.classList.toggle('violet', m === 'pwm' && m === state.mode);
+    });
+  }
+
+  function syncSlidersToState() {
+    document.getElementById('sl-vcc').value = state.vcc.toFixed(1);
+    document.getElementById('sl-r1').value = Math.log10(state.r1).toFixed(3);
+    document.getElementById('sl-r2').value = Math.log10(state.r2).toFixed(3);
+    document.getElementById('sl-c').value = Math.log10(state.c).toFixed(3);
+    document.getElementById('sl-vctrl').value = state.vCtrlRatio.toFixed(3);
+    document.getElementById('sl-timebase').value = Math.log10(state.timeScale).toFixed(3);
+    document.getElementById('sl-lfo').value = state.lfoRate.toFixed(2);
+
+    document.getElementById('chk-diode').checked = state.diodeBypass;
+    document.getElementById('chk-pin5-override').checked = state.pin5Override;
+    document.getElementById('chk-pwm-sweep').checked = state.pwmSweep;
+
+    el.valVcc.textContent = state.vcc.toFixed(1) + ' V';
+    el.valR1.textContent = fmtOhms(state.r1);
+    el.valR2.textContent = fmtOhms(state.r2);
+    el.valC.textContent = fmtFarads(state.c);
+    el.valLfo.textContent = state.lfoRate.toFixed(2) + ' Hz';
+    updateTimebaseReadout();
+    updateFormulaAndModeUI();
+  }
+
+  function updateTimebaseReadout() {
+    const ts = state.timeScale;
+    let txt;
+    if (Math.abs(ts - 1) < 0.03) txt = '1.00× Real-Time';
+    else if (ts < 0.01) txt = ts.toFixed(4) + '× Slow-Mo';
+    else if (ts < 0.1) txt = ts.toFixed(3) + '× Slow-Mo';
+    else if (ts < 1) txt = ts.toFixed(2) + '× Slow';
+    else txt = ts.toFixed(2) + '× Fast';
+    el.valTimebase.textContent = txt;
+
+    document.querySelectorAll('.speed-btn').forEach(b => {
+      const sp = parseFloat(b.dataset.speed);
+      b.classList.toggle('active', Math.abs(sp - ts) < (sp * 0.15));
+    });
+  }
+
+  function applyPreset(key) {
+    const p = PRESETS[key];
+    if (!p) return;
+    state.preset = key;
+    state.mode = p.mode;
+    state.vcc = p.vcc;
+    state.r1 = p.r1;
+    state.r2 = p.r2;
+    state.c = p.c;
+    state.diodeBypass = p.diodeBypass;
+    state.pin5Override = p.pin5Override;
+    state.vCtrlRatio = p.vCtrlRatio;
+    state.pwmSweep = p.pwmSweep;
+    state.timeScale = p.timeScale;
+    state.resetPinLow = false;
+    state.scopeFrozen = false;
+    state.scopeHistory.length = 0;
+
+    if (p.mode === 'monostable') {
+      state.vc = 0;
+      state.latchQ = 0;
+      state.latchQBar = 1;
+      // Fire an immediate welcome one-shot pulse so user sees Monostable in action!
+      fireTriggerPulse();
+    } else {
+      state.vc = p.vcc * 0.34;
+      state.latchQ = 1;
+      state.latchQBar = 0;
+    }
+
+    document.querySelectorAll('.preset-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.preset === key);
+    });
+
+    syncSlidersToState();
+    evaluateInternalLogic(false);
+    updateBranchCurrents();
+    updateHUD();
+  }
+
+  function fireTriggerPulse() {
+    state.triggerPulseTimer = 0.16;
+    if (state.resetPinLow) state.resetPinLow = false;
+    evaluateInternalLogic(true);
+    updateBranchCurrents();
+    updateHUD();
+  }
+
+  function resetSimulation() {
+    state.resetPinLow = false;
+    state.scopeFrozen = false;
+    state.scopeHistory.length = 0;
+    state.simTime = 0;
+    state.camZoom = 1.0;
+    state.camPanX = 0;
+    state.camPanY = 0;
+    if (state.mode === 'monostable') {
+      state.vc = 0;
+      state.latchQ = 0;
+      state.latchQBar = 1;
+    } else {
+      state.vc = state.vcc * 0.34;
+      state.latchQ = 1;
+      state.latchQBar = 0;
+    }
+    evaluateInternalLogic(false);
+    updateBranchCurrents();
+    updateHUD();
+  }
+
+  // =========================================================================
+  // UI EVENT BINDINGS
+  // =========================================================================
+  // Drawer Tabs
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      const pane = document.getElementById('tab-' + btn.dataset.tab);
+      if (pane) pane.classList.add('active');
+    });
+  });
+
+  // Preset Buttons
+  document.querySelectorAll('.preset-btn').forEach(btn => {
+    btn.addEventListener('click', () => applyPreset(btn.dataset.preset));
+  });
+
+  // Topology Mode Segmented Buttons
+  document.querySelectorAll('#mode-seg .seg-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const m = btn.dataset.mode;
+      state.mode = m;
+      if (m === 'pwm') {
+        state.pin5Override = true;
+        document.getElementById('chk-pin5-override').checked = true;
+      } else if (m === 'monostable') {
+        state.pwmSweep = false;
+        document.getElementById('chk-pwm-sweep').checked = false;
+        state.vc = 0;
+        state.latchQ = 0;
+        state.latchQBar = 1;
+      } else {
+        state.pwmSweep = false;
+        document.getElementById('chk-pwm-sweep').checked = false;
+      }
+      state.scopeHistory.length = 0;
+      updateFormulaAndModeUI();
+      evaluateInternalLogic(false);
+      updateHUD();
+    });
+  });
+
+  // Pin 2 Trigger Button
+  el.btnTrigger.addEventListener('pointerdown', () => {
+    state.triggerManual = true;
+    if (state.resetPinLow) state.resetPinLow = false;
+    evaluateInternalLogic(true);
+    updateHUD();
+  });
+  window.addEventListener('pointerup', () => {
+    if (state.triggerManual) {
+      state.triggerManual = false;
+      evaluateInternalLogic(false);
+    }
+  });
+
+  // Pin 4 Reset Toggle Button
+  el.btnPin4Reset.addEventListener('click', () => {
+    state.resetPinLow = !state.resetPinLow;
+    evaluateInternalLogic(true);
+    updateHUD();
+  });
+
+  // Component Sliders
+  document.getElementById('sl-vcc').addEventListener('input', e => {
+    state.vcc = parseFloat(e.target.value);
+    el.valVcc.textContent = state.vcc.toFixed(1) + ' V';
+    state.vc = Math.min(state.vc, state.vcc);
+    evaluateInternalLogic(false);
+  });
+
+  document.getElementById('sl-r1').addEventListener('input', e => {
+    state.r1 = Math.pow(10, parseFloat(e.target.value));
+    el.valR1.textContent = fmtOhms(state.r1);
+  });
+
+  document.getElementById('sl-r2').addEventListener('input', e => {
+    state.r2 = Math.pow(10, parseFloat(e.target.value));
+    el.valR2.textContent = fmtOhms(state.r2);
+  });
+
+  document.getElementById('sl-c').addEventListener('input', e => {
+    state.c = Math.pow(10, parseFloat(e.target.value));
+    el.valC.textContent = fmtFarads(state.c);
+  });
+
+  document.getElementById('sl-vctrl').addEventListener('input', e => {
+    state.vCtrlRatio = parseFloat(e.target.value);
+    state.pin5Override = true;
+    state.pwmSweep = false;
+    document.getElementById('chk-pin5-override').checked = true;
+    document.getElementById('chk-pwm-sweep').checked = false;
+    updateFormulaAndModeUI();
+  });
+
+  document.getElementById('sl-timebase').addEventListener('input', e => {
+    state.timeScale = Math.pow(10, parseFloat(e.target.value));
+    updateTimebaseReadout();
+  });
+
+  document.getElementById('sl-lfo').addEventListener('input', e => {
+    state.lfoRate = parseFloat(e.target.value);
+    el.valLfo.textContent = state.lfoRate.toFixed(2) + ' Hz';
+  });
+
+  // Toggles
+  document.getElementById('chk-pwm-sweep').addEventListener('change', e => {
+    state.pwmSweep = e.target.checked;
+    if (state.pwmSweep) {
+      state.pin5Override = true;
+      document.getElementById('chk-pin5-override').checked = true;
+      if (state.mode === 'monostable') state.mode = 'pwm';
+    }
+    updateFormulaAndModeUI();
+  });
+
+  document.getElementById('chk-diode').addEventListener('change', e => {
+    state.diodeBypass = e.target.checked;
+    updateFormulaAndModeUI();
+  });
+
+  document.getElementById('chk-pin5-override').addEventListener('change', e => {
+    state.pin5Override = e.target.checked;
+    if (!state.pin5Override) {
+      state.pwmSweep = false;
+      state.vCtrlRatio = 2 / 3;
+      document.getElementById('chk-pwm-sweep').checked = false;
+      document.getElementById('sl-vctrl').value = (2 / 3).toFixed(3);
+      if (state.mode === 'pwm') state.mode = 'astable';
+    }
+    updateFormulaAndModeUI();
+  });
+
+  document.getElementById('chk-current').addEventListener('change', e => {
+    state.showCurrent = e.target.checked;
+  });
+  document.getElementById('chk-badges').addEventListener('change', e => {
+    state.showBadges = e.target.checked;
+  });
+  document.getElementById('chk-rails').addEventListener('change', e => {
+    state.showRails = e.target.checked;
+  });
+
+  // Transport Bar Controls
+  const btnPlay = document.getElementById('btn-play');
+  function togglePlay() {
+    state.running = !state.running;
+    btnPlay.textContent = state.running ? '⏸ Pause' : '▶ Play';
+    btnPlay.classList.toggle('active', state.running);
+    updateAudioSynth(computeTheoreticalMetrics());
+  }
+  btnPlay.addEventListener('click', togglePlay);
+  document.getElementById('btn-reset').addEventListener('click', resetSimulation);
+  document.getElementById('btn-sound').addEventListener('click', toggleAudio);
+
+  document.querySelectorAll('.speed-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.timeScale = parseFloat(btn.dataset.speed);
+      document.getElementById('sl-timebase').value = Math.log10(state.timeScale).toFixed(3);
+      updateTimebaseReadout();
+    });
+  });
+
+  const drawer = document.getElementById('drawer');
+  const btnToggleDrawer = document.getElementById('btn-toggle-drawer');
+  btnToggleDrawer.addEventListener('click', () => {
+    state.drawerOpen = !state.drawerOpen;
+    drawer.classList.toggle('collapsed', !state.drawerOpen);
+    btnToggleDrawer.classList.toggle('active', state.drawerOpen);
+  });
+
+  function toggleZen() {
+    state.zenMode = !state.zenMode;
+    document.body.classList.toggle('zen-mode', state.zenMode);
+  }
+  document.getElementById('btn-zen').addEventListener('click', toggleZen);
+  document.getElementById('btn-zen-restore').addEventListener('click', toggleZen);
+
+  // Keyboard shortcuts
+  window.addEventListener('keydown', e => {
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+    if (e.code === 'Space') {
+      e.preventDefault();
+      togglePlay();
+    } else if (e.key === 'h' || e.key === 'H') {
+      toggleZen();
+    } else if (e.key === 't' || e.key === 'T') {
+      fireTriggerPulse();
+    } else if (e.key === 'r' || e.key === 'R') {
+      state.resetPinLow = !state.resetPinLow;
+      evaluateInternalLogic(true);
+      updateHUD();
+    }
+  });
+
+  // =========================================================================
+  // CANVAS INTERACTION (CLICK PINS, HOVER INSPECT, SCROLL ZOOM, DRAG PAN)
+  // =========================================================================
+  function findHit(mx, my) {
+    for (let i = hitRegions.length - 1; i >= 0; i--) {
+      const r = hitRegions[i];
+      if (mx >= r.sx && mx <= r.sx + r.sw && my >= r.sy && my <= r.sy + r.sh) {
+        return r;
+      }
+    }
+    return null;
+  }
+
+  function updateHoverTooltip() {
+    const hit = findHit(state.mouseX, state.mouseY);
+    state.hoveredId = hit ? hit.id : null;
+    canvas.classList.toggle('interactive-hover', !!(hit && hit.clickable));
+
+    if (hit && !state.isPanning) {
+      el.probeTitle.textContent = hit.title;
+      el.probeVal.textContent = hit.val;
+      el.probeDesc.textContent = hit.desc;
+
+      let tx = state.mouseX + 16;
+      let ty = state.mouseY - 14;
+      if (tx + 270 > W) tx = state.mouseX - 275;
+      if (ty + 95 > H) ty = H - 105;
+      if (ty < 12) ty = 12;
+      el.tooltip.style.left = tx + 'px';
+      el.tooltip.style.top = ty + 'px';
+      el.tooltip.classList.add('visible');
+    } else {
+      el.tooltip.classList.remove('visible');
+    }
+  }
+
+  canvas.addEventListener('pointermove', e => {
+    state.mouseX = e.clientX;
+    state.mouseY = e.clientY;
+    if (state.isPanning) {
+      state.camPanX = state.panOriginX + (e.clientX - state.panStartX);
+      state.camPanY = state.panOriginY + (e.clientY - state.panStartY);
+    }
+    updateHoverTooltip();
+  });
+
+  canvas.addEventListener('pointerleave', () => {
+    state.mouseX = -999;
+    state.mouseY = -999;
+    state.hoveredId = null;
+    el.tooltip.classList.remove('visible');
+  });
+
+  canvas.addEventListener('pointerdown', e => {
+    if (e.button !== 0) return;
+    const hit = findHit(e.clientX, e.clientY);
+    if (hit && hit.clickable) {
+      if (hit.id === 'pin2-trigger') {
+        fireTriggerPulse();
+        return;
+      }
+      if (hit.id === 'pin4-reset') {
+        state.resetPinLow = !state.resetPinLow;
+        evaluateInternalLogic(true);
+        updateHUD();
+        return;
+      }
+      if (hit.id === 'ext-spk') {
+        toggleAudio();
+        return;
+      }
+      if (hit.id === 'scope-screen') {
+        state.scopeFrozen = !state.scopeFrozen;
+        return;
+      }
+    }
+    // Otherwise start subtle pan
+    state.isPanning = true;
+    state.panStartX = e.clientX;
+    state.panStartY = e.clientY;
+    state.panOriginX = state.camPanX;
+    state.panOriginY = state.camPanY;
+    canvas.classList.add('panning');
+  });
+
+  window.addEventListener('pointerup', () => {
+    if (state.isPanning) {
+      state.isPanning = false;
+      canvas.classList.remove('panning');
+    }
+  });
+
+  canvas.addEventListener('dblclick', () => {
+    state.camZoom = 1.0;
+    state.camPanX = 0;
+    state.camPanY = 0;
+  });
+
+  canvas.addEventListener('wheel', e => {
+    e.preventDefault();
+    const factor = e.deltaY < 0 ? 1.09 : 1 / 1.09;
+    state.camZoom = Math.max(0.6, Math.min(2.4, state.camZoom * factor));
+  }, { passive: false });
+
+  // =========================================================================
+  // MAIN ANIMATION LOOP
+  // =========================================================================
+  let lastTs = performance.now();
+  let hudAccum = 0;
+
+  function frame(ts) {
+    const realDt = Math.min(0.05, Math.max(0.001, (ts - lastTs) / 1000));
+    lastTs = ts;
+
+    stepPhysics(realDt);
+
+    // Draw cached background
+    ctx.drawImage(bgCanvas, 0, 0, W, H);
+
+    const layout = getLayout();
+    drawCircuitBench(layout);
+    drawOscilloscope(layout);
+
+    if (state.mouseX > -500) updateHoverTooltip();
+
+    hudAccum += realDt;
+    if (hudAccum >= 0.04) {
+      hudAccum = 0;
+      updateHUD();
+    }
+
+    requestAnimationFrame(frame);
+  }
+
+  // Boot default preset: 1 Hz Slow LED Blinker
+  applyPreset('blinker');
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

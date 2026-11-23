@@ -1,0 +1,3688 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Breadboard — Interactive MNA Circuit Sandbox &amp; Oscilloscope</title>
+<style>
+  :root {
+    --bg-deep: #040711;
+    --panel-bg: rgba(9, 13, 24, 0.80);
+    --panel-bg-strong: rgba(8, 12, 22, 0.94);
+    --panel-border: rgba(148, 179, 255, 0.16);
+    --panel-border-hi: rgba(148, 179, 255, 0.36);
+    --text-main: #eef3ff;
+    --text-dim: #9aa9cc;
+    --text-muted: #68789c;
+    --accent-amber: #ffbe5c;
+    --accent-cyan: #58dcff;
+    --accent-mint: #4af2b2;
+    --accent-rose: #ff6083;
+    --accent-blue: #4c8dff;
+    --accent-violet: #a78bfa;
+    --radius-lg: 14px;
+    --radius-md: 10px;
+    --radius-sm: 7px;
+    --mono: ui-monospace, "Cascadia Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Inter, Helvetica, Arial, sans-serif;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg-deep);
+    color: var(--text-main);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    touch-action: none;
+  }
+
+  #sim-canvas {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    cursor: default;
+  }
+  #sim-canvas.tool-draw { cursor: crosshair; }
+  #sim-canvas.tool-probe { cursor: cell; }
+  #sim-canvas.tool-erase { cursor: not-allowed; }
+  #sim-canvas.panning { cursor: grabbing; }
+  #sim-canvas.hover-interact { cursor: pointer; }
+  #sim-canvas.dragging-pot { cursor: ew-resize; }
+
+  /* HUD Layer */
+  .hud {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 10;
+  }
+  body.zen-mode .hud > :not(.zen-restore) {
+    opacity: 0;
+    pointer-events: none !important;
+  }
+
+  .panel {
+    pointer-events: auto;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-lg);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.52), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    transition: opacity 0.25s ease, transform 0.25s ease;
+  }
+
+  /* Top-Left Telemetry */
+  .top-left {
+    position: fixed;
+    top: 14px;
+    left: 14px;
+    width: min(392px, calc(100vw - 360px));
+    min-width: 280px;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .brand-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .brand-title-wrap {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .brand-title {
+    font-size: 16px;
+    font-weight: 800;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+    background: linear-gradient(120deg, #eff7ff 0%, #58dcff 48%, #ffbe5c 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .mode-badge {
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 999px;
+    border: 1px solid rgba(88, 220, 255, 0.4);
+    background: rgba(88, 220, 255, 0.12);
+    color: var(--accent-cyan);
+  }
+
+  .status-pill {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: rgba(74, 242, 178, 0.14);
+    color: var(--accent-mint);
+    border: 1px solid rgba(74, 242, 178, 0.35);
+    white-space: nowrap;
+  }
+  .status-pill.warn {
+    background: rgba(255, 190, 92, 0.16);
+    color: var(--accent-amber);
+    border-color: rgba(255, 190, 92, 0.42);
+  }
+  .status-pill.danger {
+    background: rgba(255, 96, 131, 0.2);
+    color: var(--accent-rose);
+    border-color: rgba(255, 96, 131, 0.5);
+    animation: pulseWarn 0.9s infinite alternate;
+  }
+  @keyframes pulseWarn {
+    from { box-shadow: 0 0 0 rgba(255, 96, 131, 0.0); }
+    to { box-shadow: 0 0 12px rgba(255, 96, 131, 0.55); }
+  }
+
+  .telemetry-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+  }
+
+  .tele-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(148, 179, 255, 0.1);
+    border-radius: var(--radius-sm);
+    padding: 6px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .tele-label {
+    font-size: 9.5px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .tele-val {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-main);
+  }
+  .tele-val.amber { color: var(--accent-amber); }
+  .tele-val.cyan { color: var(--accent-cyan); }
+  .tele-val.mint { color: var(--accent-mint); }
+  .tele-val.rose { color: var(--accent-rose); }
+
+  .clock-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding-top: 4px;
+    border-top: 1px solid rgba(148, 179, 255, 0.1);
+    font-size: 10.5px;
+    color: var(--text-dim);
+    font-family: var(--mono);
+  }
+  .clock-row span strong {
+    color: var(--text-main);
+    font-weight: 600;
+  }
+
+  /* Embedded Dual-Channel Oscilloscope */
+  .scope-panel {
+    position: fixed;
+    left: 14px;
+    bottom: 58px;
+    width: 364px;
+    max-width: calc(100vw - 360px);
+    padding: 10px 11px;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+  }
+  .scope-panel.hidden {
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(14px);
+  }
+
+  .scope-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+  }
+  .scope-title {
+    font-size: 10.5px;
+    font-weight: 750;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .scope-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .mini-pill-btn {
+    border: 1px solid rgba(148, 179, 255, 0.2);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-dim);
+    font-size: 9.5px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: all 0.14s ease;
+  }
+  .mini-pill-btn:hover { color: #fff; border-color: rgba(148, 179, 255, 0.4); }
+  .mini-pill-btn.active {
+    background: rgba(88, 220, 255, 0.18);
+    border-color: var(--accent-cyan);
+    color: #fff;
+  }
+
+  .scope-screen-wrap {
+    position: relative;
+    width: 100%;
+    height: 132px;
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    border: 1px solid rgba(88, 220, 255, 0.22);
+    background: #030814;
+    box-shadow: inset 0 0 22px rgba(0, 0, 0, 0.85);
+  }
+  #scope-canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  .scope-channels {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .ch-card {
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(148, 179, 255, 0.11);
+    border-radius: var(--radius-sm);
+    padding: 5px 7px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .ch-card.ch1 { border-left: 2.5px solid var(--accent-cyan); }
+  .ch-card.ch2 { border-left: 2.5px solid var(--accent-amber); }
+  .ch-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 10px;
+    font-weight: 700;
+  }
+  .ch-card.ch1 .ch-name { color: var(--accent-cyan); }
+  .ch-card.ch2 .ch-name { color: var(--accent-amber); }
+  .ch-now {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    font-weight: 700;
+    color: var(--text-main);
+  }
+  .ch-stats {
+    font-family: var(--mono);
+    font-size: 9.5px;
+    color: var(--text-muted);
+    display: flex;
+    justify-content: space-between;
+  }
+
+  .scope-foot {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+  .scope-foot .mono {
+    font-family: var(--mono);
+    color: var(--text-main);
+    min-width: 58px;
+    text-align: right;
+  }
+
+  /* Right Control Drawer (330px) */
+  .drawer {
+    position: fixed;
+    top: 14px;
+    right: 14px;
+    bottom: 14px;
+    width: 330px;
+    max-width: calc(100vw - 28px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: transform 0.25s ease, opacity 0.25s ease;
+  }
+  .drawer.collapsed {
+    transform: translateX(calc(100% + 24px));
+    pointer-events: none;
+  }
+
+  .drawer-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+    padding: 8px 8px 6px;
+    border-bottom: 1px solid var(--panel-border);
+    background: rgba(4, 7, 15, 0.45);
+  }
+
+  .tab-btn {
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 11.5px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    padding: 7px 6px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .tab-btn:hover {
+    color: var(--text-main);
+    background: rgba(255, 255, 255, 0.04);
+  }
+  .tab-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.16);
+    border-color: rgba(88, 220, 255, 0.4);
+  }
+
+  .drawer-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 11px 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .drawer-body::-webkit-scrollbar { width: 5px; }
+  .drawer-body::-webkit-scrollbar-thumb {
+    background: rgba(148, 179, 255, 0.22);
+    border-radius: 999px;
+  }
+
+  .tab-pane {
+    display: none;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .tab-pane.active { display: flex; }
+
+  .section {
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(148, 179, 255, 0.11);
+    border-radius: var(--radius-md);
+    padding: 10px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .section-title {
+    font-size: 10px;
+    font-weight: 750;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  /* Tool Grid & Palette */
+  .tool-strip {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 5px;
+  }
+
+  .palette-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 5px;
+  }
+
+  .tool-btn {
+    border: 1px solid rgba(148, 179, 255, 0.15);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-dim);
+    font-size: 10.5px;
+    font-weight: 650;
+    padding: 6px 4px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    text-align: center;
+  }
+  .tool-btn:hover {
+    color: #fff;
+    border-color: rgba(148, 179, 255, 0.38);
+    background: rgba(255, 255, 255, 0.07);
+  }
+  .tool-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.18);
+    border-color: var(--accent-cyan);
+    box-shadow: 0 0 12px rgba(88, 220, 255, 0.22);
+  }
+  .tool-btn.active.amber {
+    background: rgba(255, 190, 92, 0.18);
+    border-color: var(--accent-amber);
+    color: #ffebd0;
+    box-shadow: 0 0 12px rgba(255, 190, 92, 0.22);
+  }
+  .tool-btn.active.rose {
+    background: rgba(255, 96, 131, 0.2);
+    border-color: var(--accent-rose);
+    color: #ffd9e2;
+  }
+  .tool-glyph {
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1;
+    color: var(--accent-cyan);
+  }
+  .tool-btn.active.amber .tool-glyph { color: var(--accent-amber); }
+  .tool-btn.active.rose .tool-glyph { color: var(--accent-rose); }
+
+  /* Presets grid */
+  .preset-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .preset-btn {
+    text-align: left;
+    padding: 7px 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(148, 179, 255, 0.14);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-main);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .preset-btn:hover {
+    border-color: rgba(255, 190, 92, 0.45);
+    background: rgba(255, 190, 92, 0.08);
+  }
+  .preset-btn.active {
+    border-color: var(--accent-amber);
+    background: rgba(255, 190, 92, 0.14);
+  }
+  .preset-name {
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+  .preset-sub {
+    font-size: 9.5px;
+    color: var(--text-muted);
+    line-height: 1.25;
+  }
+
+  /* Sliders */
+  .control-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .control-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+  .control-head .val {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-main);
+    font-weight: 650;
+  }
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 5px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.18);
+    outline: none;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 13px;
+    height: 13px;
+    border-radius: 50%;
+    background: var(--accent-cyan);
+    border: 2px solid #08101f;
+    box-shadow: 0 0 9px rgba(88, 220, 255, 0.65);
+    cursor: pointer;
+  }
+  input[type="range"].amber::-webkit-slider-thumb {
+    background: var(--accent-amber);
+    box-shadow: 0 0 9px rgba(255, 190, 92, 0.65);
+  }
+
+  /* Segmented pills */
+  .seg-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(56px, 1fr));
+    gap: 4px;
+  }
+  .seg-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-dim);
+    font-size: 10.5px;
+    font-weight: 650;
+    padding: 5px 5px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-align: center;
+  }
+  .seg-btn:hover { color: #fff; border-color: rgba(148, 179, 255, 0.35); }
+  .seg-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.18);
+    border-color: var(--accent-cyan);
+  }
+  .seg-btn.active.amber {
+    background: rgba(255, 190, 92, 0.18);
+    border-color: var(--accent-amber);
+    color: #ffdfaa;
+  }
+
+  /* Action Buttons */
+  .btn-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .btn {
+    border: 1px solid rgba(148, 179, 255, 0.22);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-main);
+    font-size: 11px;
+    font-weight: 700;
+    padding: 7px 9px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+  }
+  .btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 179, 255, 0.45);
+  }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary {
+    background: linear-gradient(135deg, rgba(88, 220, 255, 0.26), rgba(56, 140, 255, 0.22));
+    border-color: rgba(88, 220, 255, 0.52);
+    color: #e6f9ff;
+  }
+  .btn.amber {
+    background: linear-gradient(135deg, rgba(255, 190, 92, 0.24), rgba(255, 120, 60, 0.2));
+    border-color: rgba(255, 190, 92, 0.52);
+    color: #fff3db;
+  }
+  .btn.danger {
+    background: rgba(255, 96, 131, 0.14);
+    border-color: rgba(255, 96, 131, 0.4);
+    color: #ffc2d0;
+  }
+
+  /* Toggle switches */
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11px;
+    color: var(--text-dim);
+    cursor: pointer;
+  }
+  .toggle-row input { display: none; }
+  .switch {
+    width: 34px;
+    height: 18px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.2);
+    border: 1px solid rgba(148, 179, 255, 0.25);
+    position: relative;
+    transition: all 0.18s ease;
+    flex-shrink: 0;
+  }
+  .switch::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #c8d7f5;
+    transition: transform 0.18s ease, background 0.18s ease;
+  }
+  .toggle-row input:checked + .switch {
+    background: rgba(88, 220, 255, 0.32);
+    border-color: var(--accent-cyan);
+  }
+  .toggle-row input:checked + .switch::after {
+    transform: translateX(16px);
+    background: #fff;
+  }
+
+  /* Inspector readouts */
+  .insp-metrics {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 5px;
+  }
+  .insp-box {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(148, 179, 255, 0.1);
+    border-radius: 6px;
+    padding: 5px 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+  .insp-box span:first-child {
+    font-size: 9px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+  }
+  .insp-box span:last-child {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-main);
+  }
+
+  /* Voltage color legend bar */
+  .volt-bar {
+    height: 8px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #3b7bff 0%, #38d2ff 28%, #6e85a8 50%, #ff9e58 72%, #ff4e6a 100%);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+  }
+  .volt-bar-labels {
+    display: flex;
+    justify-content: space-between;
+    font-family: var(--mono);
+    font-size: 9.5px;
+    color: var(--text-muted);
+  }
+
+  .note-small {
+    font-size: 10.5px;
+    color: var(--text-muted);
+    line-height: 1.38;
+  }
+  .note-small strong { color: var(--text-dim); }
+
+  /* Bottom Transport Bar */
+  .bottom-bar {
+    position: fixed;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 7px 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: nowrap;
+  }
+
+  .bar-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-main);
+    font-size: 11.5px;
+    font-weight: 650;
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    white-space: nowrap;
+  }
+  .bar-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 179, 255, 0.4);
+  }
+  .bar-btn.active {
+    background: rgba(88, 220, 255, 0.2);
+    border-color: var(--accent-cyan);
+    color: #fff;
+  }
+
+  .bar-divider {
+    width: 1px;
+    height: 20px;
+    background: rgba(148, 179, 255, 0.16);
+    margin: 0 2px;
+  }
+
+  /* Bottom-left hint pill */
+  .hint-pill {
+    position: fixed;
+    bottom: 14px;
+    left: 14px;
+    padding: 6px 10px;
+    font-size: 10.5px;
+    color: var(--text-dim);
+    max-width: 364px;
+    line-height: 1.35;
+  }
+  .hint-pill kbd {
+    font-family: var(--mono);
+    font-size: 9.5px;
+    padding: 1px 4px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #fff;
+  }
+
+  /* Floating Hover Tooltip */
+  .hover-tip {
+    position: fixed;
+    pointer-events: none;
+    z-index: 30;
+    background: var(--panel-bg-strong);
+    border: 1px solid rgba(88, 220, 255, 0.35);
+    border-radius: var(--radius-sm);
+    padding: 6px 9px;
+    font-size: 11px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.65);
+    backdrop-filter: blur(10px);
+    opacity: 0;
+    transform: translate(12px, -12px);
+    transition: opacity 0.1s ease;
+    min-width: 146px;
+  }
+  .hover-tip.visible { opacity: 1; }
+  .hover-tip-title {
+    font-weight: 750;
+    color: var(--text-main);
+    margin-bottom: 3px;
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .hover-tip-grid {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--text-dim);
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+  .hover-tip-grid strong { color: var(--accent-cyan); }
+  .hover-tip-grid .amber { color: var(--accent-amber); }
+  .hover-tip-grid .rose { color: var(--accent-rose); }
+
+  /* Zen / Cinema restore button */
+  .zen-restore {
+    position: fixed;
+    bottom: 14px;
+    right: 14px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+  }
+  body.zen-mode .zen-restore {
+    opacity: 0.9;
+    pointer-events: auto;
+  }
+
+  @media (max-width: 960px) {
+    .top-left { width: calc(100vw - 28px); max-width: none; }
+    .scope-panel { display: none; }
+    .hint-pill { display: none; }
+    .drawer {
+      top: auto;
+      bottom: 60px;
+      height: 50vh;
+      width: calc(100vw - 28px);
+    }
+  }
+</style>
+</head>
+<body>
+<canvas id="sim-canvas"></canvas>
+
+<div class="hud">
+  <!-- Top-Left Telemetry -->
+  <div class="panel top-left">
+    <div class="brand-row">
+      <div class="brand-title-wrap">
+        <div class="brand-title">Breadboard</div>
+        <span class="mode-badge">MNA Solver</span>
+      </div>
+      <span id="solver-status" class="status-pill">Converged</span>
+    </div>
+
+    <div class="telemetry-grid">
+      <div class="tele-card">
+        <span class="tele-label">Total Power</span>
+        <span id="tel-power" class="tele-val amber">0.00 mW</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Max Current</span>
+        <span id="tel-max-i" class="tele-val cyan">0.00 mA</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Peak Voltage</span>
+        <span id="tel-peak-v" class="tele-val mint">0.00 V</span>
+      </div>
+    </div>
+
+    <div class="clock-row">
+      <span>t = <strong id="tel-time">0.00 ms</strong></span>
+      <span id="tel-topo">0 nodes · 0 parts</span>
+      <span><strong id="tel-speed">0.45×</strong></span>
+    </div>
+  </div>
+
+  <!-- Embedded Dual-Channel Oscilloscope -->
+  <div id="scope-panel" class="panel scope-panel">
+    <div class="scope-header">
+      <div class="scope-title">
+        <span>Oscilloscope</span>
+        <span id="scope-scale-lbl" style="font-family:var(--mono);font-size:9.5px;color:var(--accent-cyan);">±8.0V</span>
+      </div>
+      <div class="scope-actions">
+        <button id="btn-scope-auto" class="mini-pill-btn active" title="Auto-scale vertical range">Auto</button>
+        <button id="btn-scope-clear" class="mini-pill-btn" title="Clear trace buffer">Clear</button>
+      </div>
+    </div>
+
+    <div class="scope-screen-wrap">
+      <canvas id="scope-canvas"></canvas>
+    </div>
+
+    <div class="scope-channels">
+      <div class="ch-card ch1">
+        <div class="ch-top">
+          <span class="ch-name">CH1</span>
+          <span id="ch1-now" class="ch-now">0.00 V</span>
+        </div>
+        <div class="ch-stats">
+          <span id="ch1-vpp">Vpp 0.00V</span>
+          <span id="ch1-rms">RMS 0.00V</span>
+        </div>
+      </div>
+      <div class="ch-card ch2">
+        <div class="ch-top">
+          <span class="ch-name">CH2</span>
+          <span id="ch2-now" class="ch-now">0.00 V</span>
+        </div>
+        <div class="ch-stats">
+          <span id="ch2-vpp">Vpp 0.00V</span>
+          <span id="ch2-rms">RMS 0.00V</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="scope-foot">
+      <span>Timebase</span>
+      <input id="scope-timebase" type="range" min="0" max="100" value="48" />
+      <span id="scope-tb-val" class="mono">200 ms/d</span>
+    </div>
+  </div>
+
+  <!-- Right Collapsible Drawer -->
+  <div id="drawer" class="panel drawer">
+    <div class="drawer-tabs">
+      <button class="tab-btn active" data-tab="build">Build</button>
+      <button class="tab-btn" data-tab="presets">Presets</button>
+      <button class="tab-btn" data-tab="display">Display</button>
+    </div>
+
+    <div class="drawer-body">
+      <!-- TAB: BUILD -->
+      <div id="tab-build" class="tab-pane active">
+        <div class="section">
+          <div class="section-title">
+            <span>Tools</span>
+            <span id="active-tool-label" style="color:var(--accent-cyan);">Select / Interact</span>
+          </div>
+          <div class="tool-strip">
+            <button class="tool-btn active" data-tool="select" title="Select components, flip switches, drag pots">
+              <span class="tool-glyph">↖</span><span>Select</span>
+            </button>
+            <button class="tool-btn" data-tool="probe1" title="Click any node to attach Scope CH1 (Cyan)">
+              <span class="tool-glyph" style="color:var(--accent-cyan);">◎</span><span>CH1</span>
+            </button>
+            <button class="tool-btn" data-tool="probe2" title="Click any node to attach Scope CH2 (Amber)">
+              <span class="tool-glyph" style="color:var(--accent-amber);">◎</span><span>CH2</span>
+            </button>
+            <button class="tool-btn" data-tool="erase" title="Click component to remove it">
+              <span class="tool-glyph" style="color:var(--accent-rose);">✕</span><span>Erase</span>
+            </button>
+          </div>
+          <div class="btn-row">
+            <button id="btn-undo" class="btn">↶ Undo</button>
+            <button id="btn-clear-all" class="btn danger">Clear Board</button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">
+            <span>Components</span>
+            <span style="font-size:9px;color:var(--text-muted);">Drag A → B</span>
+          </div>
+          <div class="palette-grid">
+            <button class="tool-btn" data-tool="wire"><span class="tool-glyph">──</span><span>Wire</span></button>
+            <button class="tool-btn" data-tool="dc"><span class="tool-glyph">⎓</span><span>DC Src</span></button>
+            <button class="tool-btn" data-tool="ac"><span class="tool-glyph">∿</span><span>AC Sine</span></button>
+            <button class="tool-btn" data-tool="resistor"><span class="tool-glyph">⏛</span><span>Resistor</span></button>
+            <button class="tool-btn" data-tool="pot"><span class="tool-glyph">⏛↗</span><span>Potentio</span></button>
+            <button class="tool-btn" data-tool="capacitor"><span class="tool-glyph">┤├</span><span>Capacitor</span></button>
+            <button class="tool-btn" data-tool="inductor"><span class="tool-glyph">∿∿</span><span>Inductor</span></button>
+            <button class="tool-btn" data-tool="diode"><span class="tool-glyph">▷|</span><span>Diode</span></button>
+            <button class="tool-btn" data-tool="led"><span class="tool-glyph">▷✦</span><span>LED</span></button>
+            <button class="tool-btn" data-tool="switch"><span class="tool-glyph">_/ _</span><span>Switch</span></button>
+            <button class="tool-btn" data-tool="lamp"><span class="tool-glyph">⊗</span><span>Lamp</span></button>
+            <button class="tool-btn" data-tool="gnd"><span class="tool-glyph">⏚</span><span>Ground</span></button>
+          </div>
+        </div>
+
+        <div class="section" id="inspector-section">
+          <div class="section-title">
+            <span id="insp-title">Component Inspector</span>
+            <span id="insp-id" style="font-family:var(--mono);color:var(--accent-amber);">—</span>
+          </div>
+          <div id="insp-empty" class="note-small">
+            Click any component to inspect &amp; edit its live value. Click a <strong>Switch</strong> to toggle it, or drag a <strong>Potentiometer</strong> wiper directly on the canvas.
+          </div>
+          <div id="insp-body" style="display:none;flex-direction:column;gap:8px;">
+            <div class="insp-metrics">
+              <div class="insp-box">
+                <span>ΔVoltage</span>
+                <span id="insp-v">0.00 V</span>
+              </div>
+              <div class="insp-box">
+                <span>Current</span>
+                <span id="insp-i">0.00 mA</span>
+              </div>
+              <div class="insp-box">
+                <span>Power</span>
+                <span id="insp-p">0.00 mW</span>
+              </div>
+            </div>
+            <div id="insp-controls" style="display:flex;flex-direction:column;gap:8px;"></div>
+            <div class="btn-row">
+              <button id="btn-flip-comp" class="btn">⇄ Flip Polarity</button>
+              <button id="btn-del-comp" class="btn danger">✕ Delete</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB: PRESETS -->
+      <div id="tab-presets" class="tab-pane">
+        <div class="section">
+          <div class="section-title">
+            <span>Classic Circuits</span>
+            <span style="color:var(--accent-amber);">8 Labs</span>
+          </div>
+          <div id="preset-grid" class="preset-grid"></div>
+        </div>
+        <div class="section">
+          <div class="section-title"><span>Lab Notes</span></div>
+          <div id="preset-note" class="note-small"></div>
+          <button id="btn-fit-view" class="btn primary">⌖ Fit Circuit to View</button>
+        </div>
+      </div>
+
+      <!-- TAB: DISPLAY -->
+      <div id="tab-display" class="tab-pane">
+        <div class="section">
+          <div class="section-title"><span>Current Flow Direction</span></div>
+          <div class="seg-row">
+            <button id="btn-flow-conv" class="seg-btn active">Conventional (+ → −)</button>
+            <button id="btn-flow-elec" class="seg-btn">Electron (− → +)</button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">
+            <span>Simulation Speed</span>
+            <span id="speed-slider-val" style="font-family:var(--mono);color:var(--accent-cyan);">0.45×</span>
+          </div>
+          <input id="sim-speed-slider" type="range" min="0" max="100" value="72" />
+          <div class="seg-row">
+            <button class="seg-btn speed-quick" data-speed="0.02">0.02×</button>
+            <button class="seg-btn speed-quick" data-speed="0.1">0.1×</button>
+            <button class="seg-btn speed-quick" data-speed="0.45">0.45×</button>
+            <button class="seg-btn speed-quick" data-speed="1.0">1.0×</button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Visual Layers</span></div>
+          <label class="toggle-row">
+            <span>Voltage Heat Glow</span>
+            <input id="opt-voltage-glow" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Luminous Current Particles</span>
+            <input id="opt-particles" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Component Values &amp; Live Labels</span>
+            <input id="opt-labels" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Blueprint Grid &amp; Pads</span>
+            <input id="opt-grid" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Oscilloscope Probe Audio Tone</span>
+            <input id="opt-probe-tone" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Node Voltage Scale</span></div>
+          <div class="volt-bar"></div>
+          <div class="volt-bar-labels">
+            <span>−12 V</span>
+            <span>0 V (GND)</span>
+            <span>+12 V</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom-Center Transport Bar -->
+  <div class="panel bottom-bar">
+    <button id="btn-play" class="bar-btn active">❚❚ Pause</button>
+    <button id="btn-step" class="bar-btn" title="Advance one simulation step">Step</button>
+    <button id="btn-reset" class="bar-btn" title="Reset capacitor/inductor state &amp; t=0 (R)">↺ Reset</button>
+    <div class="bar-divider"></div>
+    <button id="btn-audio" class="bar-btn" title="Toggle Web Audio (muted by default)">🔇 Audio</button>
+    <button id="btn-scope" class="bar-btn active" title="Toggle Oscilloscope">∿ Scope</button>
+    <button id="btn-controls" class="bar-btn active" title="Toggle Controls Drawer">☰ Controls</button>
+    <button id="btn-zen" class="bar-btn" title="Cinema Mode (H)">Cinema</button>
+  </div>
+
+  <!-- Bottom-Left Interaction Hints -->
+  <div class="panel hint-pill">
+    <kbd>Click</kbd> switch / inspect · <kbd>Drag</kbd> pot wiper or wire part · <kbd>Scroll</kbd> zoom · <kbd>Space</kbd> play · <kbd>Z</kbd> undo · <kbd>H</kbd> cinema
+  </div>
+
+  <!-- Cinema Mode Restore -->
+  <button id="btn-zen-restore" class="panel bar-btn zen-restore">Exit Cinema (H)</button>
+</div>
+
+<!-- Floating Hover Readout -->
+<div id="hover-tip" class="hover-tip"></div>
+
+<script>
+(() => {
+  'use strict';
+
+  // =========================================================================
+  // 1. ENGINEERING FORMATTING & COLOR UTILITIES
+  // =========================================================================
+  function fmtSI(val, unit, decimals = 2) {
+    if (!Number.isFinite(val)) return '0.00 ' + unit;
+    const abs = Math.abs(val);
+    if (abs === 0) return (0).toFixed(decimals) + ' ' + unit;
+    if (abs >= 1e6) return (val / 1e6).toFixed(decimals) + ' M' + unit;
+    if (abs >= 1e3) return (val / 1e3).toFixed(decimals) + ' k' + unit;
+    if (abs >= 1) return val.toFixed(decimals) + ' ' + unit;
+    if (abs >= 1e-3) return (val * 1e3).toFixed(decimals) + ' m' + unit;
+    if (abs >= 1e-6) return (val * 1e6).toFixed(decimals) + ' µ' + unit;
+    if (abs >= 1e-9) return (val * 1e9).toFixed(decimals) + ' n' + unit;
+    return (val * 1e12).toFixed(decimals) + ' p' + unit;
+  }
+
+  function fmtCompact(val, unit) {
+    if (!Number.isFinite(val)) return '0' + unit;
+    const abs = Math.abs(val);
+    const fmtNum = (n) => {
+      const a = Math.abs(n);
+      if (a >= 100) return n.toFixed(0);
+      if (a >= 10) return n.toFixed(1).replace(/\.0$/, '');
+      return n.toFixed(2).replace(/\.?0+$/, '');
+    };
+    if (abs === 0) return '0' + unit;
+    if (abs >= 1e6) return fmtNum(val / 1e6) + 'M' + unit;
+    if (abs >= 1e3) return fmtNum(val / 1e3) + 'k' + unit;
+    if (abs >= 1) return fmtNum(val) + unit;
+    if (abs >= 1e-3) return fmtNum(val * 1e3) + 'm' + unit;
+    if (abs >= 1e-6) return fmtNum(val * 1e6) + 'µ' + unit;
+    if (abs >= 1e-9) return fmtNum(val * 1e9) + 'n' + unit;
+    return fmtNum(val * 1e12) + 'p' + unit;
+  }
+
+  function lerp(a, b, t) { return a + (b - a) * t; }
+  function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+  function voltageColorRGB(v, vScale = 12) {
+    const t = clamp(v / vScale, -1, 1);
+    let r, g, b;
+    if (t >= 0) {
+      if (t < 0.45) {
+        const u = t / 0.45;
+        r = lerp(110, 255, u);
+        g = lerp(133, 166, u);
+        b = lerp(168, 88, u);
+      } else {
+        const u = (t - 0.45) / 0.55;
+        r = 255;
+        g = lerp(166, 78, u);
+        b = lerp(88, 108, u);
+      }
+    } else {
+      const m = -t;
+      if (m < 0.45) {
+        const u = m / 0.45;
+        r = lerp(110, 56, u);
+        g = lerp(133, 210, u);
+        b = lerp(168, 255, u);
+      } else {
+        const u = (m - 0.45) / 0.55;
+        r = lerp(56, 62, u);
+        g = lerp(210, 126, u);
+        b = 255;
+      }
+    }
+    return [Math.round(r), Math.round(g), Math.round(b)];
+  }
+
+  function voltageColorCSS(v, alpha = 1, vScale = 12) {
+    const [r, g, b] = voltageColorRGB(v, vScale);
+    return `rgba(${r},${g},${b},${alpha})`;
+  }
+
+  const LED_COLORS = {
+    red:   { name: 'Red',   n: 3.10, is: 1e-12, hex: '#ff4b66', glow: 'rgba(255, 75, 102,' },
+    amber: { name: 'Amber', n: 3.35, is: 1e-12, hex: '#ffbe55', glow: 'rgba(255, 190, 85,' },
+    green: { name: 'Green', n: 3.60, is: 1e-12, hex: '#48f59a', glow: 'rgba(72, 245, 154,' },
+    cyan:  { name: 'Cyan',  n: 4.90, is: 1e-12, hex: '#52e0ff', glow: 'rgba(82, 224, 255,' }
+  };
+
+  // =========================================================================
+  // 2. REAL-TIME MODIFIED NODAL ANALYSIS (MNA) SOLVER ENGINE
+  // =========================================================================
+  class MNASolver {
+    constructor() {
+      this.VT = 0.02585; // Thermal voltage at 300K
+      this.GMIN = 1e-11;
+      this.R_WIRE = 1e-3;
+      this.R_SW_ON = 1e-3;
+      this.R_SW_OFF = 1e9;
+      this.R_VSRC_INT = 1e-5;
+    }
+
+    static nodeKey(gx, gy) {
+      return gx + ',' + gy;
+    }
+
+    // Shockley diode model with overflow-safe linear extension above argMax
+    diodeEval(vd, n, is) {
+      const nVt = n * this.VT;
+      const argMax = 30.0;
+      const arg = vd / nVt;
+      let id, gd;
+      if (arg > argMax) {
+        const expMax = Math.exp(argMax);
+        const iMax = is * (expMax - 1);
+        gd = (is / nVt) * expMax;
+        id = iMax + gd * (vd - argMax * nVt);
+      } else if (arg < -40) {
+        id = -is;
+        gd = 1e-12;
+      } else {
+        const ex = Math.exp(arg);
+        id = is * (ex - 1);
+        gd = (is / nVt) * ex;
+      }
+      // Small parallel leakage & series conductance cap for rock-solid conditioning
+      const gLeak = 1e-9;
+      const gCap = 1e3;
+      if (gd > gCap) {
+        gd = gCap;
+      }
+      return { i: id + gLeak * vd, g: gd + gLeak };
+    }
+
+    // Dense Gaussian elimination with partial pivoting (zero-NaN safe)
+    solveLinear(A, b, n) {
+      for (let col = 0; col < n; col++) {
+        let maxRow = col;
+        let maxVal = Math.abs(A[col][col]);
+        for (let r = col + 1; r < n; r++) {
+          const av = Math.abs(A[r][col]);
+          if (av > maxVal) {
+            maxVal = av;
+            maxRow = r;
+          }
+        }
+        if (maxRow !== col) {
+          const tmpRow = A[col]; A[col] = A[maxRow]; A[maxRow] = tmpRow;
+          const tmpB = b[col]; b[col] = b[maxRow]; b[maxRow] = tmpB;
+        }
+        const pivot = A[col][col];
+        if (!Number.isFinite(pivot) || Math.abs(pivot) < 1e-15) {
+          A[col][col] = 1e-15;
+          continue;
+        }
+        const invPiv = 1.0 / pivot;
+        for (let r = col + 1; r < n; r++) {
+          const factor = A[r][col] * invPiv;
+          if (factor === 0) continue;
+          const rowR = A[r];
+          const rowC = A[col];
+          for (let c = col + 1; c < n; c++) {
+            rowR[c] -= factor * rowC[c];
+          }
+          rowR[col] = 0;
+          b[r] -= factor * b[col];
+        }
+      }
+
+      const x = new Float64Array(n);
+      for (let r = n - 1; r >= 0; r--) {
+        let sum = b[r];
+        const rowR = A[r];
+        for (let c = r + 1; c < n; c++) {
+          sum -= rowR[c] * x[c];
+        }
+        const diag = rowR[r];
+        const val = Math.abs(diag) < 1e-15 ? 0 : sum / diag;
+        x[r] = Number.isFinite(val) ? val : 0;
+      }
+      return x;
+    }
+
+    // Compile topology from components array
+    buildTopology(components) {
+      const groundKeys = new Set();
+      for (const c of components) {
+        if (c.type === 'gnd') {
+          groundKeys.add(MNASolver.nodeKey(c.x1, c.y1));
+        }
+      }
+
+      let autoGround = false;
+      if (groundKeys.size === 0) {
+        // Fallback reference node so solver never produces NaN if user removes Ground
+        const src = components.find(c => c.type === 'dc' || c.type === 'ac');
+        if (src) {
+          groundKeys.add(MNASolver.nodeKey(src.x2, src.y2));
+          autoGround = true;
+        } else if (components.length > 0) {
+          groundKeys.add(MNASolver.nodeKey(components[0].x1, components[0].y1));
+          autoGround = true;
+        }
+      }
+
+      const keyToIdx = new Map();
+      const idxToKey = ['GND'];
+      let nextIdx = 1;
+
+      const getNode = (gx, gy) => {
+        const k = MNASolver.nodeKey(gx, gy);
+        if (groundKeys.has(k)) return 0;
+        let idx = keyToIdx.get(k);
+        if (idx === undefined) {
+          idx = nextIdx++;
+          keyToIdx.set(k, idx);
+          idxToKey.push(k);
+        }
+        return idx;
+      };
+
+      const vSources = [];
+      let hasNonlinear = false;
+
+      for (const c of components) {
+        if (c.type === 'gnd') {
+          c.n1 = 0;
+          c.n2 = 0;
+          continue;
+        }
+        c.n1 = getNode(c.x1, c.y1);
+        c.n2 = getNode(c.x2, c.y2);
+        if (c.type === 'dc' || c.type === 'ac') {
+          c._vIdx = vSources.length;
+          vSources.push(c);
+        }
+        if (c.type === 'diode' || c.type === 'led') {
+          hasNonlinear = true;
+          if (!Number.isFinite(c._vd)) c._vd = 0;
+        }
+      }
+
+      const numNodes = nextIdx - 1; // excluding GND (0)
+      const numV = vSources.length;
+      return {
+        groundKeys,
+        autoGround,
+        keyToIdx,
+        idxToKey,
+        numNodes,
+        numV,
+        size: numNodes + numV,
+        vSources,
+        hasNonlinear
+      };
+    }
+
+    // Perform one transient Backward-Euler timestep dt at time t
+    step(components, topo, t, dt) {
+      const N = topo.size;
+      if (N === 0) {
+        return { nodeVoltages: new Map(), converged: true, iterations: 1 };
+      }
+
+      const numNodes = topo.numNodes;
+      const maxIter = topo.hasNonlinear ? 24 : 1;
+      let x = new Float64Array(N);
+      let converged = true;
+      let iterations = 0;
+
+      // Preallocate matrix rows
+      const A = new Array(N);
+      for (let i = 0; i < N; i++) A[i] = new Float64Array(N);
+      const b = new Float64Array(N);
+
+      const stampG = (n1, n2, g) => {
+        if (n1 > 0) A[n1 - 1][n1 - 1] += g;
+        if (n2 > 0) A[n2 - 1][n2 - 1] += g;
+        if (n1 > 0 && n2 > 0) {
+          A[n1 - 1][n2 - 1] -= g;
+          A[n2 - 1][n1 - 1] -= g;
+        }
+      };
+
+      const stampI = (n1, n2, iFrom1To2) => {
+        // Current iFrom1To2 leaving n1, entering n2 -> RHS gets -i at n1, +i at n2
+        if (n1 > 0) b[n1 - 1] -= iFrom1To2;
+        if (n2 > 0) b[n2 - 1] += iFrom1To2;
+      };
+
+      for (let iter = 0; iter < maxIter; iter++) {
+        iterations = iter + 1;
+        for (let i = 0; i < N; i++) {
+          A[i].fill(0);
+          b[i] = 0;
+        }
+        // Gmin to ground for every node to prevent singular floating islands
+        for (let i = 0; i < numNodes; i++) {
+          A[i][i] += this.GMIN;
+        }
+
+        for (const c of components) {
+          const n1 = c.n1;
+          const n2 = c.n2;
+          if (c.type === 'gnd' || n1 === n2) continue;
+
+          switch (c.type) {
+            case 'wire': {
+              stampG(n1, n2, 1.0 / this.R_WIRE);
+              break;
+            }
+            case 'resistor': {
+              const r = Math.max(c.value || 1000, 1e-4);
+              stampG(n1, n2, 1.0 / r);
+              break;
+            }
+            case 'lamp': {
+              const r = Math.max(c.value || 120, 1);
+              stampG(n1, n2, 1.0 / r);
+              break;
+            }
+            case 'pot': {
+              const alpha = clamp(c.wiper ?? 0.5, 0.02, 1.0);
+              const r = Math.max((c.value || 2000) * alpha, 1);
+              stampG(n1, n2, 1.0 / r);
+              break;
+            }
+            case 'switch': {
+              const r = c.closed ? this.R_SW_ON : this.R_SW_OFF;
+              stampG(n1, n2, 1.0 / r);
+              break;
+            }
+            case 'capacitor': {
+              const cap = Math.max(c.value || 100e-6, 1e-12);
+              const geq = cap / dt;
+              const ieq = geq * (c.vPrev || 0);
+              stampG(n1, n2, geq);
+              // I_cap = geq * V - ieq  =>  stampI with -ieq
+              stampI(n1, n2, -ieq);
+              break;
+            }
+            case 'inductor': {
+              const ind = Math.max(c.value || 0.05, 1e-9);
+              const geq = dt / ind;
+              const ieq = c.iPrev || 0;
+              stampG(n1, n2, geq);
+              // I_ind = geq * V + ieq  =>  stampI with +ieq
+              stampI(n1, n2, ieq);
+              break;
+            }
+            case 'dc':
+            case 'ac': {
+              const k = numNodes + c._vIdx;
+              if (n1 > 0) { A[n1 - 1][k] += 1; A[k][n1 - 1] += 1; }
+              if (n2 > 0) { A[n2 - 1][k] -= 1; A[k][n2 - 1] -= 1; }
+              A[k][k] -= this.R_VSRC_INT;
+              const vOut = c.type === 'dc'
+                ? (c.value || 0)
+                : (c.value || 5) * Math.sin(2 * Math.PI * (c.freq || 1) * t + (c.phase || 0));
+              b[k] += vOut;
+              break;
+            }
+            case 'diode':
+            case 'led': {
+              let nIdeality = 1.15;
+              let isSat = 1e-12;
+              if (c.type === 'led') {
+                const lc = LED_COLORS[c.color || 'red'] || LED_COLORS.red;
+                nIdeality = lc.n;
+                isSat = lc.is;
+              }
+              const vd = c._vd || 0;
+              const { i: id, g: gd } = this.diodeEval(vd, nIdeality, isSat);
+              const ieq = id - gd * vd;
+              stampG(n1, n2, gd);
+              stampI(n1, n2, ieq);
+              break;
+            }
+          }
+        }
+
+        x = this.solveLinear(A, b, N);
+
+        if (!topo.hasNonlinear) break;
+
+        // Check Newton convergence & apply SPICE-style voltage step damping (pnjlim)
+        let maxDiff = 0;
+        for (const c of components) {
+          if (c.type !== 'diode' && c.type !== 'led') continue;
+          const v1 = c.n1 > 0 ? x[c.n1 - 1] : 0;
+          const v2 = c.n2 > 0 ? x[c.n2 - 1] : 0;
+          const vNewRaw = v1 - v2;
+          const vOld = c._vd || 0;
+          const nIdeality = c.type === 'led' ? ((LED_COLORS[c.color || 'red'] || LED_COLORS.red).n) : 1.15;
+          const nVt = nIdeality * this.VT;
+          const vCrit = nVt * Math.log(nVt / (Math.SQRT2 * 1e-12));
+
+          let vLimited = vNewRaw;
+          if (vNewRaw > vCrit && Math.abs(vNewRaw - vOld) > 2 * nVt) {
+            if (vOld > 0) {
+              const arg = 1 + (vNewRaw - vOld) / nVt;
+              vLimited = arg > 0 ? vOld + nVt * Math.log(arg) : vCrit;
+            } else {
+              vLimited = nVt * Math.log(vNewRaw / nVt);
+            }
+          } else if (vNewRaw - vOld > 0.35 * nIdeality) {
+            vLimited = vOld + 0.35 * nIdeality;
+          } else if (vNewRaw - vOld < -1.5 * nIdeality) {
+            vLimited = vOld - 1.5 * nIdeality;
+          }
+
+          maxDiff = Math.max(maxDiff, Math.abs(vNewRaw - vOld));
+          c._vd = vLimited;
+        }
+
+        if (maxDiff < 1e-6) {
+          converged = true;
+          break;
+        }
+        if (iter === maxIter - 1) {
+          converged = maxDiff < 1e-3;
+        }
+      }
+
+      // Extract node voltages & update component states (v, i, p, vPrev, iPrev)
+      const nodeVoltages = new Map();
+      for (const gk of topo.groundKeys) nodeVoltages.set(gk, 0);
+      for (let idx = 1; idx <= numNodes; idx++) {
+        nodeVoltages.set(topo.idxToKey[idx], x[idx - 1]);
+      }
+
+      for (const c of components) {
+        if (c.type === 'gnd') {
+          c.v = 0; c.i = 0; c.p = 0;
+          continue;
+        }
+        const v1 = c.n1 > 0 ? x[c.n1 - 1] : 0;
+        const v2 = c.n2 > 0 ? x[c.n2 - 1] : 0;
+        const dv = v1 - v2;
+        c.v1 = v1;
+        c.v2 = v2;
+        c.v = dv;
+
+        let cur = 0;
+        switch (c.type) {
+          case 'wire':
+            cur = dv / this.R_WIRE;
+            break;
+          case 'resistor':
+            cur = dv / Math.max(c.value || 1000, 1e-4);
+            break;
+          case 'lamp':
+            cur = dv / Math.max(c.value || 120, 1);
+            break;
+          case 'pot': {
+            const alpha = clamp(c.wiper ?? 0.5, 0.02, 1.0);
+            cur = dv / Math.max((c.value || 2000) * alpha, 1);
+            break;
+          }
+          case 'switch':
+            cur = dv / (c.closed ? this.R_SW_ON : this.R_SW_OFF);
+            break;
+          case 'capacitor': {
+            const cap = Math.max(c.value || 100e-6, 1e-12);
+            cur = (cap / dt) * (dv - (c.vPrev || 0));
+            c.vPrev = dv;
+            break;
+          }
+          case 'inductor': {
+            const ind = Math.max(c.value || 0.05, 1e-9);
+            cur = (dt / ind) * dv + (c.iPrev || 0);
+            c.iPrev = cur;
+            break;
+          }
+          case 'dc':
+          case 'ac':
+            cur = x[numNodes + c._vIdx];
+            break;
+          case 'diode':
+          case 'led': {
+            const nId = c.type === 'led' ? ((LED_COLORS[c.color || 'red'] || LED_COLORS.red).n) : 1.15;
+            const isSat = c.type === 'led' ? ((LED_COLORS[c.color || 'red'] || LED_COLORS.red).is) : 1e-12;
+            const ev = this.diodeEval(dv, nId, isSat);
+            cur = ev.i;
+            c._vd = dv;
+            break;
+          }
+        }
+        c.i = Number.isFinite(cur) ? cur : 0;
+        c.p = c.v * c.i;
+      }
+
+      return { nodeVoltages, converged, iterations };
+    }
+  }
+
+  // Expose solver hook for automated verification when needed
+  window.__BREADBOARD_MNA__ = MNASolver;
+
+  // =========================================================================
+  // 3. CIRCUIT PRESETS (8 CLASSIC INTERACTIVE LABS)
+  // =========================================================================
+  const PRESETS = [
+    {
+      id: 'rc-lowpass',
+      name: 'RC Low-Pass & Charging',
+      sub: 'AC phase lag, attenuation & hold switch',
+      simSpeed: 0.45,
+      scopeWindow: 2.0,
+      note: '<strong>RC Low-Pass Filter:</strong> A 6 V, 1.2 Hz sine drives R = 1 kΩ and C = 150 µF (f<sub>c</sub> ≈ 1.06 Hz). Watch <strong>CH2</strong> lag and attenuate relative to <strong>CH1</strong>. Click the <strong>Switch</strong> to open the input and watch C discharge gently through the 10 kΩ bleed resistor!',
+      probes: { ch1: '2,0', ch2: '5,0' },
+      components: [
+        { type: 'ac', x1: 0, y1: 0, x2: 0, y2: 4, value: 6, freq: 1.2 },
+        { type: 'gnd', x1: 0, y1: 4, x2: 0, y2: 4 },
+        { type: 'switch', x1: 0, y1: 0, x2: 2, y2: 0, closed: true },
+        { type: 'resistor', x1: 2, y1: 0, x2: 5, y2: 0, value: 1000 },
+        { type: 'capacitor', x1: 5, y1: 0, x2: 5, y2: 4, value: 150e-6, initV: 0 },
+        { type: 'wire', x1: 5, y1: 0, x2: 7, y2: 0 },
+        { type: 'resistor', x1: 7, y1: 0, x2: 7, y2: 4, value: 10000 },
+        { type: 'wire', x1: 0, y1: 4, x2: 5, y2: 4 },
+        { type: 'wire', x1: 5, y1: 4, x2: 7, y2: 4 }
+      ]
+    },
+    {
+      id: 'rlc-ringing',
+      name: 'RLC Damped Ringing',
+      sub: 'Underdamped step response & overshoot',
+      simSpeed: 0.025,
+      scopeWindow: 0.14,
+      note: '<strong>Series RLC Step Response:</strong> 9 V DC steps into R = 8 Ω, L = 80 mH, C = 100 µF (f<sub>0</sub> ≈ 56 Hz, ζ ≈ 0.14). Watch V<sub>C</sub> (<strong>CH2</strong>) overshoot past 14 V and ring down. Press <strong>Reset (R)</strong> or edit R to test critical vs underdamped ringing!',
+      probes: { ch1: '4,0', ch2: '7,0' },
+      components: [
+        { type: 'dc', x1: 0, y1: 0, x2: 0, y2: 4, value: 9 },
+        { type: 'gnd', x1: 0, y1: 4, x2: 0, y2: 4 },
+        { type: 'switch', x1: 0, y1: 0, x2: 2, y2: 0, closed: true },
+        { type: 'resistor', x1: 2, y1: 0, x2: 4, y2: 0, value: 8 },
+        { type: 'inductor', x1: 4, y1: 0, x2: 7, y2: 0, value: 0.08, initI: 0 },
+        { type: 'capacitor', x1: 7, y1: 0, x2: 7, y2: 4, value: 100e-6, initV: 0 },
+        { type: 'wire', x1: 7, y1: 0, x2: 9, y2: 0 },
+        { type: 'switch', x1: 9, y1: 0, x2: 9, y2: 2, closed: false },
+        { type: 'resistor', x1: 9, y1: 2, x2: 9, y2: 4, value: 100 },
+        { type: 'wire', x1: 0, y1: 4, x2: 7, y2: 4 },
+        { type: 'wire', x1: 7, y1: 4, x2: 9, y2: 4 }
+      ]
+    },
+    {
+      id: 'wheatstone',
+      name: 'Wheatstone Bridge',
+      sub: 'Drag potentiometer to null center I = 0',
+      simSpeed: 0.5,
+      scopeWindow: 2.0,
+      note: '<strong>Precision Null Bridge:</strong> Drag the <strong>Potentiometer</strong> wiper directly on the canvas to <strong>50% (1.0 kΩ)</strong>. When R<sub>pot</sub> matches the three 1 kΩ arms, <strong>CH1</strong> and <strong>CH2</strong> converge to 5.00 V and the center bridge current drops to exact 0.00 mA!',
+      probes: { ch1: '2,3', ch2: '8,3' },
+      components: [
+        { type: 'dc', x1: 0, y1: 0, x2: 0, y2: 6, value: 10 },
+        { type: 'gnd', x1: 0, y1: 6, x2: 0, y2: 6 },
+        { type: 'wire', x1: 0, y1: 0, x2: 5, y2: 0 },
+        { type: 'resistor', x1: 5, y1: 0, x2: 2, y2: 3, value: 1000 },
+        { type: 'resistor', x1: 5, y1: 0, x2: 8, y2: 3, value: 1000 },
+        { type: 'resistor', x1: 2, y1: 3, x2: 8, y2: 3, value: 500 },
+        { type: 'resistor', x1: 2, y1: 3, x2: 5, y2: 6, value: 1000 },
+        { type: 'pot', x1: 8, y1: 3, x2: 5, y2: 6, value: 2000, wiper: 0.25 },
+        { type: 'wire', x1: 5, y1: 6, x2: 0, y2: 6 }
+      ]
+    },
+    {
+      id: 'led-circuit',
+      name: 'LED + Resistor & Switch',
+      sub: 'Current limiting, dimming & over-current',
+      simSpeed: 0.5,
+      scopeWindow: 2.0,
+      note: '<strong>LED Drive & Protection:</strong> Flip the left <strong>Switch</strong> to toggle the Red LED (21 mA). Drag the right <strong>Potentiometer</strong> to dim the Cyan LED — or slide it below 15% (>40 mA) to see the realistic over-current warning!',
+      probes: { ch1: '4,2', ch2: '7,2' },
+      components: [
+        { type: 'dc', x1: 0, y1: 0, x2: 0, y2: 4, value: 9 },
+        { type: 'gnd', x1: 0, y1: 4, x2: 0, y2: 4 },
+        { type: 'wire', x1: 0, y1: 0, x2: 2, y2: 0 },
+        { type: 'switch', x1: 2, y1: 0, x2: 4, y2: 0, closed: true },
+        { type: 'resistor', x1: 4, y1: 0, x2: 4, y2: 2, value: 330 },
+        { type: 'led', x1: 4, y1: 2, x2: 4, y2: 4, color: 'red' },
+        { type: 'wire', x1: 2, y1: 0, x2: 7, y2: 0 },
+        { type: 'pot', x1: 7, y1: 0, x2: 7, y2: 2, value: 1000, wiper: 0.35 },
+        { type: 'led', x1: 7, y1: 2, x2: 7, y2: 4, color: 'cyan' },
+        { type: 'wire', x1: 0, y1: 4, x2: 4, y2: 4 },
+        { type: 'wire', x1: 4, y1: 4, x2: 7, y2: 4 }
+      ]
+    },
+    {
+      id: 'bridge-rectifier',
+      name: 'Full-Wave Bridge Rectifier',
+      sub: '4-diode diamond + switchable filter cap',
+      simSpeed: 0.04,
+      scopeWindow: 0.16,
+      note: '<strong>AC → DC Conversion:</strong> 10 V<sub>p</sub> 25 Hz AC feeds a 4-diode diamond bridge. Click the <strong>Filter Switch</strong> on the capacitor branch to compare smooth rippled DC against raw pulsating full-wave rectified humps on <strong>CH2</strong>!',
+      probes: { ch1: '4,1', ch2: '9,3' },
+      components: [
+        { type: 'ac', x1: 0, y1: 1, x2: 0, y2: 5, value: 10, freq: 25 },
+        { type: 'wire', x1: 0, y1: 1, x2: 4, y2: 1 },
+        { type: 'wire', x1: 0, y1: 5, x2: 4, y2: 5 },
+        { type: 'diode', x1: 4, y1: 1, x2: 6, y2: 3 },
+        { type: 'diode', x1: 4, y1: 5, x2: 6, y2: 3 },
+        { type: 'diode', x1: 2, y1: 3, x2: 4, y2: 1 },
+        { type: 'diode', x1: 2, y1: 3, x2: 4, y2: 5 },
+        { type: 'wire', x1: 6, y1: 3, x2: 7, y2: 3 },
+        { type: 'wire', x1: 7, y1: 3, x2: 9, y2: 3 },
+        { type: 'switch', x1: 7, y1: 3, x2: 7, y2: 4, closed: true },
+        { type: 'capacitor', x1: 7, y1: 4, x2: 7, y2: 6, value: 220e-6, initV: 0 },
+        { type: 'resistor', x1: 9, y1: 3, x2: 9, y2: 6, value: 1000 },
+        { type: 'wire', x1: 2, y1: 3, x2: 1, y2: 3 },
+        { type: 'wire', x1: 1, y1: 3, x2: 1, y2: 6 },
+        { type: 'wire', x1: 1, y1: 6, x2: 7, y2: 6 },
+        { type: 'wire', x1: 7, y1: 6, x2: 9, y2: 6 },
+        { type: 'gnd', x1: 7, y1: 6, x2: 7, y2: 6 }
+      ]
+    },
+    {
+      id: 'voltage-divider',
+      name: 'Voltage Divider + Load',
+      sub: 'Thevenin sag when connecting a load',
+      simSpeed: 0.5,
+      scopeWindow: 2.0,
+      note: '<strong>Loading Effect:</strong> Unloaded, the equal 1 kΩ divider outputs exactly <strong>6.00 V</strong> on <strong>CH2</strong>. Click the <strong>Switch</strong> to attach the 1 kΩ potentiometer load (or drag its wiper) and watch V<sub>out</sub> sag via the Thevenin source impedance!',
+      probes: { ch1: '3,0', ch2: '3,2' },
+      components: [
+        { type: 'dc', x1: 0, y1: 0, x2: 0, y2: 4, value: 12 },
+        { type: 'gnd', x1: 0, y1: 4, x2: 0, y2: 4 },
+        { type: 'wire', x1: 0, y1: 0, x2: 3, y2: 0 },
+        { type: 'resistor', x1: 3, y1: 0, x2: 3, y2: 2, value: 1000 },
+        { type: 'resistor', x1: 3, y1: 2, x2: 3, y2: 4, value: 1000 },
+        { type: 'wire', x1: 3, y1: 2, x2: 5, y2: 2 },
+        { type: 'switch', x1: 5, y1: 2, x2: 7, y2: 2, closed: false },
+        { type: 'pot', x1: 7, y1: 2, x2: 7, y2: 4, value: 2000, wiper: 0.5 },
+        { type: 'wire', x1: 0, y1: 4, x2: 3, y2: 4 },
+        { type: 'wire', x1: 3, y1: 4, x2: 7, y2: 4 }
+      ]
+    },
+    {
+      id: 'lc-tank',
+      name: 'LC Tank Oscillator',
+      sub: 'Electric ↔ magnetic resonance at 50 Hz',
+      simSpeed: 0.025,
+      scopeWindow: 0.14,
+      note: '<strong>Resonant LC Tank:</strong> Capacitor C = 100 µF starts charged to 8 V and exchanges energy cleanly with Inductor L = 100 mH (f<sub>0</sub> ≈ 50.3 Hz). Close &amp; reopen the left <strong>Recharge Switch</strong> anytime to inject fresh energy!',
+      probes: { ch1: '4,0', ch2: '0,0' },
+      components: [
+        { type: 'dc', x1: 0, y1: 0, x2: 0, y2: 4, value: 8 },
+        { type: 'switch', x1: 0, y1: 0, x2: 2, y2: 0, closed: false },
+        { type: 'resistor', x1: 2, y1: 0, x2: 4, y2: 0, value: 68 },
+        { type: 'capacitor', x1: 4, y1: 0, x2: 4, y2: 4, value: 100e-6, initV: 8 },
+        { type: 'wire', x1: 4, y1: 0, x2: 7, y2: 0 },
+        { type: 'inductor', x1: 7, y1: 0, x2: 7, y2: 4, value: 0.1, initI: 0 },
+        { type: 'wire', x1: 0, y1: 4, x2: 4, y2: 4 },
+        { type: 'wire', x1: 4, y1: 4, x2: 7, y2: 4 },
+        { type: 'gnd', x1: 4, y1: 4, x2: 4, y2: 4 }
+      ]
+    },
+    {
+      id: 'peak-detector',
+      name: 'Diode Peak Detector',
+      sub: 'Envelope capture & adjustable bleed droop',
+      simSpeed: 0.35,
+      scopeWindow: 1.2,
+      note: '<strong>Diode Envelope Clamp:</strong> The silicon diode charges C = 100 µF to V<sub>peak</sub> − 0.7 V (~7.3 V) on each crest of the 8 V sine (<strong>CH1</strong>). Drag the <strong>Bleed Potentiometer</strong> to tune the decay droop rate on <strong>CH2</strong>!',
+      probes: { ch1: '0,0', ch2: '3,0' },
+      components: [
+        { type: 'ac', x1: 0, y1: 0, x2: 0, y2: 4, value: 8, freq: 3.5 },
+        { type: 'gnd', x1: 0, y1: 4, x2: 0, y2: 4 },
+        { type: 'diode', x1: 0, y1: 0, x2: 3, y2: 0 },
+        { type: 'capacitor', x1: 3, y1: 0, x2: 3, y2: 4, value: 100e-6, initV: 0 },
+        { type: 'wire', x1: 3, y1: 0, x2: 6, y2: 0 },
+        { type: 'pot', x1: 6, y1: 0, x2: 6, y2: 4, value: 20000, wiper: 0.45 },
+        { type: 'wire', x1: 0, y1: 4, x2: 3, y2: 4 },
+        { type: 'wire', x1: 3, y1: 4, x2: 6, y2: 4 }
+      ]
+    }
+  ];
+
+  // =========================================================================
+  // 4. WEB AUDIO ENGINE (MUTED BY DEFAULT)
+  // =========================================================================
+  class AudioEngine {
+    constructor() {
+      this.ctx = null;
+      this.enabled = false;
+      this.probeToneEnabled = true;
+      this.osc = null;
+      this.toneGain = null;
+    }
+
+    toggle() {
+      this.enabled = !this.enabled;
+      if (this.enabled) {
+        this._ensureCtx();
+        if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
+        this.playClick(950, 0.08);
+      } else if (this.toneGain && this.ctx) {
+        this.toneGain.gain.setTargetAtTime(0, this.ctx.currentTime, 0.03);
+      }
+      return this.enabled;
+    }
+
+    _ensureCtx() {
+      if (this.ctx) return;
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      this.ctx = new AC();
+      this.osc = this.ctx.createOscillator();
+      this.osc.type = 'sine';
+      this.osc.frequency.value = 220;
+      this.toneGain = this.ctx.createGain();
+      this.toneGain.gain.value = 0;
+      const lp = this.ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.value = 900;
+      this.osc.connect(lp);
+      lp.connect(this.toneGain);
+      this.toneGain.connect(this.ctx.destination);
+      this.osc.start();
+    }
+
+    playClick(freq = 1400, gainPeak = 0.09) {
+      if (!this.enabled) return;
+      this._ensureCtx();
+      if (!this.ctx) return;
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const g = this.ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(freq, now);
+      osc.frequency.exponentialRampToValueAtTime(220, now + 0.025);
+      g.gain.setValueAtTime(gainPeak, now);
+      g.gain.exponentialRampToValueAtTime(0.0001, now + 0.03);
+      osc.connect(g);
+      g.connect(this.ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.035);
+    }
+
+    updateProbeTone(vpp, vNow, playing) {
+      if (!this.enabled || !this.probeToneEnabled || !playing || !this.ctx || !this.toneGain) {
+        if (this.toneGain && this.ctx) {
+          this.toneGain.gain.setTargetAtTime(0, this.ctx.currentTime, 0.04);
+        }
+        return;
+      }
+      const now = this.ctx.currentTime;
+      // Only sound softly when probing an active fluctuating / AC signal
+      const active = clamp((vpp - 0.15) / 10, 0, 1);
+      const targetGain = active * 0.032;
+      const targetFreq = 180 + clamp(vNow, -12, 12) * 14 + active * 90;
+      this.osc.frequency.setTargetAtTime(clamp(targetFreq, 90, 880), now, 0.03);
+      this.toneGain.gain.setTargetAtTime(targetGain, now, 0.05);
+    }
+  }
+
+  // =========================================================================
+  // 5. APPLICATION STATE & DOM REFERENCES
+  // =========================================================================
+  const canvas = document.getElementById('sim-canvas');
+  const ctx = canvas.getContext('2d');
+  const scopeCanvas = document.getElementById('scope-canvas');
+  const sctx = scopeCanvas.getContext('2d');
+
+  const solver = new MNASolver();
+  const audio = new AudioEngine();
+
+  let nextCompId = 1;
+  const state = {
+    components: [],
+    topo: null,
+    nodeVoltages: new Map(),
+    probes: { ch1: null, ch2: null },
+    history: [], // Undo stack
+    selectedId: null,
+    hoverComp: null,
+    hoverNode: null,
+    activeTool: 'select',
+    activePresetId: 'rc-lowpass',
+
+    // Simulation
+    playing: true,
+    simTime: 0,
+    simSpeed: 0.45,
+    converged: true,
+    overCurrentWarn: false,
+
+    // Visual options
+    electronFlow: false,
+    showVoltageGlow: true,
+    showParticles: true,
+    showLabels: true,
+    showGrid: true,
+    showScope: true,
+    scopeAutoScale: true,
+    scopeWindow: 2.0,
+
+    // Camera (world units = grid cells)
+    cam: { x: 3.5, y: 2.0, zoom: 76 },
+
+    // Interaction
+    dragDraw: null,    // { x1, y1, x2, y2 }
+    dragPot: null,     // { comp }
+    panning: null,     // { sx, sy, cx, cy }
+    mouse: { x: 0, y: 0, gx: 0, gy: 0, inside: false },
+
+    // Scope circular ring buffer
+    scopeBuf: [],      // [{ t, v1, v2 }]
+    maxScopeSamples: 720,
+
+    // Particle phase accumulator per component id
+    particlePhase: new Map()
+  };
+
+  // DOM Elements
+  const elSolverStatus = document.getElementById('solver-status');
+  const elTelPower = document.getElementById('tel-power');
+  const elTelMaxI = document.getElementById('tel-max-i');
+  const elTelPeakV = document.getElementById('tel-peak-v');
+  const elTelTime = document.getElementById('tel-time');
+  const elTelTopo = document.getElementById('tel-topo');
+  const elTelSpeed = document.getElementById('tel-speed');
+
+  const elScopePanel = document.getElementById('scope-panel');
+  const elScopeScaleLbl = document.getElementById('scope-scale-lbl');
+  const elCh1Now = document.getElementById('ch1-now');
+  const elCh1Vpp = document.getElementById('ch1-vpp');
+  const elCh1Rms = document.getElementById('ch1-rms');
+  const elCh2Now = document.getElementById('ch2-now');
+  const elCh2Vpp = document.getElementById('ch2-vpp');
+  const elCh2Rms = document.getElementById('ch2-rms');
+  const elScopeTimebase = document.getElementById('scope-timebase');
+  const elScopeTbVal = document.getElementById('scope-tb-val');
+  const elBtnScopeAuto = document.getElementById('btn-scope-auto');
+  const elBtnScopeClear = document.getElementById('btn-scope-clear');
+
+  const elDrawer = document.getElementById('drawer');
+  const elActiveToolLabel = document.getElementById('active-tool-label');
+  const elInspTitle = document.getElementById('insp-title');
+  const elInspId = document.getElementById('insp-id');
+  const elInspEmpty = document.getElementById('insp-empty');
+  const elInspBody = document.getElementById('insp-body');
+  const elInspV = document.getElementById('insp-v');
+  const elInspI = document.getElementById('insp-i');
+  const elInspP = document.getElementById('insp-p');
+  const elInspControls = document.getElementById('insp-controls');
+  const elBtnFlipComp = document.getElementById('btn-flip-comp');
+  const elBtnDelComp = document.getElementById('btn-del-comp');
+
+  const elPresetGrid = document.getElementById('preset-grid');
+  const elPresetNote = document.getElementById('preset-note');
+  const elBtnFitView = document.getElementById('btn-fit-view');
+
+  const elBtnFlowConv = document.getElementById('btn-flow-conv');
+  const elBtnFlowElec = document.getElementById('btn-flow-elec');
+  const elSpeedSlider = document.getElementById('sim-speed-slider');
+  const elSpeedSliderVal = document.getElementById('speed-slider-val');
+
+  const elOptVoltageGlow = document.getElementById('opt-voltage-glow');
+  const elOptParticles = document.getElementById('opt-particles');
+  const elOptLabels = document.getElementById('opt-labels');
+  const elOptGrid = document.getElementById('opt-grid');
+  const elOptProbeTone = document.getElementById('opt-probe-tone');
+
+  const elBtnUndo = document.getElementById('btn-undo');
+  const elBtnClearAll = document.getElementById('btn-clear-all');
+  const elBtnPlay = document.getElementById('btn-play');
+  const elBtnStep = document.getElementById('btn-step');
+  const elBtnReset = document.getElementById('btn-reset');
+  const elBtnAudio = document.getElementById('btn-audio');
+  const elBtnScope = document.getElementById('btn-scope');
+  const elBtnControls = document.getElementById('btn-controls');
+  const elBtnZen = document.getElementById('btn-zen');
+  const elBtnZenRestore = document.getElementById('btn-zen-restore');
+  const elHoverTip = document.getElementById('hover-tip');
+
+  // =========================================================================
+  // 6. COMPONENT CREATION, UNDO & TOPOLOGY MANAGEMENT
+  // =========================================================================
+  const COMP_META = {
+    wire:      { name: 'Wire',            defaults: {} },
+    dc:        { name: 'DC Source',       defaults: { value: 9 } },
+    ac:        { name: 'AC Sine Source',  defaults: { value: 6, freq: 2, phase: 0 } },
+    resistor:  { name: 'Resistor',        defaults: { value: 1000 } },
+    pot:       { name: 'Potentiometer',   defaults: { value: 2000, wiper: 0.5 } },
+    capacitor: { name: 'Capacitor',       defaults: { value: 100e-6, initV: 0 } },
+    inductor:  { name: 'Inductor',        defaults: { value: 0.05, initI: 0 } },
+    diode:     { name: 'Silicon Diode',   defaults: {} },
+    led:       { name: 'LED',             defaults: { color: 'red' } },
+    switch:    { name: 'Toggle Switch',   defaults: { closed: true } },
+    lamp:      { name: 'Incandescent Lamp', defaults: { value: 120 } },
+    gnd:       { name: 'Ground (0 V)',    defaults: {} }
+  };
+
+  function createComponent(spec) {
+    const meta = COMP_META[spec.type] || COMP_META.wire;
+    const c = Object.assign({
+      id: nextCompId++,
+      type: spec.type,
+      x1: spec.x1,
+      y1: spec.y1,
+      x2: spec.type === 'gnd' ? spec.x1 : spec.x2,
+      y2: spec.type === 'gnd' ? spec.y1 : spec.y2,
+      v: 0, v1: 0, v2: 0, i: 0, p: 0,
+      vPrev: spec.initV || 0,
+      iPrev: spec.initI || 0,
+      _vd: 0
+    }, meta.defaults, spec);
+    c.id = nextCompId++;
+    c.vPrev = c.initV || 0;
+    c.iPrev = c.initI || 0;
+    return c;
+  }
+
+  function pushUndo() {
+    const snap = {
+      components: state.components.map(c => ({
+        type: c.type, x1: c.x1, y1: c.y1, x2: c.x2, y2: c.y2,
+        value: c.value, freq: c.freq, phase: c.phase,
+        wiper: c.wiper, closed: c.closed, color: c.color,
+        initV: c.initV, initI: c.initI
+      })),
+      probes: { ...state.probes }
+    };
+    state.history.push(snap);
+    if (state.history.length > 40) state.history.shift();
+  }
+
+  function undo() {
+    if (state.history.length === 0) return;
+    const snap = state.history.pop();
+    state.components = snap.components.map(s => createComponent(s));
+    state.probes = { ...snap.probes };
+    state.selectedId = null;
+    rebuildTopology();
+    refreshInspector();
+    audio.playClick(760, 0.06);
+  }
+
+  function rebuildTopology() {
+    state.topo = solver.buildTopology(state.components);
+    // Do an immediate tiny settle step so telemetry/colors update right away
+    const res = solver.step(state.components, state.topo, state.simTime, 1e-4);
+    state.nodeVoltages = res.nodeVoltages;
+    state.converged = res.converged;
+  }
+
+  function resetSimulationState() {
+    state.simTime = 0;
+    state.scopeBuf = [];
+    for (const c of state.components) {
+      c.vPrev = c.initV || 0;
+      c.iPrev = c.initI || 0;
+      c._vd = 0;
+    }
+    rebuildTopology();
+  }
+
+  function loadPreset(presetId) {
+    const p = PRESETS.find(x => x.id === presetId) || PRESETS[0];
+    if (state.components.length > 0) pushUndo();
+    state.activePresetId = p.id;
+    state.components = p.components.map(s => createComponent(s));
+    state.probes = { ch1: p.probes.ch1 || null, ch2: p.probes.ch2 || null };
+    state.selectedId = null;
+    state.simSpeed = p.simSpeed;
+    state.scopeWindow = p.scopeWindow;
+    state.simTime = 0;
+    state.scopeBuf = [];
+    state.particlePhase.clear();
+
+    syncSpeedUI();
+    syncTimebaseUI();
+    rebuildTopology();
+    fitCircuitToView();
+    refreshPresetUI();
+    refreshInspector();
+    elPresetNote.innerHTML = p.note;
+  }
+
+  // =========================================================================
+  // 7. CAMERA & COORDINATE TRANSFORMS
+  // =========================================================================
+  function worldToScreen(gx, gy) {
+    const w = canvas.clientWidth;
+    const h = canvas.clientHeight;
+    return {
+      x: (gx - state.cam.x) * state.cam.zoom + w * 0.5,
+      y: (gy - state.cam.y) * state.cam.zoom + h * 0.5
+    };
+  }
+
+  function screenToWorld(sx, sy) {
+    const w = canvas.clientWidth;
+    const h = canvas.clientHeight;
+    return {
+      x: (sx - w * 0.5) / state.cam.zoom + state.cam.x,
+      y: (sy - h * 0.5) / state.cam.zoom + state.cam.y
+    };
+  }
+
+  function fitCircuitToView() {
+    const w = canvas.clientWidth || window.innerWidth;
+    const h = canvas.clientHeight || window.innerHeight;
+    if (state.components.length === 0) {
+      state.cam.x = 3.5;
+      state.cam.y = 2.0;
+      state.cam.zoom = 72;
+      return;
+    }
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (const c of state.components) {
+      minX = Math.min(minX, c.x1, c.x2);
+      maxX = Math.max(maxX, c.x1, c.x2);
+      minY = Math.min(minY, c.y1, c.y2);
+      maxY = Math.max(maxY, c.y1, c.y2);
+    }
+    const drawerOpen = !elDrawer.classList.contains('collapsed') && w > 960;
+    const rightMargin = drawerOpen ? 360 : 48;
+    const leftMargin = w > 960 ? 54 : 30;
+    const topMargin = 148;
+    const bottomMargin = (state.showScope && w > 960) ? 90 : 80;
+
+    const availW = Math.max(240, w - leftMargin - rightMargin);
+    const availH = Math.max(200, h - topMargin - bottomMargin);
+    const spanX = Math.max(3, maxX - minX + 1.8);
+    const spanY = Math.max(3, maxY - minY + 1.8);
+
+    const zoom = clamp(Math.min(availW / spanX, availH / spanY), 34, 118);
+    state.cam.zoom = zoom;
+
+    const midX = (minX + maxX) * 0.5;
+    const midY = (minY + maxY) * 0.5;
+    // Shift camera slightly so circuit centers in the open canvas area (clear of right drawer & top-left)
+    const centerScreenX = leftMargin + availW * 0.5;
+    const centerScreenY = topMargin + availH * 0.5;
+    state.cam.x = midX - (centerScreenX - w * 0.5) / zoom;
+    state.cam.y = midY - (centerScreenY - h * 0.5) / zoom;
+  }
+
+  // =========================================================================
+  // 8. HIT TESTING & INTERACTION
+  // =========================================================================
+  function distToSegment(px, py, x1, y1, x2, y2) {
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const len2 = dx * dx + dy * dy;
+    if (len2 < 1e-9) return { dist: Math.hypot(px - x1, py - y1), t: 0 };
+    const t = clamp(((px - x1) * dx + (py - y1) * dy) / len2, 0, 1);
+    const cx = x1 + t * dx;
+    const cy = y1 + t * dy;
+    return { dist: Math.hypot(px - cx, py - cy), t };
+  }
+
+  function findHitComponent(sx, sy) {
+    let best = null;
+    let bestDist = 18;
+    for (const c of state.components) {
+      const p1 = worldToScreen(c.x1, c.y1);
+      if (c.type === 'gnd') {
+        const d = Math.hypot(sx - p1.x, sy - (p1.y + 12));
+        if (d < bestDist) { bestDist = d; best = c; }
+        continue;
+      }
+      const p2 = worldToScreen(c.x2, c.y2);
+      const { dist } = distToSegment(sx, sy, p1.x, p1.y, p2.x, p2.y);
+      const tol = c.type === 'wire' ? 10 : 18;
+      if (dist < tol && dist < bestDist) {
+        bestDist = dist;
+        best = c;
+      }
+    }
+    return best;
+  }
+
+  function findHitNode(sx, sy) {
+    const w = screenToWorld(sx, sy);
+    const gx = Math.round(w.x);
+    const gy = Math.round(w.y);
+    const p = worldToScreen(gx, gy);
+    if (Math.hypot(sx - p.x, sy - p.y) < 18) {
+      return { gx, gy, key: MNASolver.nodeKey(gx, gy) };
+    }
+    return null;
+  }
+
+  function isPotWiperHit(comp, sx, sy) {
+    if (!comp || comp.type !== 'pot') return false;
+    const p1 = worldToScreen(comp.x1, comp.y1);
+    const p2 = worldToScreen(comp.x2, comp.y2);
+    const { dist, t } = distToSegment(sx, sy, p1.x, p1.y, p2.x, p2.y);
+    return dist < 24 && t > 0.12 && t < 0.88;
+  }
+
+  function updatePotFromPointer(comp, sx, sy) {
+    const p1 = worldToScreen(comp.x1, comp.y1);
+    const p2 = worldToScreen(comp.x2, comp.y2);
+    const dx = p2.x - p1.x;
+    const dy = p2.y - p1.y;
+    const len2 = dx * dx + dy * dy;
+    if (len2 < 1) return;
+    const rawT = ((sx - p1.x) * dx + (sy - p1.y) * dy) / len2;
+    // Map middle 64% of segment to [0.02, 1.0]
+    const alpha = clamp((rawT - 0.18) / 0.64, 0.02, 1.0);
+    comp.wiper = Math.round(alpha * 100) / 100;
+    if (state.selectedId === comp.id) refreshInspectorValuesOnly();
+  }
+
+  // =========================================================================
+  // 9. CANVAS RENDERER (BLUEPRINT BREADBOARD + LUMINOUS PHYSICS)
+  // =========================================================================
+  function resizeCanvases() {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    canvas.width = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    const sw = scopeCanvas.clientWidth || 340;
+    const sh = scopeCanvas.clientHeight || 132;
+    scopeCanvas.width = Math.round(sw * dpr);
+    scopeCanvas.height = Math.round(sh * dpr);
+    sctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  function drawBackgroundAndGrid(w, h) {
+    // Deep #040711 blueprint vignette
+    const grad = ctx.createRadialGradient(w * 0.45, h * 0.48, 20, w * 0.5, h * 0.5, Math.max(w, h) * 0.78);
+    grad.addColorStop(0, '#091225');
+    grad.addColorStop(0.55, '#050a17');
+    grad.addColorStop(1, '#040711');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, w, h);
+
+    if (!state.showGrid) return;
+
+    const tl = screenToWorld(0, 0);
+    const br = screenToWorld(w, h);
+    const x0 = Math.floor(tl.x) - 1;
+    const x1 = Math.ceil(br.x) + 1;
+    const y0 = Math.floor(tl.y) - 1;
+    const y1 = Math.ceil(br.y) + 1;
+
+    // Subtle major grid lines every 4 cells
+    ctx.strokeStyle = 'rgba(88, 150, 255, 0.065)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let gx = Math.floor(x0 / 4) * 4; gx <= x1; gx += 4) {
+      const p = worldToScreen(gx, 0);
+      ctx.moveTo(p.x, 0); ctx.lineTo(p.x, h);
+    }
+    for (let gy = Math.floor(y0 / 4) * 4; gy <= y1; gy += 4) {
+      const p = worldToScreen(0, gy);
+      ctx.moveTo(0, p.y); ctx.lineTo(w, p.y);
+    }
+    ctx.stroke();
+
+    // Crisp breadboard snap dots
+    if (state.cam.zoom >= 24) {
+      ctx.fillStyle = 'rgba(130, 175, 255, 0.22)';
+      const r = state.cam.zoom > 60 ? 1.55 : 1.15;
+      for (let gx = x0; gx <= x1; gx++) {
+        const sx = (gx - state.cam.x) * state.cam.zoom + w * 0.5;
+        for (let gy = y0; gy <= y1; gy++) {
+          const sy = (gy - state.cam.y) * state.cam.zoom + h * 0.5;
+          ctx.fillRect(sx - r * 0.5, sy - r * 0.5, r, r);
+        }
+      }
+    }
+  }
+
+  function makeBranchStroke(p1, p2, v1, v2) {
+    if (!state.showVoltageGlow) return '#7c96bd';
+    const g = ctx.createLinearGradient(p1.x, p1.y, p2.x, p2.y);
+    g.addColorStop(0, voltageColorCSS(v1, 0.95));
+    g.addColorStop(1, voltageColorCSS(v2, 0.95));
+    return g;
+  }
+
+  function drawComponent(c, isSelected, isHover, dtVisual) {
+    const p1 = worldToScreen(c.x1, c.y1);
+    const p2 = worldToScreen(c.x2, c.y2);
+    const v1 = c.v1 || 0;
+    const v2 = c.v2 || 0;
+    const zoom = state.cam.zoom;
+
+    // Ground (1-terminal)
+    if (c.type === 'gnd') {
+      ctx.save();
+      ctx.translate(p1.x, p1.y);
+      const col = isSelected ? '#58dcff' : (isHover ? '#eef3ff' : '#4af2b2');
+      ctx.strokeStyle = col;
+      ctx.lineWidth = isSelected ? 2.8 : 2.1;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(0, 0); ctx.lineTo(0, 13);
+      ctx.moveTo(-12, 13); ctx.lineTo(12, 13);
+      ctx.moveTo(-8, 18); ctx.lineTo(8, 18);
+      ctx.moveTo(-3.5, 23); ctx.lineTo(3.5, 23);
+      ctx.stroke();
+      ctx.restore();
+      return;
+    }
+
+    const dx = p2.x - p1.x;
+    const dy = p2.y - p1.y;
+    const len = Math.hypot(dx, dy);
+    if (len < 1) return;
+    const ang = Math.atan2(dy, dx);
+    const strokeStyle = makeBranchStroke(p1, p2, v1, v2);
+    const avgV = (Math.abs(v1) + Math.abs(v2)) * 0.5;
+
+    ctx.save();
+
+    // Selection / hover outer halo
+    if (isSelected || isHover) {
+      ctx.strokeStyle = isSelected ? 'rgba(88, 220, 255, 0.32)' : 'rgba(255, 255, 255, 0.14)';
+      ctx.lineWidth = isSelected ? 12 : 9;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(p1.x, p1.y);
+      ctx.lineTo(p2.x, p2.y);
+      ctx.stroke();
+    }
+
+    // Subtle voltage glow aura along active branches
+    if (state.showVoltageGlow && avgV > 0.35) {
+      ctx.strokeStyle = voltageColorCSS((v1 + v2) * 0.5, clamp(avgV / 18, 0.08, 0.28));
+      ctx.lineWidth = c.type === 'wire' ? 7 : 6;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(p1.x, p1.y);
+      ctx.lineTo(p2.x, p2.y);
+      ctx.stroke();
+    }
+
+    // Transform into local component frame: origin at midpoint, +X along p1 -> p2
+    const mx = (p1.x + p2.x) * 0.5;
+    const my = (p1.y + p2.y) * 0.5;
+    ctx.translate(mx, my);
+    ctx.rotate(ang);
+
+    const half = len * 0.5;
+    const bodySpan = Math.min(len * 0.56, Math.max(36, zoom * 0.66));
+    const hb = bodySpan * 0.5;
+
+    const drawLeads = (gapHalf) => {
+      ctx.lineWidth = 2.6;
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = state.showVoltageGlow ? voltageColorCSS(v1, 0.96) : '#7c96bd';
+      ctx.beginPath();
+      ctx.moveTo(-half, 0);
+      ctx.lineTo(-gapHalf, 0);
+      ctx.stroke();
+
+      ctx.strokeStyle = state.showVoltageGlow ? voltageColorCSS(v2, 0.96) : '#7c96bd';
+      ctx.beginPath();
+      ctx.moveTo(gapHalf, 0);
+      ctx.lineTo(half, 0);
+      ctx.stroke();
+    };
+
+    if (c.type === 'wire') {
+      ctx.restore();
+      ctx.save();
+      ctx.strokeStyle = strokeStyle;
+      ctx.lineWidth = 2.8;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(p1.x, p1.y);
+      ctx.lineTo(p2.x, p2.y);
+      ctx.stroke();
+      ctx.restore();
+    } else if (c.type === 'resistor' || c.type === 'pot') {
+      drawLeads(hb);
+      // Zigzag body
+      const peaks = 6;
+      const amp = 8.5;
+      ctx.strokeStyle = isSelected ? '#ffffff' : '#dce7ff';
+      ctx.lineWidth = 2.2;
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      ctx.moveTo(-hb, 0);
+      for (let i = 0; i < peaks; i++) {
+        const xA = -hb + ((i + 0.5) / peaks) * bodySpan;
+        const yA = (i % 2 === 0 ? -amp : amp);
+        ctx.lineTo(xA, yA);
+      }
+      ctx.lineTo(hb, 0);
+      ctx.stroke();
+
+      if (c.type === 'pot') {
+        const alpha = clamp(c.wiper ?? 0.5, 0.02, 1.0);
+        const wx = -hb + alpha * bodySpan;
+        // Interactive wiper track & arrow
+        ctx.strokeStyle = '#58dcff';
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.moveTo(-hb, -17);
+        ctx.lineTo(hb, -17);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(wx, -17);
+        ctx.lineTo(wx, -9);
+        ctx.stroke();
+        // Arrow head
+        ctx.fillStyle = '#58dcff';
+        ctx.beginPath();
+        ctx.moveTo(wx, -7);
+        ctx.lineTo(wx - 4, -12.5);
+        ctx.lineTo(wx + 4, -12.5);
+        ctx.closePath();
+        ctx.fill();
+        // Draggable knob
+        ctx.beginPath();
+        ctx.arc(wx, -19, 4.5, 0, Math.PI * 2);
+        ctx.fillStyle = '#0a162b';
+        ctx.fill();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = '#ffbe5c';
+        ctx.stroke();
+      }
+      ctx.restore();
+    } else if (c.type === 'capacitor') {
+      const gap = 5.5;
+      drawLeads(gap);
+      const plateH = 15;
+      // Dynamic electric field glow between plates proportional to |V|
+      const vCap = c.v || 0;
+      const fieldAlpha = clamp(Math.abs(vCap) / 10, 0, 0.72);
+      if (fieldAlpha > 0.03) {
+        const fg = ctx.createLinearGradient(-gap, 0, gap, 0);
+        fg.addColorStop(0, voltageColorCSS(v1, fieldAlpha));
+        fg.addColorStop(1, voltageColorCSS(v2, fieldAlpha));
+        ctx.fillStyle = fg;
+        ctx.fillRect(-gap, -plateH + 1, gap * 2, (plateH - 1) * 2);
+      }
+      ctx.lineWidth = 3.0;
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = state.showVoltageGlow ? voltageColorCSS(v1, 1) : '#d5e4ff';
+      ctx.beginPath(); ctx.moveTo(-gap, -plateH); ctx.lineTo(-gap, plateH); ctx.stroke();
+      ctx.strokeStyle = state.showVoltageGlow ? voltageColorCSS(v2, 1) : '#d5e4ff';
+      ctx.beginPath(); ctx.moveTo(gap, -plateH); ctx.lineTo(gap, plateH); ctx.stroke();
+      ctx.restore();
+    } else if (c.type === 'inductor') {
+      drawLeads(hb);
+      const loops = 4;
+      const rLoop = bodySpan / (loops * 2);
+      // Magnetic aura proportional to |I|
+      const magStrength = clamp(Math.abs(c.i || 0) * 6, 0, 1);
+      if (magStrength > 0.04) {
+        const mg = ctx.createRadialGradient(0, -3, 2, 0, -3, hb * 1.15);
+        mg.addColorStop(0, `rgba(167, 139, 250, ${0.42 * magStrength})`);
+        mg.addColorStop(1, 'rgba(167, 139, 250, 0)');
+        ctx.fillStyle = mg;
+        ctx.beginPath();
+        ctx.ellipse(0, -3, hb * 1.15, 19, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.strokeStyle = isSelected ? '#ffffff' : '#c6b8ff';
+      ctx.lineWidth = 2.3;
+      ctx.beginPath();
+      for (let i = 0; i < loops; i++) {
+        const cx = -hb + rLoop + i * rLoop * 2;
+        ctx.arc(cx, 0, rLoop, Math.PI, 0, false);
+      }
+      ctx.stroke();
+      ctx.restore();
+    } else if (c.type === 'dc' || c.type === 'ac') {
+      const rad = 17;
+      drawLeads(rad);
+      ctx.fillStyle = '#091122';
+      ctx.strokeStyle = c.type === 'dc' ? '#ffbe5c' : '#58dcff';
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.arc(0, 0, rad, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+
+      if (c.type === 'dc') {
+        // Plus plate on -X side (toward n1), minus plate on +X side (toward n2)
+        ctx.strokeStyle = '#ff6b81';
+        ctx.lineWidth = 2.2;
+        ctx.beginPath();
+        ctx.moveTo(-5, -8.5); ctx.lineTo(-5, 8.5);
+        ctx.stroke();
+        // + sign
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.moveTo(-11.5, 0); ctx.lineTo(-7.5, 0);
+        ctx.moveTo(-9.5, -2); ctx.lineTo(-9.5, 2);
+        ctx.stroke();
+
+        ctx.strokeStyle = '#58dcff';
+        ctx.lineWidth = 3.2;
+        ctx.beginPath();
+        ctx.moveTo(4, -5); ctx.lineTo(4, 5);
+        ctx.stroke();
+      } else {
+        // Animated sine icon inside AC circle
+        ctx.save();
+        ctx.rotate(-ang); // Keep sine wave upright!
+        ctx.strokeStyle = '#58dcff';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        const phase = 2 * Math.PI * (c.freq || 1) * state.simTime;
+        for (let k = -10; k <= 10; k++) {
+          const sx = k;
+          const sy = -Math.sin((k / 10) * Math.PI + phase) * 5.5;
+          if (k === -10) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy);
+        }
+        ctx.stroke();
+        ctx.restore();
+      }
+      ctx.restore();
+    } else if (c.type === 'diode' || c.type === 'led') {
+      const dHalf = 10;
+      drawLeads(dHalf);
+      const isLed = c.type === 'led';
+      const lc = isLed ? (LED_COLORS[c.color || 'red'] || LED_COLORS.red) : null;
+      const fwdI = Math.max(0, c.i || 0);
+
+      if (isLed) {
+        const brightness = clamp((fwdI - 0.0002) / 0.018, 0, 1.35);
+        const overCur = fwdI > 0.040;
+        // Realistic radial light bloom
+        if (brightness > 0.02) {
+          const glowR = 26 + brightness * 34;
+          const lg = ctx.createRadialGradient(0, 0, 2, 0, 0, glowR);
+          lg.addColorStop(0, overCur ? 'rgba(255,255,255,0.98)' : lc.glow + Math.min(0.95, 0.35 + brightness * 0.55) + ')');
+          lg.addColorStop(0.35, lc.glow + Math.min(0.65, brightness * 0.45) + ')');
+          lg.addColorStop(1, lc.glow + '0)');
+          ctx.fillStyle = lg;
+          ctx.beginPath();
+          ctx.arc(0, 0, glowR, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        // Optical dome
+        ctx.fillStyle = brightness > 0.05 ? lc.hex : 'rgba(255,255,255,0.06)';
+        ctx.globalAlpha = brightness > 0.05 ? clamp(0.35 + brightness * 0.65, 0.35, 1) : 1;
+        ctx.beginPath();
+        ctx.arc(0, 0, 13.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+        ctx.strokeStyle = overCur ? '#ff4b66' : lc.hex;
+        ctx.lineWidth = overCur ? 2.6 : 1.7;
+        ctx.stroke();
+
+        // Over-current hazard pulse ring
+        if (overCur) {
+          const pulse = 0.5 + 0.5 * Math.sin(performance.now() * 0.02);
+          ctx.strokeStyle = `rgba(255, 80, 110, ${0.45 + 0.5 * pulse})`;
+          ctx.lineWidth = 2;
+          ctx.setLineDash([4, 3]);
+          ctx.beginPath();
+          ctx.arc(0, 0, 21 + pulse * 4, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+      }
+
+      // Diode triangle (pointing +X from anode n1 to cathode n2)
+      const conducting = fwdI > 0.0004;
+      ctx.fillStyle = isLed
+        ? (conducting ? '#ffffff' : 'rgba(255,255,255,0.22)')
+        : (conducting ? '#58dcff' : 'rgba(148, 179, 255, 0.25)');
+      ctx.strokeStyle = isLed ? '#fff' : (conducting ? '#9eeeff' : '#b7c9e8');
+      ctx.lineWidth = 1.9;
+      ctx.beginPath();
+      ctx.moveTo(-dHalf, -8.5);
+      ctx.lineTo(-dHalf, 8.5);
+      ctx.lineTo(dHalf - 2, 0);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      // Cathode bar
+      ctx.beginPath();
+      ctx.moveTo(dHalf, -9);
+      ctx.lineTo(dHalf, 9);
+      ctx.stroke();
+      ctx.restore();
+    } else if (c.type === 'switch') {
+      const gap = 14;
+      drawLeads(gap);
+      // Terminal posts
+      ctx.fillStyle = '#091122';
+      ctx.strokeStyle = c.closed ? '#4af2b2' : '#ffbe5c';
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(-gap, 0, 3.6, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.arc(gap, 0, 3.6, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+
+      // Hinged blade
+      ctx.strokeStyle = c.closed ? '#4af2b2' : '#ffbe5c';
+      ctx.lineWidth = 3;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(-gap, 0);
+      if (c.closed) {
+        ctx.lineTo(gap, 0);
+      } else {
+        ctx.lineTo(gap - 3, -15);
+      }
+      ctx.stroke();
+      ctx.restore();
+    } else if (c.type === 'lamp') {
+      const rad = 16;
+      drawLeads(rad);
+      const power = Math.abs(c.p || 0);
+      const glow = clamp(Math.sqrt(power / 0.8), 0, 1.4);
+
+      if (glow > 0.04) {
+        const rHalo = 22 + glow * 34;
+        const lg = ctx.createRadialGradient(0, 0, 2, 0, 0, rHalo);
+        lg.addColorStop(0, `rgba(255, 244, 195, ${Math.min(0.95, glow * 0.75)})`);
+        lg.addColorStop(0.45, `rgba(255, 184, 72, ${Math.min(0.55, glow * 0.42)})`);
+        lg.addColorStop(1, 'rgba(255, 140, 40, 0)');
+        ctx.fillStyle = lg;
+        ctx.beginPath();
+        ctx.arc(0, 0, rHalo, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      ctx.fillStyle = glow > 0.08 ? `rgba(255, 210, 110, ${clamp(glow * 0.45, 0.08, 0.6)})` : '#0a1222';
+      ctx.strokeStyle = glow > 0.2 ? '#ffe49e' : '#8ea6cc';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(0, 0, rad, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+
+      // Filament cross/coil
+      ctx.strokeStyle = glow > 0.15 ? '#fff8dc' : '#7f92b5';
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      ctx.moveTo(-rad + 3, 0);
+      ctx.lineTo(-6, -6); ctx.lineTo(0, 6); ctx.lineTo(6, -6);
+      ctx.lineTo(rad - 3, 0);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Animated Luminous Current Particles along the branch
+    if (state.showParticles && Math.abs(c.i || 0) > 5e-6) {
+      const iAbs = Math.abs(c.i);
+      const dir = (c.i >= 0 ? 1 : -1) * (state.electronFlow ? -1 : 1);
+      // Logarithmic velocity curve so microamps to amps all look smooth & clearly proportional
+      const speedPx = (14 + 34 * Math.log1p(iAbs * 450)) * dir;
+      let phase = state.particlePhase.get(c.id) || 0;
+      if (state.playing) {
+        phase = (phase + speedPx * dtVisual) % 26;
+        if (phase < 0) phase += 26;
+        state.particlePhase.set(c.id, phase);
+      }
+
+      const spacing = 26;
+      const count = Math.max(1, Math.floor(len / spacing));
+      const ux = dx / len;
+      const uy = dy / len;
+      const pColor = state.electronFlow ? '#58dcff' : '#ffe394';
+      const pGlow = state.electronFlow ? 'rgba(88,220,255,0.65)' : 'rgba(255,205,92,0.65)';
+      const alpha = clamp(0.32 + Math.log1p(iAbs * 800) * 0.25, 0.32, 0.98);
+
+      ctx.save();
+      for (let k = 0; k <= count; k++) {
+        const distAlong = phase + k * spacing;
+        if (distAlong < 8 || distAlong > len - 8) continue;
+        // Skip right over center body of circular symbols
+        if (c.type !== 'wire' && Math.abs(distAlong - len * 0.5) < 16) continue;
+        const px = p1.x + ux * distAlong;
+        const py = p1.y + uy * distAlong;
+
+        ctx.fillStyle = pGlow;
+        ctx.globalAlpha = alpha * 0.45;
+        ctx.beginPath();
+        ctx.arc(px, py, 4.6, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = pColor;
+        ctx.globalAlpha = alpha;
+        ctx.beginPath();
+        ctx.arc(px, py, 2.2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    // Crisp Value Labels
+    if (state.showLabels && c.type !== 'wire') {
+      let label = '';
+      if (c.type === 'resistor') label = fmtCompact(c.value, 'Ω');
+      else if (c.type === 'pot') label = fmtCompact((c.value || 2000) * clamp(c.wiper ?? 0.5, 0.02, 1), 'Ω');
+      else if (c.type === 'capacitor') label = fmtCompact(c.value, 'F');
+      else if (c.type === 'inductor') label = fmtCompact(c.value, 'H');
+      else if (c.type === 'dc') label = fmtCompact(c.value, 'V');
+      else if (c.type === 'ac') label = `${fmtCompact(c.value, 'V')} · ${fmtCompact(c.freq, 'Hz')}`;
+      else if (c.type === 'lamp') label = fmtCompact(Math.abs(c.p || 0), 'W');
+      else if (c.type === 'switch') label = c.closed ? 'ON' : 'OFF';
+      else if (c.type === 'led') {
+        const ma = (c.i || 0) * 1000;
+        label = ma > 40 ? `⚠ ${ma.toFixed(0)}mA` : `${Math.max(0, ma).toFixed(1)}mA`;
+      }
+
+      if (label) {
+        // Offset label neatly perpendicular to component
+        const nx = -dy / len;
+        const ny = dx / len;
+        // Flip normal so label sits comfortably outside (prefer top/right)
+        const sign = (ny > 0.3) ? -1 : 1;
+        const off = c.type === 'pot' ? 28 : 24;
+        const lx = mx + nx * off * sign;
+        const ly = my + ny * off * sign;
+
+        ctx.save();
+        ctx.font = '600 10.5px ui-monospace, "Cascadia Mono", Consolas, monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        const tw = ctx.measureText(label).width + 8;
+        ctx.fillStyle = 'rgba(5, 10, 20, 0.78)';
+        ctx.beginPath();
+        ctx.roundRect(lx - tw * 0.5, ly - 8.5, tw, 17, 4);
+        ctx.fill();
+        ctx.fillStyle = (c.type === 'led' && (c.i || 0) > 0.04) ? '#ff6083' : '#d8e6ff';
+        ctx.fillText(label, lx, ly + 0.5);
+        ctx.restore();
+      }
+    }
+  }
+
+  function drawNodesAndProbes() {
+    // Collect unique occupied grid nodes
+    const nodeCounts = new Map();
+    for (const c of state.components) {
+      const k1 = MNASolver.nodeKey(c.x1, c.y1);
+      nodeCounts.set(k1, (nodeCounts.get(k1) || 0) + 1);
+      if (c.type !== 'gnd') {
+        const k2 = MNASolver.nodeKey(c.x2, c.y2);
+        nodeCounts.set(k2, (nodeCounts.get(k2) || 0) + 1);
+      }
+    }
+
+    for (const [key, count] of nodeCounts.entries()) {
+      const [gx, gy] = key.split(',').map(Number);
+      const p = worldToScreen(gx, gy);
+      const v = state.nodeVoltages.get(key) || 0;
+      const isGnd = state.topo && state.topo.groundKeys.has(key);
+
+      // Glowing solder pad
+      const rad = count >= 3 ? 4.8 : 3.5;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, rad, 0, Math.PI * 2);
+      ctx.fillStyle = isGnd ? '#4af2b2' : (state.showVoltageGlow ? voltageColorCSS(v, 1) : '#9ab4dc');
+      ctx.fill();
+      ctx.strokeStyle = '#050a16';
+      ctx.lineWidth = 1.4;
+      ctx.stroke();
+    }
+
+    // Draw Scope Probes CH1 & CH2
+    const drawProbe = (key, label, color, dxOff, dyOff) => {
+      if (!key) return;
+      const [gx, gy] = key.split(',').map(Number);
+      const p = worldToScreen(gx, gy);
+      ctx.save();
+      // Pulsing target ring
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 9.5, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Callout badge
+      const bx = p.x + dxOff;
+      const by = p.y + dyOff;
+      ctx.beginPath();
+      ctx.moveTo(p.x + dxOff * 0.35, p.y + dyOff * 0.35);
+      ctx.lineTo(bx, by);
+      ctx.stroke();
+
+      ctx.fillStyle = '#060c1a';
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.roundRect(bx - 16, by - 9, 32, 18, 5);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = color;
+      ctx.font = '700 9.5px ui-monospace, Consolas, monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(label, bx, by + 0.5);
+      ctx.restore();
+    };
+
+    drawProbe(state.probes.ch1, 'CH1', '#58dcff', -26, -24);
+    drawProbe(state.probes.ch2, 'CH2', '#ffbe5c', 26, -24);
+  }
+
+  function drawPlacementPreview() {
+    if (state.dragDraw) {
+      const { x1, y1, x2, y2 } = state.dragDraw;
+      const p1 = worldToScreen(x1, y1);
+      const p2 = worldToScreen(x2, y2);
+      ctx.save();
+      ctx.strokeStyle = '#58dcff';
+      ctx.lineWidth = 2.5;
+      ctx.setLineDash([6, 4]);
+      ctx.beginPath();
+      ctx.moveTo(p1.x, p1.y);
+      ctx.lineTo(p2.x, p2.y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.fillStyle = '#58dcff';
+      ctx.beginPath(); ctx.arc(p1.x, p1.y, 4.5, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(p2.x, p2.y, 4.5, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    } else if (state.mouse.inside && state.activeTool !== 'select' && state.activeTool !== 'erase') {
+      const p = worldToScreen(state.mouse.gx, state.mouse.gy);
+      ctx.save();
+      ctx.strokeStyle = state.activeTool === 'probe2' ? '#ffbe5c' : '#58dcff';
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 7.5, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  // =========================================================================
+  // 10. EMBEDDED DUAL-CHANNEL OSCILLOSCOPE RENDERER
+  // =========================================================================
+  function renderOscilloscope() {
+    if (!state.showScope) return;
+    const w = scopeCanvas.clientWidth || 340;
+    const h = scopeCanvas.clientHeight || 132;
+
+    sctx.fillStyle = '#030814';
+    sctx.fillRect(0, 0, w, h);
+
+    // CRT Graticule
+    sctx.strokeStyle = 'rgba(88, 170, 255, 0.11)';
+    sctx.lineWidth = 1;
+    const cols = 8, rows = 4;
+    sctx.beginPath();
+    for (let c = 1; c < cols; c++) {
+      const x = (c / cols) * w;
+      sctx.moveTo(x, 0); sctx.lineTo(x, h);
+    }
+    for (let r = 1; r < rows; r++) {
+      const y = (r / rows) * h;
+      sctx.moveTo(0, y); sctx.lineTo(w, y);
+    }
+    sctx.stroke();
+
+    // 0 V center dashed line
+    sctx.strokeStyle = 'rgba(148, 179, 255, 0.25)';
+    sctx.setLineDash([4, 4]);
+    sctx.beginPath();
+    sctx.moveTo(0, h * 0.5);
+    sctx.lineTo(w, h * 0.5);
+    sctx.stroke();
+    sctx.setLineDash([]);
+
+    const buf = state.scopeBuf;
+    const tEnd = buf.length > 0 ? buf[buf.length - 1].t : state.simTime;
+    const win = state.scopeWindow;
+    const tStart = tEnd - win;
+
+    // Gather visible stats for CH1 & CH2
+    let v1Min = Infinity, v1Max = -Infinity, v1Sq = 0, n1 = 0;
+    let v2Min = Infinity, v2Max = -Infinity, v2Sq = 0, n2 = 0;
+    let maxAbs = 2.0;
+
+    for (let i = buf.length - 1; i >= 0; i--) {
+      const pt = buf[i];
+      if (pt.t < tStart) break;
+      if (pt.v1 !== null) {
+        if (pt.v1 < v1Min) v1Min = pt.v1;
+        if (pt.v1 > v1Max) v1Max = pt.v1;
+        v1Sq += pt.v1 * pt.v1;
+        n1++;
+        maxAbs = Math.max(maxAbs, Math.abs(pt.v1));
+      }
+      if (pt.v2 !== null) {
+        if (pt.v2 < v2Min) v2Min = pt.v2;
+        if (pt.v2 > v2Max) v2Max = pt.v2;
+        v2Sq += pt.v2 * pt.v2;
+        n2++;
+        maxAbs = Math.max(maxAbs, Math.abs(pt.v2));
+      }
+    }
+
+    const vRange = state.scopeAutoScale
+      ? Math.max(2, Math.ceil(maxAbs * 1.22))
+      : 12;
+    elScopeScaleLbl.textContent = `±${vRange.toFixed(0)}V`;
+
+    const drawTrace = (field, color, glow) => {
+      if (buf.length < 2) return;
+      sctx.save();
+      sctx.strokeStyle = color;
+      sctx.lineWidth = 2.0;
+      sctx.shadowColor = glow;
+      sctx.shadowBlur = 7;
+      sctx.beginPath();
+      let started = false;
+      for (let i = 0; i < buf.length; i++) {
+        const pt = buf[i];
+        const val = pt[field];
+        if (val === null || pt.t < tStart) continue;
+        const x = ((pt.t - tStart) / win) * w;
+        const y = h * 0.5 - clamp(val / vRange, -1.05, 1.05) * (h * 0.44);
+        if (!started) { sctx.moveTo(x, y); started = true; }
+        else sctx.lineTo(x, y);
+      }
+      sctx.stroke();
+      sctx.restore();
+    };
+
+    if (state.probes.ch2) drawTrace('v2', '#ffbe5c', 'rgba(255, 190, 92, 0.7)');
+    if (state.probes.ch1) drawTrace('v1', '#58dcff', 'rgba(88, 220, 255, 0.75)');
+
+    // Update channel readouts
+    const v1Now = state.probes.ch1 ? (state.nodeVoltages.get(state.probes.ch1) || 0) : null;
+    const v2Now = state.probes.ch2 ? (state.nodeVoltages.get(state.probes.ch2) || 0) : null;
+
+    if (v1Now !== null) {
+      const vpp1 = n1 > 0 ? (v1Max - v1Min) : 0;
+      const rms1 = n1 > 0 ? Math.sqrt(v1Sq / n1) : 0;
+      elCh1Now.textContent = `${v1Now >= 0 ? '+' : ''}${v1Now.toFixed(2)} V`;
+      elCh1Vpp.textContent = `Vpp ${vpp1.toFixed(2)}V`;
+      elCh1Rms.textContent = `RMS ${rms1.toFixed(2)}V`;
+      audio.updateProbeTone(vpp1, v1Now, state.playing);
+    } else {
+      elCh1Now.textContent = 'Unprobed';
+      elCh1Vpp.textContent = 'Vpp —';
+      elCh1Rms.textContent = 'RMS —';
+      audio.updateProbeTone(0, 0, false);
+    }
+
+    if (v2Now !== null) {
+      const vpp2 = n2 > 0 ? (v2Max - v2Min) : 0;
+      const rms2 = n2 > 0 ? Math.sqrt(v2Sq / n2) : 0;
+      elCh2Now.textContent = `${v2Now >= 0 ? '+' : ''}${v2Now.toFixed(2)} V`;
+      elCh2Vpp.textContent = `Vpp ${vpp2.toFixed(2)}V`;
+      elCh2Rms.textContent = `RMS ${rms2.toFixed(2)}V`;
+    } else {
+      elCh2Now.textContent = 'Unprobed';
+      elCh2Vpp.textContent = 'Vpp —';
+      elCh2Rms.textContent = 'RMS —';
+    }
+  }
+
+  // =========================================================================
+  // 11. INSPECTOR & HUD UI MANAGEMENT
+  // =========================================================================
+  function getSelectedComp() {
+    return state.components.find(c => c.id === state.selectedId) || null;
+  }
+
+  function refreshInspectorValuesOnly() {
+    const c = getSelectedComp();
+    if (!c) return;
+    elInspV.textContent = fmtSI(c.v || 0, 'V');
+    elInspI.textContent = fmtSI(c.i || 0, 'A');
+    elInspP.textContent = fmtSI(Math.abs(c.p || 0), 'W');
+    if (c.type === 'pot') {
+      const sl = elInspControls.querySelector('[data-field="wiper"]');
+      const lbl = elInspControls.querySelector('[data-val="wiper"]');
+      if (sl) sl.value = Math.round((c.wiper ?? 0.5) * 100);
+      if (lbl) {
+        const eff = (c.value || 2000) * clamp(c.wiper ?? 0.5, 0.02, 1);
+        lbl.textContent = `${Math.round((c.wiper ?? 0.5) * 100)}% (${fmtCompact(eff, 'Ω')})`;
+      }
+    }
+  }
+
+  function addLogSlider(label, field, minLog, maxLog, curVal, unit, onChange) {
+    const row = document.createElement('div');
+    row.className = 'control-row';
+    const head = document.createElement('div');
+    head.className = 'control-head';
+    const sLbl = document.createElement('span');
+    sLbl.textContent = label;
+    const sVal = document.createElement('span');
+    sVal.className = 'val';
+    sVal.dataset.val = field;
+    sVal.textContent = fmtSI(curVal, unit);
+    head.append(sLbl, sVal);
+
+    const inp = document.createElement('input');
+    inp.type = 'range';
+    inp.min = '0';
+    inp.max = '1000';
+    const frac = clamp((Math.log10(Math.max(curVal, 1e-12)) - minLog) / (maxLog - minLog), 0, 1);
+    inp.value = String(Math.round(frac * 1000));
+    inp.addEventListener('input', () => {
+      const f = Number(inp.value) / 1000;
+      const raw = Math.pow(10, minLog + f * (maxLog - minLog));
+      // Round nicely to 2 sig figs
+      const mag = Math.pow(10, Math.floor(Math.log10(raw)) - 1);
+      const nice = Math.round(raw / mag) * mag;
+      sVal.textContent = fmtSI(nice, unit);
+      onChange(nice);
+    });
+    row.append(head, inp);
+    elInspControls.appendChild(row);
+  }
+
+  function addLinSlider(label, field, min, max, step, curVal, fmtFn, onChange, amber = false) {
+    const row = document.createElement('div');
+    row.className = 'control-row';
+    const head = document.createElement('div');
+    head.className = 'control-head';
+    const sLbl = document.createElement('span');
+    sLbl.textContent = label;
+    const sVal = document.createElement('span');
+    sVal.className = 'val';
+    sVal.dataset.val = field;
+    sVal.textContent = fmtFn(curVal);
+    head.append(sLbl, sVal);
+
+    const inp = document.createElement('input');
+    inp.type = 'range';
+    if (amber) inp.className = 'amber';
+    inp.dataset.field = field;
+    inp.min = String(min);
+    inp.max = String(max);
+    inp.step = String(step);
+    inp.value = String(curVal);
+    inp.addEventListener('input', () => {
+      const v = Number(inp.value);
+      sVal.textContent = fmtFn(v);
+      onChange(v);
+    });
+    row.append(head, inp);
+    elInspControls.appendChild(row);
+  }
+
+  function refreshInspector() {
+    const c = getSelectedComp();
+    if (!c) {
+      elInspTitle.textContent = 'Component Inspector';
+      elInspId.textContent = '—';
+      elInspEmpty.style.display = 'block';
+      elInspBody.style.display = 'none';
+      return;
+    }
+
+    const meta = COMP_META[c.type] || { name: c.type };
+    elInspTitle.textContent = meta.name;
+    elInspId.textContent = `#${c.id}`;
+    elInspEmpty.style.display = 'none';
+    elInspBody.style.display = 'flex';
+    elInspControls.innerHTML = '';
+
+    refreshInspectorValuesOnly();
+
+    if (c.type === 'resistor' || c.type === 'lamp') {
+      addLogSlider('Resistance (R)', 'value', 0.3, 6, c.value || 1000, 'Ω', (v) => { c.value = v; });
+    } else if (c.type === 'pot') {
+      addLinSlider('Wiper Position', 'wiper', 2, 100, 1, Math.round((c.wiper ?? 0.5) * 100),
+        (pct) => `${pct}% (${fmtCompact((c.value || 2000) * pct / 100, 'Ω')})`,
+        (pct) => { c.wiper = pct / 100; }, true);
+      addLogSlider('Max Resistance', 'value', 1.7, 5.5, c.value || 2000, 'Ω', (v) => {
+        c.value = v;
+        refreshInspectorValuesOnly();
+      });
+    } else if (c.type === 'capacitor') {
+      addLogSlider('Capacitance (C)', 'value', -6.5, -2.0, c.value || 100e-6, 'F', (v) => { c.value = v; });
+    } else if (c.type === 'inductor') {
+      addLogSlider('Inductance (L)', 'value', -3.5, 0.5, c.value || 0.05, 'H', (v) => { c.value = v; });
+    } else if (c.type === 'dc') {
+      addLinSlider('DC Voltage (V)', 'value', 0, 24, 0.5, c.value ?? 9,
+        (v) => `${v.toFixed(1)} V`, (v) => { c.value = v; }, true);
+    } else if (c.type === 'ac') {
+      addLinSlider('Amplitude (Vp)', 'value', 0.5, 20, 0.5, c.value ?? 6,
+        (v) => `${v.toFixed(1)} V`, (v) => { c.value = v; }, true);
+      addLogSlider('Frequency (f)', 'freq', -0.5, 2.5, c.freq || 1, 'Hz', (v) => { c.freq = v; });
+    } else if (c.type === 'switch') {
+      const btn = document.createElement('button');
+      btn.className = c.closed ? 'btn primary' : 'btn amber';
+      btn.textContent = c.closed ? 'Switch: CLOSED (Click to Open)' : 'Switch: OPEN (Click to Close)';
+      btn.addEventListener('click', () => {
+        c.closed = !c.closed;
+        audio.playClick(c.closed ? 1450 : 950, 0.1);
+        refreshInspector();
+      });
+      elInspControls.appendChild(btn);
+    } else if (c.type === 'led') {
+      const row = document.createElement('div');
+      row.className = 'seg-row';
+      for (const key of Object.keys(LED_COLORS)) {
+        const b = document.createElement('button');
+        b.className = 'seg-btn' + (c.color === key ? ' active' : '');
+        b.textContent = LED_COLORS[key].name;
+        b.addEventListener('click', () => {
+          c.color = key;
+          refreshInspector();
+        });
+        row.appendChild(b);
+      }
+      elInspControls.appendChild(row);
+    }
+  }
+
+  function updateTelemetryHUD() {
+    let totalP = 0;
+    let maxI = 0;
+    let peakV = 0;
+    let ledWarn = false;
+
+    for (const c of state.components) {
+      if (c.type === 'gnd') continue;
+      if (c.type !== 'dc' && c.type !== 'ac' && c.type !== 'wire') {
+        totalP += Math.abs(c.p || 0);
+      }
+      maxI = Math.max(maxI, Math.abs(c.i || 0));
+      if (c.type === 'led' && (c.i || 0) > 0.04) ledWarn = true;
+    }
+    for (const v of state.nodeVoltages.values()) {
+      peakV = Math.max(peakV, Math.abs(v));
+    }
+
+    state.overCurrentWarn = ledWarn;
+    elTelPower.textContent = fmtSI(totalP, 'W');
+    elTelMaxI.textContent = fmtSI(maxI, 'A');
+    elTelPeakV.textContent = fmtSI(peakV, 'V');
+    elTelTime.textContent = fmtSI(state.simTime, 's');
+    const numNodes = state.topo ? (state.topo.numNodes + (state.topo.groundKeys.size > 0 ? 1 : 0)) : 0;
+    elTelTopo.textContent = `${numNodes} nodes · ${state.components.length} parts`;
+    elTelSpeed.textContent = `${state.simSpeed < 0.1 ? state.simSpeed.toFixed(3) : state.simSpeed.toFixed(2)}×`;
+
+    if (ledWarn) {
+      elSolverStatus.textContent = 'LED Over-Current!';
+      elSolverStatus.className = 'status-pill danger';
+    } else if (state.topo && state.topo.autoGround) {
+      elSolverStatus.textContent = 'Auto-GND';
+      elSolverStatus.className = 'status-pill warn';
+    } else if (!state.converged) {
+      elSolverStatus.textContent = 'Stiff Step';
+      elSolverStatus.className = 'status-pill warn';
+    } else {
+      elSolverStatus.textContent = 'Converged';
+      elSolverStatus.className = 'status-pill';
+    }
+
+    if (state.selectedId) refreshInspectorValuesOnly();
+  }
+
+  function updateHoverTooltip() {
+    if (!state.mouse.inside || state.dragDraw || state.panning || state.dragPot) {
+      elHoverTip.classList.remove('visible');
+      return;
+    }
+    const c = state.hoverComp;
+    const n = state.hoverNode;
+    if (c) {
+      const meta = COMP_META[c.type] || { name: c.type };
+      const extra = c.type === 'switch' ? (c.closed ? 'Click to Open' : 'Click to Close')
+        : (c.type === 'pot' ? 'Drag Wiper' : '');
+      const warn = (c.type === 'led' && (c.i || 0) > 0.04) ? '<div class="rose">⚠ Over-current (&gt;40 mA)</div>' : '';
+      elHoverTip.innerHTML = `
+        <div class="hover-tip-title"><span>${meta.name}</span><span style="color:var(--accent-amber);font-size:10px;">${extra}</span></div>
+        <div class="hover-tip-grid">
+          <div>ΔV: <strong>${fmtSI(c.v || 0, 'V')}</strong></div>
+          <div>I:  <span class="amber">${fmtSI(c.i || 0, 'A')}</span></div>
+          <div>P:  <span>${fmtSI(Math.abs(c.p || 0), 'W')}</span></div>
+          ${warn}
+        </div>`;
+      elHoverTip.style.left = Math.min(window.innerWidth - 180, state.mouse.x + 12) + 'px';
+      elHoverTip.style.top = Math.max(12, state.mouse.y - 12) + 'px';
+      elHoverTip.classList.add('visible');
+    } else if (n && state.nodeVoltages.has(n.key)) {
+      const v = state.nodeVoltages.get(n.key) || 0;
+      const isGnd = state.topo && state.topo.groundKeys.has(n.key);
+      elHoverTip.innerHTML = `
+        <div class="hover-tip-title"><span>Node (${n.gx}, ${n.gy})</span><span style="color:#4af2b2;font-size:10px;">${isGnd ? 'GND' : ''}</span></div>
+        <div class="hover-tip-grid">
+          <div>V: <strong>${v >= 0 ? '+' : ''}${v.toFixed(3)} V</strong></div>
+        </div>`;
+      elHoverTip.style.left = Math.min(window.innerWidth - 180, state.mouse.x + 12) + 'px';
+      elHoverTip.style.top = Math.max(12, state.mouse.y - 12) + 'px';
+      elHoverTip.classList.add('visible');
+    } else {
+      elHoverTip.classList.remove('visible');
+    }
+  }
+
+  // =========================================================================
+  // 12. UI EVENT WIRING
+  // =========================================================================
+  function setActiveTool(tool) {
+    state.activeTool = tool;
+    document.querySelectorAll('.tool-btn').forEach(b => {
+      const isAct = b.dataset.tool === tool;
+      b.classList.toggle('active', isAct);
+      b.classList.toggle('amber', isAct && tool === 'probe2');
+      b.classList.toggle('rose', isAct && tool === 'erase');
+    });
+    const labels = {
+      select: 'Select / Interact',
+      probe1: 'Scope Probe CH1',
+      probe2: 'Scope Probe CH2',
+      erase: 'Delete / Eraser'
+    };
+    elActiveToolLabel.textContent = labels[tool] || (`Place ${COMP_META[tool]?.name || tool}`);
+    updateCanvasCursor();
+  }
+
+  function updateCanvasCursor() {
+    canvas.className = '';
+    if (state.panning) canvas.classList.add('panning');
+    else if (state.dragPot) canvas.classList.add('dragging-pot');
+    else if (state.activeTool === 'erase') canvas.classList.add('tool-erase');
+    else if (state.activeTool === 'probe1' || state.activeTool === 'probe2') canvas.classList.add('tool-probe');
+    else if (state.activeTool !== 'select') canvas.classList.add('tool-draw');
+    else if (state.hoverComp && (state.hoverComp.type === 'switch' || state.hoverComp.type === 'pot')) {
+      canvas.classList.add('hover-interact');
+    }
+  }
+
+  function syncSpeedUI() {
+    // Log scale 0.005x to 2.0x
+    const f = clamp((Math.log10(state.simSpeed) - Math.log10(0.005)) / (Math.log10(2.0) - Math.log10(0.005)), 0, 1);
+    elSpeedSlider.value = String(Math.round(f * 100));
+    elSpeedSliderVal.textContent = `${state.simSpeed < 0.1 ? state.simSpeed.toFixed(3) : state.simSpeed.toFixed(2)}×`;
+    document.querySelectorAll('.speed-quick').forEach(b => {
+      b.classList.toggle('active', Math.abs(Number(b.dataset.speed) - state.simSpeed) < 0.015);
+    });
+  }
+
+  function syncTimebaseUI() {
+    // Log window 0.04s to 6.0s
+    const f = clamp((Math.log10(state.scopeWindow) - Math.log10(0.04)) / (Math.log10(6.0) - Math.log10(0.04)), 0, 1);
+    elScopeTimebase.value = String(Math.round(f * 100));
+    elScopeTbVal.textContent = fmtCompact(state.scopeWindow / 8, 's') + '/d';
+  }
+
+  function buildPresetButtons() {
+    elPresetGrid.innerHTML = '';
+    for (const p of PRESETS) {
+      const btn = document.createElement('button');
+      btn.className = 'preset-btn';
+      btn.dataset.preset = p.id;
+      btn.innerHTML = `<span class="preset-name">${p.name}</span><span class="preset-sub">${p.sub}</span>`;
+      btn.addEventListener('click', () => {
+        loadPreset(p.id);
+        audio.playClick(1100, 0.07);
+      });
+      elPresetGrid.appendChild(btn);
+    }
+  }
+
+  function refreshPresetUI() {
+    document.querySelectorAll('.preset-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.preset === state.activePresetId);
+    });
+  }
+
+  // Tabs
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const target = btn.dataset.tab;
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b === btn));
+      document.querySelectorAll('.tab-pane').forEach(p => p.classList.toggle('active', p.id === 'tab-' + target));
+    });
+  });
+
+  // Palette & Tools
+  document.querySelectorAll('.tool-btn').forEach(btn => {
+    btn.addEventListener('click', () => setActiveTool(btn.dataset.tool));
+  });
+
+  elBtnUndo.addEventListener('click', undo);
+  elBtnClearAll.addEventListener('click', () => {
+    if (state.components.length === 0) return;
+    pushUndo();
+    state.components = [];
+    state.probes = { ch1: null, ch2: null };
+    state.selectedId = null;
+    state.scopeBuf = [];
+    rebuildTopology();
+    refreshInspector();
+    audio.playClick(620, 0.07);
+  });
+
+  elBtnFlipComp.addEventListener('click', () => {
+    const c = getSelectedComp();
+    if (!c || c.type === 'gnd') return;
+    pushUndo();
+    [c.x1, c.x2] = [c.x2, c.x1];
+    [c.y1, c.y2] = [c.y2, c.y1];
+    c.vPrev = -(c.vPrev || 0);
+    c.iPrev = -(c.iPrev || 0);
+    c._vd = -(c._vd || 0);
+    rebuildTopology();
+    audio.playClick(1050, 0.06);
+  });
+
+  elBtnDelComp.addEventListener('click', () => {
+    const c = getSelectedComp();
+    if (!c) return;
+    pushUndo();
+    state.components = state.components.filter(x => x.id !== c.id);
+    state.selectedId = null;
+    rebuildTopology();
+    refreshInspector();
+    audio.playClick(680, 0.07);
+  });
+
+  elBtnFitView.addEventListener('click', fitCircuitToView);
+
+  // Flow direction
+  elBtnFlowConv.addEventListener('click', () => {
+    state.electronFlow = false;
+    elBtnFlowConv.classList.add('active');
+    elBtnFlowElec.classList.remove('active');
+  });
+  elBtnFlowElec.addEventListener('click', () => {
+    state.electronFlow = true;
+    elBtnFlowElec.classList.add('active');
+    elBtnFlowConv.classList.remove('active');
+  });
+
+  // Speed slider
+  elSpeedSlider.addEventListener('input', () => {
+    const f = Number(elSpeedSlider.value) / 100;
+    state.simSpeed = Math.pow(10, Math.log10(0.005) + f * (Math.log10(2.0) - Math.log10(0.005)));
+    syncSpeedUI();
+  });
+  document.querySelectorAll('.speed-quick').forEach(b => {
+    b.addEventListener('click', () => {
+      state.simSpeed = Number(b.dataset.speed);
+      syncSpeedUI();
+    });
+  });
+
+  // Visual toggles
+  elOptVoltageGlow.addEventListener('change', () => { state.showVoltageGlow = elOptVoltageGlow.checked; });
+  elOptParticles.addEventListener('change', () => { state.showParticles = elOptParticles.checked; });
+  elOptLabels.addEventListener('change', () => { state.showLabels = elOptLabels.checked; });
+  elOptGrid.addEventListener('change', () => { state.showGrid = elOptGrid.checked; });
+  elOptProbeTone.addEventListener('change', () => { audio.probeToneEnabled = elOptProbeTone.checked; });
+
+  // Scope controls
+  elBtnScopeAuto.addEventListener('click', () => {
+    state.scopeAutoScale = !state.scopeAutoScale;
+    elBtnScopeAuto.classList.toggle('active', state.scopeAutoScale);
+  });
+  elBtnScopeClear.addEventListener('click', () => { state.scopeBuf = []; });
+  elScopeTimebase.addEventListener('input', () => {
+    const f = Number(elScopeTimebase.value) / 100;
+    state.scopeWindow = Math.pow(10, Math.log10(0.04) + f * (Math.log10(6.0) - Math.log10(0.04)));
+    elScopeTbVal.textContent = fmtCompact(state.scopeWindow / 8, 's') + '/d';
+  });
+
+  // Bottom transport bar
+  function togglePlay() {
+    state.playing = !state.playing;
+    elBtnPlay.textContent = state.playing ? '❚❚ Pause' : '▶ Play';
+    elBtnPlay.classList.toggle('active', state.playing);
+  }
+  elBtnPlay.addEventListener('click', togglePlay);
+  elBtnStep.addEventListener('click', () => {
+    if (state.playing) togglePlay();
+    advanceSimulation(1 / 60);
+  });
+  elBtnReset.addEventListener('click', () => {
+    resetSimulationState();
+    audio.playClick(880, 0.08);
+  });
+  elBtnAudio.addEventListener('click', () => {
+    const on = audio.toggle();
+    elBtnAudio.textContent = on ? '🔊 Audio' : '🔇 Audio';
+    elBtnAudio.classList.toggle('active', on);
+  });
+  elBtnScope.addEventListener('click', () => {
+    state.showScope = !state.showScope;
+    elScopePanel.classList.toggle('hidden', !state.showScope);
+    elBtnScope.classList.toggle('active', state.showScope);
+  });
+  elBtnControls.addEventListener('click', () => {
+    const collapsed = elDrawer.classList.toggle('collapsed');
+    elBtnControls.classList.toggle('active', !collapsed);
+  });
+
+  function toggleZen() {
+    document.body.classList.toggle('zen-mode');
+  }
+  elBtnZen.addEventListener('click', toggleZen);
+  elBtnZenRestore.addEventListener('click', toggleZen);
+
+  // Canvas Pointer Events
+  canvas.addEventListener('pointerdown', (e) => {
+    canvas.setPointerCapture(e.pointerId);
+    const sx = e.clientX;
+    const sy = e.clientY;
+    const w = screenToWorld(sx, sy);
+    const gx = Math.round(w.x);
+    const gy = Math.round(w.y);
+
+    // Middle or right click pans
+    if (e.button === 1 || e.button === 2) {
+      state.panning = { sx, sy, cx: state.cam.x, cy: state.cam.y };
+      updateCanvasCursor();
+      return;
+    }
+
+    if (state.activeTool === 'erase') {
+      const hit = findHitComponent(sx, sy);
+      if (hit) {
+        pushUndo();
+        state.components = state.components.filter(c => c.id !== hit.id);
+        if (state.selectedId === hit.id) state.selectedId = null;
+        rebuildTopology();
+        refreshInspector();
+        audio.playClick(640, 0.08);
+      }
+      return;
+    }
+
+    if (state.activeTool === 'probe1' || state.activeTool === 'probe2') {
+      const node = findHitNode(sx, sy);
+      if (node) {
+        const ch = state.activeTool === 'probe1' ? 'ch1' : 'ch2';
+        state.probes[ch] = node.key;
+        state.scopeBuf = [];
+        audio.playClick(ch === 'ch1' ? 1280 : 1040, 0.08);
+      }
+      return;
+    }
+
+    if (state.activeTool === 'gnd') {
+      pushUndo();
+      const g = createComponent({ type: 'gnd', x1: gx, y1: gy, x2: gx, y2: gy });
+      state.components.push(g);
+      state.selectedId = g.id;
+      rebuildTopology();
+      refreshInspector();
+      audio.playClick(920, 0.07);
+      return;
+    }
+
+    if (state.activeTool !== 'select') {
+      state.dragDraw = { x1: gx, y1: gy, x2: gx, y2: gy };
+      return;
+    }
+
+    // Select / Interact tool
+    const hit = findHitComponent(sx, sy);
+    if (hit) {
+      state.selectedId = hit.id;
+      refreshInspector();
+      if (hit.type === 'switch') {
+        hit.closed = !hit.closed;
+        audio.playClick(hit.closed ? 1480 : 920, 0.11);
+        refreshInspector();
+      } else if (hit.type === 'pot' && isPotWiperHit(hit, sx, sy)) {
+        state.dragPot = { comp: hit };
+        updatePotFromPointer(hit, sx, sy);
+        updateCanvasCursor();
+      }
+    } else {
+      // Clicking empty canvas starts pan
+      state.selectedId = null;
+      refreshInspector();
+      state.panning = { sx, sy, cx: state.cam.x, cy: state.cam.y };
+      updateCanvasCursor();
+    }
+  });
+
+  canvas.addEventListener('pointermove', (e) => {
+    const sx = e.clientX;
+    const sy = e.clientY;
+    const w = screenToWorld(sx, sy);
+    state.mouse.x = sx;
+    state.mouse.y = sy;
+    state.mouse.gx = Math.round(w.x);
+    state.mouse.gy = Math.round(w.y);
+    state.mouse.inside = true;
+
+    if (state.panning) {
+      state.cam.x = state.panning.cx - (sx - state.panning.sx) / state.cam.zoom;
+      state.cam.y = state.panning.cy - (sy - state.panning.sy) / state.cam.zoom;
+      return;
+    }
+    if (state.dragPot) {
+      updatePotFromPointer(state.dragPot.comp, sx, sy);
+      return;
+    }
+    if (state.dragDraw) {
+      state.dragDraw.x2 = state.mouse.gx;
+      state.dragDraw.y2 = state.mouse.gy;
+      return;
+    }
+
+    state.hoverComp = findHitComponent(sx, sy);
+    state.hoverNode = state.hoverComp ? null : findHitNode(sx, sy);
+    updateCanvasCursor();
+    updateHoverTooltip();
+  });
+
+  canvas.addEventListener('pointerup', () => {
+    if (state.dragDraw) {
+      const { x1, y1, x2, y2 } = state.dragDraw;
+      state.dragDraw = null;
+      if (x1 !== x2 || y1 !== y2) {
+        pushUndo();
+        const nc = createComponent({ type: state.activeTool, x1, y1, x2, y2 });
+        state.components.push(nc);
+        state.selectedId = nc.id;
+        rebuildTopology();
+        refreshInspector();
+        audio.playClick(1160, 0.08);
+      }
+    }
+    state.panning = null;
+    state.dragPot = null;
+    updateCanvasCursor();
+  });
+
+  canvas.addEventListener('pointerleave', () => {
+    state.mouse.inside = false;
+    state.hoverComp = null;
+    state.hoverNode = null;
+    elHoverTip.classList.remove('visible');
+  });
+
+  canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+  canvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const factor = e.deltaY < 0 ? 1.1 : 0.91;
+    const before = screenToWorld(e.clientX, e.clientY);
+    state.cam.zoom = clamp(state.cam.zoom * factor, 24, 170);
+    const after = screenToWorld(e.clientX, e.clientY);
+    state.cam.x += before.x - after.x;
+    state.cam.y += before.y - after.y;
+  }, { passive: false });
+
+  // Keyboard shortcuts
+  window.addEventListener('keydown', (e) => {
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+    if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
+    else if (e.key === 'h' || e.key === 'H') { toggleZen(); }
+    else if (e.key === 'r' || e.key === 'R') { resetSimulationState(); }
+    else if (e.key === 'f' || e.key === 'F') { fitCircuitToView(); }
+    else if ((e.key === 'z' || e.key === 'Z') && (e.ctrlKey || e.metaKey || !e.shiftKey)) { undo(); }
+    else if (e.key === 'Escape') { setActiveTool('select'); state.dragDraw = null; }
+    else if (e.key === 'Delete' || e.key === 'Backspace') {
+      const c = getSelectedComp();
+      if (c) elBtnDelComp.click();
+    }
+  });
+
+  window.addEventListener('resize', () => {
+    resizeCanvases();
+  });
+
+  // =========================================================================
+  // 13. MAIN 60FPS SIMULATION & RENDER LOOP
+  // =========================================================================
+  function advanceSimulation(realDt) {
+    if (!state.topo) return;
+    const simDt = Math.min(realDt, 0.033) * state.simSpeed;
+    const substeps = 16;
+    const dt = Math.max(simDt / substeps, 1e-7);
+
+    let lastRes = null;
+    for (let s = 0; s < substeps; s++) {
+      state.simTime += dt;
+      lastRes = solver.step(state.components, state.topo, state.simTime, dt);
+      // Record 4 crisp samples per frame into scope buffer for ultra-smooth waveforms
+      if (s % 4 === 3) {
+        const v1 = state.probes.ch1 ? (lastRes.nodeVoltages.get(state.probes.ch1) ?? 0) : null;
+        const v2 = state.probes.ch2 ? (lastRes.nodeVoltages.get(state.probes.ch2) ?? 0) : null;
+        state.scopeBuf.push({ t: state.simTime, v1, v2 });
+      }
+    }
+
+    if (lastRes) {
+      state.nodeVoltages = lastRes.nodeVoltages;
+      state.converged = lastRes.converged;
+    }
+
+    // Trim old scope samples outside 1.5x window
+    const cutoff = state.simTime - state.scopeWindow * 1.5;
+    while (state.scopeBuf.length > state.maxScopeSamples || (state.scopeBuf.length > 2 && state.scopeBuf[0].t < cutoff)) {
+      state.scopeBuf.shift();
+    }
+  }
+
+  let lastFrameTs = performance.now();
+  let hudAccum = 0;
+
+  function frame(ts) {
+    const dtVisual = clamp((ts - lastFrameTs) / 1000, 0.001, 0.05);
+    lastFrameTs = ts;
+
+    if (state.playing) {
+      advanceSimulation(dtVisual);
+    }
+
+    const w = canvas.clientWidth;
+    const h = canvas.clientHeight;
+    drawBackgroundAndGrid(w, h);
+
+    // Render wires first so symbols sit cleanly on top
+    for (const c of state.components) {
+      if (c.type === 'wire') {
+        drawComponent(c, c.id === state.selectedId, c === state.hoverComp, dtVisual);
+      }
+    }
+    for (const c of state.components) {
+      if (c.type !== 'wire') {
+        drawComponent(c, c.id === state.selectedId, c === state.hoverComp, dtVisual);
+      }
+    }
+
+    drawNodesAndProbes();
+    drawPlacementPreview();
+    renderOscilloscope();
+
+    hudAccum += dtVisual;
+    if (hudAccum >= 0.06) {
+      hudAccum = 0;
+      updateTelemetryHUD();
+      if (state.hoverComp || state.hoverNode) updateHoverTooltip();
+    }
+
+    requestAnimationFrame(frame);
+  }
+
+  // =========================================================================
+  // 14. BOOTSTRAP
+  // =========================================================================
+  resizeCanvases();
+  buildPresetButtons();
+  loadPreset('rc-lowpass');
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

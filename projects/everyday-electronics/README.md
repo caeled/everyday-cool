@@ -37,6 +37,20 @@ Eight benches built by Muse at Steven Powell's direction, to the standard the An
 - `modulation-deck.html` / `modulation-deck-lesson.html` — **Modulation Deck**: AM/FM synthesis and demodulation at fs = 48 kHz. Envelope recovery correlation 0.9946 in the good RC regime, 0.8376 in diagonal clipping (shown on purpose); FM deviation exact from phase increments.
 - `sampling-lab.html` / `sampling-lab-lesson.html` — **Sampling Lab**: aliasing measured from the samples by DFT; 9 Hz at fs = 10 Hz yields a sequence identical to −1 Hz within 1.5×10⁻¹³; sinc reconstruction recovers the alias (RMS 0.004), not the original (RMS 0.999).
 
+## The Electronics Wave II (23 November 2026)
+
+Nine benches built by Google Antigravity (Gemini) at Steven Powell's direction, integrated byte-for-byte and audited by Muse by driving the shipped code headlessly. Each lesson prints the measured numbers, the bends, and anything false — flagged at the top of the lesson. Three are sibling treatments of Wave I subjects and their lessons carry the side-by-side comparison.
+
+- `transistor-lab.html` / `transistor-lab-lesson.html` — **Transistor Lab**: MOSFET square law exact to every printed digit; the BJT is a constant-β multiplier (no V_BE input), its "Ebers–Moll" knee a flagged misnomer.
+- `rlc-resonance.html` / `rlc-resonance-lesson.html` — **RLC Resonance**: f₀ at 0.000% error on seven L/C pairs, Q and Δf exact from its own curve; the shaded −3 dB band is painted f₀ ± Δf/2 instead of geometric — flagged.
+- `rf-transmission-line.html` / `rf-transmission-line-lesson.html` — **RF Transmission Line**: FDTD line, Γ telemetry exact to six places on nine loads, in full agreement with the Wave I bench on identical cases; the Z_in readout repeats the load instead of rotating it — flagged.
+- `pn-junction.html` / `pn-junction-lesson.html` — **PN Junction**: depletion ratio exactly 2.0000, slopes at ideality × 59.53 mV/dec; V_bi is a heuristic (0.936 V) under a printed textbook formula (0.7143 V), and the Blue LED preset can never emit — both flagged.
+- `circuit-sandbox.html` / `circuit-sandbox-lesson.html` — **Circuit Sandbox**: a genuine MNA/Newton–Raphson solver, matching an independent solver on every test circuit (KCL residuals ~10⁻¹⁰ A); a dead short reports 8,911 A, "Converged," with no warning — flagged.
+- `logic-gates-lab.html` / `logic-gates-lab-lesson.html` — **Logic Gates Lab**: 1,246 exhaustive rows, zero logic mismatches, a real delay engine with a reproduced hazard glitch; a "DEC" caption wrong on 136/256 subtract rows and a latch labelled a flip-flop — flagged.
+- `power-pwm.html` / `power-pwm-lesson.html` — **Power & PWM**: five converter topologies as a sub-stepped ODE solver with a five-mechanism loss model; displayed efficiency is computed against a floored Pin, flattering itself by up to four points — flagged.
+- `opamp-studio.html` / `opamp-studio-lesson.html` — **Op-Amp Studio**: eight topologies, gains to 0.006%, sibling agreement with the Wave I bench ≤0.01%; a hidden 1.5 V/µs cap behind the "Ideal (Fast)" slew label — flagged.
+- `timer-555-lab.html` / `timer-555-lab-lesson.html` — **555 Timer Lab**: the engine uses exact ln 2 / ln 3 (monostable constant 1.098612, not 1.1), thresholds exactly ⅓/⅔ V_CC; the "50%" badge appears at a measured 12.82% duty — flagged.
+
 ## Run it
 
 Open `index.html` in a browser. The benches, walk-through, and build cards work fully offline — they are arithmetic and text. Only the Links Out shelf needs the internet.
