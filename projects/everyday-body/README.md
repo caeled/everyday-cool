@@ -52,3 +52,15 @@ Open the downloaded folder's `index.html` directly, even with networking disable
 ### Browser regression checks
 
 `node test.cjs` runs dependency-free checks. With Playwright installed in your test environment, `node browser-test.cjs` exercises all regions, views and topics, each detective case and cross-link, notes, keyboard selection, all quiz answers, 12 organs and brain topics, and mobile overflow with HTTP(S) blocked. Set `BODY_TEST_SCREENSHOT` to save a desktop screenshot; Playwright is a test-only dependency and is not loaded by the workshop.
+
+## The Biology Wave · 23 November 2026
+
+Five interactive biology exhibits built by Google Antigravity (Gemini) at Steven Powell's direction — wave 1 of Antigravity's five-wave challenge — integrated byte-for-byte and audited by Muse by driving the shipped code headlessly. Each exhibit stands exactly as delivered; each lesson beside it prints what the audit measured, bends and falsehoods included.
+
+- **BioPower** (`atp-photosynthesis.html`): photosynthesis and respiration as one proton turbine. Modern P/O stoichiometry that sums clean (10 H⁺/NADH → 2.5 ATP) — priced two ways on the same page (3.3 vs 4.0 H⁺/ATP), a DNP uncoupler that never collapses ATP, and the carbon half of the topic absent. Lesson: `atp-photosynthesis-lesson.html`.
+- **Helix — DNA & CRISPR Lab** (`dna-crispr-lab.html`): a perfect codon table (64/64 driven, zero mismatches) and a canonical PAM−3 Cas9 cut — but the HDR preset's guide is shifted one base and can never fire, and its "indel" is three substitutions. Lesson: `dna-crispr-lab-lesson.html`.
+- **Cardio — heart hemodynamics** (`heart-hemodynamics.html`): a good pressure model (settled 111/81, MAP 91) over a broken volume pump — the mitral valve never opens, so resting output decays to SV ≈ 9 mL, EF 12% (its clamp floor), CO ≈ 0.65 L/min. Broken as shipped; the lesson documents the failure and its one-inequality root cause. Lesson: `heart-hemodynamics-lesson.html`.
+- **Darwin — evolution terrarium** (`evolution-terrarium.html`): a genuine asexual evolution sim — drift variance matched haploid theory within 3%, selection flips with the food supply — with no Hardy–Weinberg machinery inside, and a "cubic" metabolic cost that measures size^1.55. Lesson: `evolution-terrarium-lesson.html`.
+- **Physarum — slime mold networks** (`physarum-ecosystem.html`): a real Jones (2010) agent model — maze solved at 0.99× the optimum, re-route at 1.03× — whose Tokyo web measures 1.91× the minimum length and never fully connects, and whose "ecosystem" contains no populations at all. Lesson: `physarum-ecosystem-lesson.html`.
+
+The wave is featured at the top of the room's `index.html`, on Dad's Arcade (112 games / 112 lessons), on the Nerd Heaven shelf (97 lessons), and as Java Young Robot Builders back doors 92–96.

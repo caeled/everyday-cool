@@ -1,0 +1,4365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Helix — DNA Replication, Ribosome Translation &amp; CRISPR-Cas9</title>
+<style>
+  :root {
+    --bg-deep: #040711;
+    --panel-bg: rgba(9, 13, 24, 0.78);
+    --panel-bg-strong: rgba(8, 12, 22, 0.92);
+    --panel-border: rgba(148, 179, 255, 0.16);
+    --panel-border-hi: rgba(148, 179, 255, 0.36);
+    --text-main: #eef3ff;
+    --text-dim: #9aa9cc;
+    --text-muted: #68789c;
+    --accent-amber: #ffbe5c;
+    --accent-cyan: #58dcff;
+    --accent-mint: #4af2b2;
+    --accent-rose: #ff6083;
+    --accent-violet: #b694ff;
+    --base-a: #4af2b2;
+    --base-t: #ffbe5c;
+    --base-c: #58dcff;
+    --base-g: #ff6083;
+    --base-u: #c490ff;
+    --radius-lg: 14px;
+    --radius-md: 10px;
+    --radius-sm: 7px;
+    --mono: ui-monospace, "Cascadia Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Inter, Helvetica, Arial, sans-serif;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg-deep);
+    color: var(--text-main);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    touch-action: none;
+  }
+
+  #sim-canvas {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    cursor: grab;
+  }
+  #sim-canvas.panning {
+    cursor: grabbing;
+  }
+  #sim-canvas.clickable {
+    cursor: pointer;
+  }
+
+  /* HUD Layer */
+  .hud {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 10;
+  }
+  body.zen-mode .hud > :not(.zen-restore) {
+    opacity: 0;
+    pointer-events: none !important;
+  }
+
+  .panel {
+    pointer-events: auto;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-lg);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    transition: opacity 0.25s ease, transform 0.25s ease;
+  }
+
+  /* Top-Left Telemetry Card */
+  .top-left {
+    position: fixed;
+    top: 14px;
+    left: 14px;
+    width: min(442px, calc(100vw - 364px));
+    min-width: 295px;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .brand-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .brand-title-wrap {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .brand-title {
+    font-size: 16px;
+    font-weight: 800;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    background: linear-gradient(120deg, #eafff6 0%, #4af2b2 35%, #58dcff 70%, #b694ff 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .mode-badge {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 999px;
+    border: 1px solid rgba(74, 242, 178, 0.42);
+    background: rgba(74, 242, 178, 0.12);
+    color: var(--accent-mint);
+  }
+  .mode-badge.dogma {
+    border-color: rgba(88, 220, 255, 0.42);
+    background: rgba(88, 220, 255, 0.12);
+    color: var(--accent-cyan);
+  }
+  .mode-badge.crispr {
+    border-color: rgba(182, 148, 255, 0.45);
+    background: rgba(182, 148, 255, 0.14);
+    color: var(--accent-violet);
+  }
+
+  .status-pill {
+    font-size: 10px;
+    font-weight: 750;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: rgba(74, 242, 178, 0.14);
+    color: var(--accent-mint);
+    border: 1px solid rgba(74, 242, 178, 0.36);
+    white-space: nowrap;
+  }
+  .status-pill.silent {
+    background: rgba(88, 220, 255, 0.14);
+    color: var(--accent-cyan);
+    border-color: rgba(88, 220, 255, 0.4);
+  }
+  .status-pill.warn {
+    background: rgba(255, 190, 92, 0.16);
+    color: var(--accent-amber);
+    border-color: rgba(255, 190, 92, 0.44);
+  }
+  .status-pill.danger {
+    background: rgba(255, 96, 131, 0.18);
+    color: var(--accent-rose);
+    border-color: rgba(255, 96, 131, 0.48);
+  }
+  .status-pill.violet {
+    background: rgba(182, 148, 255, 0.18);
+    color: var(--accent-violet);
+    border-color: rgba(182, 148, 255, 0.45);
+  }
+
+  .telemetry-grid {
+    display: grid;
+    grid-template-columns: 1.35fr 0.85fr 0.8fr;
+    gap: 6px;
+  }
+
+  .tele-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(148, 179, 255, 0.1);
+    border-radius: var(--radius-sm);
+    padding: 6px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .tele-label {
+    font-size: 9px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .tele-val {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-main);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .tele-val.amber { color: var(--accent-amber); }
+  .tele-val.cyan { color: var(--accent-cyan); }
+  .tele-val.mint { color: var(--accent-mint); }
+  .tele-val.rose { color: var(--accent-rose); }
+  .tele-val.violet { color: var(--accent-violet); }
+
+  /* Live Sequence Strip */
+  .seq-strip {
+    background: rgba(3, 6, 15, 0.6);
+    border: 1px solid rgba(148, 179, 255, 0.12);
+    border-radius: var(--radius-sm);
+    padding: 6px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .seq-row {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    line-height: 1.3;
+    overflow: hidden;
+  }
+  .seq-tag {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    width: 36px;
+    flex-shrink: 0;
+  }
+  .seq-content {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    letter-spacing: 0.04em;
+    color: var(--text-dim);
+  }
+  .bA { color: var(--base-a); font-weight: 700; }
+  .bT { color: var(--base-t); font-weight: 700; }
+  .bC { color: var(--base-c); font-weight: 700; }
+  .bG { color: var(--base-g); font-weight: 700; }
+  .bU { color: var(--base-u); font-weight: 700; }
+  .aa-chip {
+    display: inline-block;
+    padding: 0 3px;
+    border-radius: 3px;
+    margin-right: 2px;
+    background: rgba(255, 255, 255, 0.05);
+    color: #dbe7ff;
+    font-size: 10px;
+  }
+  .aa-chip.mut {
+    background: rgba(255, 190, 92, 0.24);
+    color: #ffe0a8;
+    border: 1px solid rgba(255, 190, 92, 0.45);
+  }
+  .aa-chip.stop {
+    background: rgba(255, 96, 131, 0.24);
+    color: #ffc2d0;
+    border: 1px solid rgba(255, 96, 131, 0.45);
+  }
+  .aa-chip.hdr {
+    background: rgba(74, 242, 178, 0.22);
+    color: #b7ffdf;
+    border: 1px solid rgba(74, 242, 178, 0.45);
+  }
+
+  .legend-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding-top: 3px;
+    border-top: 1px solid rgba(148, 179, 255, 0.09);
+    font-size: 10px;
+    color: var(--text-dim);
+    font-family: var(--mono);
+  }
+  .base-legend {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .base-dot {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    margin-right: 3px;
+    vertical-align: middle;
+  }
+
+  /* Right Control Drawer (330px) */
+  .drawer {
+    position: fixed;
+    top: 14px;
+    right: 14px;
+    bottom: 14px;
+    width: 330px;
+    max-width: calc(100vw - 28px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: transform 0.25s ease, opacity 0.25s ease;
+  }
+  .drawer.collapsed {
+    transform: translateX(calc(100% + 24px));
+    pointer-events: none;
+  }
+
+  .drawer-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+    padding: 8px 8px 6px;
+    border-bottom: 1px solid var(--panel-border);
+    background: rgba(4, 7, 15, 0.45);
+  }
+
+  .tab-btn {
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    padding: 7px 5px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .tab-btn:hover {
+    color: var(--text-main);
+    background: rgba(255, 255, 255, 0.04);
+  }
+  .tab-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.16);
+    border-color: rgba(88, 220, 255, 0.4);
+  }
+
+  .drawer-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 11px 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .drawer-body::-webkit-scrollbar {
+    width: 5px;
+  }
+  .drawer-body::-webkit-scrollbar-thumb {
+    background: rgba(148, 179, 255, 0.22);
+    border-radius: 999px;
+  }
+
+  .tab-pane {
+    display: none;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .tab-pane.active {
+    display: flex;
+  }
+
+  .section {
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(148, 179, 255, 0.11);
+    border-radius: var(--radius-md);
+    padding: 10px 11px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .section-title {
+    font-size: 10px;
+    font-weight: 750;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  /* Mode switcher cards */
+  .mode-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+  .mode-btn {
+    text-align: left;
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(148, 179, 255, 0.15);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-main);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .mode-btn:hover {
+    border-color: rgba(88, 220, 255, 0.4);
+    background: rgba(88, 220, 255, 0.07);
+  }
+  .mode-btn.active {
+    border-color: var(--accent-mint);
+    background: linear-gradient(135deg, rgba(74, 242, 178, 0.14), rgba(88, 220, 255, 0.08));
+  }
+  .mode-btn.active.dogma {
+    border-color: var(--accent-cyan);
+    background: linear-gradient(135deg, rgba(88, 220, 255, 0.16), rgba(182, 148, 255, 0.08));
+  }
+  .mode-btn.active.crispr {
+    border-color: var(--accent-violet);
+    background: linear-gradient(135deg, rgba(182, 148, 255, 0.18), rgba(255, 96, 131, 0.08));
+  }
+  .mode-btn-title {
+    font-size: 11.5px;
+    font-weight: 700;
+  }
+  .mode-btn-sub {
+    font-size: 9.5px;
+    color: var(--text-muted);
+    margin-top: 1px;
+  }
+  .mode-key {
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 2px 5px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.07);
+    color: var(--text-dim);
+  }
+
+  /* Presets grid */
+  .preset-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .preset-btn {
+    text-align: left;
+    padding: 7px 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(148, 179, 255, 0.14);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-main);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .preset-btn:hover {
+    border-color: rgba(88, 220, 255, 0.45);
+    background: rgba(88, 220, 255, 0.08);
+  }
+  .preset-btn.active {
+    border-color: var(--accent-amber);
+    background: rgba(255, 190, 92, 0.14);
+  }
+  .preset-name {
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+  .preset-sub {
+    font-size: 9.5px;
+    color: var(--text-muted);
+    line-height: 1.22;
+  }
+
+  /* Sliders */
+  .control-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .control-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+  .control-head .val {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-main);
+    font-weight: 600;
+  }
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 5px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.18);
+    outline: none;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent-cyan);
+    border: 2px solid #08101f;
+    box-shadow: 0 0 10px rgba(88, 220, 255, 0.65);
+    cursor: pointer;
+  }
+  input[type="range"].mint::-webkit-slider-thumb {
+    background: var(--accent-mint);
+    box-shadow: 0 0 10px rgba(74, 242, 178, 0.65);
+  }
+
+  /* Segmented pills */
+  .seg-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(70px, 1fr));
+    gap: 4px;
+  }
+  .seg-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-dim);
+    font-size: 11px;
+    font-weight: 650;
+    padding: 6px 5px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-align: center;
+  }
+  .seg-btn:hover {
+    color: #fff;
+    border-color: rgba(148, 179, 255, 0.35);
+  }
+  .seg-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.18);
+    border-color: var(--accent-cyan);
+  }
+  .seg-btn.active.mint {
+    background: rgba(74, 242, 178, 0.18);
+    border-color: var(--accent-mint);
+    color: #d7ffef;
+  }
+  .seg-btn.active.rose {
+    background: rgba(255, 96, 131, 0.18);
+    border-color: var(--accent-rose);
+    color: #ffd7e0;
+  }
+
+  /* Buttons */
+  .btn-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .btn {
+    border: 1px solid rgba(148, 179, 255, 0.22);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-main);
+    font-size: 11px;
+    font-weight: 700;
+    padding: 8px 9px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+  }
+  .btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 179, 255, 0.45);
+  }
+  .btn:active {
+    transform: scale(0.98);
+  }
+  .btn.primary {
+    background: linear-gradient(135deg, rgba(88, 220, 255, 0.28), rgba(56, 140, 255, 0.24));
+    border-color: rgba(88, 220, 255, 0.55);
+    color: #e6f9ff;
+  }
+  .btn.mint {
+    background: linear-gradient(135deg, rgba(74, 242, 178, 0.25), rgba(32, 175, 130, 0.22));
+    border-color: rgba(74, 242, 178, 0.55);
+    color: #e2fff3;
+  }
+  .btn.amber {
+    background: linear-gradient(135deg, rgba(255, 190, 92, 0.25), rgba(255, 120, 60, 0.22));
+    border-color: rgba(255, 190, 92, 0.55);
+    color: #fff3db;
+  }
+  .btn.danger {
+    background: rgba(255, 96, 131, 0.16);
+    border-color: rgba(255, 96, 131, 0.48);
+    color: #ffc8d5;
+  }
+  .btn.violet {
+    background: linear-gradient(135deg, rgba(182, 148, 255, 0.26), rgba(114, 78, 224, 0.22));
+    border-color: rgba(182, 148, 255, 0.55);
+    color: #f0e8ff;
+  }
+
+  /* Sequence Text Input */
+  .seq-input {
+    width: 100%;
+    background: rgba(3, 6, 15, 0.78);
+    border: 1px solid rgba(148, 179, 255, 0.24);
+    border-radius: var(--radius-sm);
+    padding: 7px 9px;
+    color: var(--text-main);
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    outline: none;
+    user-select: text;
+  }
+  .seq-input:focus {
+    border-color: var(--accent-cyan);
+    box-shadow: 0 0 0 2px rgba(88, 220, 255, 0.16);
+  }
+
+  /* Toggle switches */
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11px;
+    color: var(--text-dim);
+    cursor: pointer;
+    gap: 8px;
+  }
+  .toggle-row input {
+    display: none;
+  }
+  .switch {
+    width: 34px;
+    height: 18px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.2);
+    border: 1px solid rgba(148, 179, 255, 0.25);
+    position: relative;
+    transition: all 0.18s ease;
+    flex-shrink: 0;
+  }
+  .switch::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #c8d7f5;
+    transition: transform 0.18s ease, background 0.18s ease;
+  }
+  .toggle-row input:checked + .switch {
+    background: rgba(88, 220, 255, 0.32);
+    border-color: var(--accent-cyan);
+  }
+  .toggle-row input:checked + .switch::after {
+    transform: translateX(16px);
+    background: #fff;
+  }
+
+  /* Codon pills grid inside Sequence tab */
+  .codon-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .codon-pill {
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 3px 5px;
+    border-radius: 5px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(148, 179, 255, 0.14);
+    color: var(--text-dim);
+    cursor: pointer;
+    transition: all 0.12s ease;
+  }
+  .codon-pill:hover {
+    border-color: var(--accent-cyan);
+    background: rgba(88, 220, 255, 0.12);
+    color: #fff;
+  }
+  .codon-pill.active {
+    border-color: var(--accent-mint);
+    background: rgba(74, 242, 178, 0.16);
+    color: #fff;
+  }
+  .codon-pill.mut {
+    border-color: var(--accent-amber);
+    background: rgba(255, 190, 92, 0.16);
+    color: #ffe7be;
+  }
+  .codon-pill.stop {
+    border-color: var(--accent-rose);
+    background: rgba(255, 96, 131, 0.16);
+    color: #ffc5d2;
+  }
+
+  /* Bottom Transport Bar */
+  .bottom-bar {
+    position: fixed;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 7px 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: nowrap;
+  }
+
+  .bar-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-main);
+    font-size: 11.5px;
+    font-weight: 650;
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    white-space: nowrap;
+  }
+  .bar-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 179, 255, 0.4);
+  }
+  .bar-btn.active {
+    background: rgba(88, 220, 255, 0.2);
+    border-color: var(--accent-cyan);
+    color: #fff;
+  }
+
+  .bar-divider {
+    width: 1px;
+    height: 20px;
+    background: rgba(148, 179, 255, 0.16);
+    margin: 0 2px;
+  }
+
+  /* Bottom-left hints */
+  .hint-pill {
+    position: fixed;
+    bottom: 14px;
+    left: 14px;
+    padding: 7px 11px;
+    font-size: 11px;
+    color: var(--text-dim);
+    max-width: 315px;
+    line-height: 1.4;
+  }
+  .hint-pill kbd {
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #fff;
+  }
+
+  /* Event Banner */
+  .event-banner {
+    position: fixed;
+    top: 18px;
+    left: 50%;
+    transform: translateX(-50%) translateY(-10px);
+    padding: 9px 15px;
+    border-radius: var(--radius-md);
+    background: rgba(9, 15, 29, 0.9);
+    border: 1px solid rgba(88, 220, 255, 0.48);
+    color: #e4f6ff;
+    font-size: 12px;
+    font-weight: 650;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease, transform 0.25s ease;
+    z-index: 25;
+    backdrop-filter: blur(12px);
+    max-width: min(520px, calc(100vw - 40px));
+  }
+  .event-banner.visible {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateX(-50%) translateY(0);
+  }
+  .event-banner.warn {
+    background: rgba(28, 18, 6, 0.9);
+    border-color: rgba(255, 190, 92, 0.55);
+    color: #ffebc7;
+  }
+  .event-banner.danger {
+    background: rgba(28, 8, 16, 0.9);
+    border-color: rgba(255, 96, 131, 0.58);
+    color: #ffd8e2;
+  }
+  .event-banner.mint {
+    background: rgba(6, 24, 18, 0.9);
+    border-color: rgba(74, 242, 178, 0.55);
+    color: #d6ffef;
+  }
+
+  /* Hover Tooltip */
+  .mol-tooltip {
+    position: fixed;
+    z-index: 30;
+    pointer-events: none;
+    padding: 7px 10px;
+    border-radius: var(--radius-sm);
+    background: rgba(7, 11, 22, 0.94);
+    border: 1px solid rgba(148, 179, 255, 0.34);
+    backdrop-filter: blur(10px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+    max-width: 240px;
+    opacity: 0;
+    transform: translateY(4px);
+    transition: opacity 0.14s ease, transform 0.14s ease;
+  }
+  .mol-tooltip.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  .mol-tooltip-title {
+    font-size: 11.5px;
+    font-weight: 750;
+    color: #fff;
+    margin-bottom: 2px;
+  }
+  .mol-tooltip-body {
+    font-size: 10.5px;
+    color: var(--text-dim);
+    line-height: 1.35;
+  }
+
+  .zen-restore {
+    position: fixed;
+    bottom: 14px;
+    right: 14px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+  }
+  body.zen-mode .zen-restore {
+    opacity: 0.9;
+    pointer-events: auto;
+  }
+
+  .note-small {
+    font-size: 10.5px;
+    color: var(--text-muted);
+    line-height: 1.38;
+  }
+
+  .mode-only {
+    display: none;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .mode-only.visible {
+    display: flex;
+  }
+
+  @media (max-width: 960px) {
+    .top-left {
+      width: calc(100vw - 28px);
+      max-width: none;
+    }
+    .drawer {
+      top: auto;
+      bottom: 62px;
+      height: 50vh;
+      width: calc(100vw - 28px);
+    }
+    .hint-pill {
+      display: none;
+    }
+  }
+</style>
+</head>
+<body>
+<canvas id="sim-canvas"></canvas>
+
+<div class="hud">
+  <!-- Top-Left Telemetry Card -->
+  <div class="panel top-left">
+    <div class="brand-row">
+      <div class="brand-title-wrap">
+        <div class="brand-title">Helix</div>
+        <span id="mode-badge" class="mode-badge">Replication Fork</span>
+      </div>
+      <span id="mutation-badge" class="status-pill">Wild-Type</span>
+    </div>
+
+    <div class="telemetry-grid">
+      <div class="tele-card">
+        <span class="tele-label">Active Process</span>
+        <span id="tel-process" class="tele-val cyan">Unwinding &amp; Synth</span>
+      </div>
+      <div class="tele-card">
+        <span id="tel-count-label" class="tele-label">Base-Pairs</span>
+        <span id="tel-count" class="tele-val mint">0 bp</span>
+      </div>
+      <div class="tele-card">
+        <span id="tel-fidelity-label" class="tele-label">Fidelity</span>
+        <span id="tel-fidelity" class="tele-val amber">99.9%</span>
+      </div>
+    </div>
+
+    <div class="seq-strip">
+      <div class="seq-row">
+        <span id="seq-row1-tag" class="seq-tag">5'→3'</span>
+        <div id="seq-row1" class="seq-content">—</div>
+      </div>
+      <div class="seq-row">
+        <span id="seq-row2-tag" class="seq-tag">POLY</span>
+        <div id="seq-row2" class="seq-content">—</div>
+      </div>
+    </div>
+
+    <div class="legend-row">
+      <div class="base-legend">
+        <span><i class="base-dot" style="background:var(--base-a)"></i>A</span>
+        <span><i class="base-dot" style="background:var(--base-t)"></i>T</span>
+        <span><i class="base-dot" style="background:var(--base-c)"></i>C</span>
+        <span><i class="base-dot" style="background:var(--base-g)"></i>G</span>
+        <span><i class="base-dot" style="background:var(--base-u)"></i>U</span>
+      </div>
+      <span id="tel-sub-stat" style="color:var(--text-dim);">Okazaki: 0 sealed</span>
+    </div>
+  </div>
+
+  <!-- Right Control Drawer (330px) -->
+  <aside id="drawer" class="panel drawer">
+    <div class="drawer-tabs">
+      <button class="tab-btn active" data-tab="modes">Machinery</button>
+      <button class="tab-btn" data-tab="sequence">Sequence</button>
+      <button class="tab-btn" data-tab="visuals">Visuals</button>
+    </div>
+
+    <div class="drawer-body">
+      <!-- TAB 1: MODES & PRESETS -->
+      <div id="tab-modes" class="tab-pane active">
+        <div class="section">
+          <div class="section-title"><span>Molecular Machinery Mode</span></div>
+          <div class="mode-stack">
+            <button id="mode-btn-replication" class="mode-btn active" data-mode="replication">
+              <div>
+                <div class="mode-btn-title">1. DNA Replication Fork</div>
+                <div class="mode-btn-sub">Helicase · Pol III Leading &amp; Okazaki · Ligase</div>
+              </div>
+              <span class="mode-key">1</span>
+            </button>
+            <button id="mode-btn-dogma" class="mode-btn dogma" data-mode="central_dogma">
+              <div>
+                <div class="mode-btn-title">2. Central Dogma</div>
+                <div class="mode-btn-sub">RNA Pol Transcription → Ribosome Folding</div>
+              </div>
+              <span class="mode-key">2</span>
+            </button>
+            <button id="mode-btn-crispr" class="mode-btn crispr" data-mode="crispr">
+              <div>
+                <div class="mode-btn-title">3. CRISPR–Cas9 Editing</div>
+                <div class="mode-btn-sub">PAM Scan · R-Loop · HNH/RuvC DSB · NHEJ/HDR</div>
+              </div>
+              <span class="mode-key">3</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Lab Presets</span></div>
+          <div class="preset-grid">
+            <button class="preset-btn active" data-preset="replication_fork">
+              <span class="preset-name">Replication Fork</span>
+              <span class="preset-sub">Leading + Okazaki fragments</span>
+            </button>
+            <button class="preset-btn" data-preset="gfp_translation">
+              <span class="preset-name">GFP / Insulin</span>
+              <span class="preset-sub">Codon translation &amp; folding</span>
+            </button>
+            <button class="preset-btn" data-preset="sickle_cell">
+              <span class="preset-name">Sickle-Cell</span>
+              <span class="preset-sub">β-Globin GAG → GTG missense</span>
+            </button>
+            <button class="preset-btn" data-preset="crispr_nhej">
+              <span class="preset-name">CRISPR Knockout</span>
+              <span class="preset-sub">Cas9 DSB + NHEJ indel</span>
+            </button>
+            <button class="preset-btn" data-preset="crispr_hdr">
+              <span class="preset-name">CRISPR HDR Edit</span>
+              <span class="preset-sub">Precision donor template</span>
+            </button>
+            <button class="preset-btn" data-preset="frameshift">
+              <span class="preset-name">Frameshift Demo</span>
+              <span class="preset-sub">+1 insertion → premature STOP</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Mode-Specific Live Actions -->
+        <div class="section">
+          <div class="section-title">
+            <span>Active Lab Actions</span>
+            <span id="action-mode-hint" style="color:var(--accent-mint); font-family:var(--mono);">FORK</span>
+          </div>
+
+          <!-- Replication actions -->
+          <div id="ctrl-replication" class="mode-only visible">
+            <button id="btn-induce-mutation" class="btn danger">☢ Induce Point Mutation</button>
+            <label class="toggle-row">
+              <span>Pol III Proofreading (3'→5' Exo)</span>
+              <input id="chk-proofread" type="checkbox" checked />
+              <span class="switch"></span>
+            </label>
+            <p class="note-small">Induce a base-pair mismatch at the Pol III active site to watch 3'→5' exonuclease backtracking and mismatch excision.</p>
+          </div>
+
+          <!-- Central Dogma actions -->
+          <div id="ctrl-dogma" class="mode-only">
+            <div class="btn-row">
+              <button id="btn-dogma-missense" class="btn amber">⚡ Missense</button>
+              <button id="btn-dogma-nonsense" class="btn danger">⛔ Nonsense</button>
+            </div>
+            <div class="btn-row">
+              <button id="btn-dogma-silent" class="btn primary">◌ Silent</button>
+              <button id="btn-dogma-insert" class="btn violet">+1 Frameshift</button>
+            </div>
+            <button id="btn-dogma-restore" class="btn mint">↺ Restore Wild-Type Gene</button>
+            <p class="note-small">Click <strong>any DNA base</strong> directly on the helix to mutate it and watch the Ribosome and folding polypeptide respond live.</p>
+          </div>
+
+          <!-- CRISPR actions -->
+          <div id="ctrl-crispr" class="mode-only">
+            <div class="control-head" style="margin-bottom:2px;">
+              <span>Repair Pathway after DSB</span>
+              <span id="crispr-match-score" class="val" style="color:var(--accent-mint);">20/20 Match</span>
+            </div>
+            <div class="seg-row" id="repair-pathway-row">
+              <button class="seg-btn active rose" data-repair="nhej">NHEJ (Knockout)</button>
+              <button class="seg-btn mint" data-repair="hdr">HDR (Precision)</button>
+            </div>
+            <div class="btn-row">
+              <button id="btn-crispr-run" class="btn violet">✂ Scan &amp; Cleave</button>
+              <button id="btn-crispr-offtarget" class="btn amber">⚠ Test Mismatch</button>
+            </div>
+            <p class="note-small">Cas9 scans for <strong>5'-NGG-3'</strong> PAM sites, unwinds an R-loop to verify 20-nt sgRNA homology, then fires HNH &amp; RuvC scissors.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 2: SEQUENCE & EDITOR -->
+      <div id="tab-sequence" class="tab-pane">
+        <div class="section">
+          <div class="section-title">
+            <span>Gene Coding Sequence (5'→3')</span>
+            <span id="seq-len-label" style="font-family:var(--mono); color:var(--accent-cyan);">36 nt</span>
+          </div>
+          <input id="input-dna-seq" class="seq-input" type="text" maxlength="54" spellcheck="false" autocomplete="off" />
+          <div class="btn-row">
+            <button id="btn-apply-dna" class="btn primary">Apply Sequence</button>
+            <button id="btn-random-dna" class="btn">🎲 Random Gene</button>
+          </div>
+          <p class="note-small">Uses A, T, C, G. In Central Dogma mode, codons translate left-to-right from the first <strong>AUG</strong> start codon.</p>
+        </div>
+
+        <div class="section" id="sec-codon-inspector">
+          <div class="section-title">
+            <span>Codon Translation Inspector</span>
+            <span id="codon-count-badge" style="font-family:var(--mono); color:var(--accent-mint);">12 codons</span>
+          </div>
+          <div id="codon-grid" class="codon-grid"></div>
+          <p class="note-small">Click any codon pill above to cycle its wobble or first base and compare Silent vs Missense vs Nonsense impact.</p>
+        </div>
+
+        <div class="section">
+          <div class="section-title">
+            <span>CRISPR 20-nt Guide RNA (sgRNA)</span>
+            <span id="sgrna-len-badge" style="font-family:var(--mono); color:var(--accent-violet);">20 nt</span>
+          </div>
+          <input id="input-sgrna" class="seq-input" type="text" maxlength="20" spellcheck="false" autocomplete="off" />
+          <div class="btn-row">
+            <button id="btn-apply-sgrna" class="btn violet">Load Guide RNA</button>
+            <button id="btn-match-sgrna" class="btn mint">Auto-Match PAM</button>
+          </div>
+          <p class="note-small">Guide RNA pairs with the DNA strand directly upstream of a <strong>5'-NGG-3'</strong> PAM motif (uses A, U, C, G).</p>
+        </div>
+      </div>
+
+      <!-- TAB 3: VISUALS & PHYSICS -->
+      <div id="tab-visuals" class="tab-pane">
+        <div class="section">
+          <div class="section-title"><span>Molecular Speed &amp; Helix</span></div>
+          <div class="control-row">
+            <div class="control-head">
+              <span>Enzyme Catalysis Rate</span>
+              <span id="val-speed" class="val">1.00×</span>
+            </div>
+            <input id="sl-speed" class="mint" type="range" min="0.2" max="2.5" step="0.05" value="1.0" />
+          </div>
+          <div class="control-row">
+            <div class="control-head">
+              <span>3D Helix Spin Velocity</span>
+              <span id="val-spin" class="val">1.00×</span>
+            </div>
+            <input id="sl-spin" type="range" min="0" max="2.5" step="0.1" value="1.0" />
+          </div>
+          <div class="control-row">
+            <div class="control-head">
+              <span>Camera Zoom</span>
+              <span id="val-zoom" class="val">1.00×</span>
+            </div>
+            <input id="sl-zoom" type="range" min="0.6" max="1.9" step="0.05" value="1.0" />
+          </div>
+          <button id="btn-reset-cam" class="btn">◎ Recenter View</button>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Rendering Overlays</span></div>
+          <label class="toggle-row">
+            <span>3D Cylindrical Backbone Shading</span>
+            <input id="chk-3d" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Dashed Hydrogen Bonds (2 vs 3)</span>
+            <input id="chk-hbonds" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Enzyme Callout Labels</span>
+            <input id="chk-labels" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Ambient Nuclear Soup &amp; Bokeh</span>
+            <input id="chk-soup" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Base-Pair Letter Annotations</span>
+            <input id="chk-letters" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Biochemical Reference</span></div>
+          <p class="note-small">
+            <strong>Base Pairing:</strong> A═T (2 H-bonds), C≡G (3 H-bonds). RNA substitutes Uracil (U) for Thymine (T).<br/>
+            <strong>Polarity:</strong> DNA &amp; RNA polymerases only synthesize in the <strong>5' → 3'</strong> direction, requiring discontinuous <strong>Okazaki fragments</strong> on the lagging strand.<br/>
+            <strong>CRISPR–Cas9:</strong> Requires a <strong>5'-NGG-3' PAM</strong> (SpCas9) before R-loop unzipping and HNH/RuvC cleavage 3 bp upstream of PAM.
+          </p>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Event Notification Banner -->
+  <div id="event-banner" class="event-banner">
+    <span id="event-text">DNA Helicase unwinding double helix...</span>
+  </div>
+
+  <!-- Hover Scientific Tooltip -->
+  <div id="mol-tooltip" class="mol-tooltip">
+    <div id="mol-tooltip-title" class="mol-tooltip-title">DNA Helicase</div>
+    <div id="mol-tooltip-body" class="mol-tooltip-body">Unzips dsDNA hydrogen bonds ahead of the replication fork.</div>
+  </div>
+
+  <!-- Bottom-Left Hints -->
+  <div class="panel hint-pill">
+    <div><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> Modes · <kbd>Space</kbd> Pause · <kbd>M</kbd> Mutate/Cut · <kbd>H</kbd> Cinema</div>
+    <div id="hint-context"><strong>Click</strong> bases to mutate · <strong>Drag</strong> pan · <strong>Scroll</strong> zoom</div>
+  </div>
+
+  <!-- Bottom Transport Bar -->
+  <div class="panel bottom-bar">
+    <button id="btn-play" class="bar-btn active">⏸ Pause</button>
+    <button id="btn-reset" class="bar-btn">↺ Reset</button>
+    <div class="bar-divider"></div>
+    <button class="bar-btn speed-btn" data-speed="0.25">0.25×</button>
+    <button class="bar-btn speed-btn" data-speed="0.5">0.5×</button>
+    <button class="bar-btn speed-btn active" data-speed="1">1×</button>
+    <button class="bar-btn speed-btn" data-speed="2">2×</button>
+    <div class="bar-divider"></div>
+    <button id="btn-sound" class="bar-btn">🔇 Audio</button>
+    <button id="btn-toggle-drawer" class="bar-btn active">Controls</button>
+    <button id="btn-zen" class="bar-btn" title="Hide HUD (H)">Cinema</button>
+  </div>
+
+  <button id="btn-zen-restore" class="panel bar-btn zen-restore">Show HUD (H)</button>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // =========================================================================
+  // BIOCHEMISTRY CONSTANTS & FULL 64-CODON GENETIC CODE
+  // =========================================================================
+  const BASE_COLOR = {
+    A: '#4af2b2', // Mint
+    T: '#ffbe5c', // Amber
+    C: '#58dcff', // Cyan
+    G: '#ff6083', // Coral-Rose
+    U: '#c490ff'  // Violet-Lavender for RNA Uracil
+  };
+
+  const BASE_GLOW = {
+    A: 'rgba(74, 242, 178, 0.48)',
+    T: 'rgba(255, 190, 92, 0.48)',
+    C: 'rgba(88, 220, 255, 0.48)',
+    G: 'rgba(255, 96, 131, 0.48)',
+    U: 'rgba(196, 144, 255, 0.52)'
+  };
+
+  const COMP_DNA = { A: 'T', T: 'A', C: 'G', G: 'C' };
+  const COMP_RNA = { A: 'U', T: 'A', C: 'G', G: 'C', U: 'A' };
+  const DNA_TO_MRNA = { A: 'A', T: 'U', C: 'C', G: 'G' }; // coding strand -> mRNA
+  const CYCLE_DNA = { A: 'T', T: 'C', C: 'G', G: 'A' };
+  const H_BONDS = { A: 2, T: 2, U: 2, C: 3, G: 3 };
+
+  // Complete 64-codon genetic code (RNA triplets -> 3-letter amino acid & property)
+  const CODON_TABLE = {
+    UUU:'Phe', UUC:'Phe', UUA:'Leu', UUG:'Leu',
+    UCU:'Ser', UCC:'Ser', UCA:'Ser', UCG:'Ser',
+    UAU:'Tyr', UAC:'Tyr', UAA:'STOP', UAG:'STOP',
+    UGU:'Cys', UGC:'Cys', UGA:'STOP', UGG:'Trp',
+    CUU:'Leu', CUC:'Leu', CUA:'Leu', CUG:'Leu',
+    CCU:'Pro', CCC:'Pro', CCA:'Pro', CCG:'Pro',
+    CAU:'His', CAC:'His', CAA:'Gln', CAG:'Gln',
+    CGU:'Arg', CGC:'Arg', CGA:'Arg', CGG:'Arg',
+    AUU:'Ile', AUC:'Ile', AUA:'Ile', AUG:'Met',
+    ACU:'Thr', ACC:'Thr', ACA:'Thr', ACG:'Thr',
+    AAU:'Asn', AAC:'Asn', AAA:'Lys', AAG:'Lys',
+    AGU:'Ser', AGC:'Ser', AGA:'Arg', AGG:'Arg',
+    GUU:'Val', GUC:'Val', GUA:'Val', GUG:'Val',
+    GCU:'Ala', GCC:'Ala', GCA:'Ala', GCG:'Ala',
+    GAU:'Asp', GAC:'Asp', GAA:'Glu', GAG:'Glu',
+    GGU:'Gly', GGC:'Gly', GGA:'Gly', GGG:'Gly'
+  };
+
+  // Amino-acid biochemical classification for authentic color-coded folding
+  const AA_PROPS = {
+    Met: { color: '#4af2b2', type: 'Start / Hydrophobic', hydro: 0.7 },
+    Val: { color: '#ffbe5c', type: 'Hydrophobic', hydro: 0.9 },
+    Leu: { color: '#f5a649', type: 'Hydrophobic', hydro: 0.85 },
+    Ile: { color: '#f2b863', type: 'Hydrophobic', hydro: 0.9 },
+    Ala: { color: '#ffd385', type: 'Hydrophobic', hydro: 0.5 },
+    Phe: { color: '#e89643', type: 'Aromatic Hydrophobic', hydro: 0.95 },
+    Trp: { color: '#d9843b', type: 'Aromatic Hydrophobic', hydro: 0.85 },
+    Pro: { color: '#c490ff', type: 'Helix Breaker / Cyclic', hydro: 0.2 },
+    Gly: { color: '#9ab4dc', type: 'Flexible / Special', hydro: 0.0 },
+    Cys: { color: '#ffe570', type: 'Disulfide-Forming', hydro: 0.6 },
+    Ser: { color: '#58dcff', type: 'Polar Uncharged', hydro: -0.4 },
+    Thr: { color: '#4ac8f5', type: 'Polar Uncharged', hydro: -0.3 },
+    Asn: { color: '#78e6ff', type: 'Polar Uncharged', hydro: -0.6 },
+    Gln: { color: '#61d6f2', type: 'Polar Uncharged', hydro: -0.6 },
+    Tyr: { color: '#8ad8f0', type: 'Polar Aromatic', hydro: -0.2 },
+    Lys: { color: '#6e8cff', type: 'Basic (+)', hydro: -0.9 },
+    Arg: { color: '#5b7cff', type: 'Basic (+)', hydro: -0.95 },
+    His: { color: '#8ca4ff', type: 'Basic (+)', hydro: -0.5 },
+    Asp: { color: '#ff6083', type: 'Acidic (−)', hydro: -0.9 },
+    Glu: { color: '#ff7596', type: 'Acidic (−)', hydro: -0.9 },
+    STOP:{ color: '#ff4268', type: 'Release Factor (STOP)', hydro: 0 }
+  };
+
+  // Preset Gene Sequences
+  const PRESETS = {
+    replication_fork: {
+      mode: 'replication',
+      name: 'Replication Fork',
+      dna: 'ATGGCCTGAACGTTAGCCGATCGTACGTAAGGCTAG',
+      wildDna: 'ATGGCCTGAACGTTAGCCGATCGTACGTAAGGCTAG',
+      proofread: true,
+      banner: 'Replication Fork active: Helicase unzips dsDNA; Pol III synthesizes Leading & Okazaki strands.',
+      bannerType: 'info'
+    },
+    gfp_translation: {
+      mode: 'central_dogma',
+      name: 'GFP / Insulin Translation',
+      // Met-Val-Ser-Lys-Gly-Glu-Glu-Leu-Phe-Thr-Gly-STOP (authentic GFP N-terminus!)
+      dna: 'ATGGTGAGCAAGGGCGAGGAGCTGTTCACCGGGTAA',
+      wildDna: 'ATGGTGAGCAAGGGCGAGGAGCTGTTCACCGGGTAA',
+      banner: 'GFP N-Terminus loaded: RNA Pol transcribes mRNA → Ribosome folds Met–Val–Ser–Lys–Gly...',
+      bannerType: 'mint'
+    },
+    sickle_cell: {
+      mode: 'central_dogma',
+      name: 'Sickle-Cell Mutation',
+      // Human HBB N-terminus: Met-Val-His-Leu-Thr-Pro-Glu-Glu-Lys-Ser-Ala-STOP (codon 7 GAG -> GTG = Glu -> Val)
+      wildDna: 'ATGGTGCACCTGACTCCTGAGGAGAAGTCTGCCTAA',
+      dna:     'ATGGTGCACCTGACTCCTGTGGAGAAGTCTGCCTAA',
+      banner: 'Sickle-Cell β-Globin: Single base A→T at codon 7 (GAG→GTG) mutates Glu → Val (Missense)!',
+      bannerType: 'warn'
+    },
+    crispr_nhej: {
+      mode: 'crispr',
+      name: 'CRISPR Knockout (NHEJ)',
+      // Contains clear 5'-TGG-3' PAM at index 24..26, target 20-nt at index 4..23
+      dna: 'GCTAGTGCACCTGACTCCTGAGGAUGGCTAGTCGTA'.replace(/U/g, 'T'),
+      wildDna: 'GCTAGTGCACCTGACTCCTGAGGATGGCTAGTCGTA',
+      sgrna: 'GUGCACCUGACUCCUGAGGA',
+      repair: 'nhej',
+      hdrDonor: 'GAGGAGAAG',
+      banner: 'CRISPR-Cas9 Knockout: Scanning for 5\'-TGG-3\' PAM → HNH/RuvC DSB → NHEJ indel knockout.',
+      bannerType: 'danger'
+    },
+    crispr_hdr: {
+      mode: 'crispr',
+      name: 'CRISPR Precision Edit (HDR)',
+      // Sickle-Cell HBB target with 5'-AGG-3' PAM at index 24..26; target contains mutant GTG (Val)
+      dna: 'GCTAGTGCACCTGACTCCTGTGGAGGAGTCTGCCTA',
+      wildDna: 'GCTAGTGCACCTGACTCCTGTGGAGGAGTCTGCCTA',
+      sgrna: 'GUGCACCUGACUCCUGUGGA',
+      repair: 'hdr',
+      hdrDonor: 'CCTGAGGAG', // Corrects CCTGTGGAG -> CCTGAGGAG (Val -> Glu!)
+      banner: 'CRISPR HDR Precision Edit: Targeting Sickle-Cell GTG → repairing to wild-type GAG via donor template!',
+      bannerType: 'mint'
+    },
+    frameshift: {
+      mode: 'central_dogma',
+      name: 'Frameshift Insertion',
+      // GFP N-terminus with +1 T insertion right after codon 3 -> creates premature TGA STOP!
+      wildDna: 'ATGGTGAGCAAGGGCGAGGAGCTGTTCACCGGGTAA',
+      dna:     'ATGGTGAGCTAAGGGCGAGGAGCTGTTCACCGGGTA',
+      banner: 'Frameshift (+1 T after codon 3): Reading frame shifted → premature UAA STOP codon (Nonsense)!',
+      bannerType: 'danger'
+    }
+  };
+
+  // =========================================================================
+  // AUDIO ENGINE (Web Audio API — Muted by Default)
+  // =========================================================================
+  const AudioEngine = {
+    ctx: null,
+    enabled: false,
+    lastNoteTime: 0,
+    noteFreq: {
+      A: 523.25, // C5
+      T: 659.25, // E5
+      U: 622.25, // Eb5 / warm RNA timbre
+      C: 783.99, // G5
+      G: 880.00  // A5
+    },
+    init() {
+      if (!this.ctx) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (AC) this.ctx = new AC();
+      }
+      if (this.ctx && this.ctx.state === 'suspended') {
+        this.ctx.resume().catch(() => {});
+      }
+    },
+    toggle() {
+      this.enabled = !this.enabled;
+      if (this.enabled) {
+        this.init();
+        this.playBaseNote('A', 0.12);
+        setTimeout(() => this.playBaseNote('C', 0.1), 85);
+      }
+      return this.enabled;
+    },
+    playBaseNote(base, vol = 0.09) {
+      if (!this.enabled || !this.ctx) return;
+      const now = this.ctx.currentTime;
+      if (now - this.lastNoteTime < 0.045) return;
+      this.lastNoteTime = now;
+
+      const freq = this.noteFreq[base] || 587.33;
+      const osc = this.ctx.createOscillator();
+      const harm = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      const harmGain = this.ctx.createGain();
+
+      // Delicate marimba resonance (fundamental + 4th harmonic wooden knock)
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, now);
+      harm.type = 'triangle';
+      harm.frequency.setValueAtTime(freq * 3.98, now);
+
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.exponentialRampToValueAtTime(vol, now + 0.008);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.24);
+
+      harmGain.gain.setValueAtTime(0.0001, now);
+      harmGain.gain.exponentialRampToValueAtTime(vol * 0.22, now + 0.004);
+      harmGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.055);
+
+      osc.connect(gain);
+      harm.connect(harmGain);
+      harmGain.connect(gain);
+      gain.connect(this.ctx.destination);
+
+      osc.start(now);
+      harm.start(now);
+      osc.stop(now + 0.26);
+      harm.stop(now + 0.07);
+    },
+    playPeptideChime(isMut = false) {
+      if (!this.enabled || !this.ctx) return;
+      const now = this.ctx.currentTime;
+      const freqs = isMut ? [311.13, 440.0] : [587.33, 880.0];
+      freqs.forEach((f, idx) => {
+        const osc = this.ctx.createOscillator();
+        const g = this.ctx.createGain();
+        osc.type = isMut ? 'triangle' : 'sine';
+        osc.frequency.setValueAtTime(f, now + idx * 0.03);
+        g.gain.setValueAtTime(0.0001, now + idx * 0.03);
+        g.gain.exponentialRampToValueAtTime(0.07, now + idx * 0.03 + 0.012);
+        g.gain.exponentialRampToValueAtTime(0.0001, now + idx * 0.03 + 0.3);
+        osc.connect(g);
+        g.connect(this.ctx.destination);
+        osc.start(now + idx * 0.03);
+        osc.stop(now + idx * 0.03 + 0.32);
+      });
+    },
+    playSnip() {
+      if (!this.enabled || !this.ctx) return;
+      const now = this.ctx.currentTime;
+      // Crisp scissor transient using filtered noise burst + metallic ping
+      const bufSize = Math.floor(this.ctx.sampleRate * 0.09);
+      const buffer = this.ctx.createBuffer(1, bufSize, this.ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < bufSize; i++) {
+        data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufSize * 0.18));
+      }
+      const noise = this.ctx.createBufferSource();
+      noise.buffer = buffer;
+
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.frequency.setValueAtTime(3400, now);
+      filter.frequency.exponentialRampToValueAtTime(1100, now + 0.08);
+      filter.Q.value = 3.2;
+
+      const nGain = this.ctx.createGain();
+      nGain.gain.setValueAtTime(0.28, now);
+      nGain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+
+      noise.connect(filter);
+      filter.connect(nGain);
+      nGain.connect(this.ctx.destination);
+      noise.start(now);
+
+      // Dual-blade metallic click
+      [1850, 2680].forEach((f, i) => {
+        const osc = this.ctx.createOscillator();
+        const g = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(f, now + i * 0.015);
+        osc.frequency.exponentialRampToValueAtTime(f * 0.52, now + i * 0.015 + 0.09);
+        g.gain.setValueAtTime(0.11, now + i * 0.015);
+        g.gain.exponentialRampToValueAtTime(0.0001, now + i * 0.015 + 0.11);
+        osc.connect(g);
+        g.connect(this.ctx.destination);
+        osc.start(now + i * 0.015);
+        osc.stop(now + i * 0.015 + 0.12);
+      });
+    },
+    playAlert(type = 'warn') {
+      if (!this.enabled || !this.ctx) return;
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const g = this.ctx.createGain();
+      osc.type = type === 'repair' ? 'sine' : 'sawtooth';
+      const f0 = type === 'repair' ? 523.25 : 220;
+      const f1 = type === 'repair' ? 783.99 : 165;
+      osc.frequency.setValueAtTime(f0, now);
+      osc.frequency.exponentialRampToValueAtTime(f1, now + 0.18);
+      g.gain.setValueAtTime(0.0001, now);
+      g.gain.exponentialRampToValueAtTime(0.07, now + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, now + 0.22);
+      osc.connect(g);
+      g.connect(this.ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.24);
+    }
+  };
+
+  // =========================================================================
+  // GLOBAL SIMULATION STATE
+  // =========================================================================
+  const canvas = document.getElementById('sim-canvas');
+  const ctx = canvas.getContext('2d');
+
+  let W = window.innerWidth;
+  let H = window.innerHeight;
+  let DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+  const state = {
+    mode: 'replication', // 'replication' | 'central_dogma' | 'crispr'
+    preset: 'replication_fork',
+    playing: true,
+    speed: 1.0,
+    spinRate: 1.0,
+    time: 0,
+    helixPhase: 0,
+
+    // Camera
+    camX: 0,
+    camY: 0,
+    zoom: 1.0,
+    dragging: false,
+    dragStartX: 0,
+    dragStartY: 0,
+    camStartX: 0,
+    camStartY: 0,
+    pointerX: 0,
+    pointerY: 0,
+    pointerMoved: false,
+
+    // Visual toggles
+    show3D: true,
+    showHBonds: true,
+    showLabels: true,
+    showSoup: true,
+    showLetters: true,
+
+    // Active gene DNA (coding strand 5'->3')
+    dna: PRESETS.replication_fork.dna,
+    wildDna: PRESETS.replication_fork.wildDna,
+
+    // Ambient soup particles
+    soup: [],
+    sparks: [],
+
+    // Interactive hitboxes rebuilt each frame for clicks & hover tooltips
+    hitBases: [],
+    hitTooltips: [],
+
+    // Banner timer
+    bannerTimer: 0
+  };
+
+  // =========================================================================
+  // MODE 1 STATE: DNA REPLICATION FORK
+  // =========================================================================
+  const rep = {
+    bpSpacing: 26,
+    scrollBp: 0,
+    basePool: [], // cyclic sequence of parental bases
+    leadingBuilt: 0,
+    totalBpProcessed: 0,
+    okazakiSealed: 0,
+    proofreadEnabled: true,
+    mismatchesTotal: 0,
+    mismatchesRepaired: 0,
+    mismatchesPersisted: 0,
+    activeMismatch: null, // { bpIndex, wrongBase, trueBase, phase: 'alert'|'excising'|'repairing', timer }
+    persistedMismatches: new Map(), // bpIndex -> wrongBase
+    flyingNts: [], // free dNTPs pulled into leading or lagging Pol III
+    okazakiLength: 7,
+    ligaseFlash: 0,
+    lastSynthBp: -1,
+    lastLaggingBp: -1
+  };
+
+  function initReplication() {
+    rep.scrollBp = 0;
+    rep.leadingBuilt = 0;
+    rep.totalBpProcessed = 0;
+    rep.okazakiSealed = 0;
+    rep.mismatchesTotal = 0;
+    rep.mismatchesRepaired = 0;
+    rep.mismatchesPersisted = 0;
+    rep.activeMismatch = null;
+    rep.persistedMismatches.clear();
+    rep.flyingNts = [];
+    rep.ligaseFlash = 0;
+    rep.lastSynthBp = -1;
+    rep.lastLaggingBp = -1;
+    rep.basePool = [];
+    const src = sanitizeDna(state.dna) || 'ATGGCCTGAACGTTAGCCGATCGTACGTAAGGCTAG';
+    for (let i = 0; i < 400; i++) {
+      rep.basePool.push(src[i % src.length]);
+    }
+  }
+
+  function getRepBase(idx) {
+    const n = rep.basePool.length;
+    return rep.basePool[((idx % n) + n) % n];
+  }
+
+  // =========================================================================
+  // MODE 2 STATE: CENTRAL DOGMA (TRANSCRIPTION -> RIBOSOME TRANSLATION)
+  // =========================================================================
+  const dogma = {
+    rnaPolPos: 0,         // float bp index along DNA (0 .. dna.length)
+    mrnaBases: [],        // transcribed mRNA nucleotides so far
+    riboCodonIdx: -1,     // active codon index being translated
+    riboStepProg: 0,      // 0..1 animation within current codon step
+    startCodonOffset: 0,  // nt index of first AUG in mRNA
+    translatedAAs: [],    // [{ aa, wildAa, codon, mutated, isStop, index }]
+    chainNodes: [],       // physics particles for live folding polypeptide
+    activeTRNA: null,     // { anticodon, aa, progress, phase: 'enter'|'dock'|'exit' }
+    ejectingTRNA: null,   // { anticodon, progress }
+    translationDone: false,
+    impactType: 'Wild-Type', // Wild-Type | Silent | Missense | Nonsense | Frameshift
+    impactSeverity: 'ok',
+    mutatedIndices: new Set(),
+    lastTranscribedIdx: -1
+  };
+
+  function translateSequence(dnaStr) {
+    const clean = sanitizeDna(dnaStr);
+    const mrna = clean.split('').map(b => DNA_TO_MRNA[b] || 'A').join('');
+    const augIdx = mrna.indexOf('AUG');
+    const offset = augIdx >= 0 ? augIdx : 0;
+    const codons = [];
+    for (let i = offset; i + 2 < mrna.length; i += 3) {
+      const tri = mrna.slice(i, i + 3);
+      const aa = CODON_TABLE[tri] || 'Gly';
+      codons.push({ codon: tri, aa, ntStart: i, isStop: aa === 'STOP' });
+      if (aa === 'STOP') break;
+    }
+    return { mrna, offset, codons };
+  }
+
+  function analyzeDogmaImpact() {
+    const cur = translateSequence(state.dna);
+    const wild = translateSequence(state.wildDna);
+    dogma.mutatedIndices.clear();
+
+    // Detect frameshift if length differs or insertion shifted alignment
+    const isSameLen = state.dna.length === state.wildDna.length;
+    let baseDiffs = 0;
+    const minL = Math.min(state.dna.length, state.wildDna.length);
+    for (let i = 0; i < minL; i++) {
+      if (state.dna[i] !== state.wildDna[i]) {
+        baseDiffs++;
+        dogma.mutatedIndices.add(i);
+      }
+    }
+    if (!isSameLen) {
+      for (let i = minL; i < state.dna.length; i++) dogma.mutatedIndices.add(i);
+    }
+
+    // Check if many consecutive codons diverge (classic frameshift signature even if trimmed to same length)
+    let aaDiffs = 0;
+    let firstDiffCodon = -1;
+    const minC = Math.min(cur.codons.length, wild.codons.length);
+    for (let c = 0; c < minC; c++) {
+      if (cur.codons[c].aa !== wild.codons[c].aa) {
+        aaDiffs++;
+        if (firstDiffCodon < 0) firstDiffCodon = c;
+      }
+    }
+
+    const curHasEarlyStop = cur.codons.length < wild.codons.length && cur.codons.some(c => c.isStop);
+    const frameshiftLike = !isSameLen || (aaDiffs >= 3 && baseDiffs >= 4);
+
+    if (baseDiffs === 0 && isSameLen) {
+      dogma.impactType = 'Wild-Type';
+      dogma.impactSeverity = 'ok';
+    } else if (frameshiftLike) {
+      dogma.impactType = curHasEarlyStop ? 'Frameshift → STOP' : 'Frameshift';
+      dogma.impactSeverity = 'danger';
+    } else if (curHasEarlyStop) {
+      dogma.impactType = 'Nonsense (STOP!)';
+      dogma.impactSeverity = 'danger';
+    } else if (aaDiffs > 0) {
+      dogma.impactType = 'Missense Mutation';
+      dogma.impactSeverity = 'warn';
+    } else {
+      dogma.impactType = 'Silent Mutation';
+      dogma.impactSeverity = 'silent';
+    }
+    return { cur, wild };
+  }
+
+  function initDogma(keepScroll = false) {
+    const { cur, wild } = analyzeDogmaImpact();
+    if (!keepScroll) {
+      dogma.rnaPolPos = 0;
+      dogma.mrnaBases = [];
+      dogma.riboCodonIdx = -1;
+      dogma.riboStepProg = 0;
+      dogma.translatedAAs = [];
+      dogma.chainNodes = [];
+      dogma.activeTRNA = null;
+      dogma.ejectingTRNA = null;
+      dogma.translationDone = false;
+      dogma.lastTranscribedIdx = -1;
+    } else {
+      // Live update when user clicks a base mid-translation!
+      dogma.mrnaBases = cur.mrna.slice(0, Math.min(dogma.mrnaBases.length, cur.mrna.length)).split('');
+      const prevCount = dogma.translatedAAs.length;
+      dogma.translatedAAs = [];
+      const limit = Math.min(prevCount, cur.codons.length);
+      for (let i = 0; i < limit; i++) {
+        const c = cur.codons[i];
+        const w = wild.codons[i];
+        dogma.translatedAAs.push({
+          aa: c.aa,
+          wildAa: w ? w.aa : null,
+          codon: c.codon,
+          mutated: !w || c.aa !== w.aa,
+          isStop: c.isStop,
+          index: i
+        });
+      }
+      // Trim chain nodes if premature STOP shortened protein
+      while (dogma.chainNodes.length > dogma.translatedAAs.filter(x => !x.isStop).length) {
+        dogma.chainNodes.pop();
+      }
+      if (dogma.translatedAAs.some(x => x.isStop)) {
+        dogma.translationDone = true;
+      } else if (dogma.riboCodonIdx >= cur.codons.length) {
+        dogma.riboCodonIdx = Math.max(0, cur.codons.length - 1);
+        dogma.translationDone = false;
+      }
+    }
+    dogma.startCodonOffset = cur.offset;
+    renderCodonGrid();
+  }
+
+  // =========================================================================
+  // MODE 3 STATE: CRISPR-CAS9 GENE EDITING
+  // =========================================================================
+  const crispr = {
+    sgrna: PRESETS.crispr_nhej.sgrna,
+    repairMode: 'nhej', // 'nhej' | 'hdr'
+    hdrDonor: 'CCTGAGGAG',
+    phase: 'SCANNING', // 'SCANNING' | 'PAM_CHECK' | 'RLOOP' | 'CLEAVAGE' | 'REPAIR' | 'COMPLETE'
+    phaseTimer: 0,
+    casXIdx: 2.0,      // current base-pair position of Cas9 center
+    targetPamIdx: -1,  // index of matched 5'-NGG-3' PAM
+    pamSites: [],      // all 5'-NGG-3' indices in current DNA
+    checkedPams: new Set(),
+    rloopProg: 0,      // 0..1 R-loop unwinding progress
+    cleaveFlash: 0,    // 0..1 laser scissor flash
+    dsbGap: 0,         // 0..1 physical separation of cleaved DNA ends
+    cutSiteIdx: -1,    // 3 bp upstream of PAM
+    repairProg: 0,     // 0..1 NHEJ or HDR animation progress
+    matchCount: 20,    // out of 20 nt
+    editedIndices: new Set(),
+    indelSummary: '',
+    donorYOffset: 160,
+    casRetractY: 0,
+    scanDir: 1
+  };
+
+  function findPamSites(dnaStr) {
+    const sites = [];
+    for (let i = 20; i <= dnaStr.length - 3; i++) {
+      if (dnaStr[i + 1] === 'G' && dnaStr[i + 2] === 'G') {
+        sites.push(i); // 5'-NGG-3' starts at i
+      }
+    }
+    return sites;
+  }
+
+  function scoreGuideAtPam(dnaStr, sgrnaStr, pamIdx) {
+    const targetStart = pamIdx - 20;
+    if (targetStart < 0) return { matches: 0, mismatches: [] };
+    let matches = 0;
+    const mismatches = [];
+    for (let k = 0; k < 20; k++) {
+      const dnaBase = dnaStr[targetStart + k];
+      const expectedRna = DNA_TO_MRNA[dnaBase] || 'A';
+      const guideBase = sgrnaStr[k] || 'A';
+      if (guideBase === expectedRna) {
+        matches++;
+      } else {
+        mismatches.push(targetStart + k);
+      }
+    }
+    return { matches, mismatches };
+  }
+
+  function autoMatchGuideToBestPam() {
+    const sites = findPamSites(state.dna);
+    if (sites.length > 0) {
+      const pam = sites[0];
+      const seg = state.dna.slice(pam - 20, pam);
+      crispr.sgrna = seg.split('').map(b => DNA_TO_MRNA[b] || 'A').join('');
+      const inp = document.getElementById('input-sgrna');
+      if (inp) inp.value = crispr.sgrna;
+    }
+  }
+
+  function initCrispr(resetDnaToWild = false) {
+    if (resetDnaToWild && state.wildDna) {
+      state.dna = state.wildDna;
+    }
+    crispr.pamSites = findPamSites(state.dna);
+    crispr.phase = 'SCANNING';
+    crispr.phaseTimer = 0;
+    crispr.casXIdx = 5.5;
+    crispr.targetPamIdx = -1;
+    crispr.checkedPams.clear();
+    crispr.rloopProg = 0;
+    crispr.cleaveFlash = 0;
+    crispr.dsbGap = 0;
+    crispr.cutSiteIdx = -1;
+    crispr.repairProg = 0;
+    crispr.editedIndices.clear();
+    crispr.indelSummary = '';
+    crispr.donorYOffset = 150;
+    crispr.casRetractY = 0;
+    crispr.scanDir = 1;
+
+    // Precompute best match score for display
+    let best = 0;
+    crispr.pamSites.forEach(p => {
+      const s = scoreGuideAtPam(state.dna, crispr.sgrna, p).matches;
+      if (s > best) best = s;
+    });
+    crispr.matchCount = best;
+    const scoreEl = document.getElementById('crispr-match-score');
+    if (scoreEl) {
+      scoreEl.textContent = best + '/20 Match';
+      scoreEl.style.color = best >= 18 ? 'var(--accent-mint)' : 'var(--accent-amber)';
+    }
+  }
+
+  // =========================================================================
+  // HELPERS
+  // =========================================================================
+  function sanitizeDna(str) {
+    return (str || '').toUpperCase().replace(/[^ATCG]/g, '');
+  }
+  function sanitizeRna(str) {
+    return (str || '').toUpperCase().replace(/T/g, 'U').replace(/[^AUCG]/g, '');
+  }
+
+  function showBanner(msg, type = 'info', duration = 4.6) {
+    const el = document.getElementById('event-banner');
+    const txt = document.getElementById('event-text');
+    if (!el || !txt) return;
+    txt.textContent = msg;
+    el.className = 'event-banner visible' + (type !== 'info' ? ' ' + type : '');
+    state.bannerTimer = duration;
+  }
+
+  function spawnSpark(x, y, color, count = 8, speed = 75) {
+    for (let i = 0; i < count; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = (0.35 + Math.random() * 0.85) * speed;
+      state.sparks.push({
+        x, y,
+        vx: Math.cos(ang) * spd,
+        vy: Math.sin(ang) * spd,
+        life: 0.4 + Math.random() * 0.45,
+        maxLife: 0.85,
+        r: 1.5 + Math.random() * 2.5,
+        color
+      });
+    }
+  }
+
+  function initSoup() {
+    state.soup = [];
+    const bases = ['A', 'T', 'C', 'G'];
+    for (let i = 0; i < 62; i++) {
+      const isNt = i < 28;
+      state.soup.push({
+        x: (Math.random() - 0.5) * 1600,
+        y: (Math.random() - 0.5) * 950,
+        vx: (Math.random() - 0.5) * 18,
+        vy: (Math.random() - 0.5) * 18,
+        r: isNt ? 5.5 + Math.random() * 3 : 2 + Math.random() * 14,
+        base: bases[i % 4],
+        isNt,
+        alpha: isNt ? 0.42 : 0.04 + Math.random() * 0.08,
+        phase: Math.random() * Math.PI * 2
+      });
+    }
+  }
+
+  // =========================================================================
+  // CANVAS RESIZE & WORLD TRANSFORMS
+  // =========================================================================
+  function resize() {
+    W = window.innerWidth;
+    H = window.innerHeight;
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.floor(W * DPR);
+    canvas.height = Math.floor(H * DPR);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  function worldToScreen(wx, wy) {
+    // Shift visual center slightly left when drawer is open on desktop
+    const drawerOpen = !document.getElementById('drawer').classList.contains('collapsed') && !document.body.classList.contains('zen-mode') && W > 960;
+    const cx = drawerOpen ? (W - 330) * 0.5 : W * 0.5;
+    const cy = H * 0.52;
+    return {
+      x: cx + (wx + state.camX) * state.zoom,
+      y: cy + (wy + state.camY) * state.zoom
+    };
+  }
+
+  function screenToWorld(sx, sy) {
+    const drawerOpen = !document.getElementById('drawer').classList.contains('collapsed') && !document.body.classList.contains('zen-mode') && W > 960;
+    const cx = drawerOpen ? (W - 330) * 0.5 : W * 0.5;
+    const cy = H * 0.52;
+    return {
+      x: (sx - cx) / state.zoom - state.camX,
+      y: (sy - cy) / state.zoom - state.camY
+    };
+  }
+
+  // =========================================================================
+  // DRAWING PRIMITIVES (3D HELIX, ENZYMES, NUCLEOTIDES, LABELS)
+  // =========================================================================
+  function drawBackground() {
+    // Deep cosmic cellular navy #040711
+    const grad = ctx.createRadialGradient(W * 0.42, H * 0.48, 40, W * 0.45, H * 0.5, Math.max(W, H) * 0.85);
+    grad.addColorStop(0, '#0a1226');
+    grad.addColorStop(0.55, '#050915');
+    grad.addColorStop(1, '#040711');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+
+    // Subtle scientific grid
+    ctx.save();
+    ctx.strokeStyle = 'rgba(110, 150, 255, 0.032)';
+    ctx.lineWidth = 1;
+    const step = 48 * state.zoom;
+    const ox = ((W * 0.5 + state.camX * state.zoom) % step + step) % step;
+    const oy = ((H * 0.5 + state.camY * state.zoom) % step + step) % step;
+    ctx.beginPath();
+    for (let x = ox; x < W; x += step) {
+      ctx.moveTo(x, 0); ctx.lineTo(x, H);
+    }
+    for (let y = oy; y < H; y += step) {
+      ctx.moveTo(0, y); ctx.lineTo(W, y);
+    }
+    ctx.stroke();
+    ctx.restore();
+
+    if (!state.showSoup) return;
+
+    // Ambient nuclear soup bokeh & drifting free nucleotides
+    ctx.save();
+    for (const p of state.soup) {
+      const s = worldToScreen(p.x, p.y);
+      if (s.x < -60 || s.x > W + 60 || s.y < -60 || s.y > H + 60) continue;
+      if (p.isNt) {
+        const rad = p.r * state.zoom;
+        ctx.fillStyle = BASE_GLOW[p.base];
+        ctx.globalAlpha = p.alpha * 0.55;
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, rad * 1.9, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.globalAlpha = p.alpha * 1.2;
+        ctx.fillStyle = BASE_COLOR[p.base];
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, rad * 0.85, 0, Math.PI * 2);
+        ctx.fill();
+
+        if (state.showLetters && state.zoom > 0.75) {
+          ctx.fillStyle = '#040711';
+          ctx.font = `700 ${Math.max(7, Math.floor(8.5 * state.zoom))}px ${getMono()}`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(p.base, s.x, s.y + 0.5);
+        }
+      } else {
+        ctx.globalAlpha = p.alpha;
+        ctx.fillStyle = '#6da6ff';
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, p.r * state.zoom, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    ctx.restore();
+  }
+
+  function getMono() {
+    return 'ui-monospace, Consolas, Menlo, monospace';
+  }
+
+  function drawGlowingBackbone(points, colorA, colorB, width = 6.5) {
+    if (points.length < 2) return;
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    // Outer ambient glow
+    ctx.strokeStyle = colorB;
+    ctx.lineWidth = (width + 6) * state.zoom;
+    ctx.globalAlpha = 0.22;
+    ctx.beginPath();
+    ctx.moveTo(points[0].x, points[0].y);
+    for (let i = 1; i < points.length; i++) ctx.lineTo(points[i].x, points[i].y);
+    ctx.stroke();
+
+    // Core cylinder
+    ctx.strokeStyle = colorA;
+    ctx.lineWidth = width * state.zoom;
+    ctx.globalAlpha = 0.92;
+    ctx.stroke();
+
+    // 3D specular highlight ridge
+    if (state.show3D) {
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.52)';
+      ctx.lineWidth = Math.max(1.2, width * 0.28 * state.zoom);
+      ctx.globalAlpha = 0.72;
+      ctx.beginPath();
+      ctx.moveTo(points[0].x, points[0].y - 1.2 * state.zoom);
+      for (let i = 1; i < points.length; i++) ctx.lineTo(points[i].x, points[i].y - 1.2 * state.zoom);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawBaseRung(x1, y1, x2, y2, base1, base2, depthFactor, opts = {}) {
+    const mx = (x1 + x2) * 0.5;
+    const my = (y1 + y2) * 0.5;
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const len = Math.hypot(dx, dy) || 1;
+    const ux = dx / len;
+    const uy = dy / len;
+
+    const gap = opts.unzipped ? len * 0.22 : Math.min(10 * state.zoom, len * 0.22);
+    const thickness = (opts.thickness || 6.2) * state.zoom * (0.82 + 0.28 * depthFactor);
+    const alpha = opts.alpha !== undefined ? opts.alpha : (0.58 + 0.42 * depthFactor);
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.lineCap = 'round';
+
+    // Hydrogen bonds (2 dashes for A=T/U, 3 dashes for C≡G)
+    if (state.showHBonds && !opts.unzipped && !opts.noHBond && base1 && base2) {
+      const nBonds = opts.mismatch ? 1 : (H_BONDS[base1] || 2);
+      const px = -uy;
+      const py = ux;
+      ctx.strokeStyle = opts.mismatch ? 'rgba(255, 96, 131, 0.85)' : 'rgba(220, 238, 255, 0.52)';
+      ctx.lineWidth = Math.max(1, 1.35 * state.zoom);
+      ctx.setLineDash([2.5 * state.zoom, 2.5 * state.zoom]);
+      const spread = 3.2 * state.zoom;
+      for (let b = 0; b < nBonds; b++) {
+        const off = (b - (nBonds - 1) * 0.5) * spread;
+        ctx.beginPath();
+        ctx.moveTo(mx - ux * gap * 0.85 + px * off, my - uy * gap * 0.85 + py * off);
+        ctx.lineTo(mx + ux * gap * 0.85 + px * off, my + uy * gap * 0.85 + py * off);
+        ctx.stroke();
+      }
+      ctx.setLineDash([]);
+    }
+
+    // Half-rung 1
+    if (base1) {
+      const e1x = opts.unzipped ? x1 + ux * Math.min(len * 0.36, 20 * state.zoom) : mx - ux * gap * 0.48;
+      const e1y = opts.unzipped ? y1 + uy * Math.min(len * 0.36, 20 * state.zoom) : my - uy * gap * 0.48;
+      ctx.strokeStyle = BASE_COLOR[base1] || '#fff';
+      ctx.lineWidth = thickness;
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(e1x, e1y);
+      ctx.stroke();
+
+      if (state.show3D) {
+        ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+        ctx.lineWidth = thickness * 0.28;
+        ctx.beginPath();
+        ctx.moveTo(x1, y1 - 1);
+        ctx.lineTo(e1x, e1y - 1);
+        ctx.stroke();
+      }
+
+      if (state.showLetters && len > 20 * state.zoom) {
+        const lx = x1 + (e1x - x1) * 0.58;
+        const ly = y1 + (e1y - y1) * 0.58;
+        drawBaseLetter(lx, ly, base1, opts.highlight1);
+      }
+    }
+
+    // Half-rung 2
+    if (base2) {
+      const e2x = opts.unzipped ? x2 - ux * Math.min(len * 0.36, 20 * state.zoom) : mx + ux * gap * 0.48;
+      const e2y = opts.unzipped ? y2 - uy * Math.min(len * 0.36, 20 * state.zoom) : my + uy * gap * 0.48;
+      ctx.strokeStyle = BASE_COLOR[base2] || '#fff';
+      ctx.lineWidth = thickness;
+      ctx.beginPath();
+      ctx.moveTo(x2, y2);
+      ctx.lineTo(e2x, e2y);
+      ctx.stroke();
+
+      if (state.show3D) {
+        ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+        ctx.lineWidth = thickness * 0.28;
+        ctx.beginPath();
+        ctx.moveTo(x2, y2 - 1);
+        ctx.lineTo(e2x, e2y - 1);
+        ctx.stroke();
+      }
+
+      if (state.showLetters && len > 20 * state.zoom) {
+        const lx = x2 + (e2x - x2) * 0.58;
+        const ly = y2 + (e2y - y2) * 0.58;
+        drawBaseLetter(lx, ly, base2, opts.highlight2);
+      }
+    }
+
+    // Mismatch glow ring
+    if (opts.mismatch) {
+      ctx.strokeStyle = '#ff6083';
+      ctx.lineWidth = 2 * state.zoom;
+      ctx.beginPath();
+      ctx.arc(mx, my, 12 * state.zoom, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
+  function drawBaseLetter(x, y, base, highlight = false) {
+    const r = 7.2 * state.zoom;
+    ctx.save();
+    ctx.fillStyle = highlight ? '#fff' : '#060c1a';
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = BASE_COLOR[base] || '#fff';
+    ctx.lineWidth = (highlight ? 2.2 : 1.2) * state.zoom;
+    ctx.stroke();
+
+    ctx.fillStyle = highlight ? '#040711' : BASE_COLOR[base];
+    ctx.font = `800 ${Math.max(7, Math.round(9.5 * state.zoom))}px ${getMono()}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(base, x, y + 0.5);
+    ctx.restore();
+  }
+
+  function drawEnzymeBadge(sx, sy, label, sublabel, color) {
+    if (!state.showLabels) return;
+    ctx.save();
+    ctx.font = `700 ${Math.max(9, Math.round(10.5 * state.zoom))}px system-ui, sans-serif`;
+    const w1 = ctx.measureText(label).width;
+    ctx.font = `600 ${Math.max(8, Math.round(9 * state.zoom))}px ${getMono()}`;
+    const w2 = sublabel ? ctx.measureText(sublabel).width : 0;
+    const bw = Math.max(w1, w2) + 16 * state.zoom;
+    const bh = (sublabel ? 30 : 20) * state.zoom;
+
+    ctx.fillStyle = 'rgba(6, 11, 22, 0.84)';
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.1;
+    roundRect(ctx, sx - bw * 0.5, sy - bh * 0.5, bw, bh, 7 * state.zoom);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = '#eef4ff';
+    ctx.font = `700 ${Math.max(9, Math.round(10.5 * state.zoom))}px system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, sx, sy - (sublabel ? 5.5 : 0) * state.zoom);
+
+    if (sublabel) {
+      ctx.fillStyle = color;
+      ctx.font = `600 ${Math.max(8, Math.round(8.8 * state.zoom))}px ${getMono()}`;
+      ctx.fillText(sublabel, sx, sy + 7 * state.zoom);
+    }
+    ctx.restore();
+  }
+
+  function roundRect(c, x, y, w, h, r) {
+    c.beginPath();
+    c.moveTo(x + r, y);
+    c.arcTo(x + w, y, x + w, y + h, r);
+    c.arcTo(x + w, y + h, x, y + h, r);
+    c.arcTo(x, y + h, x, y, r);
+    c.arcTo(x, y, x + w, y, r);
+    c.closePath();
+  }
+
+  function drawSparks() {
+    ctx.save();
+    for (const sp of state.sparks) {
+      const s = worldToScreen(sp.x, sp.y);
+      ctx.globalAlpha = Math.max(0, sp.life / sp.maxLife);
+      ctx.fillStyle = sp.color;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, sp.r * state.zoom, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // =========================================================================
+  // MODE 1 UPDATE & RENDER: DNA REPLICATION FORK
+  // =========================================================================
+  function updateReplication(dt) {
+    const rate = 2.55 * state.speed;
+    // Pause progression briefly while Pol III is actively backtracking/proofreading
+    if (rep.activeMismatch) {
+      rep.activeMismatch.timer += dt * state.speed;
+      if (rep.activeMismatch.phase === 'alert' && rep.activeMismatch.timer > 0.7) {
+        if (rep.proofreadEnabled) {
+          rep.activeMismatch.phase = 'excising';
+          rep.activeMismatch.timer = 0;
+          AudioEngine.playAlert('repair');
+        } else {
+          // Persist permanent mismatch!
+          rep.persistedMismatches.set(rep.activeMismatch.bpIndex, rep.activeMismatch.wrongBase);
+          rep.mismatchesPersisted++;
+          rep.activeMismatch = null;
+          showBanner('Proofreading OFF — Point mutation permanently incorporated into daughter DNA!', 'danger', 4.5);
+        }
+      } else if (rep.activeMismatch.phase === 'excising' && rep.activeMismatch.timer > 0.75) {
+        rep.activeMismatch.phase = 'repairing';
+        rep.activeMismatch.timer = 0;
+        rep.mismatchesRepaired++;
+        AudioEngine.playBaseNote(rep.activeMismatch.trueBase, 0.14);
+        const sPos = { x: -70, y: -92 };
+        spawnSpark(sPos.x, sPos.y, '#4af2b2', 16, 110);
+        showBanner('Pol III 3\'→5\' Exonuclease: Mismatch excised & correct nucleotide inserted!', 'mint', 3.8);
+      } else if (rep.activeMismatch.phase === 'repairing' && rep.activeMismatch.timer > 0.5) {
+        rep.activeMismatch = null;
+      }
+    } else {
+      rep.scrollBp += rate * dt;
+    }
+
+    const currentSynthBp = Math.floor(rep.scrollBp);
+    if (currentSynthBp > rep.lastSynthBp) {
+      rep.lastSynthBp = currentSynthBp;
+      rep.totalBpProcessed++;
+      const tmplBase = getRepBase(currentSynthBp);
+      const compBase = COMP_DNA[tmplBase];
+      AudioEngine.playBaseNote(compBase, 0.065);
+
+      // Spawn free dNTP from nuclear soup flying into Leading Pol III
+      rep.flyingNts.push({
+        base: compBase,
+        sx: -70 + (Math.random() - 0.5) * 190,
+        sy: -225 - Math.random() * 80,
+        tx: -65,
+        ty: -92,
+        prog: 0,
+        strand: 'leading'
+      });
+
+      // Lagging strand nucleotide capture
+      const lagBp = currentSynthBp - 3;
+      if (lagBp >= 0) {
+        const lagBase = getRepBase(lagBp);
+        rep.flyingNts.push({
+          base: lagBase,
+          sx: -135 + (Math.random() - 0.5) * 200,
+          sy: 235 + Math.random() * 80,
+          tx: -140 - ((lagBp % rep.okazakiLength) * 14),
+          ty: 98,
+          prog: 0,
+          strand: 'lagging'
+        });
+
+        // Ligase seals Okazaki fragment every okazakiLength bp
+        if (lagBp > 0 && lagBp % rep.okazakiLength === 0) {
+          rep.okazakiSealed++;
+          rep.ligaseFlash = 1.0;
+          spawnSpark(-265, 98, '#ffbe5c', 12, 80);
+        }
+      }
+    }
+
+    rep.ligaseFlash = Math.max(0, rep.ligaseFlash - dt * 1.4);
+
+    // Update flying nucleotides
+    for (let i = rep.flyingNts.length - 1; i >= 0; i--) {
+      const f = rep.flyingNts[i];
+      f.prog += dt * 2.4 * state.speed;
+      if (f.prog >= 1) {
+        spawnSpark(f.tx, f.ty, BASE_COLOR[f.base], 5, 48);
+        rep.flyingNts.splice(i, 1);
+      }
+    }
+  }
+
+  function renderReplication() {
+    const forkX = 35; // world X of Helicase fork apex
+    const spacing = rep.bpSpacing;
+    const frac = rep.scrollBp - Math.floor(rep.scrollBp);
+    const baseOffset = Math.floor(rep.scrollBp);
+
+    // 1. PARENTAL DOUBLE HELIX (Right of forkX: x from forkX to +440)
+    const parentCount = 17;
+    const pTopPts = [];
+    const pBotPts = [];
+    const parentRungs = [];
+
+    for (let i = 0; i < parentCount; i++) {
+      const bpIdx = baseOffset + i;
+      const wx = forkX + (i - frac) * spacing;
+      const theta = (bpIdx * 0.52) - state.helixPhase * 1.6;
+      const amp = 46;
+      const y1 = Math.cos(theta) * amp;
+      const y2 = -y1;
+      const z = Math.sin(theta); // -1..1 depth
+
+      const s1 = worldToScreen(wx, y1);
+      const s2 = worldToScreen(wx, y2);
+      pTopPts.push(s1);
+      pBotPts.push(s2);
+
+      const bTop = getRepBase(bpIdx);
+      const bBot = COMP_DNA[bTop];
+      parentRungs.push({ s1, s2, bTop, bBot, z, i, wx });
+    }
+
+    // Painter's depth sort for parental rungs & backbones
+    const backRungs = parentRungs.filter(r => r.z < 0);
+    const frontRungs = parentRungs.filter(r => r.z >= 0);
+
+    backRungs.forEach(r => {
+      drawBaseRung(r.s1.x, r.s1.y, r.s2.x, r.s2.y, r.bTop, r.bBot, (r.z + 1) * 0.5, { unzipped: r.i === 0 && frac > 0.5 });
+    });
+    drawGlowingBackbone(pBotPts, '#6c95ff', 'rgba(108, 149, 255, 0.7)', 6.5);
+    drawGlowingBackbone(pTopPts, '#95b9ff', 'rgba(149, 185, 255, 0.8)', 6.5);
+    frontRungs.forEach(r => {
+      drawBaseRung(r.s1.x, r.s1.y, r.s2.x, r.s2.y, r.bTop, r.bBot, (r.z + 1) * 0.5, { unzipped: r.i === 0 && frac > 0.5 });
+    });
+
+    // 2. LEADING & LAGGING DAUGHTER FORK ARMS (Left of forkX: x from forkX to -440)
+    const armCount = 18;
+    const leadTmplPts = [];
+    const leadNewPts = [];
+    const lagTmplPts = [];
+    const lagNewSegments = [];
+    let currentLagSeg = [];
+
+    for (let i = 0; i < armCount; i++) {
+      const bpIdx = baseOffset - 1 - i;
+      const dist = (i + frac) * spacing;
+      const wx = forkX - dist;
+
+      // Smooth S-curve fork opening
+      const openT = Math.min(1, dist / 145);
+      const smoothOpen = openT * openT * (3 - 2 * openT);
+      const centerSep = 104 * smoothOpen; // ±104 world y
+
+      // Gentle 3D daughter helix twist once synthesized
+      const subTheta = (bpIdx * 0.48) - state.helixPhase * 1.1;
+      const dAmp = i >= 2 ? 24 * Math.min(1, (i - 1) / 3) : 0;
+      const leadTwist = Math.cos(subTheta) * dAmp;
+      const lagTwist = Math.cos(subTheta + 1.1) * dAmp;
+
+      // Leading arm (Upper)
+      const ltY = -centerSep - 18 + leadTwist * 0.55;
+      const lnY = -centerSep + 22 - leadTwist * 0.55;
+      const sLT = worldToScreen(wx, ltY);
+      const sLN = worldToScreen(wx, lnY);
+      leadTmplPts.push(sLT);
+
+      const tmplBaseTop = getRepBase(bpIdx);
+      let newBaseTop = COMP_DNA[tmplBaseTop];
+      let isMismatch = false;
+
+      if (rep.activeMismatch && rep.activeMismatch.bpIndex === bpIdx) {
+        if (rep.activeMismatch.phase !== 'repairing') {
+          newBaseTop = rep.activeMismatch.wrongBase;
+          isMismatch = true;
+        }
+      } else if (rep.persistedMismatches.has(bpIdx)) {
+        newBaseTop = rep.persistedMismatches.get(bpIdx);
+        isMismatch = true;
+      }
+
+      // Leading strand synthesized continuously right behind Pol III (i >= 3)
+      const leadSynthesized = i >= 3;
+      if (leadSynthesized) {
+        leadNewPts.push(sLN);
+        const zLead = (Math.sin(subTheta) + 1) * 0.5;
+        drawBaseRung(sLT.x, sLT.y, sLN.x, sLN.y, tmplBaseTop, newBaseTop, zLead, {
+          mismatch: isMismatch,
+          highlight2: isMismatch
+        });
+      } else {
+        // Exposed single-strand template right behind Helicase
+        drawBaseRung(sLT.x, sLT.y, sLT.x, sLT.y + 32 * state.zoom, tmplBaseTop, null, 0.85, { unzipped: true });
+      }
+
+      // Lagging arm (Lower — discontinuous Okazaki fragments!)
+      const bTmplY = centerSep + 18 + lagTwist * 0.55;
+      const bNewY = centerSep - 22 - lagTwist * 0.55;
+      const sBT = worldToScreen(wx, bTmplY);
+      const sBN = worldToScreen(wx, bNewY);
+      lagTmplPts.push(sBT);
+
+      const tmplBaseBot = COMP_DNA[tmplBaseTop];
+      const newBaseBot = tmplBaseTop; // complementary to bottom template
+
+      // Determine Okazaki fragment membership & nick gaps
+      const mod = ((bpIdx % rep.okazakiLength) + rep.okazakiLength) % rep.okazakiLength;
+      const isOkazakiGap = (i >= 3 && i < 11 && mod === 0); // unsealed nick between nascent Okazaki fragments!
+      const isPrimer = (i >= 3 && i < 12 && (mod === rep.okazakiLength - 1 || mod === rep.okazakiLength - 2));
+      const lagSynthesized = i >= 4 && !isOkazakiGap;
+
+      if (lagSynthesized) {
+        currentLagSeg.push({ pt: sBN, isPrimer });
+        const zLag = (Math.sin(subTheta + 1.1) + 1) * 0.5;
+        const displayNew = isPrimer && newBaseBot === 'T' ? 'U' : newBaseBot;
+        drawBaseRung(sBT.x, sBT.y, sBN.x, sBN.y, tmplBaseBot, displayNew, zLag, {
+          highlight2: isPrimer
+        });
+      } else {
+        if (currentLagSeg.length > 0) {
+          lagNewSegments.push(currentLagSeg);
+          currentLagSeg = [];
+        }
+        drawBaseRung(sBT.x, sBT.y, sBT.x, sBT.y - 32 * state.zoom, tmplBaseBot, null, 0.85, { unzipped: true });
+        if (isOkazakiGap) {
+          // Subtle glowing nick marker for DNA Ligase
+          ctx.save();
+          ctx.strokeStyle = 'rgba(255, 190, 92, 0.7)';
+          ctx.lineWidth = 1.6 * state.zoom;
+          ctx.setLineDash([3, 3]);
+          ctx.beginPath();
+          ctx.arc(sBN.x, sBN.y, 9 * state.zoom, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
+    }
+    if (currentLagSeg.length > 0) lagNewSegments.push(currentLagSeg);
+
+    // Draw daughter backbones
+    drawGlowingBackbone(leadTmplPts, '#95b9ff', 'rgba(149, 185, 255, 0.7)', 6);
+    drawGlowingBackbone(leadNewPts, '#4af2b2', 'rgba(74, 242, 178, 0.85)', 6.5);
+    drawGlowingBackbone(lagTmplPts, '#6c95ff', 'rgba(108, 149, 255, 0.7)', 6);
+
+    lagNewSegments.forEach(seg => {
+      if (seg.length < 2) return;
+      const pts = seg.map(s => s.pt);
+      drawGlowingBackbone(pts, '#ffbe5c', 'rgba(255, 190, 92, 0.82)', 6);
+      // RNA primer tips highlighted in violet
+      const primers = seg.filter(s => s.isPrimer).map(s => s.pt);
+      if (primers.length >= 2) {
+        drawGlowingBackbone(primers, '#c490ff', 'rgba(196, 144, 255, 0.9)', 6.8);
+      }
+    });
+
+    // 3. FLYING FREE NUCLEOTIDES FROM NUCLEAR SOUP
+    for (const f of rep.flyingNts) {
+      const t = f.prog;
+      const ease = t * t * (3 - 2 * t);
+      const ctrlX = (f.sx + f.tx) * 0.5 + (f.strand === 'leading' ? -30 : 30);
+      const ctrlY = (f.sy + f.ty) * 0.5;
+      const wx = (1 - ease) * (1 - ease) * f.sx + 2 * (1 - ease) * ease * ctrlX + ease * ease * f.tx;
+      const wy = (1 - ease) * (1 - ease) * f.sy + 2 * (1 - ease) * ease * ctrlY + ease * ease * f.ty;
+      const s = worldToScreen(wx, wy);
+
+      ctx.save();
+      ctx.fillStyle = BASE_GLOW[f.base];
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, 13 * state.zoom, 0, Math.PI * 2);
+      ctx.fill();
+      drawBaseLetter(s.x, s.y, f.base, true);
+      ctx.restore();
+    }
+
+    // 4. ENZYME MACROMOLECULES
+    // 4A. DNA HELICASE (Glowing rotating hexameric ring at the fork junction)
+    const helS = worldToScreen(forkX - 10, 0);
+    const helR = 34 * state.zoom;
+    ctx.save();
+    ctx.translate(helS.x, helS.y);
+    ctx.rotate(state.time * 1.45 * state.speed);
+    const hGlow = ctx.createRadialGradient(0, 0, helR * 0.2, 0, 0, helR * 1.85);
+    hGlow.addColorStop(0, 'rgba(88, 220, 255, 0.55)');
+    hGlow.addColorStop(0.6, 'rgba(182, 148, 255, 0.25)');
+    hGlow.addColorStop(1, 'rgba(88, 220, 255, 0)');
+    ctx.fillStyle = hGlow;
+    ctx.beginPath();
+    ctx.arc(0, 0, helR * 1.85, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 6-subunit hexamer ring
+    for (let k = 0; k < 6; k++) {
+      const a = (k / 6) * Math.PI * 2;
+      const sx = Math.cos(a) * helR * 0.68;
+      const sy = Math.sin(a) * helR * 0.68;
+      ctx.fillStyle = k % 2 === 0 ? 'rgba(88, 220, 255, 0.42)' : 'rgba(182, 148, 255, 0.42)';
+      ctx.strokeStyle = k % 2 === 0 ? '#7ae5ff' : '#c9aeff';
+      ctx.lineWidth = 1.6 * state.zoom;
+      ctx.beginPath();
+      ctx.arc(sx, sy, helR * 0.36, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    drawEnzymeBadge(helS.x, helS.y - 52 * state.zoom, 'DNA Helicase', 'Unzips H-bonds', '#58dcff');
+    state.hitTooltips.push({
+      x: helS.x, y: helS.y, r: helR * 1.2,
+      title: 'DNA Helicase (Hexamer)',
+      body: 'ATP-driven molecular motor that unwinds the parental double helix by breaking hydrogen bonds between base pairs.'
+    });
+
+    // 4B. LEADING STRAND DNA POLYMERASE III
+    const backOffset = (rep.activeMismatch && rep.activeMismatch.phase === 'excising') ? -18 : 0;
+    const polLeadS = worldToScreen(forkX - 96 + backOffset, -95);
+    drawPolymeraseBlob(polLeadS.x, polLeadS.y, 40 * state.zoom, '#4af2b2', 'rgba(74, 242, 178, 0.24)', !!rep.activeMismatch);
+    drawEnzymeBadge(polLeadS.x, polLeadS.y - 54 * state.zoom, 'DNA Pol III (Leading)', 'Continuous 5\' → 3\'', '#4af2b2');
+    state.hitTooltips.push({
+      x: polLeadS.x, y: polLeadS.y, r: 42 * state.zoom,
+      title: 'DNA Polymerase III (Leading)',
+      body: 'Continuously synthesizes the leading strand 5\'→3\' toward the fork. Features 3\'→5\' exonuclease proofreading.'
+    });
+
+    // 4C. LAGGING STRAND PRIMASE & POL III (Okazaki Fragments)
+    const primS = worldToScreen(forkX - 88, 86);
+    drawPolymeraseBlob(primS.x, primS.y, 24 * state.zoom, '#c490ff', 'rgba(196, 144, 255, 0.24)', false);
+    drawEnzymeBadge(primS.x, primS.y + 42 * state.zoom, 'RNA Primase', 'RNA Primer', '#c490ff');
+    state.hitTooltips.push({
+      x: primS.x, y: primS.y, r: 28 * state.zoom,
+      title: 'RNA Primase',
+      body: 'Lays short complementary RNA primers so DNA Polymerase III can initiate each discontinuous Okazaki fragment.'
+    });
+
+    const lagCycle = (rep.scrollBp % rep.okazakiLength) / rep.okazakiLength;
+    const polLagX = forkX - 125 - lagCycle * 115;
+    const polLagS = worldToScreen(polLagX, 102);
+    drawPolymeraseBlob(polLagS.x, polLagS.y, 35 * state.zoom, '#ffbe5c', 'rgba(255, 190, 92, 0.23)', false);
+    drawEnzymeBadge(polLagS.x, polLagS.y + 52 * state.zoom, 'DNA Pol III (Lagging)', 'Okazaki 5\' → 3\'', '#ffbe5c');
+    state.hitTooltips.push({
+      x: polLagS.x, y: polLagS.y, r: 38 * state.zoom,
+      title: 'DNA Polymerase III (Lagging)',
+      body: 'Synthesizes discontinuous Okazaki fragments away from the replication fork in the 5\'→3\' direction.'
+    });
+
+    // 4D. DNA LIGASE (Sealing nicks on the lagging strand)
+    const ligS = worldToScreen(forkX - 305, 104);
+    ctx.save();
+    ctx.translate(ligS.x, ligS.y);
+    const ligR = (26 + rep.ligaseFlash * 6) * state.zoom;
+    ctx.fillStyle = `rgba(255, 190, 92, ${0.18 + rep.ligaseFlash * 0.35})`;
+    ctx.strokeStyle = rep.ligaseFlash > 0.2 ? '#fff0c2' : '#ffbe5c';
+    ctx.lineWidth = (2 + rep.ligaseFlash * 1.5) * state.zoom;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, ligR * 1.15, ligR * 0.82, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+    drawEnzymeBadge(ligS.x, ligS.y + 46 * state.zoom, 'DNA Ligase', 'Seals Okazaki Nicks', '#ffbe5c');
+    state.hitTooltips.push({
+      x: ligS.x, y: ligS.y, r: 30 * state.zoom,
+      title: 'DNA Ligase',
+      body: 'Forms phosphodiester bonds between adjacent Okazaki fragments to create a continuous sugar-phosphate backbone.'
+    });
+
+    // Polarity annotations (5' and 3')
+    drawPolarityTag(worldToScreen(forkX + 415, -58), "3' Template", '#95b9ff');
+    drawPolarityTag(worldToScreen(forkX + 415, 58), "5' Template", '#6c95ff');
+    drawPolarityTag(worldToScreen(forkX - 425, -142), "5' Leading Strand → 3'", '#4af2b2');
+    drawPolarityTag(worldToScreen(forkX - 425, 148), "3' ← Okazaki Fragments 5'", '#ffbe5c');
+  }
+
+  function drawPolymeraseBlob(x, y, r, strokeCol, fillCol, alertPulse) {
+    ctx.save();
+    ctx.translate(x, y);
+    const pulse = alertPulse ? 1 + 0.08 * Math.sin(state.time * 18) : 1 + 0.03 * Math.sin(state.time * 4);
+    ctx.scale(pulse, pulse);
+
+    const g = ctx.createRadialGradient(-r * 0.2, -r * 0.2, r * 0.15, 0, 0, r * 1.35);
+    g.addColorStop(0, alertPulse ? 'rgba(255, 96, 131, 0.45)' : fillCol);
+    g.addColorStop(1, 'rgba(6, 12, 26, 0.08)');
+    ctx.fillStyle = g;
+    ctx.strokeStyle = alertPulse ? '#ff6083' : strokeCol;
+    ctx.lineWidth = 2.0 * state.zoom;
+
+    // Sculpted palm-and-thumb polymerase silhouette
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.9, -r * 0.3);
+    ctx.bezierCurveTo(-r * 1.1, -r * 1.05, r * 0.6, -r * 1.15, r * 1.0, -r * 0.25);
+    ctx.bezierCurveTo(r * 1.15, r * 0.65, r * 0.3, r * 1.08, -r * 0.45, r * 0.9);
+    ctx.bezierCurveTo(-r * 1.05, r * 0.75, -r * 1.1, r * 0.1, -r * 0.9, -r * 0.3);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // Inner active-site ring
+    ctx.strokeStyle = 'rgba(255,255,255,0.22)';
+    ctx.lineWidth = 1.1 * state.zoom;
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 0.48, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawPolarityTag(s, text, color) {
+    ctx.save();
+    ctx.font = `700 ${Math.max(9, Math.round(10 * state.zoom))}px ${getMono()}`;
+    ctx.fillStyle = color;
+    ctx.globalAlpha = 0.85;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, s.x, s.y);
+    ctx.restore();
+  }
+
+  // =========================================================================
+  // MODE 2 UPDATE & RENDER: CENTRAL DOGMA (TRANSCRIPTION -> RIBOSOME)
+  // =========================================================================
+  function updateDogma(dt) {
+    const { cur, wild } = analyzeDogmaImpact();
+    const dnaLen = state.dna.length;
+
+    // 1. RNA Polymerase Transcription
+    if (dogma.rnaPolPos < dnaLen) {
+      dogma.rnaPolPos = Math.min(dnaLen, dogma.rnaPolPos + 3.2 * state.speed * dt);
+      const idx = Math.floor(dogma.rnaPolPos) - 1;
+      if (idx >= 0 && idx > dogma.lastTranscribedIdx && idx < cur.mrna.length) {
+        for (let k = dogma.lastTranscribedIdx + 1; k <= idx; k++) {
+          const b = cur.mrna[k];
+          dogma.mrnaBases[k] = b;
+          AudioEngine.playBaseNote(b, 0.055);
+        }
+        dogma.lastTranscribedIdx = idx;
+      }
+    }
+
+    // 2. Ribosome Translation once AUG start codon is transcribed
+    const minTranscribed = cur.offset + 3;
+    if (!dogma.translationDone && dogma.mrnaBases.length >= minTranscribed && cur.codons.length > 0) {
+      if (dogma.riboCodonIdx < 0) {
+        dogma.riboCodonIdx = 0;
+        dogma.riboStepProg = 0;
+      }
+      const neededNt = cur.offset + (dogma.riboCodonIdx + 1) * 3;
+      if (dogma.mrnaBases.length >= neededNt) {
+        const codonObj = cur.codons[dogma.riboCodonIdx];
+        if (!dogma.activeTRNA && codonObj) {
+          dogma.activeTRNA = {
+            anticodon: codonObj.codon.split('').map(b => COMP_RNA[b] || 'A').join(''),
+            aa: codonObj.aa,
+            isStop: codonObj.isStop,
+            progress: 0
+          };
+        }
+
+        dogma.riboStepProg += dt * 0.95 * state.speed;
+        if (dogma.activeTRNA) {
+          dogma.activeTRNA.progress = Math.min(1, dogma.riboStepProg);
+        }
+
+        if (dogma.riboStepProg >= 1.0 && codonObj) {
+          const wildCodon = wild.codons[dogma.riboCodonIdx];
+          const isMut = !wildCodon || codonObj.aa !== wildCodon.aa;
+
+          dogma.translatedAAs.push({
+            aa: codonObj.aa,
+            wildAa: wildCodon ? wildCodon.aa : null,
+            codon: codonObj.codon,
+            mutated: isMut,
+            isStop: codonObj.isStop,
+            index: dogma.riboCodonIdx
+          });
+
+          if (codonObj.isStop) {
+            dogma.translationDone = true;
+            AudioEngine.playAlert(dogma.impactSeverity === 'danger' ? 'warn' : 'repair');
+            const riboWorld = getRibosomeWorldPos(dogma.riboCodonIdx);
+            spawnSpark(riboWorld.x, riboWorld.y, '#ff6083', 18, 120);
+            if (dogma.impactSeverity === 'danger') {
+              showBanner(`Premature ${codonObj.codon} STOP codon! Translation terminated early (${dogma.translatedAAs.length - 1} aa).`, 'danger', 5);
+            } else {
+              showBanner(`Polypeptide synthesis complete (${dogma.translatedAAs.length - 1} amino acids folded)!`, 'mint', 4);
+            }
+          } else {
+            // Spawn new Amino Acid node emerging from Ribosome exit tunnel
+            const riboWorld = getRibosomeWorldPos(dogma.riboCodonIdx);
+            const exitX = riboWorld.x - 18;
+            const exitY = riboWorld.y + 42;
+            const props = AA_PROPS[codonObj.aa] || AA_PROPS.Gly;
+            dogma.chainNodes.push({
+              x: exitX + (Math.random() - 0.5) * 6,
+              y: exitY + (Math.random() - 0.5) * 6,
+              vx: -25 - Math.random() * 15,
+              vy: 20 + Math.random() * 12,
+              aa: codonObj.aa,
+              color: props.color,
+              hydro: props.hydro,
+              mutated: isMut,
+              codonIdx: dogma.riboCodonIdx
+            });
+            AudioEngine.playPeptideChime(isMut);
+            spawnSpark(exitX, exitY, isMut ? '#ffbe5c' : props.color, 10, 70);
+          }
+
+          dogma.ejectingTRNA = dogma.activeTRNA ? { anticodon: dogma.activeTRNA.anticodon, progress: 0 } : null;
+          dogma.activeTRNA = null;
+          dogma.riboCodonIdx++;
+          dogma.riboStepProg = 0;
+
+          if (dogma.riboCodonIdx >= cur.codons.length) {
+            dogma.translationDone = true;
+          }
+          renderCodonGrid();
+        }
+      }
+    }
+
+    if (dogma.ejectingTRNA) {
+      dogma.ejectingTRNA.progress += dt * 1.4 * state.speed;
+      if (dogma.ejectingTRNA.progress >= 1) dogma.ejectingTRNA = null;
+    }
+
+    // 3. Live Polypeptide Folding Physics (Springs + Hydrophobic Collapse + Repulsion)
+    const nodes = dogma.chainNodes;
+    const riboPos = getRibosomeWorldPos(Math.max(0, Math.min(dogma.riboCodonIdx, cur.codons.length - 1)));
+    const anchorX = riboPos.x - 16;
+    const anchorY = riboPos.y + 46;
+    const subSteps = 3;
+    const h = Math.min(dt, 0.033) / subSteps;
+
+    for (let s = 0; s < subSteps; s++) {
+      // Pin newest amino acid gently near Ribosome exit tunnel while translating
+      if (!dogma.translationDone && nodes.length > 0) {
+        const last = nodes[nodes.length - 1];
+        last.vx += (anchorX - last.x) * 28 * h;
+        last.vy += (anchorY - last.y) * 28 * h;
+      }
+
+      // Peptide bond springs between consecutive amino acids
+      const bondLen = 27;
+      for (let i = 0; i < nodes.length - 1; i++) {
+        const a = nodes[i];
+        const b = nodes[i + 1];
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const d = Math.hypot(dx, dy) || 0.001;
+        const f = (d - bondLen) * 34;
+        const fx = (dx / d) * f;
+        const fy = (dy / d) * f;
+        a.vx += fx * h; a.vy += fy * h;
+        b.vx -= fx * h; b.vy -= fy * h;
+      }
+
+      // Secondary-structure helical curl + hydrophobic core collapse + steric repulsion
+      for (let i = 0; i < nodes.length; i++) {
+        const a = nodes[i];
+        // Gentle downward gravity toward folding pocket
+        a.vy += (175 - a.y) * 0.45 * h;
+        a.vx += (-110 - a.x) * 0.22 * h;
+
+        for (let j = i + 2; j < nodes.length; j++) {
+          const b = nodes[j];
+          const dx = b.x - a.x;
+          const dy = b.y - a.y;
+          const d = Math.hypot(dx, dy) || 0.001;
+
+          // Steric exclusion
+          if (d < 32) {
+            const repF = (32 - d) * 26;
+            const rx = (dx / d) * repF;
+            const ry = (dy / d) * repF;
+            a.vx -= rx * h; a.vy -= ry * h;
+            b.vx += rx * h; b.vy += ry * h;
+          } else if (d < 120) {
+            // Hydrophobic residues attract each other into a compact folded core!
+            const hydroPair = a.hydro > 0.3 && b.hydro > 0.3 ? 1 : (j === i + 3 ? 0.55 : 0);
+            if (hydroPair > 0) {
+              const att = hydroPair * 4.2;
+              const ax = (dx / d) * att;
+              const ay = (dy / d) * att;
+              a.vx += ax * h; a.vy += ay * h;
+              b.vx -= ax * h; b.vy -= ay * h;
+            }
+          }
+        }
+      }
+
+      // Integrate with viscous cytosolic damping
+      const damp = Math.pow(0.18, h);
+      for (const n of nodes) {
+        n.vx *= damp;
+        n.vy *= damp;
+        n.x += n.vx * h;
+        n.y += n.vy * h;
+      }
+    }
+  }
+
+  function getRibosomeWorldPos(codonIdx) {
+    const dnaLen = Math.max(12, state.dna.length);
+    const spacing = Math.min(23, 760 / dnaLen);
+    const startX = -((dnaLen - 1) * spacing) * 0.5;
+    const ntCenter = dogma.startCodonOffset + codonIdx * 3 + 1;
+    return {
+      x: startX + ntCenter * spacing,
+      y: 44
+    };
+  }
+
+  function renderDogma() {
+    const dna = state.dna;
+    const dnaLen = dna.length;
+    const spacing = Math.min(23, 760 / Math.max(12, dnaLen));
+    const startX = -((dnaLen - 1) * spacing) * 0.5;
+    const dnaY = -125;
+    const mrnaY = 44;
+
+    const topPts = [];
+    const botPts = [];
+    const polXIdx = dogma.rnaPolPos;
+
+    // 1. GENE DNA DOUBLE HELIX + TRANSCRIPTION BUBBLE
+    for (let i = 0; i < dnaLen; i++) {
+      const wx = startX + i * spacing;
+      const distToPol = Math.abs(i - polXIdx);
+      const inBubble = distToPol < 4.5 && polXIdx < dnaLen - 0.1;
+      const bubbleOpen = inBubble ? Math.cos((distToPol / 4.5) * Math.PI * 0.5) : 0;
+
+      const theta = i * 0.52 - state.helixPhase * 1.1;
+      const twist = (1 - bubbleOpen) * Math.cos(theta) * 26;
+      const yTop = dnaY - 18 - bubbleOpen * 30 + twist * 0.55;
+      const yBot = dnaY + 18 + bubbleOpen * 30 - twist * 0.55;
+
+      const sTop = worldToScreen(wx, yTop);
+      const sBot = worldToScreen(wx, yBot);
+      topPts.push(sTop);
+      botPts.push(sBot);
+
+      const codingBase = dna[i];
+      const tmplBase = COMP_DNA[codingBase] || 'T';
+      const isMutBase = dogma.mutatedIndices.has(i);
+      const depth = (Math.sin(theta) + 1) * 0.5;
+
+      drawBaseRung(sTop.x, sTop.y, sBot.x, sBot.y, codingBase, tmplBase, inBubble ? 0.95 : depth, {
+        unzipped: bubbleOpen > 0.35,
+        highlight1: isMutBase,
+        mismatch: false
+      });
+
+      // Codon bracket markers above coding strand
+      if ((i - dogma.startCodonOffset) >= 0 && (i - dogma.startCodonOffset) % 3 === 0 && i + 2 < dnaLen) {
+        const cIdx = Math.floor((i - dogma.startCodonOffset) / 3);
+        const sBracketL = worldToScreen(wx - spacing * 0.32, dnaY - 56);
+        const sBracketR = worldToScreen(wx + spacing * 2.32, dnaY - 56);
+        ctx.save();
+        ctx.strokeStyle = cIdx === dogma.riboCodonIdx ? '#4af2b2' : 'rgba(148, 179, 255, 0.28)';
+        ctx.lineWidth = (cIdx === dogma.riboCodonIdx ? 2 : 1) * state.zoom;
+        ctx.beginPath();
+        ctx.moveTo(sBracketL.x, sBracketL.y + 4 * state.zoom);
+        ctx.lineTo(sBracketL.x, sBracketL.y);
+        ctx.lineTo(sBracketR.x, sBracketR.y);
+        ctx.lineTo(sBracketR.x, sBracketR.y + 4 * state.zoom);
+        ctx.stroke();
+
+        const tri = dna.slice(i, i + 3).replace(/T/g, 'U');
+        const aa = CODON_TABLE[tri] || '';
+        ctx.fillStyle = cIdx === dogma.riboCodonIdx ? '#4af2b2' : (aa === 'STOP' ? '#ff6083' : 'rgba(175, 200, 240, 0.65)');
+        ctx.font = `700 ${Math.max(8, Math.round(9 * state.zoom))}px ${getMono()}`;
+        ctx.textAlign = 'center';
+        ctx.fillText(aa, (sBracketL.x + sBracketR.x) * 0.5, sBracketL.y - 7 * state.zoom);
+        ctx.restore();
+      }
+
+      // Clickable hitbox for mutating any DNA base!
+      state.hitBases.push({
+        x: sTop.x,
+        y: sTop.y,
+        r: Math.max(10, spacing * 0.48 * state.zoom),
+        index: i,
+        base: codingBase
+      });
+    }
+
+    drawGlowingBackbone(topPts, '#95b9ff', 'rgba(149, 185, 255, 0.72)', 5.5);
+    drawGlowingBackbone(botPts, '#6c95ff', 'rgba(108, 149, 255, 0.68)', 5.5);
+
+    drawPolarityTag(worldToScreen(startX - 38, dnaY - 22), "5' Coding", '#95b9ff');
+    drawPolarityTag(worldToScreen(startX - 38, dnaY + 22), "3' Template", '#6c95ff');
+
+    // 2. RNA POLYMERASE ENZYME ON TRANSCRIPTION BUBBLE
+    const polWorldX = startX + Math.min(dnaLen - 0.5, polXIdx) * spacing;
+    const polS = worldToScreen(polWorldX, dnaY);
+    drawPolymeraseBlob(polS.x, polS.y, 46 * state.zoom, '#58dcff', 'rgba(88, 220, 255, 0.22)', false);
+    drawEnzymeBadge(polS.x, polS.y - 68 * state.zoom, 'RNA Polymerase', polXIdx < dnaLen ? 'Transcribing mRNA' : 'Transcription Done', '#58dcff');
+    state.hitTooltips.push({
+      x: polS.x, y: polS.y, r: 46 * state.zoom,
+      title: 'RNA Polymerase II',
+      body: 'Unwinds the DNA transcription bubble and synthesizes a complementary 5\'→3\' mRNA strand (replacing T with U).'
+    });
+
+    // 3. EXTRUDED GLOWING mRNA RIBBON
+    const mrnaPts = [];
+    const mrnaLen = dogma.mrnaBases.length;
+    for (let i = 0; i < mrnaLen; i++) {
+      const wx = startX + i * spacing;
+      // Smooth S-curve peeling from RNA Pol exit channel down to Ribosome mRNA track
+      const distBehindPol = Math.max(0, polXIdx - i);
+      const dropT = Math.min(1, distBehindPol / 4.2);
+      const smoothDrop = dropT * dropT * (3 - 2 * dropT);
+      const wy = (dnaY + 28) + (mrnaY - (dnaY + 28)) * smoothDrop + Math.sin(i * 0.4 + state.time * 2.5) * 2.5;
+      const s = worldToScreen(wx, wy);
+      mrnaPts.push({ s, base: dogma.mrnaBases[i], i, wx, wy });
+    }
+
+    if (mrnaPts.length >= 2) {
+      drawGlowingBackbone(mrnaPts.map(p => p.s), '#c490ff', 'rgba(196, 144, 255, 0.85)', 5.5);
+    }
+    for (const p of mrnaPts) {
+      // Base tick sticking upward from mRNA ribbon
+      const tipY = p.s.y - 12 * state.zoom;
+      ctx.save();
+      ctx.strokeStyle = BASE_COLOR[p.base] || '#fff';
+      ctx.lineWidth = 4.2 * state.zoom;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(p.s.x, p.s.y);
+      ctx.lineTo(p.s.x, tipY);
+      ctx.stroke();
+      if (state.showLetters) {
+        drawBaseLetter(p.s.x, tipY - 3 * state.zoom, p.base, dogma.mutatedIndices.has(p.i));
+      }
+      ctx.restore();
+    }
+    if (mrnaLen > 0) {
+      drawPolarityTag(worldToScreen(startX - 36, mrnaY), "5' mRNA", '#c490ff');
+    }
+
+    // 4. RIBOSOME (60S + 40S subunits with E, P, A sites)
+    const { cur } = analyzeDogmaImpact();
+    const activeIdx = Math.max(0, Math.min(dogma.riboCodonIdx < 0 ? 0 : dogma.riboCodonIdx, Math.max(0, cur.codons.length - 1)));
+    const riboW = getRibosomeWorldPos(activeIdx);
+    const riboS = worldToScreen(riboW.x, riboW.y);
+
+    if (dogma.mrnaBases.length >= dogma.startCodonOffset + 3) {
+      ctx.save();
+      ctx.translate(riboS.x, riboS.y);
+      const rScale = state.zoom;
+
+      // Small subunit (40S - top cap over mRNA)
+      const gTop = ctx.createRadialGradient(0, -24 * rScale, 8 * rScale, 0, -22 * rScale, 68 * rScale);
+      gTop.addColorStop(0, 'rgba(74, 242, 178, 0.28)');
+      gTop.addColorStop(1, 'rgba(15, 28, 52, 0.14)');
+      ctx.fillStyle = gTop;
+      ctx.strokeStyle = 'rgba(74, 242, 178, 0.65)';
+      ctx.lineWidth = 1.8 * rScale;
+      ctx.beginPath();
+      ctx.ellipse(0, -26 * rScale, 62 * rScale, 32 * rScale, 0, Math.PI, Math.PI * 2);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      // Large subunit (60S - bottom chamber with E/P/A slots)
+      const gBot = ctx.createRadialGradient(0, 26 * rScale, 10 * rScale, 0, 26 * rScale, 76 * rScale);
+      gBot.addColorStop(0, 'rgba(88, 220, 255, 0.28)');
+      gBot.addColorStop(1, 'rgba(12, 22, 44, 0.16)');
+      ctx.fillStyle = gBot;
+      ctx.strokeStyle = 'rgba(88, 220, 255, 0.65)';
+      ctx.beginPath();
+      ctx.ellipse(0, 22 * rScale, 70 * rScale, 42 * rScale, 0, 0, Math.PI);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      // E, P, A site pocket indicators
+      const sites = [
+        { lbl: 'E', x: -34 * rScale, col: 'rgba(148, 179, 255, 0.45)' },
+        { lbl: 'P', x: 0, col: 'rgba(74, 242, 178, 0.65)' },
+        { lbl: 'A', x: 34 * rScale, col: 'rgba(255, 190, 92, 0.65)' }
+      ];
+      sites.forEach(st => {
+        ctx.strokeStyle = st.col;
+        ctx.lineWidth = 1.1 * rScale;
+        ctx.setLineDash([2.5, 2.5]);
+        roundRect(ctx, st.x - 13 * rScale, 10 * rScale, 26 * rScale, 30 * rScale, 6 * rScale);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = st.col;
+        ctx.font = `700 ${Math.max(8, Math.round(9 * rScale))}px ${getMono()}`;
+        ctx.textAlign = 'center';
+        ctx.fillText(st.lbl, st.x, 34 * rScale);
+      });
+      ctx.restore();
+
+      drawEnzymeBadge(riboS.x + 88 * state.zoom, riboS.y + 18 * state.zoom, 'Ribosome', dogma.translationDone ? 'Complete' : `Codon #${activeIdx + 1}`, '#4af2b2');
+      state.hitTooltips.push({
+        x: riboS.x, y: riboS.y, r: 62 * state.zoom,
+        title: 'Ribosome (80S / 70S)',
+        body: 'Reads mRNA in 3-nucleotide codons (AUG start → STOP), matching tRNA anticodons in A/P/E sites to catalyze peptide bonds.'
+      });
+
+      // 5. INCOMING tRNA CARRIER & EJECTING tRNA
+      if (dogma.activeTRNA && !dogma.translationDone) {
+        const p = dogma.activeTRNA.progress;
+        const enterEase = Math.min(1, p * 1.8);
+        const e = enterEase * enterEase * (3 - 2 * enterEase);
+        const tx = riboW.x + 34 + (1 - e) * 95;
+        const ty = riboW.y - 16 - (1 - e) * 85;
+        drawTRNA(worldToScreen(tx, ty), dogma.activeTRNA.anticodon, dogma.activeTRNA.aa, dogma.activeTRNA.isStop, 0.95);
+      }
+      if (dogma.ejectingTRNA) {
+        const p = dogma.ejectingTRNA.progress;
+        const tx = riboW.x - 36 - p * 85;
+        const ty = riboW.y - 18 - p * 65;
+        drawTRNA(worldToScreen(tx, ty), dogma.ejectingTRNA.anticodon, null, false, Math.max(0, 1 - p));
+      }
+    }
+
+    // 6. LIVE FOLDING POLYPEPTIDE CHAIN
+    const nodes = dogma.chainNodes;
+    if (nodes.length > 0) {
+      ctx.save();
+      // Smooth folded ribbon backbone connecting amino acids
+      const screenNodes = nodes.map(n => ({ ...n, s: worldToScreen(n.x, n.y) }));
+      if (screenNodes.length >= 2) {
+        ctx.strokeStyle = 'rgba(220, 236, 255, 0.55)';
+        ctx.lineWidth = 4.5 * state.zoom;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.beginPath();
+        ctx.moveTo(screenNodes[0].s.x, screenNodes[0].s.y);
+        for (let i = 1; i < screenNodes.length; i++) {
+          const prev = screenNodes[i - 1].s;
+          const curS = screenNodes[i].s;
+          const mx = (prev.x + curS.x) * 0.5;
+          const my = (prev.y + curS.y) * 0.5;
+          ctx.quadraticCurveTo(prev.x, prev.y, mx, my);
+        }
+        const lastS = screenNodes[screenNodes.length - 1].s;
+        ctx.lineTo(lastS.x, lastS.y);
+        ctx.stroke();
+      }
+
+      // Draw each amino acid sphere with 3D specular shading & mutation halo
+      for (const n of screenNodes) {
+        const r = 13.5 * state.zoom;
+        if (n.mutated) {
+          ctx.strokeStyle = '#ffbe5c';
+          ctx.lineWidth = 2.4 * state.zoom;
+          ctx.beginPath();
+          ctx.arc(n.s.x, n.s.y, r + 4.5 * state.zoom, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        const g = ctx.createRadialGradient(n.s.x - r * 0.35, n.s.y - r * 0.35, r * 0.12, n.s.x, n.s.y, r);
+        g.addColorStop(0, '#ffffff');
+        g.addColorStop(0.28, n.color);
+        g.addColorStop(1, '#101b33');
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(n.s.x, n.s.y, r, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#040711';
+        ctx.font = `800 ${Math.max(7.5, Math.round(9 * state.zoom))}px ${getMono()}`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(n.aa, n.s.x, n.s.y + 0.5);
+
+        const prop = AA_PROPS[n.aa] || AA_PROPS.Gly;
+        state.hitTooltips.push({
+          x: n.s.x, y: n.s.y, r: r * 1.15,
+          title: `${n.aa} (Residue #${n.codonIdx + 1})${n.mutated ? ' — MUTATED' : ''}`,
+          body: `Class: ${prop.type}. Click DNA bases above to alter codons and compare folding.`
+        });
+      }
+      ctx.restore();
+
+      // Polypeptide label
+      const firstS = worldToScreen(nodes[0].x, nodes[0].y + 34);
+      drawEnzymeBadge(firstS.x, firstS.y, 'Folding Polypeptide', `${nodes.length} amino acids`, '#ffbe5c');
+    }
+  }
+
+  function drawTRNA(s, anticodon, aa, isStop, alpha) {
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.translate(s.x, s.y);
+    const sc = state.zoom;
+
+    // Stylized cloverleaf tRNA body
+    ctx.strokeStyle = isStop ? '#ff6083' : '#58dcff';
+    ctx.fillStyle = isStop ? 'rgba(255, 96, 131, 0.2)' : 'rgba(88, 220, 255, 0.16)';
+    ctx.lineWidth = 1.6 * sc;
+    ctx.beginPath();
+    ctx.arc(0, -14 * sc, 9 * sc, 0, Math.PI * 2);
+    ctx.arc(-11 * sc, -24 * sc, 7 * sc, 0, Math.PI * 2);
+    ctx.arc(11 * sc, -24 * sc, 7 * sc, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Anticodon stem
+    ctx.fillStyle = '#e8f4ff';
+    ctx.font = `800 ${Math.max(8, Math.round(9 * sc))}px ${getMono()}`;
+    ctx.textAlign = 'center';
+    ctx.fillText(isStop ? 'RF1' : anticodon, 0, 2 * sc);
+
+    // Carried Amino Acid sphere at top acceptor arm
+    if (aa && !isStop) {
+      const prop = AA_PROPS[aa] || AA_PROPS.Gly;
+      ctx.fillStyle = prop.color;
+      ctx.beginPath();
+      ctx.arc(0, -37 * sc, 10 * sc, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#040711';
+      ctx.font = `800 ${Math.max(7, Math.round(8.5 * sc))}px ${getMono()}`;
+      ctx.textBaseline = 'middle';
+      ctx.fillText(aa, 0, -37 * sc);
+    }
+    ctx.restore();
+  }
+
+  // =========================================================================
+  // MODE 3 UPDATE & RENDER: CRISPR-CAS9 GENE EDITING
+  // =========================================================================
+  function updateCrispr(dt) {
+    const dnaLen = state.dna.length;
+    crispr.phaseTimer += dt * state.speed;
+
+    if (crispr.phase === 'SCANNING') {
+      crispr.casXIdx += crispr.scanDir * 5.2 * state.speed * dt;
+      if (crispr.casXIdx > dnaLen - 4) {
+        crispr.scanDir = -1;
+        crispr.checkedPams.clear();
+      } else if (crispr.casXIdx < 4) {
+        crispr.scanDir = 1;
+        crispr.checkedPams.clear();
+      }
+
+      // Check if Cas9 PI domain reaches an unchecked 5'-NGG-3' PAM site
+      for (const pam of crispr.pamSites) {
+        const casCenterForPam = pam - 8;
+        if (!crispr.checkedPams.has(pam) && Math.abs(crispr.casXIdx - casCenterForPam) < 0.45) {
+          crispr.casXIdx = casCenterForPam;
+          crispr.targetPamIdx = pam;
+          crispr.phase = 'PAM_CHECK';
+          crispr.phaseTimer = 0;
+          AudioEngine.playBaseNote('G', 0.08);
+          break;
+        }
+      }
+    } else if (crispr.phase === 'PAM_CHECK') {
+      if (crispr.phaseTimer > 0.85) {
+        const res = scoreGuideAtPam(state.dna, crispr.sgrna, crispr.targetPamIdx);
+        crispr.matchCount = res.matches;
+        const scoreEl = document.getElementById('crispr-match-score');
+        if (scoreEl) {
+          scoreEl.textContent = res.matches + '/20 Match';
+          scoreEl.style.color = res.matches >= 17 ? 'var(--accent-mint)' : 'var(--accent-amber)';
+        }
+
+        if (res.matches >= 17) {
+          crispr.phase = 'RLOOP';
+          crispr.phaseTimer = 0;
+          crispr.rloopProg = 0;
+          crispr.cutSiteIdx = crispr.targetPamIdx - 3; // Canonical 3 bp upstream of PAM!
+          showBanner(`5'-${state.dna.slice(crispr.targetPamIdx, crispr.targetPamIdx + 3)}-3' PAM recognized! Guide RNA matches ${res.matches}/20 — unwinding R-loop...`, 'info', 3.5);
+        } else {
+          // Off-target mismatch — Cas9 rejects & continues scanning!
+          crispr.checkedPams.add(crispr.targetPamIdx);
+          crispr.phase = 'SCANNING';
+          crispr.phaseTimer = 0;
+          AudioEngine.playAlert('warn');
+          showBanner(`Off-target rejected (${res.matches}/20 match < 17) — Cas9 releases PAM & resumes scanning.`, 'warn', 3.8);
+        }
+      }
+    } else if (crispr.phase === 'RLOOP') {
+      crispr.rloopProg = Math.min(1, crispr.rloopProg + dt * 0.72 * state.speed);
+      if (Math.random() < dt * 7 * state.speed) {
+        const ntIdx = Math.floor(crispr.targetPamIdx - 1 - crispr.rloopProg * 19);
+        if (ntIdx >= 0 && ntIdx < state.dna.length) {
+          AudioEngine.playBaseNote(crispr.sgrna[ntIdx - (crispr.targetPamIdx - 20)] || 'A', 0.045);
+        }
+      }
+      if (crispr.rloopProg >= 1) {
+        crispr.phase = 'CLEAVAGE';
+        crispr.phaseTimer = 0;
+        crispr.cleaveFlash = 1.0;
+        AudioEngine.playSnip();
+        const spacing = Math.min(23, 780 / dnaLen);
+        const startX = -((dnaLen - 1) * spacing) * 0.5;
+        const cutX = startX + crispr.cutSiteIdx * spacing;
+        spawnSpark(cutX, -22, '#ff6083', 18, 130);
+        spawnSpark(cutX, 22, '#58dcff', 18, 130);
+        showBanner('✂ HNH & RuvC domains cleaved Double-Strand Break (DSB) 3 bp upstream of PAM!', 'danger', 4.2);
+      }
+    } else if (crispr.phase === 'CLEAVAGE') {
+      crispr.cleaveFlash = Math.max(0, crispr.cleaveFlash - dt * 1.1 * state.speed);
+      crispr.dsbGap = Math.min(1, crispr.dsbGap + dt * 1.3 * state.speed);
+      if (crispr.phaseTimer > 1.55) {
+        crispr.phase = 'REPAIR';
+        crispr.phaseTimer = 0;
+        crispr.repairProg = 0;
+        crispr.donorYOffset = 148;
+      }
+    } else if (crispr.phase === 'REPAIR') {
+      crispr.repairProg = Math.min(1, crispr.repairProg + dt * 0.45 * state.speed);
+      crispr.casRetractY = Math.min(130, crispr.casRetractY + dt * 95 * state.speed);
+
+      if (crispr.repairMode === 'hdr') {
+        crispr.donorYOffset = 148 * (1 - Math.min(1, crispr.repairProg * 1.5));
+      }
+
+      if (crispr.repairProg > 0.65) {
+        crispr.dsbGap = Math.max(0, 1 - (crispr.repairProg - 0.65) / 0.35);
+      }
+
+      if (crispr.repairProg >= 1) {
+        applyCrisprRepairEdit();
+        crispr.phase = 'COMPLETE';
+        crispr.phaseTimer = 0;
+        crispr.dsbGap = 0;
+        crispr.rloopProg = 0;
+        AudioEngine.playAlert('repair');
+      }
+    }
+  }
+
+  function applyCrisprRepairEdit() {
+    const cut = crispr.cutSiteIdx;
+    if (cut < 3 || cut >= state.dna.length - 3) return;
+    crispr.editedIndices.clear();
+
+    if (crispr.repairMode === 'nhej') {
+      // NHEJ creates an error-prone 2 bp knockout indel at the cut site
+      const arr = state.dna.split('');
+      const indelBases = ['T', 'A', 'G'];
+      const mutStart = Math.max(0, cut - 1);
+      for (let k = 0; k < 3; k++) {
+        if (mutStart + k < arr.length) {
+          arr[mutStart + k] = arr[mutStart + k] === indelBases[k] ? 'C' : indelBases[k];
+          crispr.editedIndices.add(mutStart + k);
+        }
+      }
+      state.dna = arr.join('');
+      crispr.indelSummary = 'NHEJ Knockout (3 bp Indel)';
+      showBanner('NHEJ Repair Complete: Error-prone indel introduced → Gene Knockout achieved!', 'danger', 5.5);
+    } else {
+      // HDR integrates donor template payload seamlessly
+      const donor = sanitizeDna(crispr.hdrDonor) || 'CCTGAGGAG';
+      const arr = state.dna.split('');
+      const start = Math.max(0, cut - Math.floor(donor.length / 2));
+      for (let k = 0; k < donor.length; k++) {
+        if (start + k < arr.length) {
+          arr[start + k] = donor[k];
+          crispr.editedIndices.add(start + k);
+        }
+      }
+      state.dna = arr.join('');
+      crispr.indelSummary = 'HDR Precision Edit';
+      showBanner(`HDR Complete: Donor template (${donor}) precisely integrated without indels!`, 'mint', 5.5);
+    }
+
+    const dnaInp = document.getElementById('input-dna-seq');
+    if (dnaInp) dnaInp.value = state.dna;
+    const spacing = Math.min(23, 780 / state.dna.length);
+    const startX = -((state.dna.length - 1) * spacing) * 0.5;
+    spawnSpark(startX + cut * spacing, 0, crispr.repairMode === 'hdr' ? '#4af2b2' : '#ff6083', 24, 130);
+  }
+
+  function renderCrispr() {
+    const dna = state.dna;
+    const dnaLen = dna.length;
+    const spacing = Math.min(23, 780 / Math.max(12, dnaLen));
+    const startX = -((dnaLen - 1) * spacing) * 0.5;
+    const centerY = 12;
+
+    const pam = crispr.targetPamIdx;
+    const targetStart = pam - 20;
+    const casWorldX = startX + crispr.casXIdx * spacing;
+    const casWorldY = centerY - crispr.casRetractY;
+
+    // 1. TRANSLUCENT CAS9 RIBONUCLEOPROTEIN COMPLEX (Behind DNA + Front Overlay)
+    const casS = worldToScreen(casWorldX, casWorldY);
+    const casW = 245 * state.zoom;
+    const casH = 128 * state.zoom;
+    const casAlpha = crispr.phase === 'COMPLETE' ? Math.max(0.2, 0.85 - crispr.phaseTimer * 0.25) : 0.92;
+
+    ctx.save();
+    ctx.globalAlpha = casAlpha;
+    ctx.translate(casS.x, casS.y);
+
+    // Outer Cas9 bi-lobed silhouette (REC lobe top, NUC lobe bottom)
+    const cg = ctx.createRadialGradient(-20 * state.zoom, -18 * state.zoom, 15 * state.zoom, 0, 0, casW * 0.72);
+    cg.addColorStop(0, 'rgba(182, 148, 255, 0.24)');
+    cg.addColorStop(0.55, 'rgba(88, 220, 255, 0.14)');
+    cg.addColorStop(1, 'rgba(14, 22, 46, 0.06)');
+    ctx.fillStyle = cg;
+    ctx.strokeStyle = crispr.phase === 'CLEAVAGE' ? '#ff6083' : 'rgba(182, 148, 255, 0.62)';
+    ctx.lineWidth = 2.0 * state.zoom;
+
+    ctx.beginPath();
+    ctx.ellipse(-10 * state.zoom, -22 * state.zoom, casW * 0.54, casH * 0.56, -0.06, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.ellipse(24 * state.zoom, 26 * state.zoom, casW * 0.46, casH * 0.46, 0.08, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Domain badges inside Cas9: HNH, RuvC, PI (PAM-Interacting)
+    const cutLocalX = (pam >= 0 ? (crispr.cutSiteIdx - crispr.casXIdx) : 4.5) * spacing * state.zoom;
+    const hnhGlow = crispr.phase === 'CLEAVAGE' ? 0.95 : 0.32;
+
+    // HNH Scissor Domain (top strand cut)
+    ctx.fillStyle = `rgba(255, 96, 131, ${hnhGlow * 0.45})`;
+    ctx.strokeStyle = `rgba(255, 96, 131, ${hnhGlow})`;
+    ctx.lineWidth = 1.6 * state.zoom;
+    ctx.beginPath();
+    ctx.arc(cutLocalX, -42 * state.zoom, 18 * state.zoom, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // RuvC Scissor Domain (bottom strand cut)
+    ctx.fillStyle = `rgba(88, 220, 255, ${hnhGlow * 0.45})`;
+    ctx.strokeStyle = `rgba(88, 220, 255, ${hnhGlow})`;
+    ctx.beginPath();
+    ctx.arc(cutLocalX, 46 * state.zoom, 18 * state.zoom, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    if (state.showLabels) {
+      ctx.fillStyle = '#ffd6e0';
+      ctx.font = `700 ${Math.max(8, Math.round(9 * state.zoom))}px ${getMono()}`;
+      ctx.textAlign = 'center';
+      ctx.fillText('HNH ✂', cutLocalX, -40 * state.zoom);
+      ctx.fillStyle = '#d6f5ff';
+      ctx.fillText('RuvC ✂', cutLocalX, 49 * state.zoom);
+      ctx.fillStyle = 'rgba(255, 190, 92, 0.85)';
+      ctx.fillText('PAM PI', casW * 0.36, 4 * state.zoom);
+    }
+
+    // Guide RNA stem-loop scaffold tail inside Cas9
+    ctx.strokeStyle = '#c490ff';
+    ctx.lineWidth = 3 * state.zoom;
+    ctx.beginPath();
+    ctx.moveTo(casW * 0.25, -45 * state.zoom);
+    ctx.bezierCurveTo(casW * 0.48, -98 * state.zoom, casW * 0.14, -108 * state.zoom, casW * 0.18, -58 * state.zoom);
+    ctx.stroke();
+    ctx.restore();
+
+    drawEnzymeBadge(casS.x - 10 * state.zoom, casS.y - 106 * state.zoom, 'Cas9–sgRNA Complex', crispr.phase, '#b694ff');
+    state.hitTooltips.push({
+      x: casS.x, y: casS.y, r: 95 * state.zoom,
+      title: 'SpCas9 Ribonucleoprotein',
+      body: 'Scans DNA for 5\'-NGG-3\' PAM sites, hybridizes its 20-nt sgRNA into an R-loop, and cleaves both strands via HNH and RuvC nuclease domains.'
+    });
+
+    // 2. TARGET DNA DOUBLE HELIX WITH R-LOOP, PAM HIGHLIGHT & DOUBLE-STRAND BREAK
+    const leftTop = [], leftBot = [];
+    const rightTop = [], rightBot = [];
+    const cutIdx = crispr.cutSiteIdx;
+    const gapShift = crispr.dsbGap * 22;
+
+    for (let i = 0; i < dnaLen; i++) {
+      let wx = startX + i * spacing;
+      if (cutIdx >= 0 && crispr.dsbGap > 0) {
+        if (i < cutIdx) wx -= gapShift;
+        else wx += gapShift;
+      }
+
+      // R-loop unwinding for the 20-nt target upstream of PAM
+      const inTarget = pam >= 0 && i >= targetStart && i < pam;
+      let rloopFactor = 0;
+      if (inTarget && (crispr.phase === 'RLOOP' || crispr.phase === 'CLEAVAGE' || (crispr.phase === 'REPAIR' && crispr.repairProg < 0.5))) {
+        // Unzips from PAM-proximal (pam-1) toward 5' end (targetStart)
+        const relFromPam = (pam - 1 - i) / 20;
+        const openAmt = Math.max(0, Math.min(1, (crispr.rloopProg - relFromPam * 0.7) / 0.3));
+        const fadeOut = crispr.phase === 'REPAIR' ? Math.max(0, 1 - crispr.repairProg * 2) : 1;
+        rloopFactor = openAmt * fadeOut;
+      }
+
+      const theta = i * 0.48 - state.helixPhase * 1.15;
+      const twist = (1 - rloopFactor) * Math.cos(theta) * 28;
+      const yTop = centerY - 22 - rloopFactor * 44 + twist * 0.52;
+      const yBot = centerY + 22 + rloopFactor * 26 - twist * 0.52;
+
+      const sTop = worldToScreen(wx, yTop);
+      const sBot = worldToScreen(wx, yBot);
+
+      if (cutIdx >= 0 && crispr.dsbGap > 0.05 && i >= cutIdx) {
+        rightTop.push(sTop);
+        rightBot.push(sBot);
+      } else {
+        leftTop.push(sTop);
+        leftBot.push(sBot);
+      }
+
+      const bTop = dna[i];
+      const bBot = COMP_DNA[bTop] || 'T';
+      const isPamBase = crispr.pamSites.some(p => i >= p && i <= p + 2);
+      const isEdited = crispr.editedIndices.has(i);
+      const depth = (Math.sin(theta) + 1) * 0.5;
+
+      // PAM amber halo behind PAM bases
+      if (isPamBase) {
+        ctx.save();
+        ctx.fillStyle = 'rgba(255, 190, 92, 0.16)';
+        ctx.strokeStyle = 'rgba(255, 190, 92, 0.52)';
+        ctx.lineWidth = 1.1;
+        roundRect(ctx, sTop.x - 9 * state.zoom, Math.min(sTop.y, sBot.y) - 12 * state.zoom, 18 * state.zoom, Math.abs(sBot.y - sTop.y) + 24 * state.zoom, 5 * state.zoom);
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // Edited bases halo (emerald for HDR, rose for NHEJ)
+      if (isEdited) {
+        ctx.save();
+        const eCol = crispr.repairMode === 'hdr' ? '#4af2b2' : '#ff6083';
+        ctx.fillStyle = crispr.repairMode === 'hdr' ? 'rgba(74, 242, 178, 0.2)' : 'rgba(255, 96, 131, 0.22)';
+        ctx.strokeStyle = eCol;
+        ctx.lineWidth = 1.4;
+        roundRect(ctx, sTop.x - 9 * state.zoom, Math.min(sTop.y, sBot.y) - 10 * state.zoom, 18 * state.zoom, Math.abs(sBot.y - sTop.y) + 20 * state.zoom, 5 * state.zoom);
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      drawBaseRung(sTop.x, sTop.y, sBot.x, sBot.y, bTop, bBot, rloopFactor > 0.2 ? 0.95 : depth, {
+        unzipped: rloopFactor > 0.25,
+        highlight1: isEdited || isPamBase,
+        highlight2: isEdited
+      });
+
+      // Clickable base for quick live edits even in CRISPR mode
+      state.hitBases.push({ x: sTop.x, y: sTop.y, r: 11 * state.zoom, index: i, base: bTop });
+    }
+
+    // Draw intact or cleaved backbones
+    drawGlowingBackbone(leftTop, '#95b9ff', 'rgba(149, 185, 255, 0.76)', 6);
+    drawGlowingBackbone(leftBot, '#6c95ff', 'rgba(108, 149, 255, 0.72)', 6);
+    if (rightTop.length >= 2) {
+      drawGlowingBackbone(rightTop, '#95b9ff', 'rgba(149, 185, 255, 0.76)', 6);
+      drawGlowingBackbone(rightBot, '#6c95ff', 'rgba(108, 149, 255, 0.72)', 6);
+    }
+
+    // Label PAM motifs
+    for (const p of crispr.pamSites) {
+      const pamS = worldToScreen(startX + (p + 1) * spacing, centerY + 62);
+      drawPolarityTag(pamS, `PAM 5'-${dna.slice(p, p + 3)}-3'`, '#ffbe5c');
+    }
+
+    // 3. 20-nt GUIDE RNA (sgRNA) RIBBON HYBRIDIZING INSIDE CAS9 / R-LOOP
+    const rnaPts = [];
+    const guideStartWorldX = casWorldX - 9.5 * spacing;
+    for (let k = 0; k < 20; k++) {
+      const targetIdx = targetStart + k;
+      let gx = guideStartWorldX + k * spacing;
+      let gy = casWorldY - 24;
+
+      if (pam >= 0 && (crispr.phase === 'RLOOP' || crispr.phase === 'CLEAVAGE')) {
+        gx = startX + targetIdx * spacing;
+        if (cutIdx >= 0 && crispr.dsbGap > 0) {
+          gx += (targetIdx < cutIdx ? -gapShift : gapShift);
+        }
+        gy = centerY + 6; // Hybridized right against the bottom target DNA strand!
+      }
+      const gs = worldToScreen(gx, gy);
+      rnaPts.push({ s: gs, base: crispr.sgrna[k] || 'A', k });
+    }
+
+    ctx.save();
+    ctx.globalAlpha = casAlpha;
+    drawGlowingBackbone(rnaPts.map(p => p.s), '#c490ff', 'rgba(196, 144, 255, 0.9)', 4.8);
+    for (const p of rnaPts) {
+      if (state.showLetters) {
+        drawBaseLetter(p.s.x, p.s.y, p.base, false);
+      }
+    }
+    ctx.restore();
+
+    // 4. CLEAVAGE LASER FLASH (HNH + RuvC Scissor Beams)
+    if (crispr.cleaveFlash > 0.02 && cutIdx >= 0) {
+      const cutS = worldToScreen(startX + cutIdx * spacing, centerY);
+      ctx.save();
+      ctx.globalAlpha = crispr.cleaveFlash;
+      ctx.strokeStyle = '#ff6083';
+      ctx.lineWidth = (5 + crispr.cleaveFlash * 10) * state.zoom;
+      ctx.beginPath();
+      ctx.moveTo(cutS.x, cutS.y - 88 * state.zoom);
+      ctx.lineTo(cutS.x, cutS.y + 88 * state.zoom);
+      ctx.stroke();
+
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2.4 * state.zoom;
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // 5. REPAIR PATHWAY VISUALIZATION (HDR Donor Template OR NHEJ Ku70/80 End-Joining)
+    if (crispr.phase === 'REPAIR' && cutIdx >= 0) {
+      const cutWx = startX + cutIdx * spacing;
+      if (crispr.repairMode === 'hdr') {
+        const donor = sanitizeDna(crispr.hdrDonor) || 'CCTGAGGAG';
+        const dPts = [];
+        const dStart = cutWx - ((donor.length - 1) * 0.5) * spacing;
+        const dY = centerY + crispr.donorYOffset;
+        for (let k = 0; k < donor.length; k++) {
+          const s = worldToScreen(dStart + k * spacing, dY);
+          dPts.push({ s, base: donor[k] });
+        }
+        drawGlowingBackbone(dPts.map(p => p.s), '#4af2b2', 'rgba(74, 242, 178, 0.95)', 6.5);
+        for (const p of dPts) {
+          drawBaseLetter(p.s.x, p.s.y, p.base, true);
+        }
+        const lblS = worldToScreen(cutWx, dY + 34);
+        drawEnzymeBadge(lblS.x, lblS.y, 'HDR Donor Template', `Inserting ${donor}`, '#4af2b2');
+      } else {
+        // NHEJ glowing repair aura drawing broken ends together
+        const nhejS = worldToScreen(cutWx, centerY);
+        ctx.save();
+        const rg = ctx.createRadialGradient(nhejS.x, nhejS.y, 4, nhejS.x, nhejS.y, 58 * state.zoom);
+        rg.addColorStop(0, 'rgba(255, 96, 131, 0.45)');
+        rg.addColorStop(1, 'rgba(255, 96, 131, 0)');
+        ctx.fillStyle = rg;
+        ctx.beginPath();
+        ctx.arc(nhejS.x, nhejS.y, 58 * state.zoom, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        drawEnzymeBadge(nhejS.x, nhejS.y + 72 * state.zoom, 'NHEJ Repair Complex', 'Error-Prone Indel Join', '#ff6083');
+      }
+    }
+  }
+
+  // =========================================================================
+  // TELEMETRY & SEQUENCE STRIP UPDATER
+  // =========================================================================
+  let lastTelemetryTick = 0;
+
+  function formatColoredSeq(seqStr, highlightSet = null) {
+    let html = '';
+    for (let i = 0; i < seqStr.length; i++) {
+      const ch = seqStr[i];
+      const cls = 'b' + ch;
+      if (highlightSet && highlightSet.has(i)) {
+        html += `<span class="${cls}" style="text-decoration:underline; background:rgba(255,190,92,0.22); border-radius:2px;">${ch}</span>`;
+      } else {
+        html += `<span class="${cls}">${ch}</span>`;
+      }
+    }
+    return html;
+  }
+
+  function updateTelemetryHUD(force = false) {
+    const now = performance.now();
+    if (!force && now - lastTelemetryTick < 110) return;
+    lastTelemetryTick = now;
+
+    const elProcess = document.getElementById('tel-process');
+    const elCountLbl = document.getElementById('tel-count-label');
+    const elCount = document.getElementById('tel-count');
+    const elFidLbl = document.getElementById('tel-fidelity-label');
+    const elFid = document.getElementById('tel-fidelity');
+    const elBadge = document.getElementById('mutation-badge');
+    const elRow1Tag = document.getElementById('seq-row1-tag');
+    const elRow1 = document.getElementById('seq-row1');
+    const elRow2Tag = document.getElementById('seq-row2-tag');
+    const elRow2 = document.getElementById('seq-row2');
+    const elSub = document.getElementById('tel-sub-stat');
+
+    if (state.mode === 'replication') {
+      elCountLbl.textContent = 'Base-Pairs';
+      elFidLbl.textContent = 'Fidelity';
+      elCount.textContent = `${rep.totalBpProcessed} bp`;
+
+      const fid = rep.totalBpProcessed === 0
+        ? 99.9
+        : Math.max(82, 99.9 - rep.mismatchesPersisted * 2.8);
+      elFid.textContent = `${fid.toFixed(1)}%`;
+      elFid.className = 'tele-val ' + (fid > 98 ? 'mint' : 'rose');
+
+      if (rep.activeMismatch) {
+        elProcess.textContent = rep.activeMismatch.phase === 'excising' ? '3\'→5\' Proofreading' : 'Mismatch Detected!';
+        elProcess.className = 'tele-val rose';
+        elBadge.textContent = rep.proofreadEnabled ? 'Proofreading' : 'Point Mutation';
+        elBadge.className = 'status-pill ' + (rep.proofreadEnabled ? 'warn' : 'danger');
+      } else {
+        elProcess.textContent = 'Unwinding & Synth';
+        elProcess.className = 'tele-val cyan';
+        if (rep.mismatchesPersisted > 0) {
+          elBadge.textContent = `${rep.mismatchesPersisted} Mutated bp`;
+          elBadge.className = 'status-pill danger';
+        } else {
+          elBadge.textContent = rep.mismatchesRepaired > 0 ? 'Repaired (Hi-Fi)' : 'Wild-Type';
+          elBadge.className = 'status-pill';
+        }
+      }
+
+      const startIdx = Math.max(0, Math.floor(rep.scrollBp) - 18);
+      let leadStr = '';
+      let lagStr = '';
+      for (let k = 0; k < 24; k++) {
+        const b = getRepBase(startIdx + k);
+        leadStr += COMP_DNA[b];
+        lagStr += b;
+      }
+      elRow1Tag.textContent = 'LEAD';
+      elRow1.innerHTML = formatColoredSeq(leadStr);
+      elRow2Tag.textContent = 'LAG';
+      elRow2.innerHTML = formatColoredSeq(lagStr);
+      elSub.textContent = `Okazaki: ${rep.okazakiSealed} sealed · Repaired: ${rep.mismatchesRepaired}`;
+
+    } else if (state.mode === 'central_dogma') {
+      const { cur } = analyzeDogmaImpact();
+      elCountLbl.textContent = 'Codons';
+      elFidLbl.textContent = 'Fidelity';
+
+      const doneAAs = dogma.translatedAAs.filter(x => !x.isStop).length;
+      const totalAAs = cur.codons.filter(x => !x.isStop).length;
+      elCount.textContent = `${doneAAs}/${totalAAs} aa`;
+
+      const mutCount = dogma.translatedAAs.filter(x => x.mutated).length;
+      const fid = totalAAs > 0 ? Math.max(0, ((totalAAs - mutCount) / totalAAs) * 100) : 100;
+      elFid.textContent = `${fid.toFixed(0)}%`;
+      elFid.className = 'tele-val ' + (fid === 100 ? 'mint' : (fid > 75 ? 'amber' : 'rose'));
+
+      if (dogma.translationDone) {
+        elProcess.textContent = 'Polypeptide Folded';
+        elProcess.className = 'tele-val mint';
+      } else if (dogma.riboCodonIdx >= 0) {
+        elProcess.textContent = 'Ribosome Elongation';
+        elProcess.className = 'tele-val cyan';
+      } else {
+        elProcess.textContent = 'RNA Pol Transcribing';
+        elProcess.className = 'tele-val violet';
+      }
+
+      elBadge.textContent = dogma.impactType;
+      elBadge.className = 'status-pill' + (dogma.impactSeverity !== 'ok' ? ' ' + dogma.impactSeverity : '');
+
+      elRow1Tag.textContent = 'mRNA';
+      const mrnaStr = dogma.mrnaBases.length > 0 ? dogma.mrnaBases.join('') : cur.mrna;
+      elRow1.innerHTML = formatColoredSeq(mrnaStr.slice(0, 30), dogma.mutatedIndices);
+
+      elRow2Tag.textContent = 'PROT';
+      const showAAs = dogma.translatedAAs.length > 0
+        ? dogma.translatedAAs
+        : cur.codons.map((c, i) => ({ aa: c.aa, mutated: false, isStop: c.isStop, index: i }));
+      elRow2.innerHTML = showAAs.slice(0, 11).map(item => {
+        const cls = item.isStop ? 'aa-chip stop' : (item.mutated ? 'aa-chip mut' : 'aa-chip');
+        return `<span class="${cls}">${item.aa}</span>`;
+      }).join('');
+
+      elSub.textContent = `mRNA: ${dogma.mrnaBases.length}/${state.dna.length} nt · Click DNA to mutate`;
+
+    } else {
+      // CRISPR-Cas9
+      elCountLbl.textContent = 'sgRNA Match';
+      elFidLbl.textContent = 'Pathway';
+      elCount.textContent = `${crispr.matchCount}/20 nt`;
+      elFid.textContent = crispr.repairMode.toUpperCase();
+      elFid.className = 'tele-val ' + (crispr.repairMode === 'hdr' ? 'mint' : 'rose');
+
+      const phaseMap = {
+        SCANNING: ['Cas9 PAM Scanning', 'cyan', 'Scanning PAM', 'silent'],
+        PAM_CHECK: ['5\'-NGG-3\' PAM Check', 'amber', 'PAM Detected', 'warn'],
+        RLOOP: ['R-Loop Unwinding', 'violet', 'Target Locked', 'violet'],
+        CLEAVAGE: ['HNH/RuvC Cleavage', 'rose', 'DSB Cleaved!', 'danger'],
+        REPAIR: [crispr.repairMode === 'hdr' ? 'HDR Donor Repair' : 'NHEJ End-Joining', crispr.repairMode === 'hdr' ? 'mint' : 'rose', 'Repairing DSB', 'warn'],
+        COMPLETE: [crispr.repairMode === 'hdr' ? 'Precision Edit Done' : 'Gene Knocked Out', crispr.repairMode === 'hdr' ? 'mint' : 'rose', crispr.indelSummary || 'Edited', crispr.repairMode === 'hdr' ? '' : 'danger']
+      };
+      const pm = phaseMap[crispr.phase] || phaseMap.SCANNING;
+      elProcess.textContent = pm[0];
+      elProcess.className = 'tele-val ' + pm[1];
+      elBadge.textContent = pm[2];
+      elBadge.className = 'status-pill' + (pm[3] ? ' ' + pm[3] : '');
+
+      elRow1Tag.textContent = 'gRNA';
+      elRow1.innerHTML = formatColoredSeq(crispr.sgrna);
+      elRow2Tag.textContent = 'LOCUS';
+      elRow2.innerHTML = formatColoredSeq(state.dna.slice(0, 30), crispr.editedIndices);
+      elSub.textContent = `PAM sites found: ${crispr.pamSites.length} (5'-NGG-3')`;
+    }
+  }
+
+  function renderCodonGrid() {
+    const grid = document.getElementById('codon-grid');
+    const badge = document.getElementById('codon-count-badge');
+    if (!grid) return;
+    const { cur, wild } = analyzeDogmaImpact();
+    if (badge) badge.textContent = `${cur.codons.length} codons`;
+
+    grid.innerHTML = '';
+    cur.codons.forEach((c, idx) => {
+      const w = wild.codons[idx];
+      const isMut = !w || c.aa !== w.aa;
+      const btn = document.createElement('button');
+      btn.className = 'codon-pill'
+        + (c.isStop ? ' stop' : (isMut ? ' mut' : ''))
+        + (idx === dogma.riboCodonIdx ? ' active' : '');
+      btn.textContent = `${c.codon}→${c.aa}`;
+      btn.title = `Codon ${idx + 1}: Click to mutate base ${c.ntStart + 1}`;
+      btn.addEventListener('click', () => {
+        mutateDnaBaseAt(c.ntStart + 2); // Mutate wobble/3rd position or cycle
+      });
+      grid.appendChild(btn);
+    });
+  }
+
+  function mutateDnaBaseAt(idx) {
+    if (idx < 0 || idx >= state.dna.length) return;
+    const arr = state.dna.split('');
+    const oldB = arr[idx];
+    const newB = CYCLE_DNA[oldB] || 'A';
+    arr[idx] = newB;
+    state.dna = arr.join('');
+
+    const dnaInp = document.getElementById('input-dna-seq');
+    if (dnaInp) dnaInp.value = state.dna;
+    AudioEngine.playBaseNote(newB, 0.13);
+
+    if (state.mode === 'central_dogma') {
+      initDogma(true);
+      const { cur } = analyzeDogmaImpact();
+      showBanner(`Base #${idx + 1} mutated (${oldB} → ${newB}) — Impact: ${dogma.impactType}`, dogma.impactSeverity === 'danger' ? 'danger' : (dogma.impactSeverity === 'warn' ? 'warn' : 'info'), 3.6);
+    } else if (state.mode === 'crispr') {
+      initCrispr(false);
+      showBanner(`Target DNA base #${idx + 1} changed (${oldB} → ${newB}) — Match score: ${crispr.matchCount}/20`, 'info', 3.2);
+    }
+    updateTelemetryHUD(true);
+  }
+
+  // =========================================================================
+  // MODE & PRESET SWITCHING
+  // =========================================================================
+  function setMode(mode, skipInit = false) {
+    state.mode = mode;
+
+    // Update top-left badge
+    const badge = document.getElementById('mode-badge');
+    if (badge) {
+      if (mode === 'replication') {
+        badge.textContent = 'Replication Fork';
+        badge.className = 'mode-badge';
+      } else if (mode === 'central_dogma') {
+        badge.textContent = 'Central Dogma';
+        badge.className = 'mode-badge dogma';
+      } else {
+        badge.textContent = 'CRISPR–Cas9';
+        badge.className = 'mode-badge crispr';
+      }
+    }
+
+    // Update mode buttons
+    document.querySelectorAll('.mode-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.mode === mode);
+    });
+
+    // Mode-specific drawer controls
+    document.getElementById('ctrl-replication').classList.toggle('visible', mode === 'replication');
+    document.getElementById('ctrl-dogma').classList.toggle('visible', mode === 'central_dogma');
+    document.getElementById('ctrl-crispr').classList.toggle('visible', mode === 'crispr');
+
+    const hintTag = document.getElementById('action-mode-hint');
+    const hintCtx = document.getElementById('hint-context');
+    if (mode === 'replication') {
+      hintTag.textContent = 'FORK';
+      hintTag.style.color = 'var(--accent-mint)';
+      hintCtx.innerHTML = '<strong>M</strong> Induce mutation · <strong>Hover</strong> enzymes · <strong>Drag</strong> pan';
+      if (!skipInit) initReplication();
+    } else if (mode === 'central_dogma') {
+      hintTag.textContent = 'DOGMA';
+      hintTag.style.color = 'var(--accent-cyan)';
+      hintCtx.innerHTML = '<strong>Click any DNA base</strong> to mutate · <strong>Hover</strong> residues · <strong>Scroll</strong> zoom';
+      if (!skipInit) initDogma(false);
+    } else {
+      hintTag.textContent = 'CAS9';
+      hintTag.style.color = 'var(--accent-violet)';
+      hintCtx.innerHTML = '<strong>M</strong> Scan &amp; Cleave · <strong>Click DNA</strong> to test mismatch · <strong>Scroll</strong> zoom';
+      if (!skipInit) initCrispr(false);
+    }
+
+    syncSequenceInputs();
+    updateTelemetryHUD(true);
+  }
+
+  function loadPreset(presetKey) {
+    const p = PRESETS[presetKey];
+    if (!p) return;
+    state.preset = presetKey;
+    state.dna = p.dna;
+    state.wildDna = p.wildDna;
+    state.camX = 0;
+    state.camY = 0;
+    state.zoom = 1.0;
+    syncZoomUI();
+
+    document.querySelectorAll('.preset-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.preset === presetKey);
+    });
+
+    if (p.mode === 'replication') {
+      rep.proofreadEnabled = p.proofread !== false;
+      document.getElementById('chk-proofread').checked = rep.proofreadEnabled;
+      initReplication();
+    } else if (p.mode === 'central_dogma') {
+      initDogma(false);
+    } else if (p.mode === 'crispr') {
+      crispr.sgrna = p.sgrna;
+      crispr.repairMode = p.repair || 'nhej';
+      crispr.hdrDonor = p.hdrDonor || 'CCTGAGGAG';
+      document.querySelectorAll('#repair-pathway-row .seg-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.repair === crispr.repairMode);
+      });
+      initCrispr(false);
+    }
+
+    setMode(p.mode, true);
+    showBanner(p.banner, p.bannerType || 'info', 5.0);
+  }
+
+  function syncSequenceInputs() {
+    const dnaInp = document.getElementById('input-dna-seq');
+    const lenLbl = document.getElementById('seq-len-label');
+    const rnaInp = document.getElementById('input-sgrna');
+    const rnaLen = document.getElementById('sgrna-len-badge');
+    if (dnaInp) dnaInp.value = state.dna;
+    if (lenLbl) lenLbl.textContent = `${state.dna.length} nt`;
+    if (rnaInp) rnaInp.value = crispr.sgrna;
+    if (rnaLen) rnaLen.textContent = `${crispr.sgrna.length} nt`;
+    renderCodonGrid();
+  }
+
+  function syncZoomUI() {
+    const sl = document.getElementById('sl-zoom');
+    const vl = document.getElementById('val-zoom');
+    if (sl) sl.value = state.zoom.toFixed(2);
+    if (vl) vl.textContent = `${state.zoom.toFixed(2)}×`;
+  }
+
+  // =========================================================================
+  // INTERACTIVE ACTIONS (MUTATIONS, OFF-TARGET, ETC.)
+  // =========================================================================
+  function triggerInducePointMutation() {
+    if (state.mode !== 'replication') {
+      setMode('replication');
+    }
+    const targetBp = Math.floor(rep.scrollBp) - 4;
+    const tmpl = getRepBase(targetBp);
+    const trueComp = COMP_DNA[tmpl];
+    const wrong = CYCLE_DNA[trueComp];
+    rep.mismatchesTotal++;
+    rep.activeMismatch = {
+      bpIndex: targetBp,
+      wrongBase: wrong,
+      trueBase: trueComp,
+      phase: 'alert',
+      timer: 0
+    };
+    AudioEngine.playAlert('warn');
+    spawnSpark(-65, -92, '#ff6083', 16, 95);
+    showBanner(`☢ Point Mutation induced: ${wrong} mispaired opposite ${tmpl}! ${rep.proofreadEnabled ? 'Pol III proofreading triggered...' : 'Proofreading OFF!'}`, 'danger', 3.5);
+    updateTelemetryHUD(true);
+  }
+
+  // =========================================================================
+  // MAIN SIMULATION LOOP
+  // =========================================================================
+  let lastTime = performance.now();
+
+  function tick(now) {
+    const rawDt = Math.min(0.05, (now - lastTime) / 1000);
+    lastTime = now;
+    const dt = state.playing ? rawDt : 0;
+
+    if (dt > 0) {
+      state.time += dt;
+      state.helixPhase += dt * state.spinRate * 0.9;
+
+      // Drift nuclear soup
+      for (const p of state.soup) {
+        p.x += p.vx * dt;
+        p.y += p.vy * dt + Math.sin(state.time * 0.8 + p.phase) * 4 * dt;
+        if (p.x > 820) p.x = -820;
+        if (p.x < -820) p.x = 820;
+        if (p.y > 500) p.y = -500;
+        if (p.y < -500) p.y = 500;
+      }
+
+      // Update sparks
+      for (let i = state.sparks.length - 1; i >= 0; i--) {
+        const sp = state.sparks[i];
+        sp.x += sp.vx * dt;
+        sp.y += sp.vy * dt;
+        sp.vx *= 0.94;
+        sp.vy *= 0.94;
+        sp.life -= dt;
+        if (sp.life <= 0) state.sparks.splice(i, 1);
+      }
+
+      if (state.mode === 'replication') updateReplication(dt);
+      else if (state.mode === 'central_dogma') updateDogma(dt);
+      else updateCrispr(dt);
+    }
+
+    // Banner auto-hide
+    if (state.bannerTimer > 0) {
+      state.bannerTimer -= rawDt;
+      if (state.bannerTimer <= 0) {
+        const b = document.getElementById('event-banner');
+        if (b) b.classList.remove('visible');
+      }
+    }
+
+    // Render frame
+    ctx.save();
+    ctx.scale(DPR, DPR);
+    state.hitBases = [];
+    state.hitTooltips = [];
+
+    drawBackground();
+    if (state.mode === 'replication') renderReplication();
+    else if (state.mode === 'central_dogma') renderDogma();
+    else renderCrispr();
+    drawSparks();
+
+    ctx.restore();
+
+    updateHoverTooltip();
+    updateTelemetryHUD(false);
+    requestAnimationFrame(tick);
+  }
+
+  function updateHoverTooltip() {
+    const tip = document.getElementById('mol-tooltip');
+    const titleEl = document.getElementById('mol-tooltip-title');
+    const bodyEl = document.getElementById('mol-tooltip-body');
+    if (!tip || state.dragging || !state.showLabels) {
+      if (tip) tip.classList.remove('visible');
+      return;
+    }
+
+    const px = state.pointerX;
+    const py = state.pointerY;
+
+    // Check clickable base hover first
+    let overBase = false;
+    for (const hb of state.hitBases) {
+      if (Math.hypot(px - hb.x, py - hb.y) <= hb.r) {
+        overBase = true;
+        break;
+      }
+    }
+    canvas.classList.toggle('clickable', overBase);
+
+    // Check enzyme / amino-acid tooltips
+    let found = null;
+    for (let i = state.hitTooltips.length - 1; i >= 0; i--) {
+      const t = state.hitTooltips[i];
+      if (Math.hypot(px - t.x, py - t.y) <= t.r) {
+        found = t;
+        break;
+      }
+    }
+
+    if (found) {
+      titleEl.textContent = found.title;
+      bodyEl.textContent = found.body;
+      const left = Math.min(W - 255, px + 16);
+      const top = Math.min(H - 90, py + 16);
+      tip.style.left = `${Math.max(12, left)}px`;
+      tip.style.top = `${Math.max(12, top)}px`;
+      tip.classList.add('visible');
+    } else {
+      tip.classList.remove('visible');
+    }
+  }
+
+  // =========================================================================
+  // POINTER & KEYBOARD INTERACTION
+  // =========================================================================
+  canvas.addEventListener('pointerdown', (e) => {
+    state.dragging = true;
+    state.pointerMoved = false;
+    state.dragStartX = e.clientX;
+    state.dragStartY = e.clientY;
+    state.camStartX = state.camX;
+    state.camStartY = state.camY;
+    canvas.classList.add('panning');
+  });
+
+  window.addEventListener('pointermove', (e) => {
+    state.pointerX = e.clientX;
+    state.pointerY = e.clientY;
+    if (!state.dragging) return;
+    const dx = e.clientX - state.dragStartX;
+    const dy = e.clientY - state.dragStartY;
+    if (Math.hypot(dx, dy) > 4) state.pointerMoved = true;
+    state.camX = state.camStartX + dx / state.zoom;
+    state.camY = state.camStartY + dy / state.zoom;
+  });
+
+  window.addEventListener('pointerup', (e) => {
+    if (!state.dragging) return;
+    state.dragging = false;
+    canvas.classList.remove('panning');
+
+    if (!state.pointerMoved) {
+      // Check if user clicked a DNA base!
+      for (const hb of state.hitBases) {
+        if (Math.hypot(e.clientX - hb.x, e.clientY - hb.y) <= hb.r) {
+          mutateDnaBaseAt(hb.index);
+          return;
+        }
+      }
+    }
+  });
+
+  canvas.addEventListener('dblclick', () => {
+    state.camX = 0;
+    state.camY = 0;
+    state.zoom = 1.0;
+    syncZoomUI();
+  });
+
+  canvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const factor = e.deltaY < 0 ? 1.09 : 0.92;
+    state.zoom = Math.max(0.6, Math.min(1.9, state.zoom * factor));
+    syncZoomUI();
+  }, { passive: false });
+
+  window.addEventListener('keydown', (e) => {
+    if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')) {
+      return;
+    }
+    const k = e.key.toLowerCase();
+    if (k === ' ') {
+      e.preventDefault();
+      togglePlay();
+    } else if (k === '1') {
+      setMode('replication');
+    } else if (k === '2') {
+      setMode('central_dogma');
+    } else if (k === '3') {
+      setMode('crispr');
+    } else if (k === 'm') {
+      if (state.mode === 'replication') triggerInducePointMutation();
+      else if (state.mode === 'central_dogma') mutateDnaBaseAt(Math.min(state.dna.length - 1, dogma.startCodonOffset + 19));
+      else initCrispr(true);
+    } else if (k === 'r') {
+      resetActiveMode();
+    } else if (k === 'h') {
+      document.body.classList.toggle('zen-mode');
+    }
+  });
+
+  // =========================================================================
+  // UI EVENT BINDINGS
+  // =========================================================================
+  function togglePlay() {
+    state.playing = !state.playing;
+    const btn = document.getElementById('btn-play');
+    btn.textContent = state.playing ? '⏸ Pause' : '▶ Play';
+    btn.classList.toggle('active', state.playing);
+  }
+
+  function resetActiveMode() {
+    if (state.mode === 'replication') {
+      initReplication();
+      showBanner('Replication fork reset.', 'info', 2.4);
+    } else if (state.mode === 'central_dogma') {
+      initDogma(false);
+      showBanner('Transcription & Ribosome translation restarted.', 'info', 2.4);
+    } else {
+      initCrispr(true);
+      showBanner('CRISPR–Cas9 scanning restarted on target locus.', 'info', 2.6);
+    }
+    updateTelemetryHUD(true);
+  }
+
+  // Drawer tabs
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      const pane = document.getElementById('tab-' + btn.dataset.tab);
+      if (pane) pane.classList.add('active');
+    });
+  });
+
+  // Mode buttons
+  document.getElementById('mode-btn-replication').addEventListener('click', () => setMode('replication'));
+  document.getElementById('mode-btn-dogma').addEventListener('click', () => setMode('central_dogma'));
+  document.getElementById('mode-btn-crispr').addEventListener('click', () => setMode('crispr'));
+
+  // Preset buttons
+  document.querySelectorAll('.preset-btn').forEach(btn => {
+    btn.addEventListener('click', () => loadPreset(btn.dataset.preset));
+  });
+
+  // Replication actions
+  document.getElementById('btn-induce-mutation').addEventListener('click', triggerInducePointMutation);
+  document.getElementById('chk-proofread').addEventListener('change', (e) => {
+    rep.proofreadEnabled = e.target.checked;
+    showBanner(rep.proofreadEnabled ? 'Pol III 3\'→5\' Exonuclease Proofreading ENABLED.' : 'Pol III Proofreading DISABLED — mismatches will persist!', rep.proofreadEnabled ? 'mint' : 'warn', 3.0);
+  });
+
+  // Central Dogma quick mutation buttons
+  document.getElementById('btn-dogma-missense').addEventListener('click', () => {
+    // Mutate codon 7 (or codon 4) middle base for classic missense change
+    const targetIdx = dogma.startCodonOffset + 19;
+    if (targetIdx < state.dna.length) {
+      const arr = state.wildDna.split('');
+      arr[targetIdx] = arr[targetIdx] === 'A' ? 'T' : 'A';
+      state.dna = arr.join('');
+      syncSequenceInputs();
+      initDogma(true);
+      AudioEngine.playAlert('warn');
+      showBanner('Missense Mutation introduced — amino acid identity changed!', 'warn', 3.8);
+    }
+  });
+
+  document.getElementById('btn-dogma-nonsense').addEventListener('click', () => {
+    // Turn codon 5 into TAA (premature STOP!)
+    const pos = dogma.startCodonOffset + 12;
+    if (pos + 2 < state.dna.length) {
+      const arr = state.wildDna.split('');
+      arr[pos] = 'T'; arr[pos + 1] = 'A'; arr[pos + 2] = 'A';
+      state.dna = arr.join('');
+      syncSequenceInputs();
+      initDogma(false);
+      AudioEngine.playAlert('warn');
+      showBanner('Nonsense Mutation: Codon 5 converted to TAA → Premature STOP truncates protein!', 'danger', 4.5);
+    }
+  });
+
+  document.getElementById('btn-dogma-silent').addEventListener('click', () => {
+    // Wobble-base silent mutation at codon 2 (GTG->GTA or GTC -> still Val!)
+    const pos = dogma.startCodonOffset + 5;
+    if (pos < state.dna.length) {
+      const arr = state.wildDna.split('');
+      arr[pos] = arr[pos] === 'G' ? 'A' : 'G';
+      state.dna = arr.join('');
+      syncSequenceInputs();
+      initDogma(true);
+      AudioEngine.playBaseNote('C', 0.12);
+      showBanner('Silent Wobble Mutation: DNA codon altered, but amino acid sequence is unchanged!', 'info', 4.0);
+    }
+  });
+
+  document.getElementById('btn-dogma-insert').addEventListener('click', () => {
+    // +1 base insertion right after codon 3 -> frameshift!
+    const pos = dogma.startCodonOffset + 9;
+    const inserted = state.wildDna.slice(0, pos) + 'T' + state.wildDna.slice(pos, state.wildDna.length - 1);
+    state.dna = inserted;
+    syncSequenceInputs();
+    initDogma(false);
+    AudioEngine.playAlert('warn');
+    showBanner('+1 Nucleotide Insertion: Downstream reading frame shifted (Frameshift)!', 'danger', 4.5);
+  });
+
+  document.getElementById('btn-dogma-restore').addEventListener('click', () => {
+    state.dna = state.wildDna;
+    syncSequenceInputs();
+    initDogma(false);
+    AudioEngine.playAlert('repair');
+    showBanner('Restored wild-type reference gene sequence.', 'mint', 3.0);
+  });
+
+  // CRISPR controls
+  document.querySelectorAll('#repair-pathway-row .seg-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#repair-pathway-row .seg-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      crispr.repairMode = btn.dataset.repair;
+      initCrispr(true);
+      showBanner(crispr.repairMode === 'hdr'
+        ? 'Repair Pathway: HDR — Donor template will precisely edit the cleaved locus.'
+        : 'Repair Pathway: NHEJ — Error-prone end joining will create a knockout indel.', crispr.repairMode === 'hdr' ? 'mint' : 'danger', 3.8);
+      updateTelemetryHUD(true);
+    });
+  });
+
+  document.getElementById('btn-crispr-run').addEventListener('click', () => {
+    initCrispr(true);
+    showBanner('Cas9 loaded with sgRNA — scanning helix for 5\'-NGG-3\' PAM motif...', 'info', 3.2);
+  });
+
+  document.getElementById('btn-crispr-offtarget').addEventListener('click', () => {
+    // Mutate 5 bases of the guide RNA to demonstrate off-target rejection
+    const arr = crispr.sgrna.split('');
+    for (let k = 12; k < 18 && k < arr.length; k++) {
+      arr[k] = arr[k] === 'A' ? 'C' : 'A';
+    }
+    crispr.sgrna = arr.join('');
+    document.getElementById('input-sgrna').value = crispr.sgrna;
+    initCrispr(true);
+    showBanner('Off-Target Test: 6 seed-region mismatches introduced in sgRNA — watch Cas9 reject the PAM!', 'warn', 4.4);
+  });
+
+  // Sequence Editor Tab
+  document.getElementById('btn-apply-dna').addEventListener('click', () => {
+    const raw = sanitizeDna(document.getElementById('input-dna-seq').value);
+    if (raw.length < 15) {
+      showBanner('Please enter at least 15 bases (A, T, C, G).', 'warn', 3.0);
+      return;
+    }
+    state.dna = raw;
+    state.wildDna = raw;
+    syncSequenceInputs();
+    if (state.mode === 'replication') initReplication();
+    else if (state.mode === 'central_dogma') initDogma(false);
+    else {
+      autoMatchGuideToBestPam();
+      initCrispr(false);
+    }
+    showBanner(`Applied custom ${raw.length}-nt DNA sequence.`, 'mint', 3.0);
+  });
+
+  document.getElementById('btn-random-dna').addEventListener('click', () => {
+    const senseCodons = ['GTC','AGC','AAG','GGC','GAG','CTG','TTC','ACC','CAC','CCT','CGT','AAC','TAC','GCT','TGG'];
+    let seq = 'ATG';
+    for (let i = 0; i < 10; i++) {
+      seq += senseCodons[Math.floor(Math.random() * senseCodons.length)];
+    }
+    seq += 'TAA';
+    state.dna = seq;
+    state.wildDna = seq;
+    syncSequenceInputs();
+    if (state.mode === 'replication') initReplication();
+    else if (state.mode === 'central_dogma') initDogma(false);
+    else {
+      autoMatchGuideToBestPam();
+      initCrispr(false);
+    }
+    showBanner('Generated random open-reading-frame gene (ATG … TAA).', 'info', 3.0);
+  });
+
+  document.getElementById('btn-apply-sgrna').addEventListener('click', () => {
+    const raw = sanitizeRna(document.getElementById('input-sgrna').value);
+    if (raw.length < 16) {
+      showBanner('Guide RNA should be 20 nucleotides (A, U, C, G).', 'warn', 3.0);
+      return;
+    }
+    crispr.sgrna = raw.padEnd(20, 'A').slice(0, 20);
+    syncSequenceInputs();
+    setMode('crispr', true);
+    initCrispr(true);
+    showBanner(`Loaded custom 20-nt sgRNA (${crispr.matchCount}/20 match).`, 'info', 3.2);
+  });
+
+  document.getElementById('btn-match-sgrna').addEventListener('click', () => {
+    autoMatchGuideToBestPam();
+    syncSequenceInputs();
+    if (state.mode === 'crispr') initCrispr(true);
+    showBanner('sgRNA matched to nearest 5\'-NGG-3\' PAM target!', 'mint', 3.0);
+  });
+
+  // Visual sliders & toggles
+  document.getElementById('sl-speed').addEventListener('input', (e) => {
+    state.speed = parseFloat(e.target.value);
+    document.getElementById('val-speed').textContent = `${state.speed.toFixed(2)}×`;
+    document.querySelectorAll('.speed-btn').forEach(b => {
+      b.classList.toggle('active', Math.abs(parseFloat(b.dataset.speed) - state.speed) < 0.05);
+    });
+  });
+
+  document.getElementById('sl-spin').addEventListener('input', (e) => {
+    state.spinRate = parseFloat(e.target.value);
+    document.getElementById('val-spin').textContent = `${state.spinRate.toFixed(2)}×`;
+  });
+
+  document.getElementById('sl-zoom').addEventListener('input', (e) => {
+    state.zoom = parseFloat(e.target.value);
+    document.getElementById('val-zoom').textContent = `${state.zoom.toFixed(2)}×`;
+  });
+
+  document.getElementById('btn-reset-cam').addEventListener('click', () => {
+    state.camX = 0;
+    state.camY = 0;
+    state.zoom = 1.0;
+    syncZoomUI();
+  });
+
+  document.getElementById('chk-3d').addEventListener('change', e => { state.show3D = e.target.checked; });
+  document.getElementById('chk-hbonds').addEventListener('change', e => { state.showHBonds = e.target.checked; });
+  document.getElementById('chk-labels').addEventListener('change', e => { state.showLabels = e.target.checked; });
+  document.getElementById('chk-soup').addEventListener('change', e => { state.showSoup = e.target.checked; });
+  document.getElementById('chk-letters').addEventListener('change', e => { state.showLetters = e.target.checked; });
+
+  // Bottom Transport Bar
+  document.getElementById('btn-play').addEventListener('click', togglePlay);
+  document.getElementById('btn-reset').addEventListener('click', resetActiveMode);
+
+  document.querySelectorAll('.speed-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.speed = parseFloat(btn.dataset.speed);
+      document.getElementById('sl-speed').value = state.speed;
+      document.getElementById('val-speed').textContent = `${state.speed.toFixed(2)}×`;
+      document.querySelectorAll('.speed-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    });
+  });
+
+  document.getElementById('btn-sound').addEventListener('click', () => {
+    const on = AudioEngine.toggle();
+    const btn = document.getElementById('btn-sound');
+    btn.textContent = on ? '🔊 Audio' : '🔇 Audio';
+    btn.classList.toggle('active', on);
+  });
+
+  document.getElementById('btn-toggle-drawer').addEventListener('click', () => {
+    const dr = document.getElementById('drawer');
+    const collapsed = dr.classList.toggle('collapsed');
+    document.getElementById('btn-toggle-drawer').classList.toggle('active', !collapsed);
+  });
+
+  document.getElementById('btn-zen').addEventListener('click', () => {
+    document.body.classList.add('zen-mode');
+  });
+
+  document.getElementById('btn-zen-restore').addEventListener('click', () => {
+    document.body.classList.remove('zen-mode');
+  });
+
+  // =========================================================================
+  // BOOTSTRAP
+  // =========================================================================
+  initSoup();
+  loadPreset('replication_fork');
+  requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>
