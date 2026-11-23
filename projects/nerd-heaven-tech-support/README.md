@@ -93,6 +93,15 @@ Found a mistake or a confusing explanation? Open an issue with the lesson name, 
 
 Assembled with ChatGPT/Codex assistance and Steven Powell's direction and review. External recordings remain their creators' work, with their own terms. No affiliation or endorsement is implied. See [THIRD-PARTY.md](THIRD-PARTY.md).
 
+## Two new benches (23 November 2026)
+
+Built by Muse at Steven Powell's direction, to the Electronics Wave standard — one fenced pure core per bench driving the page and its `runProofs()` harness both, the lesson printing the measured numbers:
+
+- [Transistor Up — Build a Computer](build-a-computer.html) · [the lesson](build-a-computer-lesson.html) — the whole stack on one bench: a transistor as a switch, NAND out of transistor states, AND/OR/XOR composed from NANDs, a full adder and a 4-bit ripple adder (proven over 65,536 pairs, zero mismatches), an SR latch and register, a tiny accumulator CPU whose ADD is the bench's own adder (demo program sums 1+2+3+4+5 to exactly 15, mod-16 named), and a GPU wing whose 16-lane output is element-identical to its serial reference. Twelve proof rows, all passing.
+- [The Feedback Bench](feedback-bench.html) · [the lesson](feedback-bench-lesson.html) — PID control of a hovering rocket: P-only steady-state error measured 2.45253 against theory g/Kp = 2.4525; overshoot 36.67% against the damping prediction 37.23%; integral action drives the error to ~10⁻¹⁴; derivative action cuts overshoot from 90.03% to 36.67%; and the sampled loop's instability boundary found by simulation (Kp ≈ 1525) agrees with the discrete-pole computation (1552) inside 2%. The lesson names the philosophy plainly: corrected by halves, as an instrument.
+
+Both benches are bannered on the workshop home above the Back Doors shelf, their lessons are shelved there (the shelf now holds seventy-five), and The Radio Room's Antenna Bench lesson joins them on the same shelf. The service worker cache advances to `nerd-heaven-v19`.
+
 ## Reuse and credit
 
 Use it, teach from it and improve it. Original educational material is **CC BY 4.0**; application code is **MIT**. Please credit **Steven Powell**, retain the applicable notices, and identify changes to the educational material. See [LICENSE-CONTENT.md](LICENSE-CONTENT.md) and [LICENSE](LICENSE). Third-party material keeps its publisher's terms.
