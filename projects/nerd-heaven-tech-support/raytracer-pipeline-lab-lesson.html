@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Raytracer Pipeline Lab — The Lesson · Nerd Heaven</title>
+<style>
+  :root{
+    --bg:#050914; --panel:#0b1226; --panel2:#0e1730; --border:#22335c;
+    --text:#dbe7ff; --muted:#8ea1bd; --accent:#7dd3fc; --good:#4ade80;
+    --bad:#f87171; --warn:#fbbf24;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:radial-gradient(circle at 50% -10%,rgba(56,120,246,.16),transparent 55%),var(--bg);
+    color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,sans-serif;line-height:1.55}
+  .wrap{max-width:860px;margin:0 auto;padding:22px 18px 44px}
+  .eyebrow{color:var(--accent);font-size:11.5px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;margin:0 0 6px}
+  h1{font-size:27px;margin:0 0 8px;font-weight:800;letter-spacing:-.3px}
+  h1 span{color:var(--accent)}
+  h2{font-size:19px;margin:30px 0 8px;font-weight:750;border-top:1px solid var(--border);padding-top:20px}
+  h2:first-of-type{border-top:none;padding-top:0}
+  h3{font-size:15.5px;margin:18px 0 5px;color:#fff}
+  p{color:#c3d3f2;font-size:14.5px;margin:8px 0}
+  .lead{font-size:15.5px;color:#e7f2ff}
+  a{color:var(--accent)}
+  .play{display:inline-block;background:#155e86;border:1px solid #2b7fb3;color:#fff;text-decoration:none;
+    border-radius:9px;padding:8px 15px;font-size:14px;font-weight:600;margin:10px 0 2px}
+  .play:hover{background:#1a6f9e}
+  .formula{background:var(--panel);border:1px solid var(--border);border-left:3px solid var(--accent);
+    border-radius:10px;padding:11px 16px;margin:12px 0;font-size:15.5px;color:#fff;
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;overflow-x:auto;white-space:nowrap}
+  .formula small{display:block;color:var(--muted);font-family:inherit;font-size:12.5px;margin-top:4px;white-space:normal}
+  .honest{background:var(--panel2);border:1px dashed var(--border);border-radius:10px;padding:10px 15px;margin:12px 0}
+  .honest p{margin:2px 0;font-size:13.5px}
+  .honest b{color:var(--warn)}
+  table{border-collapse:collapse;margin:12px 0;width:100%;font-size:14px}
+  th,td{border:1px solid var(--border);padding:7px 11px;text-align:left}
+  th{background:var(--panel2);color:#fff}
+  td{color:#c3d3f2;font-variant-numeric:tabular-nums}
+  ol,ul{color:#c3d3f2;font-size:14.5px;padding-left:22px}
+  li{margin:5px 0}
+  code{background:var(--panel2);border:1px solid var(--border);border-radius:5px;padding:0 5px;
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px;color:#e7f2ff}
+  .receipt{color:var(--good);font-weight:600}
+  .trap{color:var(--bad);font-weight:600}
+  .keepgoing{display:grid;gap:9px;margin:14px 0}
+  .keepgoing a{display:block;background:var(--panel);border:1px solid var(--border);border-radius:11px;
+    padding:11px 15px;text-decoration:none;color:var(--text)}
+  .keepgoing a:hover{border-color:var(--accent)}
+  .keepgoing b{color:#fff;display:block;font-size:14.5px}
+  .keepgoing span{color:var(--muted);font-size:13px}
+  footer{color:var(--muted);font-size:12px;margin-top:26px;text-align:center}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <p class="eyebrow">Nerd Heaven · The back door to Raytracer Pipeline Lab</p>
+  <h1>Raytracer Pipeline Lab <span>— the lesson</span></h1>
+  <p class="lead">Most 3D pictures you see are faked the fast way: triangles are flattened onto the
+  screen and shading tricks guess at the light. A ray tracer does it the honest way — backwards.
+  For every pixel it fires a ray from the camera into the scene and asks, in order: what did this
+  ray hit, is that point in shadow, where does it bounce, and where does it bend? Follow enough
+  bounces and the picture that accumulates is not a guess at the physics of light — it is the
+  physics, run per pixel. This lab is a real one, written in plain JavaScript: primary rays,
+  recursive reflection and refraction, stochastic soft shadows, progressive sampling, and a BVH
+  acceleration tree you can inspect. This page is the other half: the optics the lab runs, and the
+  audit that extracted its shipped code, drove it headlessly, and checked every claim against
+  independent implementations — including the one claim that failed.</p>
+  <p><strong>Verdict:</strong> A real per-pixel ray tracer — intersections exact to about
+  10⁻¹⁵, Snell refraction and total internal reflection correct, BVH hits identical to brute
+  force — with one permanent-NaN-pixel defect in the studio and sunset skies, and a presentation
+  layer that paints its Cornell "GI," approximates its Fresnel, and proxies its BVH speedup.</p>
+  <p style="color:var(--muted);font-size:13px">Raytracer Pipeline Lab was built by Google Antigravity (Gemini)
+  at Steven Powell's direction; this lesson and its audit were written by Muse, from reading the
+  shipped code and driving it headlessly.</p>
+  <a class="play" href="raytracer-pipeline-lab.html">Play Raytracer Pipeline Lab →</a>
+
+  <h2>The concept</h2>
+
+  <h3>One ray per pixel, then keep asking</h3>
+  <p>The renderer writes into an <code>ImageData</code> buffer, one ray per pixel, built from a
+  camera basis and jittered slightly per sample. Each ray is tested against the scene's spheres,
+  boxes, and floor plane; the nearest hit wins. At the hit point the tracer fires shadow rays
+  toward each light, spawns a reflected ray, and — for glass-like materials — a refracted ray,
+  recursing until the bounce budget runs out. There is no raster or WebGL shortcut anywhere in
+  the render path; the X-Ray and BVH inspector views are 2D projections used only by the
+  inspector panels and never feed the render.</p>
+
+  <h3>Progressive rendering: the picture converges</h3>
+  <p>One jittered sample per pixel is noisy. So the lab renders in passes — samples per pixel
+  (SPP) — averaging each new sample into an accumulation buffer. Soft shadows come from exactly
+  this: light positions are stochastically jittered per sample, so the penumbra emerges from the
+  accumulation rather than from any blur pass. The SPP counter climbs to a hard cap of 64, and
+  the audit confirmed the cap holds after extra render slices. Convergence is the lab's central
+  promise — which is why the defect in §3 matters: for most pixels the promise holds, and for a
+  few it provably does not.</p>
+
+  <h3>The BVH: don't test everything against everything</h3>
+  <p>Testing every ray against every primitive is the brute-force way, and it works — slowly. A
+  bounding volume hierarchy (BVH) nests the primitives inside boxes inside bigger boxes, so a ray
+  that misses a big box skips everything inside it in one test. The lab's BVH scene holds 18
+  primitives, and the inspector lets you watch rays walk the tree. Whether the tree returns the
+  same picture as brute force — and what its speedup readout is actually made of — is audited
+  below.</p>
+
+  <h2>The concept/math</h2>
+
+  <h3>Intersection: solving for t</h3>
+  <div class="formula">sphere: |o + t·d − c|² = r² &nbsp;·&nbsp; box: slab test per axis &nbsp;·&nbsp; nearest t &gt; 0 wins
+    <small>For a sphere the ray equation becomes a quadratic in t; the smallest positive root is
+    the entry point and its gradient is the surface normal. A box is intersected by clipping the
+    ray against three axis-aligned slabs. The floor plane is the degenerate case: in an empty
+    scene the audit's probe returned primIdx = −2, t = 3, normal (0,1,0) — exact.</small>
+  </div>
+
+  <h3>Reflection, Snell refraction, and the critical angle</h3>
+  <div class="formula">r = d − 2(d·n)n &nbsp;·&nbsp; n₁ sin θ₁ = n₂ sin θ₂ &nbsp;·&nbsp; θ<sub>c</sub> = asin(n₂/n₁)
+    <small>Snell's law sets the bend at a material boundary from the two indices of refraction
+    (IOR): water 1.33, crown glass 1.52, sapphire 1.77, diamond 2.42 — the lab's labels are all
+    correct. Going from dense to rare past the critical angle, no refracted ray exists at all:
+    total internal reflection. For crown glass that angle is 41.14°.</small>
+  </div>
+
+  <h3>Fresnel: how much reflects vs refracts</h3>
+  <div class="formula">exact: R from the Fresnel equations &nbsp;·&nbsp; Schlick: R ≈ R₀ + (1 − R₀)(1 − cos θ)⁵, &nbsp; R₀ = ((n₁ − n₂)/(n₁ + n₂))²
+    <small>Both agree head-on: R₀ for glass in air is 4.258%. They part company at grazing
+    angles — and which one the lab actually runs is an audit finding, not a detail (see the
+    bends, below). Dispersion — splitting the refracted ray by wavelength — is also real in the
+    lab, but only on the primary entry ray and only for IOR ≥ 1.85.</small>
+  </div>
+
+  <h2>The audit — claims checked against the code, with receipts</h2>
+  <p>The audit extracted the exhibit's own shipped scripts and ran them headlessly in Node under
+  a DOM stub: the page's own <code>traceRay</code>, <code>intersectScene</code>, BVH, and
+  progressive renderer were executed and driven, and every number below was measured from that
+  code and checked against an independent implementation written separately in the harness. The
+  exhibit file was not edited.</p>
+
+  <h3>Receipt 1: the intersection math is exact</h3>
+  <table>
+    <tr><th>Check</th><th>Measured</th></tr>
+    <tr><td>Ray–sphere vs independent quadratic solver</td><td class="receipt">300/300 agreement, worst |Δt| = 2.66×10⁻¹⁵</td></tr>
+    <tr><td>Ray–box (AABB slab test) vs independent implementation</td><td class="receipt">300/300 agreement, worst |Δt| = 8.88×10⁻¹⁶</td></tr>
+    <tr><td>Head-on sphere ray / ray starting inside</td><td class="receipt">t = 4 exact, normal (0,0,1) / exits at t = 1</td></tr>
+    <tr><td>Floor plane, empty scene</td><td class="receipt">t = 3, normal (0,1,0) — exact</td></tr>
+  </table>
+
+  <h3>Receipt 2: reflection, refraction, and total internal reflection</h3>
+  <table>
+    <tr><th>Check</th><th>Measured</th></tr>
+    <tr><td>Reflected direction vs independent formula</td><td class="receipt">cosine similarity 1.00000000</td></tr>
+    <tr><td>Snell refraction at θ<sub>I</sub> = 60.00°</td><td class="receipt">θ<sub>T</sub> = 34.73°, identical to the independent Snell computation; direction cosine match 1.00000000</td></tr>
+    <tr><td>Total internal reflection, IOR 1.52</td><td class="receipt">from-inside ray at 71.81° &gt; critical angle 41.14° → TIR flag set</td></tr>
+    <tr><td>Material IOR labels</td><td class="receipt">water 1.33, crown glass 1.52, sapphire 1.77, diamond 2.42 — all correct</td></tr>
+    <tr><td>Dispersion on vs off, diamond-IOR sphere, off-axis ray</td><td class="receipt">colour channels change by up to 0.1555 (G 0.2238 → 0.3748) — real, within its limits: primary entry ray only, IOR ≥ 1.85 only</td></tr>
+    <tr><td>Soft shadows</td><td class="receipt">real — shadow rays traced per light, light positions stochastically jittered, penumbra from SPP accumulation, not a blur</td></tr>
+    <tr><td>Reflections toggle off</td><td class="receipt">honest — metals fall back to sky shading; no fake reflection is substituted</td></tr>
+  </table>
+
+  <h3>Receipt 3: the BVH returns the same picture as brute force</h3>
+  <table>
+    <tr><th>Check</th><th>Measured</th></tr>
+    <tr><td>BVH vs brute-force hits</td><td class="receipt">0 mismatches over 1,000 camera rays, and again over a second 4,000-ray run</td></tr>
+    <tr><td>Primitive tests per hitting ray</td><td class="receipt">BVH 1.31 vs brute force 18.00 — a 13.79× reduction in primitive tests, visiting ≈7.3 nodes per ray</td></tr>
+    <tr><td>Rays missing the root box</td><td class="receipt">44% of all camera rays — they cost 0 primitive tests</td></tr>
+    <tr><td>SPP cap</td><td class="receipt">holds at 64 (MAX_SPP) after extra render slices</td></tr>
+  </table>
+  <p>That 13.79× is a count of primitive tests avoided, not a wall-clock timing — keep it in
+  mind when you read the bends below, because the HUD's own number is built differently.</p>
+
+  <h2><span class="trap">Defect: permanent NaN pixels — the picture does not always converge</span></h2>
+  <div class="honest">
+    <p><b class="trap">FALSE — "watch it converge" is not always true.</b> Driving the shipped
+    renderer on the Classic scene (320×200 buffer) produced non-finite values in the accumulation
+    buffer; the final SPP-64 buffer contained 3 non-finite values — one pixel, all channels,
+    permanently dead. The audit isolated the cause by replaying the render deterministically,
+    capturing the exact ray, and tracing its bounce tree:</p>
+    <p><b>First poisoned pixel:</b> SPP 19, pixel (148, 118), channel R. The pixel's ray rattles
+    inside the glass sphere to depth 4, and its refracted exit direction comes out of the Snell
+    formula slightly unnormalised: |d| = 1.00008, with dy = 1.0000788 &gt; 1.</p>
+    <p><b>The trigger:</b> the studio sky computes <code>Math.pow(1 − Math.max(0, dy), 3.4)</code>
+    → <code>Math.pow(−0.0000788, 3.4)</code> = NaN — a non-integer exponent of a negative base.
+    The sunset sky has the same pattern (<code>Math.pow(1 − h, 4.2)</code>). The obsidian and
+    hallway skies use an integral exponent (5.0) and the Cornell sky is constant — both immune.</p>
+    <p><b>Why it never heals:</b> once a NaN enters the accumulation buffer, NaN + x = NaN
+    forever. The pixel renders black after tone mapping no matter how long sampling continues,
+    and the SPP convergence statistic inherits the NaN. The trigger is generic — any reflected,
+    refracted, or jittered ray with dy &gt; 1 reaching a studio or sunset sky — even though the
+    measured frequency was low: 1 pixel in 64,000 at SPP 64 in the test render.</p>
+    <p><b class="trap">The fix has NOT been applied.</b> A one-line-class fix exists (clamp the
+    pow base at 0, or clamp dy to ≤ 1 in <code>sampleSky</code>), but the exhibit ships
+    byte-for-byte as built. The fix is awaiting Steven's sanction.</p>
+  </div>
+
+  <h2>Simplifications and divergences, named</h2>
+  <div class="honest">
+    <p><b>The Cornell box's "GI" is paint, not bounced light:</b> the red/green colour bleed is a
+    hard-coded analytic tint inside <code>traceRay</code>, keyed to the Cornell sky type with
+    fixed constants depending only on hit x and normal-x, plus an analytic sphere-proximity
+    ambient-occlusion term. No diffuse interreflection is ever traced. It looks like one-bounce
+    global illumination; the mechanism is a tint, and the "Ambient Occlusion &amp; GI" toggle
+    gates both effects together.</p>
+    <p><b>"Fresnel" is the Schlick approximation:</b> at 60° incidence the page returns
+    R = 7.25%, which equals Schlick's approximation exactly — but the exact Fresnel equations
+    give 9.25%, so Schlick under-reads by ≈22% relative at that angle. Head-on they agree
+    (4.258%), so the bend only shows at grazing angles. A code comment calls it "Exact Schlick
+    Fresnel" — Schlick is by definition an approximation; the word "Exact" is the bend.</p>
+    <p><b>The BVH speedup HUD is a proxy formula, not a measurement:</b> it computes
+    <code>totalPrims / (primTests + nodes×0.22)</code>, which evaluates to ≈24.1× averaged over
+    all rays and ≈6.2× over hit rays only — framing-dependent, and inflated relative to the
+    honest 13.79× primitive-test reduction measured above (which is itself not a wall-clock
+    figure). A code comment separately claims "3–5× speedup" for the scene — a third inconsistent
+    number. None of the three is a timed measurement.</p>
+    <p><b>Glass shadows are an achromatic fudge, not "colored caustics":</b> measured
+    transmittance through a glass blocker head-on is 0.830 — exactly the page's formula
+    0.18 + 0.65·|n·d|^2.2. It is a single scalar: no colour, no caustic focusing, despite
+    code-comment language about coloured, partial shadows. (Opaque blocker → 0, no blocker → 1,
+    both correct.)</p>
+    <p><b>Smaller print:</b> the BVH preset's copy says "18-orb," but the scene is 16 spheres +
+    2 boxes. The "Diamond Prism" preset's hero object is a sphere, not a prism. The Mirrors
+    preset's "Infinite 8-bounce tunnel" is hyperbole — maxBounces = 8, and a probe ray chain
+    terminated after 7 segments / 5 hits. The "Throughput M rays/s" telemetry is self-reported
+    from the renderer's own slice statistics and counts all ray types (primary + shadow +
+    secondary); treat it as indicative, not measured.</p>
+  </div>
+
+  <h2>Learn more</h2>
+  <div class="keepgoing">
+    <a href="https://raytracing.github.io/books/RayTracingInOneWeekend.html" target="_blank" rel="noopener"><b>Ray Tracing in One Weekend — Peter Shirley, Trevor David Black &amp; Steve Hollasch ↗</b><span>The canonical teaching text behind the lab's core: primary rays, recursive reflection/refraction, dielectric materials with Schlick/Fresnel reflectance, and progressive sampling (SPP).</span></a>
+    <a href="https://en.wikipedia.org/wiki/Ray_tracing_(graphics)" target="_blank" rel="noopener"><b>Ray tracing (graphics) — Wikipedia ↗</b><span>Survey backing for the pipeline the exhibit exposes — shadow rays, specular bounces, total internal reflection, and the Cornell-box global-illumination scene.</span></a>
+    <a href="https://en.wikipedia.org/wiki/Bounding_volume_hierarchy" target="_blank" rel="noopener"><b>Bounding volume hierarchy — Wikipedia ↗</b><span>The BVH acceleration tree the exhibit inspects — node traversal counts, primitives tested per ray, and the speedup readout.</span></a>
+    <a href="https://en.wikipedia.org/wiki/Fresnel_equations" target="_blank" rel="noopener"><b>Fresnel equations — Wikipedia ↗</b><span>The reflection/refraction split at material boundaries, Snell's-law refraction with the exhibit's IOR table, and chromatic dispersion behaviour.</span></a>
+  </div>
+
+  <h2>Keep going</h2>
+  <div class="keepgoing">
+    <a href="sorting-trees-race-lesson.html"><b>Sorting Trees Race — the lesson →</b><span>The sibling audit: seven sorting algorithms whose counters match theory to the digit, a quicksort worst case genuinely disarmed, and a red-black tree that survived a 3,000-operation fuzz.</span></a>
+    <a href="../a-library/a-library.html#electronics-computing"><b>A Library — Electronics &amp; Computing →</b><span>The shelf this corner of Nerd Heaven draws from: the computing sources behind the benches.</span></a>
+  </div>
+
+  <footer>Raytracer Pipeline Lab · Nerd Heaven · Everyday Cool — built by Google Antigravity (Gemini) at Steven Powell's direction; lesson and audit by Muse.</footer>
+
+</div>
+</body>
+</html>

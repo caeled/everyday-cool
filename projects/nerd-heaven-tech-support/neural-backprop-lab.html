@@ -1,0 +1,3385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Perceptron — Neural Network Playground &amp; Backpropagation Visualizer</title>
+<style>
+  :root {
+    --bg-deep: #040711;
+    --panel-bg: rgba(9, 13, 24, 0.78);
+    --panel-bg-strong: rgba(8, 12, 22, 0.92);
+    --panel-border: rgba(148, 179, 255, 0.16);
+    --panel-border-hi: rgba(148, 179, 255, 0.36);
+    --text-main: #eef3ff;
+    --text-dim: #9aa9cc;
+    --text-muted: #68789c;
+    --accent-cyan: #58dcff;
+    --accent-coral: #ff6083;
+    --accent-amber: #ffbe5c;
+    --accent-mint: #4af2b2;
+    --accent-violet: #a78bfa;
+    --radius-lg: 14px;
+    --radius-md: 10px;
+    --radius-sm: 7px;
+    --mono: ui-monospace, "Cascadia Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Inter, Helvetica, Arial, sans-serif;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg-deep);
+    color: var(--text-main);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    touch-action: none;
+  }
+
+  #sim-canvas {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    cursor: default;
+  }
+  #sim-canvas.paint-cursor {
+    cursor: crosshair;
+  }
+  #sim-canvas.pointer-cursor {
+    cursor: pointer;
+  }
+
+  /* HUD Layer */
+  .hud {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 10;
+  }
+  body.zen-mode .hud > :not(.zen-restore) {
+    opacity: 0;
+    pointer-events: none !important;
+  }
+
+  .panel {
+    pointer-events: auto;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-lg);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.52), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    transition: opacity 0.25s ease, transform 0.25s ease;
+  }
+
+  /* Top-Left Brand + Telemetry */
+  .top-left {
+    position: fixed;
+    top: 14px;
+    left: 14px;
+    width: min(412px, calc(100vw - 364px));
+    min-width: 290px;
+    padding: 11px 13px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .brand-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .brand-title-wrap {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    flex-wrap: wrap;
+  }
+
+  .brand-title {
+    font-size: 16px;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    background: linear-gradient(120deg, #e8fbff 0%, #58dcff 48%, #ff7fa1 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .mode-badge {
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 999px;
+    border: 1px solid rgba(88, 220, 255, 0.38);
+    background: rgba(88, 220, 255, 0.12);
+    color: var(--accent-cyan);
+  }
+  .mode-badge.violet {
+    border-color: rgba(167, 139, 250, 0.4);
+    background: rgba(167, 139, 250, 0.13);
+    color: #c8b6ff;
+  }
+
+  .status-pill {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: rgba(74, 242, 178, 0.14);
+    color: var(--accent-mint);
+    border: 1px solid rgba(74, 242, 178, 0.36);
+    white-space: nowrap;
+  }
+  .status-pill.paused {
+    background: rgba(148, 179, 255, 0.12);
+    color: var(--text-dim);
+    border-color: rgba(148, 179, 255, 0.28);
+  }
+  .status-pill.wave {
+    background: rgba(255, 190, 92, 0.18);
+    color: var(--accent-amber);
+    border-color: rgba(255, 190, 92, 0.48);
+  }
+  .status-pill.overfit {
+    background: rgba(255, 96, 131, 0.16);
+    color: var(--accent-coral);
+    border-color: rgba(255, 96, 131, 0.44);
+  }
+
+  .telemetry-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 5px;
+  }
+
+  .tele-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(148, 179, 255, 0.1);
+    border-radius: var(--radius-sm);
+    padding: 5px 7px;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+
+  .tele-label {
+    font-size: 9px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .tele-val {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--text-main);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .tele-val.cyan { color: var(--accent-cyan); }
+  .tele-val.coral { color: var(--accent-coral); }
+  .tele-val.mint { color: var(--accent-mint); }
+  .tele-val.amber { color: var(--accent-amber); }
+  .tele-val.violet { color: var(--accent-violet); }
+
+  /* Live Sparkline inside Top-Left Telemetry */
+  .spark-wrap {
+    background: rgba(3, 6, 15, 0.55);
+    border: 1px solid rgba(148, 179, 255, 0.12);
+    border-radius: var(--radius-sm);
+    padding: 5px 7px 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .spark-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 9.5px;
+    color: var(--text-muted);
+    letter-spacing: 0.04em;
+  }
+  .spark-legend {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--mono);
+    font-size: 9.5px;
+  }
+  .spark-dot {
+    display: inline-block;
+    width: 7px;
+    height: 2.5px;
+    border-radius: 2px;
+    vertical-align: middle;
+    margin-right: 3px;
+  }
+  #spark-canvas {
+    width: 100%;
+    height: 46px;
+    display: block;
+    border-radius: 4px;
+  }
+
+  /* Right Control Drawer (330px) */
+  .drawer {
+    position: fixed;
+    top: 14px;
+    right: 14px;
+    bottom: 14px;
+    width: 330px;
+    max-width: calc(100vw - 28px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: transform 0.25s ease, opacity 0.25s ease;
+  }
+  .drawer.collapsed {
+    transform: translateX(calc(100% + 24px));
+    pointer-events: none;
+  }
+
+  .drawer-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+    padding: 8px 8px 6px;
+    border-bottom: 1px solid var(--panel-border);
+    background: rgba(4, 7, 17, 0.45);
+  }
+
+  .tab-btn {
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    padding: 7px 5px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .tab-btn:hover {
+    color: var(--text-main);
+    background: rgba(255, 255, 255, 0.04);
+  }
+  .tab-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.16);
+    border-color: rgba(88, 220, 255, 0.42);
+  }
+
+  .drawer-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 11px 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .drawer-body::-webkit-scrollbar {
+    width: 5px;
+  }
+  .drawer-body::-webkit-scrollbar-thumb {
+    background: rgba(148, 179, 255, 0.22);
+    border-radius: 999px;
+  }
+
+  .tab-pane {
+    display: none;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .tab-pane.active {
+    display: flex;
+  }
+
+  .section {
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(148, 179, 255, 0.11);
+    border-radius: var(--radius-md);
+    padding: 10px 11px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .section-title {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  /* Presets grid */
+  .preset-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .preset-btn {
+    text-align: left;
+    padding: 7px 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(148, 179, 255, 0.14);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-main);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .preset-btn:hover {
+    border-color: rgba(88, 220, 255, 0.45);
+    background: rgba(88, 220, 255, 0.08);
+  }
+  .preset-btn.active {
+    border-color: var(--accent-cyan);
+    background: rgba(88, 220, 255, 0.15);
+    box-shadow: 0 0 14px rgba(88, 220, 255, 0.14);
+  }
+  .preset-name {
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+  .preset-sub {
+    font-size: 9.5px;
+    color: var(--text-muted);
+    line-height: 1.22;
+  }
+
+  /* Sliders */
+  .control-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .control-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11.5px;
+    color: var(--text-dim);
+  }
+  .control-head .val {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--text-main);
+    font-weight: 600;
+  }
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 5px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.18);
+    outline: none;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent-cyan);
+    border: 2px solid #08101f;
+    box-shadow: 0 0 10px rgba(88, 220, 255, 0.65);
+    cursor: pointer;
+  }
+  input[type="range"].amber::-webkit-slider-thumb {
+    background: var(--accent-amber);
+    box-shadow: 0 0 10px rgba(255, 190, 92, 0.65);
+  }
+  input[type="range"].violet::-webkit-slider-thumb {
+    background: var(--accent-violet);
+    box-shadow: 0 0 10px rgba(167, 139, 250, 0.65);
+  }
+
+  /* Segmented pills */
+  .seg-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(54px, 1fr));
+    gap: 4px;
+  }
+  .seg-row-3 {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .seg-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-dim);
+    font-size: 11px;
+    font-weight: 650;
+    padding: 6px 5px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-align: center;
+  }
+  .seg-btn:hover {
+    color: #fff;
+    border-color: rgba(148, 179, 255, 0.35);
+  }
+  .seg-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.18);
+    border-color: var(--accent-cyan);
+  }
+  .seg-btn.active.coral {
+    background: rgba(255, 96, 131, 0.2);
+    border-color: var(--accent-coral);
+    color: #ffd7e1;
+  }
+  .seg-btn.active.violet {
+    background: rgba(167, 139, 250, 0.22);
+    border-color: var(--accent-violet);
+    color: #ede6ff;
+  }
+
+  /* Feature chips */
+  .feat-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 5px;
+  }
+  .feat-chip {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-dim);
+    font-family: var(--mono);
+    font-size: 11.5px;
+    font-weight: 700;
+    padding: 6px 4px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    text-align: center;
+  }
+  .feat-chip:hover {
+    border-color: rgba(88, 220, 255, 0.45);
+    color: #fff;
+  }
+  .feat-chip.active {
+    background: rgba(88, 220, 255, 0.18);
+    border-color: var(--accent-cyan);
+    color: #e6fbff;
+    box-shadow: inset 0 0 12px rgba(88, 220, 255, 0.12);
+  }
+
+  /* Stepper rows */
+  .stepper-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 5px 8px;
+    border-radius: var(--radius-sm);
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(148, 179, 255, 0.1);
+    font-size: 11.5px;
+    color: var(--text-dim);
+  }
+  .stepper-ctrl {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+  }
+  .step-btn {
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    border: 1px solid rgba(148, 179, 255, 0.25);
+    background: rgba(255, 255, 255, 0.06);
+    color: #fff;
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.12s ease;
+  }
+  .step-btn:hover:not(:disabled) {
+    background: rgba(88, 220, 255, 0.22);
+    border-color: var(--accent-cyan);
+  }
+  .step-btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+  .step-val {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-main);
+    min-width: 18px;
+    text-align: center;
+  }
+  .layer-list {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  /* Action Buttons */
+  .btn-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .btn {
+    border: 1px solid rgba(148, 179, 255, 0.22);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-main);
+    font-size: 11.5px;
+    font-weight: 700;
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+  .btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 179, 255, 0.45);
+  }
+  .btn:active {
+    transform: scale(0.98);
+  }
+  .btn.primary {
+    background: linear-gradient(135deg, rgba(88, 220, 255, 0.26), rgba(56, 140, 255, 0.22));
+    border-color: rgba(88, 220, 255, 0.55);
+    color: #e6f9ff;
+  }
+  .btn.primary:hover {
+    background: linear-gradient(135deg, rgba(88, 220, 255, 0.38), rgba(56, 140, 255, 0.32));
+  }
+  .btn.amber {
+    background: linear-gradient(135deg, rgba(255, 190, 92, 0.25), rgba(255, 118, 84, 0.22));
+    border-color: rgba(255, 190, 92, 0.55);
+    color: #fff3db;
+  }
+  .btn.amber:hover {
+    background: linear-gradient(135deg, rgba(255, 190, 92, 0.38), rgba(255, 118, 84, 0.32));
+  }
+  .btn.danger {
+    background: rgba(255, 96, 131, 0.14);
+    border-color: rgba(255, 96, 131, 0.4);
+    color: #ffc2d0;
+  }
+
+  /* Toggle switches */
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11.5px;
+    color: var(--text-dim);
+    cursor: pointer;
+  }
+  .toggle-row input {
+    display: none;
+  }
+  .switch {
+    width: 34px;
+    height: 18px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.2);
+    border: 1px solid rgba(148, 179, 255, 0.25);
+    position: relative;
+    transition: all 0.18s ease;
+    flex-shrink: 0;
+  }
+  .switch::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #c8d7f5;
+    transition: transform 0.18s ease, background 0.18s ease;
+  }
+  .toggle-row input:checked + .switch {
+    background: rgba(88, 220, 255, 0.32);
+    border-color: var(--accent-cyan);
+  }
+  .toggle-row input:checked + .switch::after {
+    transform: translateX(16px);
+    background: #fff;
+  }
+
+  /* Bottom Transport Bar */
+  .bottom-bar {
+    position: fixed;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 7px 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: nowrap;
+  }
+
+  .bar-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-main);
+    font-size: 11.5px;
+    font-weight: 650;
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    white-space: nowrap;
+  }
+  .bar-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 179, 255, 0.4);
+  }
+  .bar-btn.active {
+    background: rgba(88, 220, 255, 0.2);
+    border-color: var(--accent-cyan);
+    color: #fff;
+  }
+  .bar-btn.amber-active {
+    background: rgba(255, 190, 92, 0.22);
+    border-color: var(--accent-amber);
+    color: #fff2d6;
+  }
+
+  .bar-divider {
+    width: 1px;
+    height: 20px;
+    background: rgba(148, 179, 255, 0.16);
+    margin: 0 2px;
+  }
+
+  /* Bottom-left interaction hint */
+  .hint-pill {
+    position: fixed;
+    bottom: 14px;
+    left: 14px;
+    padding: 7px 11px;
+    font-size: 10.5px;
+    color: var(--text-dim);
+    max-width: 315px;
+    line-height: 1.42;
+  }
+  .hint-pill kbd {
+    font-family: var(--mono);
+    font-size: 9.5px;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #fff;
+  }
+
+  .zen-restore {
+    position: fixed;
+    bottom: 14px;
+    right: 14px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+  }
+  body.zen-mode .zen-restore {
+    opacity: 0.9;
+    pointer-events: auto;
+  }
+
+  .note-small {
+    font-size: 10.5px;
+    color: var(--text-muted);
+    line-height: 1.38;
+  }
+
+  @media (max-width: 980px) {
+    .top-left {
+      width: calc(100vw - 28px);
+      max-width: none;
+    }
+    .drawer {
+      top: auto;
+      bottom: 62px;
+      height: 50vh;
+      width: calc(100vw - 28px);
+    }
+    .hint-pill {
+      display: none;
+    }
+    .bottom-bar {
+      max-width: calc(100vw - 20px);
+      overflow-x: auto;
+    }
+  }
+</style>
+</head>
+<body>
+<canvas id="sim-canvas"></canvas>
+
+<div class="hud">
+  <!-- Top-Left Telemetry Card -->
+  <div id="top-left-card" class="panel top-left">
+    <div class="brand-row">
+      <div class="brand-title-wrap">
+        <div class="brand-title">Perceptron</div>
+        <span id="badge-opt" class="mode-badge">Adam</span>
+        <span id="badge-act" class="mode-badge violet">Tanh</span>
+      </div>
+      <span id="train-status" class="status-pill">Training</span>
+    </div>
+
+    <div class="telemetry-grid">
+      <div class="tele-card">
+        <span class="tele-label">Epoch</span>
+        <span id="tel-epoch" class="tele-val cyan">0</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Train Loss</span>
+        <span id="tel-train-loss" class="tele-val">0.693</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Test Loss</span>
+        <span id="tel-test-loss" class="tele-val coral">0.693</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Accuracy</span>
+        <span id="tel-acc" class="tele-val mint">50.0%</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Parameters</span>
+        <span id="tel-params" class="tele-val amber">0</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">η / L2 λ</span>
+        <span id="tel-lr-reg" class="tele-val violet">0.03 / 0</span>
+      </div>
+    </div>
+
+    <div class="spark-wrap">
+      <div class="spark-head">
+        <span>LOSS &amp; ACCURACY CURVE</span>
+        <div class="spark-legend">
+          <span style="color:#58dcff"><i class="spark-dot" style="background:#58dcff"></i>Train</span>
+          <span style="color:#ff6083"><i class="spark-dot" style="background:#ff6083"></i>Test</span>
+          <span style="color:#4af2b2"><i class="spark-dot" style="background:#4af2b2"></i>Acc%</span>
+        </div>
+      </div>
+      <canvas id="spark-canvas"></canvas>
+    </div>
+  </div>
+
+  <!-- Collapsible 330px Right Drawer -->
+  <aside id="drawer" class="panel drawer">
+    <div class="drawer-tabs">
+      <button class="tab-btn active" data-tab="presets">Presets &amp; Data</button>
+      <button class="tab-btn" data-tab="arch">Architecture</button>
+      <button class="tab-btn" data-tab="train">Training</button>
+    </div>
+
+    <div class="drawer-body">
+      <!-- TAB 1: PRESETS & DATA -->
+      <div id="tab-presets" class="tab-pane active">
+        <div class="section">
+          <div class="section-title"><span>Curated Benchmarks</span></div>
+          <div class="preset-grid">
+            <button class="preset-btn active" data-preset="spirals">
+              <span class="preset-name">Twin Spirals</span>
+              <span class="preset-sub">Deep 3-layer net · Adam</span>
+            </button>
+            <button class="preset-btn" data-preset="xor">
+              <span class="preset-name">Classic XOR</span>
+              <span class="preset-sub">Non-linear 4 quadrants</span>
+            </button>
+            <button class="preset-btn" data-preset="circles">
+              <span class="preset-name">Concentric Rings</span>
+              <span class="preset-sub">Radial boundary · Swish</span>
+            </button>
+            <button class="preset-btn" data-preset="moons">
+              <span class="preset-name">Two Moons</span>
+              <span class="preset-sub">Interleaving crescents · ReLU</span>
+            </button>
+            <button class="preset-btn" data-preset="overfit">
+              <span class="preset-name">Overfitting Demo</span>
+              <span class="preset-sub">High noise · No Reg vs L2</span>
+            </button>
+            <button class="preset-btn" data-preset="perceptron">
+              <span class="preset-name">Single Perceptron</span>
+              <span class="preset-sub">0 hidden · Linearly separable</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Dataset Generator</span></div>
+          <div class="seg-row seg-row-3">
+            <button class="seg-btn active" data-dataset="spiral">Spirals</button>
+            <button class="seg-btn" data-dataset="xor">XOR</button>
+            <button class="seg-btn" data-dataset="circle">Circles</button>
+            <button class="seg-btn" data-dataset="moons">Moons</button>
+            <button class="seg-btn" data-dataset="gaussian">Blobs</button>
+            <button class="seg-btn" data-dataset="custom">Custom</button>
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Data Noise (σ)</span>
+              <span id="val-noise" class="val">0.06</span>
+            </div>
+            <input id="slider-noise" type="range" min="0" max="0.50" step="0.01" value="0.06" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Sample Count</span>
+              <span id="val-samples" class="val">240</span>
+            </div>
+            <input id="slider-samples" type="range" min="60" max="360" step="20" value="240" />
+          </div>
+
+          <div class="btn-row">
+            <button id="btn-regen-data" class="btn primary">↻ Regenerate</button>
+            <button id="btn-clear-data" class="btn danger">✕ Clear Points</button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Interactive Paint Brush</span></div>
+          <div class="seg-row">
+            <button id="btn-brush-pos" class="seg-btn active">Cyan Class +1</button>
+            <button id="btn-brush-neg" class="seg-btn">Coral Class −1</button>
+          </div>
+          <div class="note-small">
+            Left-click on the 2D boundary paints the selected class (default Cyan +1). Right-click always paints Coral −1.
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 2: ARCHITECTURE -->
+      <div id="tab-arch" class="tab-pane">
+        <div class="section">
+          <div class="section-title">
+            <span>Input Features</span>
+            <span class="note-small">Click nodes or chips</span>
+          </div>
+          <div class="feat-grid">
+            <button id="feat-x" class="feat-chip active" data-feat="x">x</button>
+            <button id="feat-y" class="feat-chip active" data-feat="y">y</button>
+            <button id="feat-x2" class="feat-chip" data-feat="x2">x²</button>
+            <button id="feat-y2" class="feat-chip" data-feat="y2">y²</button>
+            <button id="feat-sinx" class="feat-chip active" data-feat="sinx">sin(x)</button>
+            <button id="feat-siny" class="feat-chip active" data-feat="siny">sin(y)</button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Hidden Layers &amp; Neurons</span></div>
+          <div class="stepper-row">
+            <span>Hidden Layers (0–3)</span>
+            <div class="stepper-ctrl">
+              <button id="btn-layer-minus" class="step-btn" title="Remove hidden layer">−</button>
+              <span id="val-layers" class="step-val">3</span>
+              <button id="btn-layer-plus" class="step-btn" title="Add hidden layer">+</button>
+            </div>
+          </div>
+          <div id="layer-steppers" class="layer-list"></div>
+          <div class="note-small">
+            0 hidden layers creates a classic linear single-layer perceptron. Up to 3 hidden layers × 8 neurons each.
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Hidden Activation Function</span></div>
+          <div class="seg-row">
+            <button class="seg-btn active violet" data-act="tanh">Tanh</button>
+            <button class="seg-btn" data-act="relu">ReLU</button>
+            <button class="seg-btn" data-act="sigmoid">Sigmoid</button>
+            <button class="seg-btn" data-act="swish">Swish</button>
+          </div>
+          <button id="btn-reinit-weights" class="btn">🎲 Re-Initialize Weights</button>
+        </div>
+      </div>
+
+      <!-- TAB 3: TRAINING & VISUALS -->
+      <div id="tab-train" class="tab-pane">
+        <div class="section">
+          <div class="section-title"><span>Backpropagation Inspector</span></div>
+          <button id="btn-slow-wave-drawer" class="btn amber">⚡ Step 1 Backprop Pass (Slow-Mo Wave)</button>
+          <div class="note-small">
+            Watch a single sample propagate forward through activations, compute output loss, and send luminous ∂L/∂w gradient waves backward to update weights.
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Optimizer &amp; Hyperparameters</span></div>
+          <div class="seg-row">
+            <button class="seg-btn active" data-opt="adam">Adam</button>
+            <button class="seg-btn" data-opt="sgd">SGD</button>
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Learning Rate (η)</span>
+              <span id="val-lr" class="val">0.030</span>
+            </div>
+            <input id="slider-lr" type="range" min="-3" max="-0.5" step="0.05" value="-1.52" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>L2 Regularization (λ)</span>
+              <span id="val-reg" class="val">0.0005</span>
+            </div>
+            <input id="slider-reg" class="violet" type="range" min="0" max="0.08" step="0.0005" value="0.0005" />
+          </div>
+
+          <div class="btn-row">
+            <button id="btn-l2-off" class="btn">L2 = 0 (No Reg)</button>
+            <button id="btn-l2-on" class="btn primary">L2 = 0.025 (Smooth)</button>
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Training Speed</span>
+              <span id="val-speed" class="val">2 ep/f</span>
+            </div>
+            <input id="slider-speed" class="amber" type="range" min="1" max="8" step="1" value="2" />
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Visualization Overlays</span></div>
+          <label class="toggle-row">
+            <span>Forward &amp; Backprop Pulses</span>
+            <input id="chk-pulses" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Neuron Feature Thumbnails</span>
+            <input id="chk-thumbs" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Decision Contour Glow</span>
+            <input id="chk-contour" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Show Held-Out Test Points</span>
+            <input id="chk-testpts" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Bottom-Left Interaction Hints -->
+  <div class="panel hint-pill">
+    <div><strong>Left-click</strong> paint Cyan +1 · <strong>Right-click</strong> paint Coral −1</div>
+    <div><strong>Hover</strong> nodes/synapses for weights &amp; ∂L/∂w · <kbd>Space</kbd> Play · <kbd>B</kbd> Wave · <kbd>H</kbd> Cinema</div>
+  </div>
+
+  <!-- Bottom-Center Transport Bar -->
+  <div class="panel bottom-bar">
+    <button id="btn-play" class="bar-btn active">⏸ Pause</button>
+    <button id="btn-step-epoch" class="bar-btn" title="Advance 1 Epoch (.)">⏭ Step Epoch</button>
+    <button id="btn-wave" class="bar-btn" title="Slow-Mo Forward &amp; Backprop Wave (B)">⚡ Backprop Wave</button>
+    <button id="btn-reset" class="bar-btn" title="Reset Weights (R)">↺ Reset</button>
+    <div class="bar-divider"></div>
+    <button id="btn-sound" class="bar-btn" title="Convergence Harmonic Audio">🔇 Audio</button>
+    <button id="btn-toggle-drawer" class="bar-btn active">Controls</button>
+    <button id="btn-zen" class="bar-btn" title="Hide HUD (H)">Cinema</button>
+  </div>
+
+  <button id="btn-zen-restore" class="panel bar-btn zen-restore">Show HUD (H)</button>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // =========================================================================
+  // SEEDED PRNG & MATH UTILITIES
+  // =========================================================================
+  function createRng(seed) {
+    let s = (seed >>> 0) || 1337;
+    return () => {
+      s = (s + 0x6D2B79F5) >>> 0;
+      let t = Math.imul(s ^ (s >>> 15), 1 | s);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  function randNormal(rng) {
+    let u = 0, v = 0;
+    while (u === 0) u = rng();
+    while (v === 0) v = rng();
+    return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+  }
+
+  function clamp(v, lo, hi) {
+    return v < lo ? lo : (v > hi ? hi : v);
+  }
+
+  function sigmoid(z) {
+    if (z >= 0) {
+      const ez = Math.exp(-z);
+      return 1 / (1 + ez);
+    }
+    const ez = Math.exp(z);
+    return ez / (1 + ez);
+  }
+
+  const ACTIVATIONS = {
+    tanh: {
+      label: 'Tanh',
+      fn: (z) => Math.tanh(z),
+      deriv: (z, a) => 1 - a * a
+    },
+    relu: {
+      label: 'ReLU',
+      fn: (z) => (z > 0 ? z : 0),
+      deriv: (z) => (z > 0 ? 1 : 0)
+    },
+    sigmoid: {
+      label: 'Sigmoid',
+      fn: (z) => sigmoid(z),
+      deriv: (z, a) => a * (1 - a)
+    },
+    swish: {
+      label: 'Swish',
+      fn: (z) => z * sigmoid(z),
+      deriv: (z, a) => {
+        const s = sigmoid(z);
+        return a + s * (1 - a);
+      }
+    }
+  };
+
+  const FEATURE_DEFS = [
+    { id: 'x',    label: 'x',      fn: (x, y) => x },
+    { id: 'y',    label: 'y',      fn: (x, y) => y },
+    { id: 'x2',   label: 'x²',     fn: (x, y) => x * x },
+    { id: 'y2',   label: 'y²',     fn: (x, y) => y * y },
+    { id: 'sinx', label: 'sin(x)', fn: (x, y) => Math.sin(Math.PI * x) },
+    { id: 'siny', label: 'sin(y)', fn: (x, y) => Math.sin(Math.PI * y) }
+  ];
+
+  // =========================================================================
+  // DATASET GENERATORS (Domain [-1, 1] x [-1, 1], labels in {-1, +1})
+  // =========================================================================
+  function generateDataset(type, count, noise, seed) {
+    const rng = createRng(seed || Math.floor(Math.random() * 1e9));
+    const pts = [];
+    if (type === 'custom') return pts;
+
+    const half = Math.floor(count / 2);
+
+    if (type === 'spiral') {
+      for (let c = 0; c < 2; c++) {
+        const label = c === 0 ? 1 : -1;
+        for (let i = 0; i < half; i++) {
+          const r = (i / half) * 0.84 + 0.05;
+          const t = 1.75 * (i / half) * 2 * Math.PI + (c === 0 ? 0 : Math.PI);
+          const x = clamp(r * Math.sin(t) + randNormal(rng) * noise * 0.35, -0.98, 0.98);
+          const y = clamp(r * Math.cos(t) + randNormal(rng) * noise * 0.35, -0.98, 0.98);
+          pts.push({ x, y, label, isTest: false });
+        }
+      }
+    } else if (type === 'xor') {
+      for (let i = 0; i < count; i++) {
+        const qx = rng() < 0.5 ? -1 : 1;
+        const qy = rng() < 0.5 ? -1 : 1;
+        const rawX = qx * (0.14 + rng() * 0.72);
+        const rawY = qy * (0.14 + rng() * 0.72);
+        const nx = randNormal(rng) * noise * 0.55;
+        const ny = randNormal(rng) * noise * 0.55;
+        const x = clamp(rawX + nx, -0.98, 0.98);
+        const y = clamp(rawY + ny, -0.98, 0.98);
+        const label = (rawX * rawY >= 0) ? 1 : -1;
+        pts.push({ x, y, label, isTest: false });
+      }
+    } else if (type === 'circle') {
+      for (let i = 0; i < half; i++) {
+        const r = Math.sqrt(rng()) * 0.42;
+        const a = rng() * Math.PI * 2;
+        const x = clamp(r * Math.cos(a) + randNormal(rng) * noise * 0.4, -0.98, 0.98);
+        const y = clamp(r * Math.sin(a) + randNormal(rng) * noise * 0.4, -0.98, 0.98);
+        pts.push({ x, y, label: 1, isTest: false });
+      }
+      for (let i = 0; i < count - half; i++) {
+        const r = 0.62 + rng() * 0.28;
+        const a = rng() * Math.PI * 2;
+        const x = clamp(r * Math.cos(a) + randNormal(rng) * noise * 0.4, -0.98, 0.98);
+        const y = clamp(r * Math.sin(a) + randNormal(rng) * noise * 0.4, -0.98, 0.98);
+        pts.push({ x, y, label: -1, isTest: false });
+      }
+    } else if (type === 'moons') {
+      for (let i = 0; i < half; i++) {
+        const a = (i / half) * Math.PI;
+        const x = clamp(Math.cos(a) * 0.55 - 0.22 + randNormal(rng) * (0.04 + noise * 0.45), -0.98, 0.98);
+        const y = clamp(Math.sin(a) * 0.55 - 0.14 + randNormal(rng) * (0.04 + noise * 0.45), -0.98, 0.98);
+        pts.push({ x, y, label: 1, isTest: false });
+      }
+      for (let i = 0; i < count - half; i++) {
+        const a = (i / (count - half)) * Math.PI;
+        const x = clamp(0.22 - Math.cos(a) * 0.55 + randNormal(rng) * (0.04 + noise * 0.45), -0.98, 0.98);
+        const y = clamp(0.14 - Math.sin(a) * 0.55 + randNormal(rng) * (0.04 + noise * 0.45), -0.98, 0.98);
+        pts.push({ x, y, label: -1, isTest: false });
+      }
+    } else if (type === 'gaussian') {
+      const spread = 0.18 + noise * 0.55;
+      for (let i = 0; i < half; i++) {
+        const x = clamp(0.42 + randNormal(rng) * spread, -0.98, 0.98);
+        const y = clamp(0.38 + randNormal(rng) * spread, -0.98, 0.98);
+        pts.push({ x, y, label: 1, isTest: false });
+      }
+      for (let i = 0; i < count - half; i++) {
+        const x = clamp(-0.42 + randNormal(rng) * spread, -0.98, 0.98);
+        const y = clamp(-0.38 + randNormal(rng) * spread, -0.98, 0.98);
+        pts.push({ x, y, label: -1, isTest: false });
+      }
+    }
+
+    // Shuffle and mark 25% as held-out test set
+    for (let i = pts.length - 1; i > 0; i--) {
+      const j = Math.floor(rng() * (i + 1));
+      const tmp = pts[i]; pts[i] = pts[j]; pts[j] = tmp;
+    }
+    const testCount = Math.max(4, Math.floor(pts.length * 0.25));
+    for (let i = 0; i < testCount && i < pts.length; i++) {
+      pts[i].isTest = true;
+    }
+    return pts;
+  }
+
+  // =========================================================================
+  // MULTI-LAYER PERCEPTRON WITH EXACT BACKPROP, ADAM & SGD
+  // =========================================================================
+  class NeuralNetwork {
+    constructor(layerSizes, activationName = 'tanh', seed = 42) {
+      this.layerSizes = layerSizes.slice(); // [nIn, h1, ..., 1]
+      this.activationName = activationName;
+      this.rng = createRng(seed);
+      this.stepCount = 0;
+      this.epoch = 0;
+      this.layers = [];
+      this.lastInputs = new Float64Array(layerSizes[0]);
+      this.lastLoss = 0.6931;
+      this.lastOutputError = 0;
+      this._build();
+    }
+
+    _build() {
+      this.layers = [];
+      const isReluLike = this.activationName === 'relu' || this.activationName === 'swish';
+      for (let l = 1; l < this.layerSizes.length; l++) {
+        const fanIn = this.layerSizes[l - 1];
+        const fanOut = this.layerSizes[l];
+        const isOut = l === this.layerSizes.length - 1;
+        const scale = isOut
+          ? Math.sqrt(1.5 / Math.max(1, fanIn))
+          : (isReluLike ? Math.sqrt(2.0 / Math.max(1, fanIn)) : Math.sqrt(2.0 / Math.max(1, fanIn + fanOut)));
+
+        const wLen = fanOut * fanIn;
+        const W = new Float64Array(wLen);
+        const dW = new Float64Array(wLen);
+        const mW = new Float64Array(wLen);
+        const vW = new Float64Array(wLen);
+        const lastGradW = new Float64Array(wLen);
+
+        for (let i = 0; i < wLen; i++) {
+          W[i] = randNormal(this.rng) * scale;
+        }
+
+        const B = new Float64Array(fanOut);
+        const dB = new Float64Array(fanOut);
+        const mB = new Float64Array(fanOut);
+        const vB = new Float64Array(fanOut);
+        const lastGradB = new Float64Array(fanOut);
+        for (let j = 0; j < fanOut; j++) {
+          B[j] = (this.rng() - 0.5) * 0.12;
+        }
+
+        this.layers.push({
+          fanIn,
+          fanOut,
+          isOut,
+          W, B,
+          dW, dB,
+          mW, vW,
+          mB, vB,
+          lastGradW, lastGradB,
+          z: new Float64Array(fanOut),
+          a: new Float64Array(fanOut),
+          delta: new Float64Array(fanOut)
+        });
+      }
+    }
+
+    getParamCount() {
+      let total = 0;
+      for (const L of this.layers) {
+        total += L.W.length + L.B.length;
+      }
+      return total;
+    }
+
+    forward(inputArr) {
+      const act = ACTIVATIONS[this.activationName] || ACTIVATIONS.tanh;
+      let prev = inputArr;
+      for (let i = 0; i < this.lastInputs.length; i++) {
+        this.lastInputs[i] = inputArr[i] || 0;
+      }
+
+      for (let l = 0; l < this.layers.length; l++) {
+        const L = this.layers[l];
+        const { fanIn, fanOut, W, B, z, a, isOut } = L;
+        for (let j = 0; j < fanOut; j++) {
+          let sum = B[j];
+          const row = j * fanIn;
+          for (let i = 0; i < fanIn; i++) {
+            sum += W[row + i] * prev[i];
+          }
+          z[j] = sum;
+          if (isOut) {
+            const p = sigmoid(sum);
+            a[j] = 2 * p - 1; // signed prediction in (-1, +1)
+          } else {
+            a[j] = act.fn(sum);
+          }
+        }
+        prev = a;
+      }
+      const outLayer = this.layers[this.layers.length - 1];
+      return outLayer.a[0];
+    }
+
+    zeroGrads() {
+      for (const L of this.layers) {
+        L.dW.fill(0);
+        L.dB.fill(0);
+      }
+    }
+
+    backwardAccumulate(inputArr, label) {
+      const pred = this.forward(inputArr);
+      const act = ACTIVATIONS[this.activationName] || ACTIVATIONS.tanh;
+      const t = label > 0 ? 1.0 : 0.0;
+      const p = clamp((pred + 1) * 0.5, 1e-7, 1 - 1e-7);
+      const loss = -(t * Math.log(p) + (1 - t) * Math.log(1 - p));
+
+      const numL = this.layers.length;
+      const outL = this.layers[numL - 1];
+      // Exact BCE + sigmoid derivative: dL/dz = p - t
+      const outDelta = p - t;
+      outL.delta[0] = outDelta;
+      this.lastLoss = loss;
+      this.lastOutputError = outDelta;
+
+      // Backprop deltas through hidden layers
+      for (let l = numL - 2; l >= 0; l--) {
+        const L = this.layers[l];
+        const nextL = this.layers[l + 1];
+        for (let i = 0; i < L.fanOut; i++) {
+          let err = 0;
+          for (let j = 0; j < nextL.fanOut; j++) {
+            err += nextL.W[j * nextL.fanIn + i] * nextL.delta[j];
+          }
+          L.delta[i] = err * act.deriv(L.z[i], L.a[i]);
+        }
+      }
+
+      // Accumulate weight and bias gradients
+      for (let l = 0; l < numL; l++) {
+        const L = this.layers[l];
+        const prevA = l === 0 ? inputArr : this.layers[l - 1].a;
+        for (let j = 0; j < L.fanOut; j++) {
+          const dj = L.delta[j];
+          L.dB[j] += dj;
+          const row = j * L.fanIn;
+          for (let i = 0; i < L.fanIn; i++) {
+            L.dW[row + i] += dj * prevA[i];
+          }
+        }
+      }
+      return loss;
+    }
+
+    applyGradients(batchSize, lr, regL2, optimizer) {
+      const invB = 1.0 / Math.max(1, batchSize);
+      this.stepCount++;
+      const beta1 = 0.9;
+      const beta2 = 0.999;
+      const eps = 1e-8;
+      const bc1 = 1 - Math.pow(beta1, this.stepCount);
+      const bc2 = 1 - Math.pow(beta2, this.stepCount);
+
+      for (const L of this.layers) {
+        const { W, B, dW, dB, mW, vW, mB, vB, lastGradW, lastGradB } = L;
+        for (let k = 0; k < W.length; k++) {
+          let g = dW[k] * invB + regL2 * W[k];
+          g = clamp(g, -5.0, 5.0);
+          lastGradW[k] = g;
+          if (optimizer === 'adam') {
+            mW[k] = beta1 * mW[k] + (1 - beta1) * g;
+            vW[k] = beta2 * vW[k] + (1 - beta2) * g * g;
+            const mHat = mW[k] / bc1;
+            const vHat = vW[k] / bc2;
+            W[k] -= lr * mHat / (Math.sqrt(vHat) + eps);
+          } else {
+            W[k] -= lr * g;
+          }
+          if (!Number.isFinite(W[k])) W[k] = 0;
+        }
+        for (let j = 0; j < B.length; j++) {
+          let g = clamp(dB[j] * invB, -5.0, 5.0);
+          lastGradB[j] = g;
+          if (optimizer === 'adam') {
+            mB[j] = beta1 * mB[j] + (1 - beta1) * g;
+            vB[j] = beta2 * vB[j] + (1 - beta2) * g * g;
+            const mHat = mB[j] / bc1;
+            const vHat = vB[j] / bc2;
+            B[j] -= lr * mHat / (Math.sqrt(vHat) + eps);
+          } else {
+            B[j] -= lr * g;
+          }
+          if (!Number.isFinite(B[j])) B[j] = 0;
+        }
+      }
+    }
+
+    trainEpoch(trainSamples, featureExtractFn, lr, regL2, optimizer, batchSize = 18) {
+      if (!trainSamples.length) return 0;
+      const n = trainSamples.length;
+      const order = new Int32Array(n);
+      for (let i = 0; i < n; i++) order[i] = i;
+      for (let i = n - 1; i > 0; i--) {
+        const j = Math.floor(this.rng() * (i + 1));
+        const tmp = order[i]; order[i] = order[j]; order[j] = tmp;
+      }
+
+      let totalLoss = 0;
+      const bs = Math.min(batchSize, n);
+      for (let start = 0; start < n; start += bs) {
+        this.zeroGrads();
+        const end = Math.min(start + bs, n);
+        for (let k = start; k < end; k++) {
+          const s = trainSamples[order[k]];
+          const feats = featureExtractFn(s.x, s.y);
+          totalLoss += this.backwardAccumulate(feats, s.label);
+        }
+        this.applyGradients(end - start, lr, regL2, optimizer);
+      }
+      this.epoch++;
+      return totalLoss / n;
+    }
+
+    evaluate(samples, featureExtractFn) {
+      if (!samples.length) return { loss: 0, acc: 0 };
+      let sumLoss = 0;
+      let correct = 0;
+      for (let i = 0; i < samples.length; i++) {
+        const s = samples[i];
+        const pred = this.forward(featureExtractFn(s.x, s.y));
+        const t = s.label > 0 ? 1.0 : 0.0;
+        const p = clamp((pred + 1) * 0.5, 1e-7, 1 - 1e-7);
+        sumLoss += -(t * Math.log(p) + (1 - t) * Math.log(1 - p));
+        if ((pred >= 0 ? 1 : -1) === s.label) correct++;
+      }
+      return {
+        loss: sumLoss / samples.length,
+        acc: correct / samples.length
+      };
+    }
+  }
+
+  // Expose testable core hook if running in non-DOM verification environment
+  if (typeof globalThis !== 'undefined') {
+    globalThis.__PERCEPTRON_CORE__ = { NeuralNetwork, generateDataset, FEATURE_DEFS, ACTIVATIONS };
+  }
+
+  // =========================================================================
+  // CURATED PRESETS
+  // =========================================================================
+  const PRESETS = {
+    spirals: {
+      name: 'Twin Spirals',
+      dataset: 'spiral',
+      samples: 240,
+      noise: 0.06,
+      features: ['x', 'y', 'sinx', 'siny'],
+      hidden: [8, 6, 4],
+      activation: 'tanh',
+      optimizer: 'adam',
+      lr: 0.03,
+      reg: 0.0005,
+      speed: 2
+    },
+    xor: {
+      name: 'Classic XOR',
+      dataset: 'xor',
+      samples: 200,
+      noise: 0.10,
+      features: ['x', 'y'],
+      hidden: [4, 4],
+      activation: 'tanh',
+      optimizer: 'adam',
+      lr: 0.03,
+      reg: 0.001,
+      speed: 2
+    },
+    circles: {
+      name: 'Concentric Rings',
+      dataset: 'circle',
+      samples: 220,
+      noise: 0.08,
+      features: ['x', 'y'],
+      hidden: [6, 4],
+      activation: 'swish',
+      optimizer: 'adam',
+      lr: 0.03,
+      reg: 0.001,
+      speed: 2
+    },
+    moons: {
+      name: 'Two Moons',
+      dataset: 'moons',
+      samples: 220,
+      noise: 0.12,
+      features: ['x', 'y'],
+      hidden: [6, 4],
+      activation: 'relu',
+      optimizer: 'adam',
+      lr: 0.025,
+      reg: 0.001,
+      speed: 2
+    },
+    overfit: {
+      name: 'Overfitting Demo',
+      dataset: 'xor',
+      samples: 80,
+      noise: 0.42,
+      features: ['x', 'y', 'x2', 'y2', 'sinx', 'siny'],
+      hidden: [8, 8, 6],
+      activation: 'tanh',
+      optimizer: 'adam',
+      lr: 0.04,
+      reg: 0.0,
+      speed: 3
+    },
+    perceptron: {
+      name: 'Single Perceptron',
+      dataset: 'gaussian',
+      samples: 180,
+      noise: 0.16,
+      features: ['x', 'y'],
+      hidden: [],
+      activation: 'tanh',
+      optimizer: 'sgd',
+      lr: 0.08,
+      reg: 0.0,
+      speed: 1
+    }
+  };
+
+  // =========================================================================
+  // APPLICATION STATE
+  // =========================================================================
+  const state = {
+    presetId: 'spirals',
+    datasetType: 'spiral',
+    sampleCount: 240,
+    noise: 0.06,
+    activeFeatures: new Set(['x', 'y', 'sinx', 'siny']),
+    hiddenLayers: [8, 6, 4],
+    activation: 'tanh',
+    optimizer: 'adam',
+    lr: 0.03,
+    regL2: 0.0005,
+    epochsPerFrame: 2,
+    running: true,
+    brushLabel: 1,
+
+    showPulses: true,
+    showThumbs: true,
+    showContour: true,
+    showTestPts: true,
+    drawerOpen: true,
+    zenMode: false,
+    audioEnabled: false,
+
+    points: [],
+    trainPts: [],
+    testPts: [],
+    net: null,
+    seedCounter: 101,
+
+    metrics: { trainLoss: 0.693, testLoss: 0.693, acc: 0.5 },
+    history: [], // { epoch, trainLoss, testLoss, acc }
+
+    // Visual & Interaction state
+    hoverBoundary: null,   // { x, y, pred, sx, sy }
+    hoverNode: null,       // { layerIdx, neuronIdx }
+    hoverEdge: null,       // { layerIdx, fromIdx, toIdx, w, grad }
+    ripples: [],           // { x, y, label, age }
+    pulses: [],            // background training signal particles
+
+    // Slow-Mo Backprop Wave state
+    wave: {
+      active: false,
+      progress: 0,       // 0 -> 1 over ~2.6s
+      duration: 2.6,
+      sample: null,
+      feats: null,
+      pred: 0,
+      loss: 0,
+      applied: false,
+      prevRunning: false,
+      soundPhase: -1
+    }
+  };
+
+  // =========================================================================
+  // WEB AUDIO ENGINE (Muted by Default — Gentle Harmonic Convergence Chimes)
+  // =========================================================================
+  let audioCtx = null;
+  let lastChimeTime = 0;
+  let lastChimeEpoch = -10;
+  const PENTATONIC = [0, 2, 4, 7, 9, 12, 14, 16, 19, 21, 24];
+
+  function ensureAudio() {
+    if (!audioCtx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) audioCtx = new AC();
+    }
+    if (audioCtx && audioCtx.state === 'suspended') {
+      audioCtx.resume().catch(() => {});
+    }
+  }
+
+  function playTone(freq, duration = 0.24, volume = 0.045, type = 'sine') {
+    if (!state.audioEnabled) return;
+    ensureAudio();
+    if (!audioCtx) return;
+    const now = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, now);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(volume, now + 0.015);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(now);
+    osc.stop(now + duration + 0.02);
+  }
+
+  function playConvergenceChime(loss) {
+    if (!state.audioEnabled) return;
+    const nowMs = performance.now();
+    if (nowMs - lastChimeTime < 340) return;
+    if (state.net.epoch - lastChimeEpoch < 5) return;
+    lastChimeTime = nowMs;
+    lastChimeEpoch = state.net.epoch;
+
+    // Higher pitch as loss drops toward 0
+    const norm = clamp(1 - loss / 0.78, 0, 1);
+    const idx = Math.min(PENTATONIC.length - 1, Math.floor(norm * PENTATONIC.length));
+    const midi = 60 + PENTATONIC[idx];
+    const freq = 440 * Math.pow(2, (midi - 69) / 12);
+    playTone(freq, 0.34, 0.035, 'sine');
+    playTone(freq * 1.5, 0.22, 0.014, 'triangle');
+  }
+
+  // =========================================================================
+  // CANVAS & OFFSCREEN HEATMAP BUFFERS
+  // =========================================================================
+  const canvas = document.getElementById('sim-canvas');
+  const ctx = canvas.getContext('2d', { alpha: false });
+  const sparkCanvas = document.getElementById('spark-canvas');
+  const sparkCtx = sparkCanvas.getContext('2d');
+  const topLeftCard = document.getElementById('top-left-card');
+
+  let W = window.innerWidth;
+  let H = window.innerHeight;
+  let DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+  // Offscreen high-res decision boundary heatmap
+  const HEAT_RES = 96;
+  const heatCanvas = document.createElement('canvas');
+  heatCanvas.width = HEAT_RES;
+  heatCanvas.height = HEAT_RES;
+  const heatCtx = heatCanvas.getContext('2d');
+  const heatImg = heatCtx.createImageData(HEAT_RES, HEAT_RES);
+
+  // Offscreen mini-thumbnails for each neuron (24x24)
+  const THUMB_RES = 24;
+  let thumbPool = []; // [layerIdx][neuronIdx] = { canvas, ctx, img }
+  let heatmapDirty = true;
+
+  // Dynamic smooth-interpolated layout geometry
+  const layout = {
+    bx: 40, by: 220, bs: 360,       // Decision boundary square
+    nx: 440, ny: 60, nw: 480, nh: 520, // Neural net arena
+    nodePos: [],                    // [layerIdx][neuronIdx] = { x, y, r }
+    layerX: []
+  };
+
+  function getActiveFeatureDefs() {
+    return FEATURE_DEFS.filter(f => state.activeFeatures.has(f.id));
+  }
+
+  function extractFeatures(x, y) {
+    const defs = getActiveFeatureDefs();
+    const out = new Float64Array(defs.length);
+    for (let i = 0; i < defs.length; i++) {
+      out[i] = defs[i].fn(x, y);
+    }
+    return out;
+  }
+
+  function splitPoints() {
+    state.trainPts = [];
+    state.testPts = [];
+    for (const p of state.points) {
+      if (p.isTest) state.testPts.push(p);
+      else state.trainPts.push(p);
+    }
+    if (state.trainPts.length === 0 && state.testPts.length > 0) {
+      state.trainPts = state.testPts.slice();
+    }
+  }
+
+  function rebuildThumbPool() {
+    const sizes = state.net.layerSizes;
+    thumbPool = [];
+    for (let l = 0; l < sizes.length; l++) {
+      const arr = [];
+      for (let j = 0; j < sizes[l]; j++) {
+        const c = document.createElement('canvas');
+        c.width = THUMB_RES;
+        c.height = THUMB_RES;
+        const c2 = c.getContext('2d');
+        arr.push({ canvas: c, ctx: c2, img: c2.createImageData(THUMB_RES, THUMB_RES) });
+      }
+      thumbPool.push(arr);
+    }
+  }
+
+  function rebuildNetwork(keepHistory = false) {
+    const nIn = Math.max(1, state.activeFeatures.size);
+    const sizes = [nIn, ...state.hiddenLayers, 1];
+    state.seedCounter += 17;
+    state.net = new NeuralNetwork(sizes, state.activation, state.seedCounter);
+    if (!keepHistory) {
+      state.history = [];
+    }
+    state.pulses = [];
+    state.wave.active = false;
+    rebuildThumbPool();
+    evaluateAndRecord(true);
+    heatmapDirty = true;
+    updateTelemetryDOM();
+  }
+
+  function rebuildDataset(newSeed = true) {
+    if (newSeed) state.seedCounter += 31;
+    state.points = generateDataset(state.datasetType, state.sampleCount, state.noise, state.seedCounter);
+    splitPoints();
+    evaluateAndRecord(false);
+    heatmapDirty = true;
+    updateTelemetryDOM();
+  }
+
+  function evaluateAndRecord(pushHistory = true) {
+    if (!state.net) return;
+    const tr = state.net.evaluate(state.trainPts, extractFeatures);
+    const te = state.testPts.length > 0
+      ? state.net.evaluate(state.testPts, extractFeatures)
+      : tr;
+    state.metrics.trainLoss = tr.loss;
+    state.metrics.testLoss = te.loss;
+    state.metrics.acc = te.acc;
+
+    if (pushHistory) {
+      state.history.push({
+        epoch: state.net.epoch,
+        trainLoss: tr.loss,
+        testLoss: te.loss,
+        acc: te.acc
+      });
+      if (state.history.length > 260) {
+        // Thin older points cleanly while keeping start & recent detail
+        const thinned = [];
+        for (let i = 0; i < state.history.length; i++) {
+          if (i < 4 || i > state.history.length - 140 || i % 2 === 0) {
+            thinned.push(state.history[i]);
+          }
+        }
+        state.history = thinned;
+      }
+      drawSparkline();
+    }
+  }
+
+  // =========================================================================
+  // COLOR MAPPING FOR HEATMAP & THUMBNAILS
+  // =========================================================================
+  function mapValueToRGB(val, showContour) {
+    // val in [-1, 1]: -1 Coral (#ff567a), 0 Deep Midnight (#0b1224), +1 Cyan (#32d6ff)
+    const v = clamp(val, -1, 1);
+    let r, g, b;
+    if (v >= 0) {
+      const t = Math.pow(v, 0.78);
+      r = 11 + t * (48 - 11);
+      g = 19 + t * (205 - 19);
+      b = 38 + t * (255 - 38);
+    } else {
+      const t = Math.pow(-v, 0.78);
+      r = 11 + t * (242 - 11);
+      g = 19 + t * (74 - 19);
+      b = 38 + t * (118 - 38);
+    }
+
+    if (showContour) {
+      // Crisp luminous decision boundary iso-contour at val == 0
+      const ridge = Math.exp(-v * v * 85);
+      r += ridge * 175;
+      g += ridge * 195;
+      b += ridge * 225;
+    }
+    return [
+      r > 255 ? 255 : r | 0,
+      g > 255 ? 255 : g | 0,
+      b > 255 ? 255 : b | 0
+    ];
+  }
+
+  function updateHeatmaps() {
+    const net = state.net;
+    if (!net) return;
+    const defs = getActiveFeatureDefs();
+    const nIn = defs.length;
+    const inBuf = new Float64Array(nIn);
+    const data = heatImg.data;
+    const showContour = state.showContour;
+
+    // 1. High-Res 2D Decision Boundary Heatmap
+    for (let py = 0; py < HEAT_RES; py++) {
+      const y = 1 - (py / (HEAT_RES - 1)) * 2;
+      for (let px = 0; px < HEAT_RES; px++) {
+        const x = (px / (HEAT_RES - 1)) * 2 - 1;
+        for (let f = 0; f < nIn; f++) inBuf[f] = defs[f].fn(x, y);
+        const pred = net.forward(inBuf);
+        const rgb = mapValueToRGB(pred, showContour);
+        const idx = (py * HEAT_RES + px) * 4;
+        data[idx]     = rgb[0];
+        data[idx + 1] = rgb[1];
+        data[idx + 2] = rgb[2];
+        data[idx + 3] = 255;
+      }
+    }
+    heatCtx.putImageData(heatImg, 0, 0);
+
+    // 2. Mini Decision-Region Thumbnails for EVERY Neuron (Input, Hidden, Output)
+    if (state.showThumbs && thumbPool.length === net.layerSizes.length) {
+      const numLayers = net.layerSizes.length;
+      for (let py = 0; py < THUMB_RES; py++) {
+        const y = 1 - (py / (THUMB_RES - 1)) * 2;
+        for (let px = 0; px < THUMB_RES; px++) {
+          const x = (px / (THUMB_RES - 1)) * 2 - 1;
+          for (let f = 0; f < nIn; f++) inBuf[f] = defs[f].fn(x, y);
+          net.forward(inBuf);
+          const idx = (py * THUMB_RES + px) * 4;
+
+          // Input layer thumbnails
+          for (let j = 0; j < nIn; j++) {
+            const rgb = mapValueToRGB(inBuf[j], false);
+            const td = thumbPool[0][j].img.data;
+            td[idx] = rgb[0]; td[idx + 1] = rgb[1]; td[idx + 2] = rgb[2]; td[idx + 3] = 255;
+          }
+
+          // Hidden & Output layer thumbnails
+          for (let l = 1; l < numLayers; l++) {
+            const L = net.layers[l - 1];
+            const isOut = l === numLayers - 1;
+            for (let j = 0; j < L.fanOut; j++) {
+              let val = L.a[j];
+              if (!isOut && state.activation === 'sigmoid') {
+                val = val * 2 - 1;
+              } else if (!isOut && (state.activation === 'relu' || state.activation === 'swish')) {
+                val = Math.tanh(val * 0.85);
+              }
+              const rgb = mapValueToRGB(val, isOut && showContour);
+              const td = thumbPool[l][j].img.data;
+              td[idx] = rgb[0]; td[idx + 1] = rgb[1]; td[idx + 2] = rgb[2]; td[idx + 3] = 255;
+            }
+          }
+        }
+      }
+      for (let l = 0; l < thumbPool.length; l++) {
+        for (let j = 0; j < thumbPool[l].length; j++) {
+          thumbPool[l][j].ctx.putImageData(thumbPool[l][j].img, 0, 0);
+        }
+      }
+    }
+
+    heatmapDirty = false;
+  }
+
+  // =========================================================================
+  // RESPONSIVE SPLIT-CANVAS LAYOUT COMPUTATION
+  // =========================================================================
+  function computeLayout(instant = false) {
+    const rightReserve = (state.drawerOpen && !state.zenMode && W > 980) ? 356 : 22;
+    const bottomReserve = state.zenMode ? 24 : 74;
+    const leftPad = 20;
+
+    let topLeftBottom = 24;
+    if (!state.zenMode && topLeftCard) {
+      const r = topLeftCard.getBoundingClientRect();
+      topLeftBottom = Math.max(24, r.bottom + 14);
+    }
+
+    const availW = Math.max(320, W - rightReserve - leftPad);
+    const fullAvailH = Math.max(240, H - bottomReserve - 24);
+    const leftAvailH = Math.max(200, H - bottomReserve - topLeftBottom);
+
+    let targetBx, targetBy, targetBs, targetNx, targetNy, targetNw, targetNh;
+
+    if (availW >= 680) {
+      // Side-by-side split: Left/Center = 2D Decision Boundary, Right-Center = Animated Network Graph
+      const maxBsByW = availW * 0.43;
+      const maxBsByH = leftAvailH - 36;
+      targetBs = clamp(Math.min(maxBsByW, maxBsByH), 210, 490);
+
+      const gap = clamp(availW * 0.04, 24, 52);
+      targetNw = clamp(availW - targetBs - gap, 280, 680);
+      const totalGroupW = targetBs + gap + targetNw;
+      const startX = leftPad + (availW - totalGroupW) * 0.5;
+
+      targetBx = startX;
+      targetBy = topLeftBottom + Math.max(22, (leftAvailH - targetBs) * 0.5 + 8);
+
+      // Network graph can use fuller height when it doesn't sit beneath top-left card
+      const netTopClear = (startX + targetBs + gap > 432 || state.zenMode) ? 36 : topLeftBottom + 16;
+      const netAvailH = Math.max(260, H - bottomReserve - netTopClear);
+      targetNh = clamp(netAvailH - 18, 260, 600);
+      targetNx = startX + targetBs + gap;
+      targetNy = netTopClear + (netAvailH - targetNh) * 0.5;
+    } else {
+      // Narrow viewport: stacked vertically
+      const stackTop = topLeftBottom + 14;
+      const stackH = Math.max(320, H - bottomReserve - stackTop);
+      targetBs = clamp(Math.min(availW - 24, stackH * 0.48), 180, 320);
+      targetBx = leftPad + (availW - targetBs) * 0.5;
+      targetBy = stackTop + 16;
+      targetNx = leftPad + 10;
+      targetNy = targetBy + targetBs + 32;
+      targetNw = availW - 20;
+      targetNh = Math.max(180, H - bottomReserve - targetNy - 10);
+    }
+
+    const lerp = instant ? 1.0 : 0.16;
+    layout.bx += (targetBx - layout.bx) * lerp;
+    layout.by += (targetBy - layout.by) * lerp;
+    layout.bs += (targetBs - layout.bs) * lerp;
+    layout.nx += (targetNx - layout.nx) * lerp;
+    layout.ny += (targetNy - layout.ny) * lerp;
+    layout.nw += (targetNw - layout.nw) * lerp;
+    layout.nh += (targetNh - layout.nh) * lerp;
+
+    // Compute exact node centers for every layer
+    const sizes = state.net ? state.net.layerSizes : [2, 1];
+    const numL = sizes.length;
+    layout.nodePos = [];
+    layout.layerX = [];
+
+    const padX = Math.min(48, layout.nw * 0.09);
+    const usableW = Math.max(80, layout.nw - padX * 2);
+    const topGraphPad = 42;
+    const botGraphPad = 36;
+    const usableH = Math.max(120, layout.nh - topGraphPad - botGraphPad);
+
+    for (let l = 0; l < numL; l++) {
+      const frac = numL === 1 ? 0.5 : l / (numL - 1);
+      const lx = layout.nx + padX + frac * usableW;
+      layout.layerX.push(lx);
+
+      const count = sizes[l];
+      const maxSpacing = usableH / Math.max(1, count);
+      const r = l === numL - 1
+        ? clamp(Math.min(26, usableH * 0.11), 16, 26)
+        : clamp(Math.min(21, maxSpacing * 0.36, usableW / (numL * 3.1)), 11, 21);
+
+      const span = count > 1 ? Math.min(usableH - r * 2, (count - 1) * Math.min(maxSpacing, r * 3.15)) : 0;
+      const startY = layout.ny + topGraphPad + (usableH - span) * 0.5;
+      const col = [];
+      for (let j = 0; j < count; j++) {
+        const cy = count === 1 ? layout.ny + topGraphPad + usableH * 0.5 : startY + (j / (count - 1)) * span;
+        col.push({ x: lx, y: cy, r });
+      }
+      layout.nodePos.push(col);
+    }
+  }
+
+  // =========================================================================
+  // TRAINING PULSES & SLOW-MO BACKPROP WAVE ENGINE
+  // =========================================================================
+  function spawnTrainingPulses() {
+    if (!state.showPulses || !state.net || state.pulses.length > 52) return;
+    const numL = state.net.layers.length;
+    if (numL === 0) return;
+
+    // Spawn 1 forward activation pulse and 1 backward gradient pulse
+    for (let dir of [1, -1]) {
+      const l = Math.floor(Math.random() * numL);
+      const L = state.net.layers[l];
+      const fromIdx = Math.floor(Math.random() * L.fanIn);
+      const toIdx = Math.floor(Math.random() * L.fanOut);
+      const wIdx = toIdx * L.fanIn + fromIdx;
+      const mag = dir === 1
+        ? Math.min(1, Math.abs(L.W[wIdx]) * 0.7 + 0.25)
+        : Math.min(1, Math.abs(L.lastGradW[wIdx]) * 3.2 + 0.25);
+
+      state.pulses.push({
+        layerIdx: l, // edge between layer l and l+1
+        fromIdx,
+        toIdx,
+        t: dir === 1 ? 0 : 1,
+        dir,
+        speed: (dir === 1 ? 1.45 : 1.25) + Math.random() * 0.55,
+        mag,
+        positive: L.W[wIdx] >= 0
+      });
+    }
+  }
+
+  function triggerSlowMoWave() {
+    if (!state.net || state.trainPts.length === 0) return;
+    const sample = state.trainPts[Math.floor(Math.random() * state.trainPts.length)];
+    const feats = extractFeatures(sample.x, sample.y);
+
+    state.wave.prevRunning = state.running;
+    state.running = false;
+    state.wave.active = true;
+    state.wave.progress = 0;
+    state.wave.sample = sample;
+    state.wave.feats = feats;
+    state.wave.applied = false;
+    state.wave.soundPhase = -1;
+
+    // Compute exact forward & backward grads on this single sample without applying yet
+    state.net.zeroGrads();
+    const loss = state.net.backwardAccumulate(feats, sample.label);
+    state.wave.pred = state.net.layers[state.net.layers.length - 1].a[0];
+    state.wave.loss = loss;
+    // Mirror dW into lastGradW so visualization shows exact single-sample dL/dw
+    for (const L of state.net.layers) {
+      for (let k = 0; k < L.W.length; k++) {
+        L.lastGradW[k] = L.dW[k] + state.regL2 * L.W[k];
+      }
+      for (let j = 0; j < L.B.length; j++) {
+        L.lastGradB[j] = L.dB[j];
+      }
+    }
+
+    updatePlayButtonUI();
+    updateTelemetryDOM();
+  }
+
+  function stepSlowMoWave(dt) {
+    const w = state.wave;
+    if (!w.active) return;
+
+    w.progress += dt / w.duration;
+
+    // Musical feedback during slow-mo wave
+    if (state.audioEnabled) {
+      const phaseIdx = w.progress < 0.45 ? 0 : (w.progress < 0.56 ? 1 : 2);
+      if (phaseIdx !== w.soundPhase) {
+        w.soundPhase = phaseIdx;
+        if (phaseIdx === 0) playTone(330, 0.25, 0.04, 'sine');
+        else if (phaseIdx === 1) playTone(523.25, 0.22, 0.045, 'triangle');
+        else playTone(440, 0.35, 0.04, 'sine');
+      }
+    }
+
+    // Apply the gradient update as the backward wave finishes
+    if (w.progress >= 0.94 && !w.applied) {
+      w.applied = true;
+      state.net.applyGradients(1, state.lr * 1.4, state.regL2, state.optimizer);
+      state.net.epoch++;
+      evaluateAndRecord(true);
+      heatmapDirty = true;
+      updateTelemetryDOM();
+      if (state.audioEnabled) playTone(659.25, 0.28, 0.04, 'sine');
+    }
+
+    if (w.progress >= 1.08) {
+      w.active = false;
+      updateTelemetryDOM();
+    }
+  }
+
+  // =========================================================================
+  // CANVAS RENDERING
+  // =========================================================================
+  function roundRectPath(c, x, y, w, h, r) {
+    c.beginPath();
+    c.moveTo(x + r, y);
+    c.arcTo(x + w, y, x + w, y + h, r);
+    c.arcTo(x + w, y + h, x, y + h, r);
+    c.arcTo(x, y + h, x, y, r);
+    c.arcTo(x, y, x + w, y, r);
+    c.closePath();
+  }
+
+  function drawBackground() {
+    ctx.fillStyle = '#040711';
+    ctx.fillRect(0, 0, W, H);
+
+    // Subtle deep atmospheric dual-accent nebula glow
+    const g1 = ctx.createRadialGradient(layout.bx + layout.bs * 0.5, layout.by + layout.bs * 0.5, 20, layout.bx + layout.bs * 0.5, layout.by + layout.bs * 0.5, Math.max(W, H) * 0.55);
+    g1.addColorStop(0, 'rgba(32, 92, 168, 0.14)');
+    g1.addColorStop(0.5, 'rgba(18, 32, 68, 0.06)');
+    g1.addColorStop(1, 'rgba(4, 7, 17, 0)');
+    ctx.fillStyle = g1;
+    ctx.fillRect(0, 0, W, H);
+
+    const g2 = ctx.createRadialGradient(layout.nx + layout.nw * 0.65, layout.ny + layout.nh * 0.45, 20, layout.nx + layout.nw * 0.65, layout.ny + layout.nh * 0.45, Math.max(W, H) * 0.5);
+    g2.addColorStop(0, 'rgba(145, 48, 108, 0.11)');
+    g2.addColorStop(0.55, 'rgba(28, 22, 64, 0.05)');
+    g2.addColorStop(1, 'rgba(4, 7, 17, 0)');
+    ctx.fillStyle = g2;
+    ctx.fillRect(0, 0, W, H);
+
+    // Subtle precision coordinate grid
+    ctx.strokeStyle = 'rgba(120, 155, 225, 0.035)';
+    ctx.lineWidth = 1;
+    const step = 44;
+    ctx.beginPath();
+    for (let x = step; x < W; x += step) {
+      ctx.moveTo(x + 0.5, 0);
+      ctx.lineTo(x + 0.5, H);
+    }
+    for (let y = step; y < H; y += step) {
+      ctx.moveTo(0, y + 0.5);
+      ctx.lineTo(W, y + 0.5);
+    }
+    ctx.stroke();
+  }
+
+  function dataToScreen(dx, dy) {
+    return {
+      x: layout.bx + ((dx + 1) * 0.5) * layout.bs,
+      y: layout.by + ((1 - dy) * 0.5) * layout.bs
+    };
+  }
+
+  function screenToData(sx, sy) {
+    return {
+      x: ((sx - layout.bx) / layout.bs) * 2 - 1,
+      y: 1 - ((sy - layout.by) / layout.bs) * 2
+    };
+  }
+
+  function drawDecisionBoundary(timeSec) {
+    const { bx, by, bs } = layout;
+
+    // Outer glassmorphic frame
+    ctx.save();
+    roundRectPath(ctx, bx - 10, by - 32, bs + 20, bs + 54, 14);
+    ctx.fillStyle = 'rgba(9, 14, 28, 0.72)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.2)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Header label
+    ctx.fillStyle = '#a8badf';
+    ctx.font = '700 10.5px system-ui, -apple-system, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('2D DECISION BOUNDARY', bx, by - 16);
+
+    ctx.fillStyle = '#6c7fa6';
+    ctx.font = '600 10px ui-monospace, Consolas, monospace';
+    ctx.textAlign = 'right';
+    ctx.fillText(`${state.trainPts.length} train · ${state.testPts.length} test`, bx + bs, by - 16);
+
+    // Clip heatmap inside rounded square
+    ctx.save();
+    roundRectPath(ctx, bx, by, bs, bs, 9);
+    ctx.clip();
+
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(heatCanvas, bx, by, bs, bs);
+
+    // Subtle axes (x=0, y=0)
+    const midX = bx + bs * 0.5;
+    const midY = by + bs * 0.5;
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.14)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(midX, by); ctx.lineTo(midX, by + bs);
+    ctx.moveTo(bx, midY); ctx.lineTo(bx + bs, midY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Paint ripples
+    for (let i = state.ripples.length - 1; i >= 0; i--) {
+      const rp = state.ripples[i];
+      const sp = dataToScreen(rp.x, rp.y);
+      const alpha = Math.max(0, 1 - rp.age / 0.55);
+      const rad = 6 + rp.age * 46;
+      ctx.beginPath();
+      ctx.arc(sp.x, sp.y, rad, 0, Math.PI * 2);
+      ctx.strokeStyle = rp.label > 0
+        ? `rgba(88, 220, 255, ${alpha * 0.8})`
+        : `rgba(255, 96, 131, ${alpha * 0.8})`;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+
+    // Draw data points
+    for (let i = 0; i < state.points.length; i++) {
+      const pt = state.points[i];
+      if (pt.isTest && !state.showTestPts) continue;
+      const sp = dataToScreen(pt.x, pt.y);
+      const isPos = pt.label > 0;
+
+      ctx.beginPath();
+      ctx.arc(sp.x, sp.y, pt.isTest ? 4.8 : 4.2, 0, Math.PI * 2);
+      if (pt.isTest) {
+        ctx.fillStyle = isPos ? 'rgba(88, 220, 255, 0.35)' : 'rgba(255, 96, 131, 0.35)';
+        ctx.fill();
+        ctx.lineWidth = 1.7;
+        ctx.strokeStyle = isPos ? '#9ef0ff' : '#ff99b0';
+        ctx.stroke();
+      } else {
+        ctx.fillStyle = isPos ? '#4ce4ff' : '#ff547a';
+        ctx.fill();
+        ctx.lineWidth = 1.3;
+        ctx.strokeStyle = '#060a16';
+        ctx.stroke();
+      }
+    }
+
+    // Highlight active Slow-Mo Backprop Wave sample
+    if (state.wave.active && state.wave.sample) {
+      const sp = dataToScreen(state.wave.sample.x, state.wave.sample.y);
+      const pulse = 9 + Math.sin(timeSec * 14) * 3;
+      ctx.beginPath();
+      ctx.arc(sp.x, sp.y, pulse, 0, Math.PI * 2);
+      ctx.strokeStyle = '#ffbe5c';
+      ctx.lineWidth = 2.4;
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(sp.x, sp.y, pulse + 6, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(255, 190, 92, 0.38)';
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+    }
+
+    // Hover probe reticle on decision boundary
+    if (state.hoverBoundary) {
+      const hb = state.hoverBoundary;
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.45)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(hb.sx, hb.sy, 8, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    ctx.restore();
+
+    // Inner crisp border around heatmap
+    roundRectPath(ctx, bx, by, bs, bs, 9);
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.28)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Bottom legend inside frame
+    const legY = by + bs + 12;
+    ctx.font = '600 9.5px ui-monospace, Consolas, monospace';
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'left';
+
+    ctx.fillStyle = '#58dcff';
+    ctx.beginPath(); ctx.arc(bx + 5, legY, 3.5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#9aa9cc';
+    ctx.fillText('+1 Cyan', bx + 13, legY);
+
+    ctx.fillStyle = '#ff6083';
+    ctx.beginPath(); ctx.arc(bx + 70, legY, 3.5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#9aa9cc';
+    ctx.fillText('−1 Coral', bx + 78, legY);
+
+    ctx.textAlign = 'right';
+    if (state.hoverBoundary) {
+      const hb = state.hoverBoundary;
+      const prob = ((hb.pred + 1) * 50).toFixed(1);
+      ctx.fillStyle = hb.pred >= 0 ? '#7ce8ff' : '#ff94ac';
+      ctx.fillText(`(${hb.x.toFixed(2)}, ${hb.y.toFixed(2)})  ŷ=${hb.pred.toFixed(2)} (${prob}%)`, bx + bs, legY);
+    } else {
+      ctx.fillStyle = '#68789c';
+      ctx.fillText('● Train  ○ Test', bx + bs, legY);
+    }
+
+    ctx.restore();
+  }
+
+  function bezierPoint(p0x, p0y, c1x, c1y, c2x, c2y, p1x, p1y, t) {
+    const mt = 1 - t;
+    const mt2 = mt * mt;
+    const t2 = t * t;
+    return {
+      x: mt2 * mt * p0x + 3 * mt2 * t * c1x + 3 * mt * t2 * c2x + t2 * t * p1x,
+      y: mt2 * mt * p0y + 3 * mt2 * t * c1y + 3 * mt * t2 * c2y + t2 * t * p1y
+    };
+  }
+
+  function drawNeuralGraph(timeSec) {
+    const net = state.net;
+    if (!net || layout.nodePos.length === 0) return;
+
+    const { nx, ny, nw, nh, nodePos } = layout;
+    const numL = nodePos.length;
+    const defs = getActiveFeatureDefs();
+
+    ctx.save();
+
+    // Outer subtle glassmorphic stage card
+    roundRectPath(ctx, nx - 12, ny - 6, nw + 24, nh + 12, 14);
+    ctx.fillStyle = 'rgba(9, 14, 28, 0.56)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.16)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Header / Slow-Mo Backprop Phase Banner
+    const headY = ny + 14;
+    ctx.textBaseline = 'middle';
+    if (state.wave.active) {
+      const wp = state.wave.progress;
+      let phaseText = 'FORWARD PASS: Computing Activations a = σ(Wx + b)';
+      let phaseColor = '#58dcff';
+      if (wp >= 0.45 && wp < 0.56) {
+        phaseText = `OUTPUT LOSS: L = ${state.wave.loss.toFixed(3)} · δ = ∂L/∂z = ${net.lastOutputError.toFixed(3)}`;
+        phaseColor = '#ff6083';
+      } else if (wp >= 0.56) {
+        phaseText = 'BACKPROPAGATION WAVE: Flowing Gradients ∂L/∂w → Updating Weights';
+        phaseColor = '#ffbe5c';
+      }
+      ctx.fillStyle = phaseColor;
+      ctx.font = '700 11px ui-monospace, Consolas, monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(phaseText, nx + nw * 0.5, headY);
+
+      // Thin animated phase progress bar
+      const barW = Math.min(nw - 36, 360);
+      const barX = nx + (nw - barW) * 0.5;
+      const barY = headY + 11;
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
+      ctx.fillRect(barX, barY, barW, 3);
+      ctx.fillStyle = phaseColor;
+      ctx.fillRect(barX, barY, barW * clamp(wp, 0, 1), 3);
+    } else {
+      ctx.fillStyle = '#a8badf';
+      ctx.font = '700 10.5px system-ui, -apple-system, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText('NEURAL NETWORK TOPOLOGY & BACKPROPAGATION', nx + 4, headY);
+
+      ctx.fillStyle = '#6c7fa6';
+      ctx.font = '600 10px ui-monospace, Consolas, monospace';
+      ctx.textAlign = 'right';
+      ctx.fillText('Cyan w>0 · Coral w<0 · Amber ∂L/∂w', nx + nw - 4, headY);
+    }
+
+    // -----------------------------------------------------------------------
+    // 1. DRAW SYNAPSES (WEIGHTS)
+    // -----------------------------------------------------------------------
+    const edgeLayers = net.layers.length;
+    for (let l = 0; l < edgeLayers; l++) {
+      const L = net.layers[l];
+      const fromCol = nodePos[l];
+      const toCol = nodePos[l + 1];
+
+      // Determine slow-mo wave activity for this edge layer
+      let waveFwdT = -1;
+      let waveBwdT = -1;
+      if (state.wave.active) {
+        const wp = state.wave.progress;
+        if (wp < 0.45) {
+          const seg = (wp / 0.45) * edgeLayers;
+          if (seg >= l && seg <= l + 1.15) waveFwdT = clamp(seg - l, 0, 1);
+        } else if (wp >= 0.56) {
+          const bSeg = ((wp - 0.56) / 0.42) * edgeLayers;
+          const revL = (edgeLayers - 1) - l;
+          if (bSeg >= revL && bSeg <= revL + 1.15) waveBwdT = 1 - clamp(bSeg - revL, 0, 1);
+        }
+      }
+
+      for (let j = 0; j < L.fanOut; j++) {
+        const p1 = toCol[j];
+        const row = j * L.fanIn;
+        for (let i = 0; i < L.fanIn; i++) {
+          const p0 = fromCol[i];
+          const w = L.W[row + i];
+          const grad = L.lastGradW[row + i];
+          const absW = Math.abs(w);
+
+          const isHoverNodeConn = state.hoverNode && (
+            (state.hoverNode.layerIdx === l && state.hoverNode.neuronIdx === i) ||
+            (state.hoverNode.layerIdx === l + 1 && state.hoverNode.neuronIdx === j)
+          );
+          const isHoverEdge = state.hoverEdge &&
+            state.hoverEdge.layerIdx === l &&
+            state.hoverEdge.fromIdx === i &&
+            state.hoverEdge.toIdx === j;
+
+          const dx = (p1.x - p0.x) * 0.48;
+          const c1x = p0.x + dx, c1y = p0.y;
+          const c2x = p1.x - dx, c2y = p1.y;
+
+          const width = clamp(0.65 + absW * 1.45, 0.65, 5.2) * (isHoverEdge ? 1.55 : 1);
+          let alpha = clamp(0.11 + absW * 0.28, 0.11, 0.78);
+          if (state.hoverNode && !isHoverNodeConn) alpha *= 0.24;
+          if (isHoverNodeConn || isHoverEdge) alpha = Math.min(0.96, alpha + 0.35);
+
+          ctx.beginPath();
+          ctx.moveTo(p0.x, p0.y);
+          ctx.bezierCurveTo(c1x, c1y, c2x, c2y, p1.x, p1.y);
+          ctx.lineWidth = width;
+          ctx.strokeStyle = w >= 0
+            ? `rgba(88, 220, 255, ${alpha})`
+            : `rgba(255, 96, 131, ${alpha})`;
+          ctx.stroke();
+
+          // Soft outer glow for very strong weights or hovered synapses
+          if (absW > 1.35 || isHoverEdge) {
+            ctx.lineWidth = width + 3.5;
+            ctx.strokeStyle = w >= 0
+              ? `rgba(88, 220, 255, ${alpha * 0.22})`
+              : `rgba(255, 96, 131, ${alpha * 0.22})`;
+            ctx.stroke();
+          }
+
+          // Slow-mo Forward Wave Spark on this synapse
+          if (waveFwdT >= 0 && waveFwdT <= 1) {
+            const pt = bezierPoint(p0.x, p0.y, c1x, c1y, c2x, c2y, p1.x, p1.y, waveFwdT);
+            const rSpark = 3.2 + Math.min(3.5, absW * 1.4);
+            const grd = ctx.createRadialGradient(pt.x, pt.y, 0.5, pt.x, pt.y, rSpark * 2.4);
+            grd.addColorStop(0, 'rgba(235, 252, 255, 0.98)');
+            grd.addColorStop(0.45, 'rgba(88, 220, 255, 0.78)');
+            grd.addColorStop(1, 'rgba(88, 220, 255, 0)');
+            ctx.fillStyle = grd;
+            ctx.beginPath();
+            ctx.arc(pt.x, pt.y, rSpark * 2.4, 0, Math.PI * 2);
+            ctx.fill();
+          }
+
+          // Slow-mo Backward Gradient Wave Spark (∂L/∂w)
+          if (waveBwdT >= 0 && waveBwdT <= 1) {
+            const pt = bezierPoint(p0.x, p0.y, c1x, c1y, c2x, c2y, p1.x, p1.y, waveBwdT);
+            const gMag = Math.min(1, Math.abs(grad) * 2.5);
+            const rSpark = 3.0 + gMag * 4.5;
+            const grd = ctx.createRadialGradient(pt.x, pt.y, 0.5, pt.x, pt.y, rSpark * 2.6);
+            grd.addColorStop(0, 'rgba(255, 248, 220, 0.98)');
+            grd.addColorStop(0.42, 'rgba(255, 184, 76, 0.85)');
+            grd.addColorStop(1, 'rgba(255, 96, 131, 0)');
+            ctx.fillStyle = grd;
+            ctx.beginPath();
+            ctx.arc(pt.x, pt.y, rSpark * 2.6, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+      }
+    }
+
+    // -----------------------------------------------------------------------
+    // 2. DRAW AMBIENT FORWARD & BACKPROP PULSES DURING LIVE TRAINING
+    // -----------------------------------------------------------------------
+    if (state.showPulses && !state.wave.active) {
+      for (let k = 0; k < state.pulses.length; k++) {
+        const p = state.pulses[k];
+        if (p.layerIdx >= edgeLayers) continue;
+        const fromCol = nodePos[p.layerIdx];
+        const toCol = nodePos[p.layerIdx + 1];
+        if (!fromCol || !toCol || p.fromIdx >= fromCol.length || p.toIdx >= toCol.length) continue;
+
+        const p0 = fromCol[p.fromIdx];
+        const p1 = toCol[p.toIdx];
+        const dx = (p1.x - p0.x) * 0.48;
+        const pt = bezierPoint(p0.x, p0.y, p0.x + dx, p0.y, p1.x - dx, p1.y, p1.x, p1.y, p.t);
+
+        const fade = Math.sin(clamp(p.t, 0, 1) * Math.PI);
+        const rad = (2.8 + p.mag * 3.8) * (0.7 + fade * 0.45);
+        const grd = ctx.createRadialGradient(pt.x, pt.y, 0.4, pt.x, pt.y, rad * 2.2);
+        if (p.dir === 1) {
+          // Forward activation pulse: luminous cyan-white
+          grd.addColorStop(0, `rgba(235, 252, 255, ${0.9 * fade})`);
+          grd.addColorStop(0.45, `rgba(88, 220, 255, ${0.65 * fade})`);
+          grd.addColorStop(1, 'rgba(88, 220, 255, 0)');
+        } else {
+          // Backward gradient pulse (∂L/∂w): luminous amber-coral
+          grd.addColorStop(0, `rgba(255, 245, 210, ${0.92 * fade})`);
+          grd.addColorStop(0.45, `rgba(255, 182, 72, ${0.7 * fade})`);
+          grd.addColorStop(1, 'rgba(255, 96, 131, 0)');
+        }
+        ctx.fillStyle = grd;
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, rad * 2.2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // -----------------------------------------------------------------------
+    // 3. DRAW NEURON NODES WITH LIVE MINI DECISION-REGION THUMBNAILS
+    // -----------------------------------------------------------------------
+    for (let l = 0; l < numL; l++) {
+      const col = nodePos[l];
+      const isInput = l === 0;
+      const isOutput = l === numL - 1;
+
+      for (let j = 0; j < col.length; j++) {
+        const nd = col[j];
+        const isHovered = state.hoverNode &&
+          state.hoverNode.layerIdx === l &&
+          state.hoverNode.neuronIdx === j;
+
+        // Wave highlight glow on this neuron
+        let waveGlow = 0;
+        let waveColor = '#58dcff';
+        if (state.wave.active) {
+          const wp = state.wave.progress;
+          if (wp < 0.45) {
+            const targetL = (wp / 0.45) * (numL - 1);
+            waveGlow = Math.exp(-Math.pow(targetL - l, 2) * 3.5);
+            waveColor = '#58dcff';
+          } else if (wp < 0.56 && isOutput) {
+            waveGlow = 1.0;
+            waveColor = '#ff6083';
+          } else if (wp >= 0.56) {
+            const targetL = (numL - 1) - ((wp - 0.56) / 0.42) * (numL - 1);
+            waveGlow = Math.exp(-Math.pow(targetL - l, 2) * 3.5);
+            waveColor = '#ffbe5c';
+          }
+        }
+
+        // Outer halo when hovered or hit by wave
+        if (isHovered || waveGlow > 0.08) {
+          const haloR = nd.r + 7 + waveGlow * 6;
+          ctx.beginPath();
+          ctx.arc(nd.x, nd.y, haloR, 0, Math.PI * 2);
+          ctx.fillStyle = isHovered
+            ? 'rgba(88, 220, 255, 0.22)'
+            : (waveColor === '#ffbe5c'
+                ? `rgba(255, 190, 92, ${waveGlow * 0.36})`
+                : (waveColor === '#ff6083'
+                    ? `rgba(255, 96, 131, ${waveGlow * 0.42})`
+                    : `rgba(88, 220, 255, ${waveGlow * 0.35})`));
+          ctx.fill();
+        }
+
+        // Clipped circular mini decision-region thumbnail
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(nd.x, nd.y, nd.r, 0, Math.PI * 2);
+        ctx.clip();
+
+        if (state.showThumbs && thumbPool[l] && thumbPool[l][j]) {
+          ctx.imageSmoothingEnabled = true;
+          ctx.drawImage(thumbPool[l][j].canvas, nd.x - nd.r, nd.y - nd.r, nd.r * 2, nd.r * 2);
+        } else {
+          ctx.fillStyle = '#0c1428';
+          ctx.fillRect(nd.x - nd.r, nd.y - nd.r, nd.r * 2, nd.r * 2);
+        }
+        ctx.restore();
+
+        // Crisp node ring colored by bias sign (hidden/output) or accent (input)
+        let ringColor = 'rgba(180, 206, 255, 0.55)';
+        if (isHovered) {
+          ringColor = '#ffffff';
+        } else if (waveGlow > 0.2) {
+          ringColor = waveColor;
+        } else if (!isInput) {
+          const bias = net.layers[l - 1].B[j];
+          ringColor = bias >= 0 ? 'rgba(88, 220, 255, 0.8)' : 'rgba(255, 96, 131, 0.8)';
+        } else {
+          ringColor = 'rgba(130, 215, 255, 0.72)';
+        }
+
+        ctx.beginPath();
+        ctx.arc(nd.x, nd.y, nd.r, 0, Math.PI * 2);
+        ctx.lineWidth = isHovered || waveGlow > 0.25 ? 2.4 : 1.6;
+        ctx.strokeStyle = ringColor;
+        ctx.stroke();
+
+        // Input feature label pill on left of input node
+        if (isInput && defs[j]) {
+          ctx.font = '700 10.5px ui-monospace, Consolas, monospace';
+          ctx.fillStyle = '#d8e9ff';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          // Semi-opaque backdrop pill inside or beside node for legibility
+          const lbl = defs[j].label;
+          ctx.fillStyle = 'rgba(4, 8, 18, 0.72)';
+          const tw = ctx.measureText(lbl).width + 8;
+          roundRectPath(ctx, nd.x - tw * 0.5, nd.y - 7.5, tw, 15, 5);
+          ctx.fill();
+          ctx.fillStyle = '#eef8ff';
+          ctx.fillText(lbl, nd.x, nd.y + 0.5);
+        }
+
+        // Output node live ŷ label
+        if (isOutput) {
+          ctx.font = '700 10.5px ui-monospace, Consolas, monospace';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          const lbl = state.wave.active ? state.wave.pred.toFixed(2) : 'ŷ';
+          ctx.fillStyle = 'rgba(4, 8, 18, 0.74)';
+          const tw = ctx.measureText(lbl).width + 10;
+          roundRectPath(ctx, nd.x - tw * 0.5, nd.y - 8, tw, 16, 5);
+          ctx.fill();
+          ctx.fillStyle = '#ffffff';
+          ctx.fillText(lbl, nd.x, nd.y + 0.5);
+        }
+
+        // During Slow-Mo wave, display exact live activation a inside hidden nodes
+        if (state.wave.active && !isInput && !isOutput && waveGlow > 0.12) {
+          const val = net.layers[l - 1].a[j];
+          const txt = val.toFixed(2);
+          ctx.font = '700 9.5px ui-monospace, Consolas, monospace';
+          const tw = ctx.measureText(txt).width + 7;
+          ctx.fillStyle = 'rgba(4, 8, 18, 0.84)';
+          roundRectPath(ctx, nd.x - tw * 0.5, nd.y - 7, tw, 14, 4);
+          ctx.fill();
+          ctx.fillStyle = waveColor;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(txt, nd.x, nd.y + 0.5);
+        }
+      }
+
+      // Layer caption at bottom of graph
+      const lx = layout.layerX[l];
+      const capY = ny + nh - 14;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = '700 9.5px system-ui, -apple-system, sans-serif';
+      ctx.fillStyle = isInput ? '#7edfff' : (isOutput ? '#ff9db3' : '#9aa9cc');
+      const capText = isInput
+        ? `INPUT (${col.length})`
+        : (isOutput ? 'OUTPUT (1)' : `HIDDEN ${l} (${col.length})`);
+      ctx.fillText(capText, lx, capY);
+    }
+
+    // -----------------------------------------------------------------------
+    // 4. INTERACTIVE HOVER TOOLTIP FOR NEURON OR SYNAPSE
+    // -----------------------------------------------------------------------
+    if (state.hoverNode) {
+      const { layerIdx, neuronIdx } = state.hoverNode;
+      const nd = nodePos[layerIdx]?.[neuronIdx];
+      if (nd) {
+        let line1 = '', line2 = '';
+        if (layerIdx === 0) {
+          const f = defs[neuronIdx];
+          line1 = `Input Feature: ${f ? f.label : ''}`;
+          line2 = 'Click to toggle feature on/off';
+        } else {
+          const L = net.layers[layerIdx - 1];
+          const b = L.B[neuronIdx];
+          const gb = L.lastGradB[neuronIdx];
+          const isOut = layerIdx === numL - 1;
+          line1 = isOut ? 'Output Neuron (Sigmoid BCE)' : `Hidden L${layerIdx} · Neuron #${neuronIdx + 1}`;
+          line2 = `bias b = ${b.toFixed(3)} · ∂L/∂b = ${gb.toFixed(4)}`;
+        }
+        drawCanvasTooltip(nd.x, nd.y - nd.r - 12, line1, line2);
+      }
+    } else if (state.hoverEdge) {
+      const he = state.hoverEdge;
+      const p0 = nodePos[he.layerIdx]?.[he.fromIdx];
+      const p1 = nodePos[he.layerIdx + 1]?.[he.toIdx];
+      if (p0 && p1) {
+        const mx = (p0.x + p1.x) * 0.5;
+        const my = (p0.y + p1.y) * 0.5;
+        const L = net.layers[he.layerIdx];
+        const idx = he.toIdx * L.fanIn + he.fromIdx;
+        const wVal = L.W[idx];
+        const gVal = L.lastGradW[idx];
+        drawCanvasTooltip(
+          mx, my - 12,
+          `Synapse L${he.layerIdx}[${he.fromIdx + 1}] → L${he.layerIdx + 1}[${he.toIdx + 1}]`,
+          `w = ${wVal >= 0 ? '+' : ''}${wVal.toFixed(3)} · ∂L/∂w = ${gVal >= 0 ? '+' : ''}${gVal.toFixed(4)}`
+        );
+      }
+    }
+
+    ctx.restore();
+  }
+
+  function drawCanvasTooltip(cx, bottomY, title, sub) {
+    ctx.save();
+    ctx.font = '700 10.5px system-ui, -apple-system, sans-serif';
+    const w1 = ctx.measureText(title).width;
+    ctx.font = '600 10px ui-monospace, Consolas, monospace';
+    const w2 = ctx.measureText(sub).width;
+    const boxW = Math.max(w1, w2) + 20;
+    const boxH = 38;
+    const tx = clamp(cx - boxW * 0.5, 12, W - boxW - 12);
+    const ty = clamp(bottomY - boxH, 12, H - boxH - 12);
+
+    roundRectPath(ctx, tx, ty, boxW, boxH, 8);
+    ctx.fillStyle = 'rgba(7, 11, 22, 0.94)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(88, 220, 255, 0.45)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = '#eef4ff';
+    ctx.font = '700 10.5px system-ui, -apple-system, sans-serif';
+    ctx.fillText(title, tx + 10, ty + 7);
+    ctx.fillStyle = '#8adfff';
+    ctx.font = '600 10px ui-monospace, Consolas, monospace';
+    ctx.fillText(sub, tx + 10, ty + 21);
+    ctx.restore();
+  }
+
+  // =========================================================================
+  // EMBEDDED LIVE SPARKLINE (TRAIN LOSS, TEST LOSS & ACCURACY %)
+  // =========================================================================
+  function drawSparkline() {
+    const rect = sparkCanvas.getBoundingClientRect();
+    const cw = Math.max(120, Math.floor(rect.width || 350));
+    const ch = Math.max(36, Math.floor(rect.height || 46));
+    if (sparkCanvas.width !== Math.floor(cw * DPR) || sparkCanvas.height !== Math.floor(ch * DPR)) {
+      sparkCanvas.width = Math.floor(cw * DPR);
+      sparkCanvas.height = Math.floor(ch * DPR);
+    }
+
+    sparkCtx.save();
+    sparkCtx.scale(DPR, DPR);
+    sparkCtx.clearRect(0, 0, cw, ch);
+
+    // Subtle horizontal grid lines
+    sparkCtx.strokeStyle = 'rgba(148, 179, 255, 0.1)';
+    sparkCtx.lineWidth = 1;
+    sparkCtx.beginPath();
+    sparkCtx.moveTo(0, ch * 0.5); sparkCtx.lineTo(cw, ch * 0.5);
+    sparkCtx.stroke();
+
+    const hist = state.history;
+    if (hist.length < 2) {
+      sparkCtx.restore();
+      return;
+    }
+
+    let maxLoss = 0.8;
+    for (let i = 0; i < hist.length; i++) {
+      if (hist[i].trainLoss > maxLoss) maxLoss = hist[i].trainLoss;
+      if (hist[i].testLoss > maxLoss) maxLoss = hist[i].testLoss;
+    }
+    maxLoss = Math.min(2.2, maxLoss * 1.1);
+
+    const pad = 3;
+    const uw = cw - pad * 2;
+    const uh = ch - pad * 2;
+
+    const plotSeries = (getter, maxY, color, dashed = false, lineWidth = 1.6) => {
+      sparkCtx.save();
+      sparkCtx.beginPath();
+      sparkCtx.strokeStyle = color;
+      sparkCtx.lineWidth = lineWidth;
+      if (dashed) sparkCtx.setLineDash([3.5, 2.5]);
+      for (let i = 0; i < hist.length; i++) {
+        const x = pad + (i / (hist.length - 1)) * uw;
+        const val = clamp(getter(hist[i]) / maxY, 0, 1);
+        const y = pad + (1 - val) * uh;
+        if (i === 0) sparkCtx.moveTo(x, y);
+        else sparkCtx.lineTo(x, y);
+      }
+      sparkCtx.stroke();
+      sparkCtx.restore();
+    };
+
+    // Accuracy % (mint, subtle)
+    plotSeries(h => h.acc, 1.0, 'rgba(74, 242, 178, 0.55)', false, 1.25);
+    // Test Loss (coral dashed)
+    plotSeries(h => h.testLoss, maxLoss, '#ff6083', true, 1.65);
+    // Train Loss (cyan solid)
+    plotSeries(h => h.trainLoss, maxLoss, '#58dcff', false, 1.8);
+
+    sparkCtx.restore();
+  }
+
+  // =========================================================================
+  // TELEMETRY & UI SYNCHRONIZATION
+  // =========================================================================
+  function updateTelemetryDOM() {
+    const net = state.net;
+    if (!net) return;
+
+    document.getElementById('tel-epoch').textContent = String(net.epoch);
+    document.getElementById('tel-train-loss').textContent = state.metrics.trainLoss.toFixed(3);
+    document.getElementById('tel-test-loss').textContent = state.metrics.testLoss.toFixed(3);
+    document.getElementById('tel-acc').textContent = (state.metrics.acc * 100).toFixed(1) + '%';
+    document.getElementById('tel-params').textContent = String(net.getParamCount());
+    document.getElementById('tel-lr-reg').textContent =
+      `${state.lr < 0.01 ? state.lr.toFixed(3) : state.lr.toFixed(2)} / ${state.regL2 === 0 ? '0' : state.regL2.toFixed(4).replace(/0+$/, '')}`;
+
+    document.getElementById('badge-opt').textContent = state.optimizer === 'adam' ? 'Adam' : 'SGD';
+    document.getElementById('badge-act').textContent = ACTIVATIONS[state.activation].label;
+
+    const pill = document.getElementById('train-status');
+    pill.className = 'status-pill';
+    if (state.wave.active) {
+      pill.textContent = 'Backprop Wave';
+      pill.classList.add('wave');
+    } else if (!state.running) {
+      pill.textContent = 'Paused';
+      pill.classList.add('paused');
+    } else if (state.metrics.testLoss - state.metrics.trainLoss > 0.22 && net.epoch > 35) {
+      pill.textContent = 'Overfitting';
+      pill.classList.add('overfit');
+    } else if (state.metrics.trainLoss < 0.075 && state.metrics.acc >= 0.94) {
+      pill.textContent = 'Converged';
+    } else {
+      pill.textContent = 'Training';
+    }
+  }
+
+  function updatePlayButtonUI() {
+    const btn = document.getElementById('btn-play');
+    if (state.running) {
+      btn.textContent = '⏸ Pause';
+      btn.classList.add('active');
+    } else {
+      btn.textContent = '▶ Train';
+      btn.classList.remove('active');
+    }
+  }
+
+  function renderLayerSteppers() {
+    document.getElementById('val-layers').textContent = String(state.hiddenLayers.length);
+    document.getElementById('btn-layer-minus').disabled = state.hiddenLayers.length <= 0;
+    document.getElementById('btn-layer-plus').disabled = state.hiddenLayers.length >= 3;
+
+    const wrap = document.getElementById('layer-steppers');
+    wrap.innerHTML = '';
+    if (state.hiddenLayers.length === 0) {
+      const note = document.createElement('div');
+      note.className = 'note-small';
+      note.textContent = 'Single-layer perceptron active (direct Input → Output).';
+      wrap.appendChild(note);
+      return;
+    }
+
+    state.hiddenLayers.forEach((count, idx) => {
+      const row = document.createElement('div');
+      row.className = 'stepper-row';
+      row.innerHTML = `
+        <span>Hidden Layer ${idx + 1}</span>
+        <div class="stepper-ctrl">
+          <button class="step-btn" data-lidx="${idx}" data-delta="-1" ${count <= 2 ? 'disabled' : ''}>−</button>
+          <span class="step-val">${count}</span>
+          <button class="step-btn" data-lidx="${idx}" data-delta="1" ${count >= 8 ? 'disabled' : ''}>+</button>
+        </div>
+      `;
+      wrap.appendChild(row);
+    });
+
+    wrap.querySelectorAll('.step-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const lidx = Number(btn.dataset.lidx);
+        const delta = Number(btn.dataset.delta);
+        const next = clamp(state.hiddenLayers[lidx] + delta, 2, 8);
+        if (next !== state.hiddenLayers[lidx]) {
+          state.hiddenLayers[lidx] = next;
+          renderLayerSteppers();
+          rebuildNetwork(false);
+        }
+      });
+    });
+  }
+
+  function syncControlsToState() {
+    // Presets
+    document.querySelectorAll('.preset-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.preset === state.presetId);
+    });
+    // Datasets
+    document.querySelectorAll('[data-dataset]').forEach(b => {
+      b.classList.toggle('active', b.dataset.dataset === state.datasetType);
+    });
+    // Features
+    document.querySelectorAll('.feat-chip').forEach(b => {
+      b.classList.toggle('active', state.activeFeatures.has(b.dataset.feat));
+    });
+    // Activations
+    document.querySelectorAll('[data-act]').forEach(b => {
+      const active = b.dataset.act === state.activation;
+      b.classList.toggle('active', active);
+      b.classList.toggle('violet', active);
+    });
+    // Optimizers
+    document.querySelectorAll('[data-opt]').forEach(b => {
+      b.classList.toggle('active', b.dataset.opt === state.optimizer);
+    });
+
+    // Sliders
+    document.getElementById('slider-noise').value = String(state.noise);
+    document.getElementById('val-noise').textContent = state.noise.toFixed(2);
+    document.getElementById('slider-samples').value = String(state.sampleCount);
+    document.getElementById('val-samples').textContent = String(state.sampleCount);
+
+    const logLr = Math.log10(clamp(state.lr, 0.001, 0.32));
+    document.getElementById('slider-lr').value = logLr.toFixed(2);
+    document.getElementById('val-lr').textContent = state.lr.toFixed(3);
+
+    document.getElementById('slider-reg').value = String(state.regL2);
+    document.getElementById('val-reg').textContent = state.regL2.toFixed(4);
+
+    document.getElementById('slider-speed').value = String(state.epochsPerFrame);
+    document.getElementById('val-speed').textContent = `${state.epochsPerFrame} ep/f`;
+
+    // Brush buttons
+    const bPos = document.getElementById('btn-brush-pos');
+    const bNeg = document.getElementById('btn-brush-neg');
+    bPos.classList.toggle('active', state.brushLabel === 1);
+    bNeg.classList.toggle('active', state.brushLabel === -1);
+    bNeg.classList.toggle('coral', state.brushLabel === -1);
+
+    renderLayerSteppers();
+    updatePlayButtonUI();
+    updateTelemetryDOM();
+  }
+
+  function applyPreset(id) {
+    const p = PRESETS[id];
+    if (!p) return;
+    state.presetId = id;
+    state.datasetType = p.dataset;
+    state.sampleCount = p.samples;
+    state.noise = p.noise;
+    state.activeFeatures = new Set(p.features);
+    state.hiddenLayers = p.hidden.slice();
+    state.activation = p.activation;
+    state.optimizer = p.optimizer;
+    state.lr = p.lr;
+    state.regL2 = p.reg;
+    state.epochsPerFrame = p.speed;
+    state.running = true;
+
+    syncControlsToState();
+    rebuildDataset(true);
+    rebuildNetwork(false);
+  }
+
+  // =========================================================================
+  // CANVAS POINTER INTERACTION (PAINT POINTS, TOGGLE INPUTS, HOVER INSPECT)
+  // =========================================================================
+  let isPainting = false;
+  let paintButtonLabel = 1;
+  let lastPaintPos = null;
+
+  function pointInsideBoundary(sx, sy) {
+    return sx >= layout.bx && sx <= layout.bx + layout.bs &&
+           sy >= layout.by && sy <= layout.by + layout.bs;
+  }
+
+  function addPaintedPoint(sx, sy, label) {
+    const d = screenToData(sx, sy);
+    const x = clamp(d.x, -0.97, 0.97);
+    const y = clamp(d.y, -0.97, 0.97);
+    state.points.push({ x, y, label, isTest: false });
+    state.ripples.push({ x, y, label, age: 0 });
+    splitPoints();
+    evaluateAndRecord(false);
+    heatmapDirty = true;
+    updateTelemetryDOM();
+    if (state.audioEnabled) {
+      playTone(label > 0 ? 587.33 : 349.23, 0.14, 0.032, 'sine');
+    }
+  }
+
+  function hitTestGraph(sx, sy) {
+    const nodePos = layout.nodePos;
+    // 1. Check neuron nodes first
+    for (let l = 0; l < nodePos.length; l++) {
+      for (let j = 0; j < nodePos[l].length; j++) {
+        const nd = nodePos[l][j];
+        const dx = sx - nd.x;
+        const dy = sy - nd.y;
+        if (dx * dx + dy * dy <= (nd.r + 4) * (nd.r + 4)) {
+          return { node: { layerIdx: l, neuronIdx: j }, edge: null };
+        }
+      }
+    }
+
+    // 2. Check synapses (nearest Bézier curve sample)
+    const net = state.net;
+    if (net && sx >= layout.nx - 10 && sx <= layout.nx + layout.nw + 10 &&
+        sy >= layout.ny && sy <= layout.ny + layout.nh) {
+      let bestDist2 = 64; // 8px threshold
+      let bestEdge = null;
+      for (let l = 0; l < net.layers.length; l++) {
+        const fromCol = nodePos[l];
+        const toCol = nodePos[l + 1];
+        if (!fromCol || !toCol) continue;
+        if (sx < fromCol[0].x - 10 || sx > toCol[0].x + 10) continue;
+        const tApprox = clamp((sx - fromCol[0].x) / Math.max(1, toCol[0].x - fromCol[0].x), 0.12, 0.88);
+        const L = net.layers[l];
+        for (let j = 0; j < L.fanOut; j++) {
+          const p1 = toCol[j];
+          for (let i = 0; i < L.fanIn; i++) {
+            const p0 = fromCol[i];
+            const dx = (p1.x - p0.x) * 0.48;
+            const pt = bezierPoint(p0.x, p0.y, p0.x + dx, p0.y, p1.x - dx, p1.y, p1.x, p1.y, tApprox);
+            const d2 = (sx - pt.x) * (sx - pt.x) + (sy - pt.y) * (sy - pt.y);
+            if (d2 < bestDist2) {
+              bestDist2 = d2;
+              bestEdge = { layerIdx: l, fromIdx: i, toIdx: j };
+            }
+          }
+        }
+      }
+      if (bestEdge) return { node: null, edge: bestEdge };
+    }
+    return { node: null, edge: null };
+  }
+
+  canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+  canvas.addEventListener('pointerdown', e => {
+    const rect = canvas.getBoundingClientRect();
+    const sx = e.clientX - rect.left;
+    const sy = e.clientY - rect.top;
+
+    if (pointInsideBoundary(sx, sy)) {
+      isPainting = true;
+      paintButtonLabel = e.button === 2 ? -1 : state.brushLabel;
+      lastPaintPos = { x: sx, y: sy };
+      addPaintedPoint(sx, sy, paintButtonLabel);
+      return;
+    }
+
+    // Check if user clicked an input feature node to toggle it
+    const hit = hitTestGraph(sx, sy);
+    if (hit.node && hit.node.layerIdx === 0) {
+      const defs = getActiveFeatureDefs();
+      const targetFeat = defs[hit.node.neuronIdx];
+      if (targetFeat && state.activeFeatures.size > 1) {
+        state.activeFeatures.delete(targetFeat.id);
+        syncControlsToState();
+        rebuildNetwork(false);
+      }
+    }
+  });
+
+  canvas.addEventListener('pointermove', e => {
+    const rect = canvas.getBoundingClientRect();
+    const sx = e.clientX - rect.left;
+    const sy = e.clientY - rect.top;
+
+    if (isPainting && pointInsideBoundary(sx, sy)) {
+      const dist = lastPaintPos ? Math.hypot(sx - lastPaintPos.x, sy - lastPaintPos.y) : 999;
+      if (dist >= 16) {
+        lastPaintPos = { x: sx, y: sy };
+        addPaintedPoint(sx, sy, paintButtonLabel);
+      }
+    }
+
+    if (pointInsideBoundary(sx, sy)) {
+      const d = screenToData(sx, sy);
+      const pred = state.net ? state.net.forward(extractFeatures(d.x, d.y)) : 0;
+      state.hoverBoundary = { x: d.x, y: d.y, pred, sx, sy };
+      state.hoverNode = null;
+      state.hoverEdge = null;
+      canvas.className = 'paint-cursor';
+    } else {
+      state.hoverBoundary = null;
+      const hit = hitTestGraph(sx, sy);
+      state.hoverNode = hit.node;
+      state.hoverEdge = hit.edge;
+      canvas.className = (hit.node && hit.node.layerIdx === 0) ? 'pointer-cursor' : '';
+    }
+  });
+
+  window.addEventListener('pointerup', () => {
+    isPainting = false;
+    lastPaintPos = null;
+  });
+
+  canvas.addEventListener('pointerleave', () => {
+    state.hoverBoundary = null;
+    state.hoverNode = null;
+    state.hoverEdge = null;
+  });
+
+  // =========================================================================
+  // UI EVENT WIRING
+  // =========================================================================
+  // Drawer tabs
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const target = btn.dataset.tab;
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b === btn));
+      document.querySelectorAll('.tab-pane').forEach(p => p.classList.toggle('active', p.id === `tab-${target}`));
+    });
+  });
+
+  // Presets
+  document.querySelectorAll('.preset-btn').forEach(btn => {
+    btn.addEventListener('click', () => applyPreset(btn.dataset.preset));
+  });
+
+  // Dataset buttons
+  document.querySelectorAll('[data-dataset]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.datasetType = btn.dataset.dataset;
+      state.presetId = '';
+      syncControlsToState();
+      rebuildDataset(true);
+      rebuildNetwork(false);
+    });
+  });
+
+  // Noise & Sample sliders
+  document.getElementById('slider-noise').addEventListener('input', e => {
+    state.noise = parseFloat(e.target.value);
+    document.getElementById('val-noise').textContent = state.noise.toFixed(2);
+    rebuildDataset(false);
+  });
+
+  document.getElementById('slider-samples').addEventListener('input', e => {
+    state.sampleCount = parseInt(e.target.value, 10);
+    document.getElementById('val-samples').textContent = String(state.sampleCount);
+    rebuildDataset(false);
+  });
+
+  document.getElementById('btn-regen-data').addEventListener('click', () => rebuildDataset(true));
+  document.getElementById('btn-clear-data').addEventListener('click', () => {
+    state.datasetType = 'custom';
+    state.points = [];
+    splitPoints();
+    syncControlsToState();
+    heatmapDirty = true;
+    updateTelemetryDOM();
+  });
+
+  // Brush selectors
+  document.getElementById('btn-brush-pos').addEventListener('click', () => {
+    state.brushLabel = 1;
+    syncControlsToState();
+  });
+  document.getElementById('btn-brush-neg').addEventListener('click', () => {
+    state.brushLabel = -1;
+    syncControlsToState();
+  });
+
+  // Input feature chips
+  document.querySelectorAll('.feat-chip').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const f = btn.dataset.feat;
+      if (state.activeFeatures.has(f)) {
+        if (state.activeFeatures.size <= 1) return; // Keep at least 1 input
+        state.activeFeatures.delete(f);
+      } else {
+        state.activeFeatures.add(f);
+      }
+      syncControlsToState();
+      rebuildNetwork(false);
+    });
+  });
+
+  // Hidden layer count steppers
+  document.getElementById('btn-layer-minus').addEventListener('click', () => {
+    if (state.hiddenLayers.length > 0) {
+      state.hiddenLayers.pop();
+      renderLayerSteppers();
+      rebuildNetwork(false);
+    }
+  });
+  document.getElementById('btn-layer-plus').addEventListener('click', () => {
+    if (state.hiddenLayers.length < 3) {
+      state.hiddenLayers.push(4);
+      renderLayerSteppers();
+      rebuildNetwork(false);
+    }
+  });
+
+  // Activation selector
+  document.querySelectorAll('[data-act]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.activation = btn.dataset.act;
+      syncControlsToState();
+      rebuildNetwork(false);
+    });
+  });
+
+  document.getElementById('btn-reinit-weights').addEventListener('click', () => rebuildNetwork(false));
+
+  // Optimizer selector
+  document.querySelectorAll('[data-opt]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.optimizer = btn.dataset.opt;
+      syncControlsToState();
+    });
+  });
+
+  // Learning rate (log slider)
+  document.getElementById('slider-lr').addEventListener('input', e => {
+    state.lr = Math.pow(10, parseFloat(e.target.value));
+    document.getElementById('val-lr').textContent = state.lr.toFixed(3);
+    updateTelemetryDOM();
+  });
+
+  // L2 regularization
+  document.getElementById('slider-reg').addEventListener('input', e => {
+    state.regL2 = parseFloat(e.target.value);
+    document.getElementById('val-reg').textContent = state.regL2.toFixed(4);
+    updateTelemetryDOM();
+  });
+  document.getElementById('btn-l2-off').addEventListener('click', () => {
+    state.regL2 = 0;
+    syncControlsToState();
+  });
+  document.getElementById('btn-l2-on').addEventListener('click', () => {
+    state.regL2 = 0.025;
+    syncControlsToState();
+  });
+
+  // Training speed
+  document.getElementById('slider-speed').addEventListener('input', e => {
+    state.epochsPerFrame = parseInt(e.target.value, 10);
+    document.getElementById('val-speed').textContent = `${state.epochsPerFrame} ep/f`;
+  });
+
+  // Overlay toggles
+  document.getElementById('chk-pulses').addEventListener('change', e => { state.showPulses = e.target.checked; });
+  document.getElementById('chk-thumbs').addEventListener('change', e => { state.showThumbs = e.target.checked; heatmapDirty = true; });
+  document.getElementById('chk-contour').addEventListener('change', e => { state.showContour = e.target.checked; heatmapDirty = true; });
+  document.getElementById('chk-testpts').addEventListener('change', e => { state.showTestPts = e.target.checked; });
+
+  // Transport Bar Controls
+  document.getElementById('btn-play').addEventListener('click', () => {
+    state.wave.active = false;
+    state.running = !state.running;
+    updatePlayButtonUI();
+    updateTelemetryDOM();
+  });
+
+  document.getElementById('btn-step-epoch').addEventListener('click', () => {
+    state.wave.active = false;
+    state.running = false;
+    if (state.trainPts.length > 0) {
+      state.net.trainEpoch(state.trainPts, extractFeatures, state.lr, state.regL2, state.optimizer);
+      evaluateAndRecord(true);
+      heatmapDirty = true;
+      spawnTrainingPulses();
+      playConvergenceChime(state.metrics.trainLoss);
+    }
+    updatePlayButtonUI();
+    updateTelemetryDOM();
+  });
+
+  document.getElementById('btn-wave').addEventListener('click', triggerSlowMoWave);
+  document.getElementById('btn-slow-wave-drawer').addEventListener('click', triggerSlowMoWave);
+
+  document.getElementById('btn-reset').addEventListener('click', () => {
+    rebuildNetwork(false);
+  });
+
+  document.getElementById('btn-sound').addEventListener('click', () => {
+    state.audioEnabled = !state.audioEnabled;
+    const btn = document.getElementById('btn-sound');
+    if (state.audioEnabled) {
+      ensureAudio();
+      btn.textContent = '🔊 Audio';
+      btn.classList.add('active');
+      playTone(523.25, 0.22, 0.04, 'sine');
+    } else {
+      btn.textContent = '🔇 Audio';
+      btn.classList.remove('active');
+    }
+  });
+
+  const drawerEl = document.getElementById('drawer');
+  const toggleDrawerBtn = document.getElementById('btn-toggle-drawer');
+  function setDrawer(open) {
+    state.drawerOpen = open;
+    drawerEl.classList.toggle('collapsed', !open);
+    toggleDrawerBtn.classList.toggle('active', open);
+  }
+  toggleDrawerBtn.addEventListener('click', () => setDrawer(!state.drawerOpen));
+
+  function setZenMode(zen) {
+    state.zenMode = zen;
+    document.body.classList.toggle('zen-mode', zen);
+  }
+  document.getElementById('btn-zen').addEventListener('click', () => setZenMode(true));
+  document.getElementById('btn-zen-restore').addEventListener('click', () => setZenMode(false));
+
+  // Keyboard shortcuts
+  window.addEventListener('keydown', e => {
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+    if (e.code === 'Space') {
+      e.preventDefault();
+      state.wave.active = false;
+      state.running = !state.running;
+      updatePlayButtonUI();
+      updateTelemetryDOM();
+    } else if (e.key === 'h' || e.key === 'H') {
+      setZenMode(!state.zenMode);
+    } else if (e.key === 'b' || e.key === 'B') {
+      triggerSlowMoWave();
+    } else if (e.key === 'r' || e.key === 'R') {
+      rebuildNetwork(false);
+    } else if (e.key === '.') {
+      document.getElementById('btn-step-epoch').click();
+    }
+  });
+
+  // =========================================================================
+  // RESIZE & MAIN ANIMATION LOOP
+  // =========================================================================
+  function resize() {
+    W = window.innerWidth;
+    H = window.innerHeight;
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.floor(W * DPR);
+    canvas.height = Math.floor(H * DPR);
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    computeLayout(true);
+    drawSparkline();
+  }
+  window.addEventListener('resize', resize);
+
+  let lastTime = performance.now();
+  let pulseSpawnAcc = 0;
+
+  function frame(now) {
+    const dt = Math.min(0.05, (now - lastTime) / 1000);
+    lastTime = now;
+    const timeSec = now / 1000;
+
+    // Smoothly track layout when drawer or cinema mode toggles
+    computeLayout(false);
+
+    // Training step
+    if (state.running && !state.wave.active && state.trainPts.length > 0) {
+      for (let e = 0; e < state.epochsPerFrame; e++) {
+        state.net.trainEpoch(state.trainPts, extractFeatures, state.lr, state.regL2, state.optimizer);
+      }
+      evaluateAndRecord(true);
+      heatmapDirty = true;
+      updateTelemetryDOM();
+      playConvergenceChime(state.metrics.trainLoss);
+
+      pulseSpawnAcc += dt * (12 + state.epochsPerFrame * 2.5);
+      while (pulseSpawnAcc >= 1) {
+        pulseSpawnAcc -= 1;
+        spawnTrainingPulses();
+      }
+    }
+
+    // Slow-Mo Backprop Wave update
+    if (state.wave.active) {
+      stepSlowMoWave(dt);
+    }
+
+    // Update ambient pulses
+    for (let i = state.pulses.length - 1; i >= 0; i--) {
+      const p = state.pulses[i];
+      p.t += p.dir * p.speed * dt;
+      if (p.t < 0 || p.t > 1) {
+        state.pulses.splice(i, 1);
+      }
+    }
+
+    // Update paint ripples
+    for (let i = state.ripples.length - 1; i >= 0; i--) {
+      state.ripples[i].age += dt;
+      if (state.ripples[i].age > 0.55) state.ripples.splice(i, 1);
+    }
+
+    // Refresh ImageData heatmaps & neuron thumbnails when weights/data changed
+    if (heatmapDirty) {
+      updateHeatmaps();
+    }
+
+    // Render full-bleed high-DPI scene
+    ctx.save();
+    ctx.scale(DPR, DPR);
+    drawBackground();
+    drawDecisionBoundary(timeSec);
+    drawNeuralGraph(timeSec);
+    ctx.restore();
+
+    requestAnimationFrame(frame);
+  }
+
+  // =========================================================================
+  // INITIALIZE
+  // =========================================================================
+  if (W <= 980) setDrawer(false);
+  applyPreset('spirals');
+  resize();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

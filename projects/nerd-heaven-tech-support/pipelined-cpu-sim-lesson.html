@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Pipeline — The Lesson · Nerd Heaven</title>
+<style>
+  :root{
+    --bg:#050914; --panel:#0b1226; --panel2:#0e1730; --border:#22335c;
+    --text:#dbe7ff; --muted:#8ea1bd; --accent:#7dd3fc; --good:#4ade80;
+    --bad:#f87171; --warn:#fbbf24;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:radial-gradient(circle at 50% -10%,rgba(56,120,246,.16),transparent 55%),var(--bg);
+    color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,sans-serif;line-height:1.55}
+  .wrap{max-width:860px;margin:0 auto;padding:22px 18px 44px}
+  .eyebrow{color:var(--accent);font-size:11.5px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;margin:0 0 6px}
+  h1{font-size:27px;margin:0 0 8px;font-weight:800;letter-spacing:-.3px}
+  h1 span{color:var(--accent)}
+  h2{font-size:19px;margin:30px 0 8px;font-weight:750;border-top:1px solid var(--border);padding-top:20px}
+  h2:first-of-type{border-top:none;padding-top:0}
+  h3{font-size:15.5px;margin:18px 0 5px;color:#fff}
+  p{color:#c3d3f2;font-size:14.5px;margin:8px 0}
+  .lead{font-size:15.5px;color:#e7f2ff}
+  a{color:var(--accent)}
+  .play{display:inline-block;background:#155e86;border:1px solid #2b7fb3;color:#fff;text-decoration:none;
+    border-radius:9px;padding:8px 15px;font-size:14px;font-weight:600;margin:10px 0 2px}
+  .play:hover{background:#1a6f9e}
+  .formula{background:var(--panel);border:1px solid var(--border);border-left:3px solid var(--accent);
+    border-radius:10px;padding:11px 16px;margin:12px 0;font-size:15.5px;color:#fff;
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;overflow-x:auto;white-space:nowrap}
+  .formula small{display:block;color:var(--muted);font-family:inherit;font-size:12.5px;margin-top:4px;white-space:normal}
+  .honest{background:var(--panel2);border:1px dashed var(--border);border-radius:10px;padding:10px 15px;margin:12px 0}
+  .honest p{margin:2px 0;font-size:13.5px}
+  .honest b{color:var(--warn)}
+  table{border-collapse:collapse;margin:12px 0;width:100%;font-size:14px}
+  th,td{border:1px solid var(--border);padding:7px 11px;text-align:left}
+  th{background:var(--panel2);color:#fff}
+  td{color:#c3d3f2;font-variant-numeric:tabular-nums}
+  ol,ul{color:#c3d3f2;font-size:14.5px;padding-left:22px}
+  li{margin:5px 0}
+  code{background:var(--panel2);border:1px solid var(--border);border-radius:5px;padding:0 5px;
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px;color:#e7f2ff}
+  .receipt{color:var(--good);font-weight:600}
+  .trap{color:var(--bad);font-weight:600}
+  .keepgoing{display:grid;gap:9px;margin:14px 0}
+  .keepgoing a{display:block;background:var(--panel);border:1px solid var(--border);border-radius:11px;
+    padding:11px 15px;text-decoration:none;color:var(--text)}
+  .keepgoing a:hover{border-color:var(--accent)}
+  .keepgoing b{color:#fff;display:block;font-size:14.5px}
+  .keepgoing span{color:var(--muted);font-size:13px}
+  footer{color:var(--muted);font-size:12px;margin-top:26px;text-align:center}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <p class="eyebrow">Nerd Heaven · The back door to Pipeline</p>
+  <h1>Pipeline <span>— the lesson</span></h1>
+  <p class="lead">A processor that finishes one instruction before starting the next would spend
+  most of its life waiting. A pipelined processor overlaps them instead: while one instruction
+  executes, the next is decoded and the one after that is fetched — five stages (fetch, decode,
+  execute, memory, write-back) working on five different instructions at once, like an assembly
+  line. The catch is that instructions depend on each other, guess wrong about branches, and wait
+  on memory, and every one of those catches costs cycles you can count. This simulator runs a
+  5-stage RISC CPU with an assembler, data forwarding, a branch predictor, and a small L1 cache —
+  and this page is the other half of it: the ideas, the arithmetic, and the audit that checked
+  every preset's printed numbers against pipeline schedules derived by hand.</p>
+  <p><strong>Verdict:</strong> PASS-grade — every preset's cycle counts reproduce hand-derived pipeline schedules exactly (12 cycles with forwarding, 24 without on the RAW preset; the branch predictor's 2 mispredicts are exactly what a real 2-bit counter + BTB predicts), and the bends are labelling, not physics: the "Branch Flushes" counter counts slots rather than events without saying so, cache-OFF still counts misses, and CPI includes pipeline fill and drain.</p>
+  <p style="color:var(--muted);font-size:13px">Pipeline was built by Google Antigravity (Gemini)
+  at Steven Powell's direction; this lesson and its audit were written by Muse, from reading the
+  shipped code and driving it headlessly.</p>
+  <a class="play" href="pipelined-cpu-sim.html">Play Pipeline →</a>
+
+  <h2>The concept</h2>
+
+  <h3>Five stages, overlapped</h3>
+  <p>Each instruction passes through IF (fetch), ID (decode and read registers), EX (execute),
+  MEM (memory access), and WB (write the result back). In a steady pipeline one instruction
+  retires per cycle — but the first instruction still takes five cycles to get through, and that
+  fill cost is in every measurement this simulator makes, including the short ones. The exhibit's
+  Gantt view traces each instruction through the stages, and the audit checked that its write-back
+  cells match the retired count and that no instruction's stage order ever runs backwards.</p>
+
+  <h3>Hazards: when the line has to wait</h3>
+  <p>A <em>data hazard</em> happens when an instruction needs a result that an earlier instruction
+  hasn't written back yet — a read-after-write (RAW) dependency. The hardware has two answers.
+  <em>Forwarding</em> (also called bypassing) routes the result straight from the EX or MEM stage
+  to the instruction that needs it, without waiting for write-back: EX→EX and MEM→EX paths, both
+  wired in here. The one case forwarding can't fully cover is the <em>load-use</em> hazard: a load's
+  data only exists at the end of MEM, one stage too late for the very next instruction, so even
+  with forwarding on it costs exactly one bubble. Turn forwarding off and the same programs stall
+  the honest, slow way — the RAW preset takes exactly twice as long, 24 cycles against 12.</p>
+
+  <h3>Branches: guessing, and paying for a wrong guess</h3>
+  <p>A branch isn't resolved until EX, but the pipeline has to fetch <em>something</em> in the
+  meantime. A branch predictor guesses: here, a 2-bit saturating counter (which needs to be wrong
+  twice in a row before it changes its mind) plus a branch target buffer (BTB) that remembers
+  where each branch went last time. Guess right and the branch costs nothing; guess wrong and the
+  speculatively fetched instructions are flushed — wasted slots. With prediction off, the exhibit
+  always predicts not-taken. With it on, a loop branch still mispredicts exactly twice: once cold,
+  before the BTB knows it, and once at loop exit, when it finally stops being taken. That is not a
+  bug in the exhibit — it is what the real hardware does, and the audit's hand count agrees.</p>
+
+  <h3>The cache: small, fast, and geometric</h3>
+  <p>Main memory is slow, so an L1 cache keeps recently used words close. This one has 4 sets of
+  2-word lines (8 bytes a line): consecutive words share a line, so reading a neighbour is a hit
+  (spatial locality), but two addresses that land in the same set evict each other — the cache
+  preset's thrash pattern, addresses 0 and 32 fighting over set 0, is exactly what its counters
+  record. A miss costs the penalty set by the slider, 1–5 cycles.</p>
+
+  <h2>The concept/math</h2>
+
+  <h3>The ideal pipeline, and what CPI really counts</h3>
+  <div class="formula">N instructions, hazard-free: N + 4 cycles &nbsp;·&nbsp; CPI = total cycles / instructions retired &nbsp;·&nbsp; IPC = 1 / CPI
+    <small>The +4 is the fill: the first instruction needs all five stages before anything retires.
+    Because CPI here divides <em>total</em> cycles by retired instructions, fill and drain are
+    included — a hazard-free 3-instruction program (3 independent ADDI + HALT) retires at cycles
+    5/6/7 and shows CPI 7/3 = 2.3333. That is the standard definition, but it makes short programs
+    look artificially bad. Live check from the audit: the branch preset halts at cycle 35 with 21
+    retired, and the display reads CPI 1.67 / IPC 0.60 — the definition, applied honestly.</small>
+  </div>
+
+  <h3>The hazard arithmetic</h3>
+  <div class="formula">RAW chain, forwarding ON: 7 cycles, 0 stalls &nbsp;·&nbsp; forwarding OFF: 11 cycles, 4 RAW stalls
+    <small>Forwarding removes every stall in a pure ALU dependency chain. The load-use case is the
+    exception the formula can't remove: LW followed immediately by a dependent instruction costs
+    1 bubble even with forwarding, because the loaded value arrives at the end of MEM. On the
+    load-use preset program (miss penalty 2) the audit measured 1 load-use stall, 1 miss,
+    2 miss-stall cycles, 3 stall cycles total, 10 cycles overall.</small>
+  </div>
+
+  <h3>Cache geometry</h3>
+  <div class="formula">set = (wordAddr &gt;&gt; 1) &amp; 3 &nbsp;·&nbsp; tag = wordAddr &gt;&gt; 3 &nbsp;·&nbsp; 4 sets × 2 words = 8-byte lines
+    <small>The code's set/tag split matches the "4 sets × 2 words (8B line)" label on the page
+    exactly. Addresses 0 and 32 both map to set 0 with different tags, which is why the cache
+    preset thrashes there while neighbouring words hit.</small>
+  </div>
+
+  <h2>The audit — claims checked against hand-derived schedules, with receipts</h2>
+  <p>The audit extracted the exhibit's simulation core verbatim (the fenced
+  <code>// === SIM CORE START/END ===</code> section), ran it in Node against pipeline schedules
+  derived by hand, independently of the code, and also drove the shipped page through its real
+  DOM — preset buttons, toggles, sliders, transport buttons, and the assembler — in jsdom.
+  33 core checks ran; every preset value below matched. The only disagreements in the whole run
+  were 3 cycle totals on the load-use program, and investigation showed those were the auditor's
+  own hand-trace error, not the simulator's (see the bends, below).</p>
+
+  <h3>Receipt 1: the presets reproduce exactly</h3>
+  <table>
+    <tr><th>Program (configuration)</th><th>Hand-derived</th><th>Sim measured</th></tr>
+    <tr><td>RAW preset, forwarding ON</td><td>12 cycles; regs 19/7/133/130/142/100</td><td class="receipt">12, exact (EX forwarding 6, MEM forwarding 2)</td></tr>
+    <tr><td>RAW preset, forwarding OFF</td><td>24 cycles, 12 RAW stalls, CPI 3.00</td><td class="receipt">24, 12 — exact</td></tr>
+    <tr><td>Branch preset, predictor OFF</td><td>21 retired, 5 mispredicts, 10 flush slots, 35 cycles</td><td class="receipt">21, 5, 10, 35; R2=21, R3=121</td></tr>
+    <tr><td>Branch preset, predictor ON</td><td>2 mispredicts (cold BTB + loop exit), 4 flushes, 29 cycles</td><td class="receipt">2, 4, 29 — exact</td></tr>
+    <tr><td>Fibonacci preset</td><td>R2=R6=55, RAM[0..9]=1,1,2,3,5,8,13,21,34,55, 69 retired</td><td class="receipt">Exact; cache 5 hits / 5 misses</td></tr>
+    <tr><td>Load-use preset</td><td>R3=20, R5=40, R7=300, RAM[3]=300, 3 load-use stalls, 2 hits / 2 misses (50%)</td><td class="receipt">Exact</td></tr>
+    <tr><td>Cache preset</td><td>6 misses / 4 hits / 40% (set-0 thrash, spatial hits)</td><td class="receipt">Exact; R2=10, R3=90, R4=30, R7=60</td></tr>
+    <tr><td>Array-sum preset</td><td>R3=360, RAM[8]=360, 8 load-use stalls</td><td class="receipt">Exact; 5 misses / 4 hits, 44 retired</td></tr>
+  </table>
+  <p>Every value printed in the preset comments is correct. Also verified: R0 is hardwired (writes
+  to it are discarded, reads return 0); store-data hazards stall and forward correctly both ways;
+  a program with no HALT drains and halts; and the assembler rejects unknown opcodes, bad
+  registers, and wrong operand counts with line-numbered errors that surface in the UI.</p>
+
+  <h3>Receipt 2: the interface does what it says (16/16)</h3>
+  <p>The Step button advances exactly 1 cycle per click; Reset re-assembles; preset buttons load
+  their code; the Forwarding toggle through the real UI reproduces the 12 → 24 cycle change on the
+  RAW preset (stalls 0 → 12); Assemble &amp; Run executes custom code and the register table shows
+  the result (R2=6 for a doubling program); tabs, drawer collapse, Cinema mode, speed buttons,
+  the miss-penalty and clock sliders (labels update), and the sound toggle (no crash without an
+  AudioContext) all work. No dead controls, no window errors.</p>
+
+  <h2>Bends and simplifications, named</h2>
+  <div class="honest">
+    <p><b>"Branch Flushes" counts slots, not events:</b> each misprediction adds the number of
+    in-flight slots flushed (2 in this pipeline — the ID occupant plus the speculative fetch slot,
+    and a fetched HALT marker can be one of them), with a floor of 1. So the same branch run reads
+    "Branch Flushes 10" in the telemetry and "Mispredicts 5" in the Hardware tab. Both numbers are
+    defensible; the page never says they measure different things.</p>
+    <p><b>Cache OFF still counts "misses":</b> with the cache disabled, every access increments
+    the L1 Misses counter and the hit-rate readout shows 0% rather than "bypassed". The timing
+    behaviour matches the label ("OFF forces RAM stalls" — the full miss penalty is charged), but
+    the counters present a disabled cache as a 0%-hit cache.</p>
+    <p><b>CPI includes fill/drain:</b> CPI = total cycles / retired, so a hazard-free 3-instruction
+    program shows CPI 2.33. Standard for this definition; short programs look artificially bad,
+    and the page doesn't warn you.</p>
+    <p><b>Predictor warm-up is BTB-gated:</b> a branch is only predicted taken once its BTB entry
+    exists <em>and</em> the 2-bit state is at least weakly-taken, so the first taken branch always
+    mispredicts, and jumps (J) are predicted not-taken until first executed (measured J-loop,
+    predictor on: 2 mispredicts across 5 control transfers). True to the implemented design, but
+    the "Predicts taken loops" label glosses over the cold-start cost.</p>
+    <p><b>Unlabelled simplifications:</b> MUL completes in one EX cycle (no multi-cycle multiply);
+    RAM is 64 words with silent address wrap (<code>wordAddr &amp; 63</code> — byte address 256
+    aliases word 0) while the UI displays only words 0–17.</p>
+    <p><b>One for the auditor:</b> on the cycle a cache fill completes, the instruction held in ID
+    decodes in that same cycle — correct latch semantics (simultaneous MEM→WB and ID→EX movement),
+    and the same convention reproduces the branch-flush totals exactly. It is why the load-use
+    program totals 10 cycles at penalty 2, not the 11 a hand-tracer (this one included) first
+    writes down.</p>
+    <p><b>FALSE findings:</b> none. Every quantitative claim on the page that was tested
+    reproduced exactly.</p>
+  </div>
+
+  <h2>Learn more</h2>
+  <div class="keepgoing">
+    <a href="https://www.elsevier.com/books/computer-organization-and-design-risc-v-edition/patterson/978-0-12-820331-6" target="_blank" rel="noopener"><b>Computer Organization and Design, RISC-V Edition — Patterson &amp; Hennessy ↗</b><span>The canonical textbook treatment of everything the simulator wires together — the 5-stage RISC pipeline, hazards, forwarding, branch prediction, and caches.</span></a>
+    <a href="https://en.wikipedia.org/wiki/Classic_RISC_pipeline" target="_blank" rel="noopener"><b>Classic RISC pipeline — Wikipedia ↗</b><span>The IF/ID/EX/MEM/WB five-stage structure the exhibit animates, and the stage-by-stage register-transfer behaviour its Gantt view traces.</span></a>
+    <a href="https://en.wikipedia.org/wiki/Hazard_(computer_architecture)" target="_blank" rel="noopener"><b>Hazard (computer architecture) — Wikipedia ↗</b><span>The RAW data hazards, EX→EX / MEM→EX operand forwarding bypasses, and the load-use stall the exhibit's presets and counters isolate.</span></a>
+    <a href="https://en.wikipedia.org/wiki/Branch_predictor" target="_blank" rel="noopener"><b>Branch predictor — Wikipedia ↗</b><span>The 2-bit saturating-counter predictor and branch target buffer behind the exhibit's BP toggle, mispredict counters, and branch-flush cycles.</span></a>
+  </div>
+
+  <h2>Keep going</h2>
+  <div class="keepgoing">
+    <a href="raft-consensus-sim-lesson.html"><b>Consensus — the lesson →</b><span>The sibling audit: five servers agreeing on one log. Its core is just as strong — and it carries the one real safety hole in this pair, a vote that a same-term step-down can erase.</span></a>
+    <a href="../a-library/a-library.html#electronics-computing"><b>A Library — Electronics &amp; Computing →</b><span>The shelf this exhibit is catalogued on: the books and sources behind the benches, in the Library next door.</span></a>
+  </div>
+
+  <footer>Pipeline · Nerd Heaven · Everyday Cool — built by Google Antigravity (Gemini) at Steven Powell's direction; lesson and audit by Muse.</footer>
+
+</div>
+</body>
+</html>

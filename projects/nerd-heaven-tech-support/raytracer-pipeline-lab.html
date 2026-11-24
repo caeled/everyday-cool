@@ -1,0 +1,3909 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>RayTrace — Live 3D Software Ray Tracer, Reflections & BVH Lab</title>
+<style>
+  :root {
+    --bg-deep: #040711;
+    --panel-bg: rgba(9, 13, 24, 0.80);
+    --panel-bg-strong: rgba(7, 11, 21, 0.93);
+    --panel-border: rgba(148, 179, 255, 0.16);
+    --panel-border-hi: rgba(148, 179, 255, 0.36);
+    --text-main: #eef3ff;
+    --text-dim: #9aa9cc;
+    --text-muted: #68789c;
+    --accent-amber: #ffbe5c;
+    --accent-cyan: #58dcff;
+    --accent-mint: #4af2b2;
+    --accent-rose: #ff6083;
+    --accent-violet: #a78bfa;
+    --radius-lg: 14px;
+    --radius-md: 10px;
+    --radius-sm: 7px;
+    --mono: ui-monospace, "Cascadia Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Inter, Helvetica, Arial, sans-serif;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg-deep);
+    color: var(--text-main);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    touch-action: none;
+  }
+
+  #sim-canvas {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    display: block;
+    cursor: grab;
+  }
+  #sim-canvas.dragging {
+    cursor: grabbing;
+  }
+  #sim-canvas.hover-obj {
+    cursor: move;
+  }
+  #sim-canvas.xray-hover {
+    cursor: crosshair;
+  }
+
+  /* HUD Layer */
+  .hud {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 10;
+  }
+  body.zen-mode .hud > :not(.zen-restore) {
+    opacity: 0;
+    pointer-events: none !important;
+  }
+
+  .panel {
+    pointer-events: auto;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-lg);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.52), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    transition: opacity 0.25s ease, transform 0.25s ease;
+  }
+
+  /* Top-Left Telemetry Card */
+  .top-left {
+    position: fixed;
+    top: 14px;
+    left: 14px;
+    width: min(414px, calc(100vw - 364px));
+    min-width: 280px;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .brand-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .brand-title-wrap {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .brand-title {
+    font-size: 16px;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    background: linear-gradient(120deg, #e8f8ff 0%, #58dcff 48%, #ffbe5c 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .mode-badge {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 999px;
+    border: 1px solid rgba(88, 220, 255, 0.42);
+    background: rgba(88, 220, 255, 0.12);
+    color: var(--accent-cyan);
+  }
+  .mode-badge.brute {
+    border-color: rgba(255, 190, 92, 0.45);
+    background: rgba(255, 190, 92, 0.14);
+    color: var(--accent-amber);
+  }
+
+  .status-pill {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: rgba(74, 242, 178, 0.14);
+    color: var(--accent-mint);
+    border: 1px solid rgba(74, 242, 178, 0.35);
+    white-space: nowrap;
+  }
+  .status-pill.preview {
+    background: rgba(255, 190, 92, 0.16);
+    color: var(--accent-amber);
+    border-color: rgba(255, 190, 92, 0.4);
+  }
+  .status-pill.paused {
+    background: rgba(167, 139, 250, 0.16);
+    color: var(--accent-violet);
+    border-color: rgba(167, 139, 250, 0.42);
+  }
+
+  .telemetry-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+  }
+
+  .tele-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(148, 179, 255, 0.1);
+    border-radius: var(--radius-sm);
+    padding: 5px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .tele-label {
+    font-size: 9.5px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .tele-val {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--text-main);
+    white-space: nowrap;
+  }
+  .tele-val.amber { color: var(--accent-amber); }
+  .tele-val.cyan { color: var(--accent-cyan); }
+  .tele-val.mint { color: var(--accent-mint); }
+  .tele-val.violet { color: var(--accent-violet); }
+  .tele-val.rose { color: var(--accent-rose); }
+
+  .progress-bar-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 10.5px;
+    color: var(--text-dim);
+  }
+  .progress-track {
+    flex: 1;
+    height: 5px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    width: 0%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #58dcff, #4af2b2 65%, #ffbe5c 100%);
+    transition: width 0.1s linear;
+  }
+
+  .metrics-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding-top: 4px;
+    border-top: 1px solid rgba(148, 179, 255, 0.1);
+    font-size: 10.5px;
+    color: var(--text-dim);
+    font-family: var(--mono);
+    flex-wrap: wrap;
+  }
+  .metrics-row span strong {
+    color: var(--text-main);
+    font-weight: 600;
+  }
+
+  /* Right Control Drawer (330px) */
+  .drawer {
+    position: fixed;
+    top: 14px;
+    right: 14px;
+    bottom: 14px;
+    width: 330px;
+    max-width: calc(100vw - 28px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: transform 0.25s ease, opacity 0.25s ease;
+  }
+  .drawer.collapsed {
+    transform: translateX(calc(100% + 24px));
+    pointer-events: none;
+  }
+
+  .drawer-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+    padding: 8px 8px 6px;
+    border-bottom: 1px solid var(--panel-border);
+    background: rgba(4, 7, 15, 0.42);
+  }
+
+  .tab-btn {
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    padding: 7px 5px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .tab-btn:hover {
+    color: var(--text-main);
+    background: rgba(255, 255, 255, 0.04);
+  }
+  .tab-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.16);
+    border-color: rgba(88, 220, 255, 0.4);
+  }
+
+  .drawer-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 11px 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .drawer-body::-webkit-scrollbar {
+    width: 5px;
+  }
+  .drawer-body::-webkit-scrollbar-thumb {
+    background: rgba(148, 179, 255, 0.22);
+    border-radius: 999px;
+  }
+
+  .tab-pane {
+    display: none;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .tab-pane.active {
+    display: flex;
+  }
+
+  .section {
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(148, 179, 255, 0.11);
+    border-radius: var(--radius-md);
+    padding: 10px 11px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .section-title {
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  /* Presets grid */
+  .preset-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .preset-btn {
+    text-align: left;
+    padding: 7px 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(148, 179, 255, 0.14);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-main);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .preset-btn:hover {
+    border-color: rgba(88, 220, 255, 0.48);
+    background: rgba(88, 220, 255, 0.08);
+  }
+  .preset-btn.active {
+    border-color: var(--accent-cyan);
+    background: rgba(88, 220, 255, 0.15);
+    box-shadow: inset 0 0 12px rgba(88, 220, 255, 0.09);
+  }
+  .preset-name {
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.25;
+  }
+  .preset-sub {
+    font-size: 9.5px;
+    color: var(--text-muted);
+    line-height: 1.25;
+  }
+
+  /* Sliders */
+  .control-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .control-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11.5px;
+    color: var(--text-dim);
+  }
+  .control-head .val {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-main);
+    font-weight: 600;
+  }
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 5px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.18);
+    outline: none;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent-cyan);
+    border: 2px solid #08101f;
+    box-shadow: 0 0 10px rgba(88, 220, 255, 0.65);
+    cursor: pointer;
+  }
+  input[type="range"].amber::-webkit-slider-thumb {
+    background: var(--accent-amber);
+    box-shadow: 0 0 10px rgba(255, 190, 92, 0.65);
+  }
+  input[type="range"].violet::-webkit-slider-thumb {
+    background: var(--accent-violet);
+    box-shadow: 0 0 10px rgba(167, 139, 250, 0.65);
+  }
+
+  /* Segmented pills */
+  .seg-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(64px, 1fr));
+    gap: 4px;
+  }
+  .seg-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-dim);
+    font-size: 11px;
+    font-weight: 650;
+    padding: 6px 5px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-align: center;
+  }
+  .seg-btn:hover {
+    color: #fff;
+    border-color: rgba(148, 179, 255, 0.35);
+  }
+  .seg-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.18);
+    border-color: var(--accent-cyan);
+  }
+  .seg-btn.active.amber {
+    background: rgba(255, 190, 92, 0.18);
+    border-color: var(--accent-amber);
+    color: #ffdfaa;
+  }
+
+  /* Action Buttons */
+  .btn-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .btn {
+    border: 1px solid rgba(148, 179, 255, 0.22);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-main);
+    font-size: 11.5px;
+    font-weight: 700;
+    padding: 7px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+  .btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 179, 255, 0.45);
+  }
+  .btn:active {
+    transform: scale(0.98);
+  }
+  .btn.primary {
+    background: linear-gradient(135deg, rgba(88, 220, 255, 0.28), rgba(56, 140, 255, 0.24));
+    border-color: rgba(88, 220, 255, 0.55);
+    color: #e6f9ff;
+  }
+  .btn.amber {
+    background: linear-gradient(135deg, rgba(255, 190, 92, 0.25), rgba(255, 120, 60, 0.22));
+    border-color: rgba(255, 190, 92, 0.55);
+    color: #fff3db;
+  }
+  .btn.active-lock {
+    background: rgba(74, 242, 178, 0.2);
+    border-color: var(--accent-mint);
+    color: #d6fff0;
+  }
+
+  /* Toggle switches */
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11.5px;
+    color: var(--text-dim);
+    cursor: pointer;
+  }
+  .toggle-row input {
+    display: none;
+  }
+  .switch {
+    width: 34px;
+    height: 18px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.2);
+    border: 1px solid rgba(148, 179, 255, 0.25);
+    position: relative;
+    transition: all 0.18s ease;
+    flex-shrink: 0;
+  }
+  .switch::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #c8d7f5;
+    transition: transform 0.18s ease, background 0.18s ease;
+  }
+  .toggle-row input:checked + .switch {
+    background: rgba(88, 220, 255, 0.32);
+    border-color: var(--accent-cyan);
+  }
+  .toggle-row input:checked + .switch::after {
+    transform: translateX(16px);
+    background: #fff;
+  }
+
+  /* Ray Inspector Telemetry Box */
+  .probe-log {
+    background: rgba(4, 8, 18, 0.72);
+    border: 1px solid rgba(148, 179, 255, 0.14);
+    border-radius: var(--radius-sm);
+    padding: 8px 9px;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    line-height: 1.48;
+    color: var(--text-dim);
+    max-height: 155px;
+    overflow-y: auto;
+  }
+  .probe-log .row-hi { color: var(--accent-cyan); }
+  .probe-log .row-refl { color: var(--accent-amber); }
+  .probe-log .row-refr { color: #b994ff; }
+  .probe-log .row-shad { color: var(--accent-mint); }
+  .probe-log .row-occ { color: var(--accent-rose); }
+
+  .legend-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 5px 8px;
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .swatch {
+    width: 10px;
+    height: 3px;
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
+  .swatch.box {
+    width: 9px;
+    height: 9px;
+    background: transparent;
+    border: 1.5px solid #4af2b2;
+  }
+
+  /* Bottom Transport Bar */
+  .bottom-bar {
+    position: fixed;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 7px 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: nowrap;
+  }
+
+  .bar-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-main);
+    font-size: 11.5px;
+    font-weight: 650;
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    white-space: nowrap;
+  }
+  .bar-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 179, 255, 0.4);
+  }
+  .bar-btn.active {
+    background: rgba(88, 220, 255, 0.2);
+    border-color: var(--accent-cyan);
+    color: #fff;
+  }
+  .bar-btn.amber-active {
+    background: rgba(255, 190, 92, 0.22);
+    border-color: var(--accent-amber);
+    color: #fff2d6;
+  }
+
+  .bar-divider {
+    width: 1px;
+    height: 20px;
+    background: rgba(148, 179, 255, 0.16);
+    margin: 0 2px;
+  }
+
+  /* Bottom-left interaction hint */
+  .hint-pill {
+    position: fixed;
+    bottom: 14px;
+    left: 14px;
+    padding: 7px 11px;
+    font-size: 10.5px;
+    color: var(--text-dim);
+    max-width: 340px;
+    line-height: 1.42;
+  }
+  .hint-pill kbd {
+    font-family: var(--mono);
+    font-size: 9.5px;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #fff;
+  }
+
+  /* Floating object drag tooltip */
+  .obj-tooltip {
+    position: fixed;
+    pointer-events: none;
+    padding: 4px 9px;
+    border-radius: 999px;
+    background: rgba(8, 13, 25, 0.88);
+    border: 1px solid rgba(88, 220, 255, 0.5);
+    color: #e6f9ff;
+    font-size: 11px;
+    font-weight: 650;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+    opacity: 0;
+    transform: translate(-50%, -140%);
+    transition: opacity 0.12s ease;
+    z-index: 15;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  }
+  .obj-tooltip.visible {
+    opacity: 1;
+  }
+
+  .zen-restore {
+    position: fixed;
+    bottom: 14px;
+    right: 14px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+  }
+  body.zen-mode .zen-restore {
+    opacity: 0.9;
+    pointer-events: auto;
+  }
+
+  .note-small {
+    font-size: 10.5px;
+    color: var(--text-muted);
+    line-height: 1.38;
+  }
+
+  @media (max-width: 960px) {
+    .top-left {
+      width: calc(100vw - 28px);
+      max-width: none;
+    }
+    .drawer {
+      top: auto;
+      bottom: 62px;
+      height: 50vh;
+      width: calc(100vw - 28px);
+    }
+    .hint-pill {
+      display: none;
+    }
+  }
+</style>
+</head>
+<body>
+<canvas id="sim-canvas"></canvas>
+<div id="obj-tooltip" class="obj-tooltip">Drag Glass Sphere</div>
+
+<div class="hud">
+  <!-- Top-Left Brand + Telemetry -->
+  <div class="panel top-left">
+    <div class="brand-row">
+      <div class="brand-title-wrap">
+        <div class="brand-title">RayTrace</div>
+        <span id="accel-badge" class="mode-badge">BVH Tree</span>
+      </div>
+      <span id="render-status" class="status-pill">Progressive AA</span>
+    </div>
+
+    <div class="telemetry-grid">
+      <div class="tele-card">
+        <span class="tele-label">Resolution</span>
+        <span id="tel-res" class="tele-val">640×360</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Throughput</span>
+        <span id="tel-mrays" class="tele-val cyan">0.00 M/s</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Samples (SPP)</span>
+        <span id="tel-spp" class="tele-val mint">1 / 64</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Rays / Frame</span>
+        <span id="tel-rays" class="tele-val amber">0 K</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Max Bounces</span>
+        <span id="tel-depth" class="tele-val violet">5</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">BVH Speedup</span>
+        <span id="tel-bvh" class="tele-val mint">1.0×</span>
+      </div>
+    </div>
+
+    <div class="progress-bar-wrap">
+      <span>Progressive AA</span>
+      <div class="progress-track"><div id="aa-fill" class="progress-fill"></div></div>
+      <span id="tel-aa-pct" style="font-family: var(--mono); color: var(--text-main);">0%</span>
+    </div>
+
+    <div class="metrics-row">
+      <span>BVH Nodes/Ray: <strong id="tel-nodes">0.0</strong></span>
+      <span>Prims Tested: <strong id="tel-prims">0.0 / 0</strong></span>
+      <span>Slice: <strong id="tel-ms" style="color:var(--accent-cyan)">0 ms</strong></span>
+    </div>
+  </div>
+
+  <!-- Right Control Drawer (330px) -->
+  <aside id="drawer" class="panel drawer">
+    <div class="drawer-tabs">
+      <button class="tab-btn active" data-tab="scene">Scene &amp; Ray</button>
+      <button class="tab-btn" data-tab="optics">Optics &amp; Light</button>
+      <button class="tab-btn" data-tab="xray">X-Ray &amp; BVH</button>
+    </div>
+
+    <div class="drawer-body">
+      <!-- TAB 1: SCENE & RAY -->
+      <div id="tab-scene" class="tab-pane active">
+        <div class="section">
+          <div class="section-title"><span>Curated 3D Scenes</span></div>
+          <div class="preset-grid">
+            <button class="preset-btn active" data-preset="classic">
+              <span class="preset-name">Glass &amp; Chrome</span>
+              <span class="preset-sub">Classic checkerboard floor</span>
+            </button>
+            <button class="preset-btn" data-preset="cornell">
+              <span class="preset-name">Cornell Box GI</span>
+              <span class="preset-sub">Red/green bounce light</span>
+            </button>
+            <button class="preset-btn" data-preset="diamond">
+              <span class="preset-name">Diamond Prism</span>
+              <span class="preset-sub">IOR 2.42 + TIR dispersion</span>
+            </button>
+            <button class="preset-btn" data-preset="mirrors">
+              <span class="preset-name">Mirror Hallway</span>
+              <span class="preset-sub">Infinite 8-bounce tunnel</span>
+            </button>
+            <button class="preset-btn" data-preset="sunset">
+              <span class="preset-name">Floating Orbs</span>
+              <span class="preset-sub">Golden sunset reflections</span>
+            </button>
+            <button class="preset-btn" data-preset="bvh">
+              <span class="preset-name">BVH Inspector</span>
+              <span class="preset-sub">18-orb spatial tree lab</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Ray Engine &amp; Materials</span></div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Max Bounce Depth</span>
+              <span id="val-bounces" class="val">5 bounces</span>
+            </div>
+            <input id="sl-bounces" class="violet" type="range" min="1" max="8" step="1" value="5" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Glass IOR (<span id="val-ior-name" style="color:var(--accent-cyan)">Crown Glass</span>)</span>
+              <span id="val-ior" class="val">1.52</span>
+            </div>
+            <input id="sl-ior" type="range" min="1.00" max="2.42" step="0.01" value="1.52" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Metal Roughness</span>
+              <span id="val-rough" class="val">0.04</span>
+            </div>
+            <input id="sl-rough" class="amber" type="range" min="0.00" max="0.55" step="0.01" value="0.04" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Resolution Scale</span>
+              <span id="val-res" class="val">0.60×</span>
+            </div>
+            <input id="sl-res" type="range" min="0.25" max="1.00" step="0.05" value="0.60" />
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Pipeline Feature Toggles</span></div>
+          <label class="toggle-row">
+            <span>Soft Area Shadows</span>
+            <input id="chk-shadows" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Specular Reflections</span>
+            <input id="chk-reflections" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Snell Refraction &amp; Fresnel</span>
+            <input id="chk-refraction" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Use BVH Acceleration Tree</span>
+            <input id="chk-bvh" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+        </div>
+      </div>
+
+      <!-- TAB 2: OPTICS & LIGHT -->
+      <div id="tab-optics" class="tab-pane">
+        <div class="section">
+          <div class="section-title"><span>Primary Emissive Area Light</span></div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Light Height (Y)</span>
+              <span id="val-light-y" class="val">4.60 m</span>
+            </div>
+            <input id="sl-light-y" class="amber" type="range" min="1.2" max="8.0" step="0.1" value="4.6" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Light Orbit Angle</span>
+              <span id="val-light-ang" class="val">38°</span>
+            </div>
+            <input id="sl-light-ang" class="amber" type="range" min="0" max="360" step="2" value="38" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Light Radius (Softness)</span>
+              <span id="val-light-rad" class="val">0.48 m</span>
+            </div>
+            <input id="sl-light-rad" type="range" min="0.12" max="1.15" step="0.03" value="0.48" />
+          </div>
+
+          <p class="note-small">Tip: You can also <strong>click &amp; drag the glowing light orb or glass sphere</strong> directly inside the 3D scene!</p>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Physical Optics &amp; Motion</span></div>
+          <label class="toggle-row">
+            <span>Ambient Occlusion &amp; GI</span>
+            <input id="chk-ao" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Chromatic Dispersion (Diamond Fire)</span>
+            <input id="chk-disp" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Animate Floating Light / Orbs</span>
+            <input id="chk-animate" type="checkbox" />
+            <span class="switch"></span>
+          </label>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Camera Field of View</span>
+              <span id="val-fov" class="val">46°</span>
+            </div>
+            <input id="sl-fov" type="range" min="28" max="75" step="1" value="46" />
+          </div>
+
+          <div class="btn-row">
+            <button id="btn-ior-water" class="btn">Water 1.33</button>
+            <button id="btn-ior-glass" class="btn">Glass 1.52</button>
+          </div>
+          <div class="btn-row">
+            <button id="btn-ior-sapphire" class="btn">Sapphire 1.77</button>
+            <button id="btn-ior-diamond" class="btn amber">Diamond 2.42</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 3: X-RAY & BVH -->
+      <div id="tab-xray" class="tab-pane">
+        <div class="section">
+          <div class="section-title"><span>Ray &amp; BVH Inspector View</span></div>
+          <div class="seg-row" id="view-mode-row">
+            <button class="seg-btn active" data-vmode="full">3D Full</button>
+            <button class="seg-btn" data-vmode="overlay">🔍 Overlay</button>
+            <button class="seg-btn" data-vmode="split">◫ Split</button>
+          </div>
+
+          <label class="toggle-row">
+            <span>Draw BVH Bounding Boxes</span>
+            <input id="chk-xray-bvh" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Draw Shadow Rays</span>
+            <input id="chk-xray-shadow" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Draw Surface Normals</span>
+            <input id="chk-xray-normals" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Project Ray Path onto 3D View</span>
+            <input id="chk-xray-3d" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Multi-Ray Probe Fan (5 Rays)</span>
+            <input id="chk-xray-fan" type="checkbox" />
+            <span class="switch"></span>
+          </label>
+
+          <div class="btn-row">
+            <button id="btn-lock-probe" class="btn">📌 Lock Ray (L)</button>
+            <button id="btn-reset-cam" class="btn">◎ Reset Cam</button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">
+            <span>Live Probe Ray Optics</span>
+            <span id="probe-bounces-badge" style="color:var(--accent-cyan); font-family:var(--mono);">0 segs</span>
+          </div>
+          <div id="probe-log" class="probe-log">
+            Move cursor across the 3D scene or X-Ray panel to trace live primary, reflection, refraction, shadow rays &amp; BVH traversal.
+          </div>
+          <div class="legend-grid">
+            <div class="legend-item"><span class="swatch" style="background:#58dcff"></span>Primary Ray</div>
+            <div class="legend-item"><span class="swatch" style="background:#ffbe5c"></span>Reflection Bounce</div>
+            <div class="legend-item"><span class="swatch" style="background:#c084fc"></span>Snell Refraction</div>
+            <div class="legend-item"><span class="swatch" style="background:#ff5896"></span>TIR / Occluded</div>
+            <div class="legend-item"><span class="swatch" style="background:#4af2b2"></span>Lit Shadow Ray</div>
+            <div class="legend-item"><span class="swatch box"></span>BVH Node Hit</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Bottom-Left Interaction Hints -->
+  <div class="panel hint-pill">
+    <div><strong>Drag space</strong> Orbit 3D · <strong>Drag Light/Orb</strong> Move · <strong>Scroll</strong> Zoom</div>
+    <div><kbd>X</kbd> X-Ray · <kbd>V</kbd> Split · <kbd>L</kbd> Lock Ray · <kbd>Space</kbd> Pause · <kbd>H</kbd> Cinema</div>
+  </div>
+
+  <!-- Bottom Transport Bar -->
+  <div class="panel bottom-bar">
+    <button id="btn-play" class="bar-btn active">⏸ Pause</button>
+    <button id="btn-reset" class="bar-btn">↺ Reset</button>
+    <div class="bar-divider"></div>
+    <button id="btn-xray" class="bar-btn" title="Toggle Ray & BVH X-Ray Overlay (X)">🔍 X-Ray</button>
+    <button id="btn-split" class="bar-btn" title="Toggle Split-Screen Inspector (V)">◫ Split</button>
+    <div class="bar-divider"></div>
+    <button id="btn-sound" class="bar-btn">🔇 Audio</button>
+    <button id="btn-toggle-drawer" class="bar-btn active">Controls</button>
+    <button id="btn-zen" class="bar-btn" title="Hide HUD (H)">Cinema</button>
+  </div>
+
+  <button id="btn-zen-restore" class="panel bar-btn zen-restore">Show HUD (H)</button>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // =========================================================================
+  // CONSTANTS & MATERIAL TYPES
+  // =========================================================================
+  const MAT_DIFFUSE  = 0;
+  const MAT_METAL    = 1;
+  const MAT_GLASS    = 2;
+  const MAT_EMISSIVE = 3;
+
+  const PRIM_SPHERE = 0;
+  const PRIM_BOX    = 1;
+
+  const MAX_SPP = 64;
+  const EPS = 1e-4;
+  const INF = 1e20;
+
+  // =========================================================================
+  // APPLICATION STATE
+  // =========================================================================
+  const state = {
+    preset: 'classic',
+    paused: false,
+    drawerOpen: true,
+    zenMode: false,
+    audioOn: false,
+
+    // Ray Engine Parameters
+    maxBounces: 5,
+    glassIOR: 1.52,
+    metalRoughness: 0.04,
+    resScale: 0.60,
+    fovDeg: 46,
+
+    // Feature Toggles
+    shadows: true,
+    reflections: true,
+    refraction: true,
+    useBVH: true,
+    ambientOcclusion: true,
+    dispersion: true,
+    animateScene: false,
+
+    // Light controls
+    lightY: 4.6,
+    lightAngleDeg: 38,
+    lightOrbitR: 3.4,
+    lightRadius: 0.48,
+
+    // X-Ray & Inspector
+    viewMode: 'full', // 'full' | 'overlay' | 'split'
+    xrayShowBVH: true,
+    xrayShowShadow: true,
+    xrayShowNormals: true,
+    xrayShow3D: true,
+    xrayFan: false,
+    probeLocked: false,
+    probeNormX: 0.48, // normalized [0..1] in 3D viewport
+    probeNormY: 0.54,
+    probeXRayWorld: null, // optional world target from 2D inspector hover
+
+    // Camera Orbit
+    camYaw: 0.36,
+    camPitch: 0.28,
+    camDist: 8.6,
+    targetX: 0.0,
+    targetY: 1.05,
+    targetZ: 0.0,
+
+    // Interaction
+    isDraggingCam: false,
+    isPanningCam: false,
+    dragPrimIdx: -1,
+    hoverPrimIdx: -1,
+    dragPlaneN: [0, 1, 0],
+    dragPlaneD: 0,
+    dragOffset: [0, 0, 0],
+    lastMouseX: 0,
+    lastMouseY: 0,
+    animTime: 0,
+    lastPingTime: 0,
+    lastProbeBounceSig: -1
+  };
+
+  // =========================================================================
+  // SCENE DATA STRUCTURES
+  // =========================================================================
+  // Primitive object shape:
+  // {
+  //   type: PRIM_SPHERE | PRIM_BOX,
+  //   name: string,
+  //   draggable: boolean,
+  //   isPrimaryLight: boolean,
+  //   isPrimaryGlass: boolean,
+  //   mat: MAT_*,
+  //   color: [r, g, b],
+  //   emit: [r, g, b],
+  //   roughness: number,      // metal base multiplier (-1 = follow slider)
+  //   ior: number,            // glass IOR (-1 = follow slider)
+  //   absorb: [r, g, b],      // Beer-Lambert glass tint
+  //   // Sphere:
+  //   x, y, z, r,
+  //   // Box:
+  //   minX, minY, minZ, maxX, maxY, maxZ,
+  //   // Computed AABB for BVH:
+  //   bMinX, bMinY, bMinZ, bMaxX, bMaxY, bMaxZ,
+  //   basePos: [x, y, z]
+  // }
+  let primitives = [];
+  let lights = []; // indices into primitives that act as area lights
+  let sceneConfig = {
+    hasFloor: true,
+    floorY: 0.0,
+    floorChecker: true,
+    floorColorA: [0.88, 0.90, 0.94],
+    floorColorB: [0.06, 0.08, 0.14],
+    floorReflect: 0.28,
+    floorScale: 1.0,
+    skyType: 'studio', // 'studio' | 'cornell' | 'sunset' | 'obsidian' | 'hallway'
+    sunDir: [0.55, 0.22, -0.80],
+    ambientStrength: 0.22,
+    worldRadius: 6.5
+  };
+
+  // =========================================================================
+  // FLAT TYPED-ARRAY BVH STRUCTURE (ZERO GC IN HOT LOOP)
+  // =========================================================================
+  const MAX_BVH_NODES = 512;
+  const bvhMinX = new Float32Array(MAX_BVH_NODES);
+  const bvhMinY = new Float32Array(MAX_BVH_NODES);
+  const bvhMinZ = new Float32Array(MAX_BVH_NODES);
+  const bvhMaxX = new Float32Array(MAX_BVH_NODES);
+  const bvhMaxY = new Float32Array(MAX_BVH_NODES);
+  const bvhMaxZ = new Float32Array(MAX_BVH_NODES);
+  const bvhLeft = new Int32Array(MAX_BVH_NODES);     // left child index, or -1 if leaf
+  const bvhRight = new Int32Array(MAX_BVH_NODES);    // right child index, or prim count if leaf
+  const bvhStart = new Int32Array(MAX_BVH_NODES);    // start index in bvhPrimIndices (leaf)
+  const bvhDepth = new Int32Array(MAX_BVH_NODES);    // depth level for X-Ray coloring
+  let bvhNodeCount = 0;
+  let bvhPrimIndices = new Int32Array(128);
+  const bvhStack = new Int32Array(64);
+
+  // Flat primitive arrays for ultra-fast inner loop access
+  const MAX_PRIMS = 128;
+  const pType = new Int32Array(MAX_PRIMS);
+  const pMat = new Int32Array(MAX_PRIMS);
+  const pX = new Float32Array(MAX_PRIMS);
+  const pY = new Float32Array(MAX_PRIMS);
+  const pZ = new Float32Array(MAX_PRIMS);
+  const pR = new Float32Array(MAX_PRIMS);
+  const pR2 = new Float32Array(MAX_PRIMS);
+  const pMinX = new Float32Array(MAX_PRIMS);
+  const pMinY = new Float32Array(MAX_PRIMS);
+  const pMinZ = new Float32Array(MAX_PRIMS);
+  const pMaxX = new Float32Array(MAX_PRIMS);
+  const pMaxY = new Float32Array(MAX_PRIMS);
+  const pMaxZ = new Float32Array(MAX_PRIMS);
+  const pColR = new Float32Array(MAX_PRIMS);
+  const pColG = new Float32Array(MAX_PRIMS);
+  const pColB = new Float32Array(MAX_PRIMS);
+  const pEmitR = new Float32Array(MAX_PRIMS);
+  const pEmitG = new Float32Array(MAX_PRIMS);
+  const pEmitB = new Float32Array(MAX_PRIMS);
+  const pAbsR = new Float32Array(MAX_PRIMS);
+  const pAbsG = new Float32Array(MAX_PRIMS);
+  const pAbsB = new Float32Array(MAX_PRIMS);
+  const pRough = new Float32Array(MAX_PRIMS);
+  const pIOR = new Float32Array(MAX_PRIMS);
+
+  function syncFlatPrimsAndBuildBVH() {
+    const n = primitives.length;
+    if (bvhPrimIndices.length < n) {
+      bvhPrimIndices = new Int32Array(n);
+    }
+    lights = [];
+
+    for (let i = 0; i < n; i++) {
+      const pr = primitives[i];
+      pType[i] = pr.type;
+      pMat[i] = pr.mat;
+      pColR[i] = pr.color[0];
+      pColG[i] = pr.color[1];
+      pColB[i] = pr.color[2];
+      const em = pr.emit || [0, 0, 0];
+      pEmitR[i] = em[0];
+      pEmitG[i] = em[1];
+      pEmitB[i] = em[2];
+      const ab = pr.absorb || [0.06, 0.02, 0.01];
+      pAbsR[i] = ab[0];
+      pAbsG[i] = ab[1];
+      pAbsB[i] = ab[2];
+      pRough[i] = pr.roughness !== undefined ? pr.roughness : -1;
+      pIOR[i] = pr.ior !== undefined ? pr.ior : -1;
+
+      if (pr.type === PRIM_SPHERE) {
+        pX[i] = pr.x; pY[i] = pr.y; pZ[i] = pr.z;
+        pR[i] = pr.r; pR2[i] = pr.r * pr.r;
+        pr.bMinX = pr.x - pr.r; pr.bMinY = pr.y - pr.r; pr.bMinZ = pr.z - pr.r;
+        pr.bMaxX = pr.x + pr.r; pr.bMaxY = pr.y + pr.r; pr.bMaxZ = pr.z + pr.r;
+      } else {
+        pMinX[i] = pr.minX; pMinY[i] = pr.minY; pMinZ[i] = pr.minZ;
+        pMaxX[i] = pr.maxX; pMaxY[i] = pr.maxY; pMaxZ[i] = pr.maxZ;
+        pr.bMinX = pr.minX; pr.bMinY = pr.minY; pr.bMinZ = pr.minZ;
+        pr.bMaxX = pr.maxX; pr.bMaxY = pr.maxY; pr.bMaxZ = pr.maxZ;
+        pX[i] = 0.5 * (pr.minX + pr.maxX);
+        pY[i] = 0.5 * (pr.minY + pr.maxY);
+        pZ[i] = 0.5 * (pr.minZ + pr.maxZ);
+        pR[i] = 0.5 * Math.hypot(pr.maxX - pr.minX, pr.maxY - pr.minY, pr.maxZ - pr.minZ);
+      }
+
+      if (pr.mat === MAT_EMISSIVE) {
+        lights.push(i);
+      }
+      bvhPrimIndices[i] = i;
+    }
+
+    bvhNodeCount = 0;
+    if (n > 0) {
+      buildBVHNode(0, n, 0);
+    }
+  }
+
+  function buildBVHNode(start, end, depth) {
+    const nodeIdx = bvhNodeCount++;
+    bvhDepth[nodeIdx] = depth;
+
+    let minX = INF, minY = INF, minZ = INF;
+    let maxX = -INF, maxY = -INF, maxZ = -INF;
+    let cMinX = INF, cMinY = INF, cMinZ = INF;
+    let cMaxX = -INF, cMaxY = -INF, cMaxZ = -INF;
+
+    for (let i = start; i < end; i++) {
+      const pi = bvhPrimIndices[i];
+      const pr = primitives[pi];
+      if (pr.bMinX < minX) minX = pr.bMinX;
+      if (pr.bMinY < minY) minY = pr.bMinY;
+      if (pr.bMinZ < minZ) minZ = pr.bMinZ;
+      if (pr.bMaxX > maxX) maxX = pr.bMaxX;
+      if (pr.bMaxY > maxY) maxY = pr.bMaxY;
+      if (pr.bMaxZ > maxZ) maxZ = pr.bMaxZ;
+
+      const cx = 0.5 * (pr.bMinX + pr.bMaxX);
+      const cy = 0.5 * (pr.bMinY + pr.bMaxY);
+      const cz = 0.5 * (pr.bMinZ + pr.bMaxZ);
+      if (cx < cMinX) cMinX = cx; if (cx > cMaxX) cMaxX = cx;
+      if (cy < cMinY) cMinY = cy; if (cy > cMaxY) cMaxY = cy;
+      if (cz < cMinZ) cMinZ = cz; if (cz > cMaxZ) cMaxZ = cz;
+    }
+
+    bvhMinX[nodeIdx] = minX - 1e-4;
+    bvhMinY[nodeIdx] = minY - 1e-4;
+    bvhMinZ[nodeIdx] = minZ - 1e-4;
+    bvhMaxX[nodeIdx] = maxX + 1e-4;
+    bvhMaxY[nodeIdx] = maxY + 1e-4;
+    bvhMaxZ[nodeIdx] = maxZ + 1e-4;
+
+    const count = end - start;
+    if (count <= 1 || depth >= 14) {
+      bvhLeft[nodeIdx] = -1;
+      bvhRight[nodeIdx] = count;
+      bvhStart[nodeIdx] = start;
+      return nodeIdx;
+    }
+
+    // Choose split axis by largest centroid extent
+    const extX = cMaxX - cMinX;
+    const extY = cMaxY - cMinY;
+    const extZ = cMaxZ - cMinZ;
+    let axis = 0;
+    let ext = extX;
+    if (extY > ext) { axis = 1; ext = extY; }
+    if (extZ > ext) { axis = 2; ext = extZ; }
+
+    let mid = (start + end) >> 1;
+    if (ext > 1e-5) {
+      const splitVal = axis === 0 ? 0.5 * (cMinX + cMaxX)
+                     : axis === 1 ? 0.5 * (cMinY + cMaxY)
+                     :              0.5 * (cMinZ + cMaxZ);
+      let l = start, r = end - 1;
+      while (l <= r) {
+        const pr = primitives[bvhPrimIndices[l]];
+        const c = axis === 0 ? 0.5 * (pr.bMinX + pr.bMaxX)
+                : axis === 1 ? 0.5 * (pr.bMinY + pr.bMaxY)
+                :              0.5 * (pr.bMinZ + pr.bMaxZ);
+        if (c < splitVal) {
+          l++;
+        } else {
+          const tmp = bvhPrimIndices[l];
+          bvhPrimIndices[l] = bvhPrimIndices[r];
+          bvhPrimIndices[r] = tmp;
+          r--;
+        }
+      }
+      if (l > start && l < end) {
+        mid = l;
+      }
+    }
+
+    const leftChild = buildBVHNode(start, mid, depth + 1);
+    const rightChild = buildBVHNode(mid, end, depth + 1);
+    bvhLeft[nodeIdx] = leftChild;
+    bvhRight[nodeIdx] = rightChild;
+    bvhStart[nodeIdx] = -1;
+    return nodeIdx;
+  }
+
+  // =========================================================================
+  // CURATED SCENE PRESETS (6 PRESETS)
+  // =========================================================================
+  function makeSphere(opts) {
+    return Object.assign({
+      type: PRIM_SPHERE,
+      name: 'Sphere',
+      draggable: false,
+      isPrimaryLight: false,
+      isPrimaryGlass: false,
+      mat: MAT_DIFFUSE,
+      color: [0.85, 0.85, 0.85],
+      emit: [0, 0, 0],
+      roughness: -1,
+      ior: -1,
+      absorb: [0.05, 0.015, 0.008],
+      x: 0, y: 1, z: 0, r: 1,
+      basePos: [opts.x || 0, opts.y || 1, opts.z || 0]
+    }, opts);
+  }
+
+  function makeBox(opts) {
+    const cx = 0.5 * (opts.minX + opts.maxX);
+    const cy = 0.5 * (opts.minY + opts.maxY);
+    const cz = 0.5 * (opts.minZ + opts.maxZ);
+    return Object.assign({
+      type: PRIM_BOX,
+      name: 'Box',
+      draggable: false,
+      isPrimaryLight: false,
+      isPrimaryGlass: false,
+      mat: MAT_DIFFUSE,
+      color: [0.8, 0.8, 0.8],
+      emit: [0, 0, 0],
+      roughness: -1,
+      ior: -1,
+      absorb: [0.04, 0.02, 0.01],
+      basePos: [cx, cy, cz]
+    }, opts);
+  }
+
+  function updatePrimaryLightFromSliders() {
+    const ang = state.lightAngleDeg * Math.PI / 180;
+    for (let i = 0; i < primitives.length; i++) {
+      const pr = primitives[i];
+      if (pr.isPrimaryLight && pr.type === PRIM_SPHERE) {
+        pr.x = Math.cos(ang) * state.lightOrbitR;
+        pr.z = Math.sin(ang) * state.lightOrbitR;
+        pr.y = state.lightY;
+        pr.r = state.lightRadius;
+        pr.basePos = [pr.x, pr.y, pr.z];
+      }
+    }
+  }
+
+  function loadPreset(presetKey, keepViewMode) {
+    state.preset = presetKey;
+    primitives = [];
+    state.animTime = 0;
+
+    if (presetKey === 'classic') {
+      sceneConfig = {
+        hasFloor: true, floorY: 0, floorChecker: true,
+        floorColorA: [0.86, 0.89, 0.95], floorColorB: [0.07, 0.10, 0.18],
+        floorReflect: 0.30, floorScale: 0.9,
+        skyType: 'studio', sunDir: [0.5, 0.65, -0.57], ambientStrength: 0.24, worldRadius: 5.5
+      };
+      state.camYaw = 0.34; state.camPitch = 0.26; state.camDist = 8.4;
+      state.targetX = 0; state.targetY = 1.1; state.targetZ = 0;
+      state.maxBounces = 5; state.glassIOR = 1.52; state.metalRoughness = 0.04;
+      state.lightY = 4.6; state.lightAngleDeg = 42; state.lightOrbitR = 3.5; state.lightRadius = 0.48;
+
+      primitives.push(
+        makeSphere({ name: 'Glass Sphere', draggable: true, isPrimaryGlass: true, mat: MAT_GLASS, x: -0.1, y: 1.15, z: 0.85, r: 1.15, color: [0.98, 0.99, 1.0], absorb: [0.05, 0.014, 0.008] }),
+        makeSphere({ name: 'Chrome Mirror', draggable: true, mat: MAT_METAL, x: -2.05, y: 1.05, z: -0.85, r: 1.05, color: [0.95, 0.97, 1.0] }),
+        makeSphere({ name: 'Brushed Gold', draggable: true, mat: MAT_METAL, x: 1.95, y: 0.92, z: -0.65, r: 0.92, color: [1.0, 0.76, 0.36], roughness: -1 }),
+        makeSphere({ name: 'Cobalt Matte', draggable: true, mat: MAT_DIFFUSE, x: -0.65, y: 0.55, z: -2.35, r: 0.55, color: [0.22, 0.56, 0.98] }),
+        makeSphere({ name: 'Crimson Matte', draggable: true, mat: MAT_DIFFUSE, x: 1.25, y: 0.48, z: 1.75, r: 0.48, color: [0.95, 0.24, 0.38] }),
+        makeSphere({ name: 'Cyan Accent Orb', draggable: true, mat: MAT_EMISSIVE, x: -2.6, y: 0.42, z: 1.5, r: 0.36, color: [0.4, 0.9, 1.0], emit: [2.2, 4.8, 6.2] }),
+        makeSphere({ name: 'Key Light Orb', draggable: true, isPrimaryLight: true, mat: MAT_EMISSIVE, x: 2.6, y: 4.6, z: 2.35, r: 0.48, color: [1.0, 0.95, 0.86], emit: [11.0, 9.6, 7.6] })
+      );
+      updatePrimaryLightFromSliders();
+    }
+    else if (presetKey === 'cornell') {
+      sceneConfig = {
+        hasFloor: false, floorY: 0, floorChecker: false,
+        floorColorA: [0.8, 0.8, 0.8], floorColorB: [0.8, 0.8, 0.8],
+        floorReflect: 0.0, floorScale: 1.0,
+        skyType: 'cornell', sunDir: [0, 1, 0], ambientStrength: 0.14, worldRadius: 4.5
+      };
+      state.camYaw = 0.0; state.camPitch = 0.04; state.camDist = 7.4;
+      state.targetX = 0; state.targetY = 2.0; state.targetZ = 0;
+      state.maxBounces = 6; state.glassIOR = 1.52; state.metalRoughness = 0.03;
+      state.lightY = 3.72; state.lightAngleDeg = 90; state.lightOrbitR = 0.15; state.lightRadius = 0.42;
+
+      const W = 2.6, H = 4.2, D = 2.6, T = 0.16;
+      primitives.push(
+        // Floor
+        makeBox({ name: 'Cornell Floor', mat: MAT_DIFFUSE, minX: -W, minY: -T, minZ: -D, maxX: W, maxY: 0, maxZ: D, color: [0.82, 0.81, 0.78] }),
+        // Ceiling
+        makeBox({ name: 'Cornell Ceiling', mat: MAT_DIFFUSE, minX: -W, minY: H, minZ: -D, maxX: W, maxY: H + T, maxZ: D, color: [0.82, 0.81, 0.78] }),
+        // Back Wall
+        makeBox({ name: 'Back Wall', mat: MAT_DIFFUSE, minX: -W, minY: 0, minZ: -D - T, maxX: W, maxY: H, maxZ: -D, color: [0.80, 0.80, 0.82] }),
+        // Left Red Wall
+        makeBox({ name: 'Red Left Wall', mat: MAT_DIFFUSE, minX: -W - T, minY: 0, minZ: -D, maxX: -W, maxY: H, maxZ: D, color: [0.88, 0.17, 0.16] }),
+        // Right Green Wall
+        makeBox({ name: 'Green Right Wall', mat: MAT_DIFFUSE, minX: W, minY: 0, minZ: -D, maxX: W + T, maxY: H, maxZ: D, color: [0.16, 0.74, 0.34] }),
+        // Ceiling Area Light Panel
+        makeBox({ name: 'Ceiling Area Light', mat: MAT_EMISSIVE, minX: -0.95, minY: H - 0.06, minZ: -0.95, maxX: 0.95, maxY: H - 0.005, maxZ: 0.95, color: [1.0, 0.96, 0.88], emit: [9.5, 8.6, 7.2] }),
+        // Matte Pedestal Box
+        makeBox({ name: 'White Plinth', mat: MAT_DIFFUSE, minX: -1.75, minY: 0, minZ: -1.65, maxX: -0.35, maxY: 1.45, maxZ: -0.35, color: [0.88, 0.88, 0.90] }),
+        // Mirror Sphere atop Plinth
+        makeSphere({ name: 'Chrome Sphere', draggable: true, mat: MAT_METAL, x: -1.05, y: 2.20, z: -1.00, r: 0.75, color: [0.96, 0.97, 1.0] }),
+        // Glass Sphere on right
+        makeSphere({ name: 'Glass Sphere', draggable: true, isPrimaryGlass: true, mat: MAT_GLASS, x: 1.02, y: 0.96, z: 0.45, r: 0.96, color: [0.99, 1.0, 1.0], absorb: [0.04, 0.015, 0.01] }),
+        // Small Gold Accent
+        makeSphere({ name: 'Gold Orb', draggable: true, mat: MAT_METAL, x: 0.48, y: 0.42, z: -1.42, r: 0.42, color: [1.0, 0.78, 0.35] }),
+        // Draggable Floating Fill Light Orb
+        makeSphere({ name: 'Key Light Orb', draggable: true, isPrimaryLight: true, mat: MAT_EMISSIVE, x: 0.0, y: 3.55, z: 0.15, r: 0.36, color: [1.0, 0.94, 0.82], emit: [7.5, 6.6, 5.4] })
+      );
+    }
+    else if (presetKey === 'diamond') {
+      sceneConfig = {
+        hasFloor: true, floorY: 0, floorChecker: true,
+        floorColorA: [0.16, 0.19, 0.28], floorColorB: [0.03, 0.04, 0.08],
+        floorReflect: 0.55, floorScale: 1.1,
+        skyType: 'obsidian', sunDir: [0.45, 0.52, -0.72], ambientStrength: 0.18, worldRadius: 5.5
+      };
+      state.camYaw = 0.46; state.camPitch = 0.25; state.camDist = 7.4;
+      state.targetX = 0; state.targetY = 1.25; state.targetZ = 0;
+      state.maxBounces = 7; state.glassIOR = 2.42; state.metalRoughness = 0.02;
+      state.dispersion = true;
+      state.lightY = 4.2; state.lightAngleDeg = 32; state.lightOrbitR = 3.2; state.lightRadius = 0.40;
+
+      primitives.push(
+        // Hero Diamond Sphere
+        makeSphere({ name: 'Diamond Core (2.42)', draggable: true, isPrimaryGlass: true, mat: MAT_GLASS, x: 0.0, y: 1.32, z: 0.0, r: 1.32, color: [1.0, 1.0, 1.0], absorb: [0.015, 0.01, 0.004] }),
+        // Flanking Crystal Spheres
+        makeSphere({ name: 'Sapphire Crystal', draggable: true, mat: MAT_GLASS, x: -2.15, y: 0.72, z: 0.75, r: 0.72, color: [0.96, 0.98, 1.0], absorb: [0.18, 0.06, 0.01] }),
+        makeSphere({ name: 'Emerald Crystal', draggable: true, mat: MAT_GLASS, x: 2.05, y: 0.68, z: -0.55, r: 0.68, color: [0.96, 1.0, 0.97], absorb: [0.16, 0.015, 0.08] }),
+        // Obsidian Mirror Plinths behind
+        makeBox({ name: 'Dark Prism Pillar L', mat: MAT_METAL, minX: -1.9, minY: 0, minZ: -2.4, maxX: -0.9, maxY: 2.4, maxZ: -1.6, color: [0.76, 0.84, 0.98], roughness: 0.02 }),
+        makeBox({ name: 'Dark Prism Pillar R', mat: MAT_METAL, minX: 0.8, minY: 0, minZ: -2.7, maxX: 1.9, maxY: 1.9, maxZ: -1.8, color: [0.98, 0.82, 0.56], roughness: 0.03 }),
+        // Spectral Rim Light Orbs
+        makeSphere({ name: 'Cyan Rim Light', draggable: true, mat: MAT_EMISSIVE, x: -2.6, y: 2.3, z: -1.4, r: 0.30, color: [0.4, 0.92, 1.0], emit: [3.2, 7.6, 10.5] }),
+        makeSphere({ name: 'Rose Rim Light', draggable: true, mat: MAT_EMISSIVE, x: 2.5, y: 1.8, z: 1.6, r: 0.28, color: [1.0, 0.42, 0.65], emit: [9.5, 2.8, 5.2] }),
+        makeSphere({ name: 'Key Light Orb', draggable: true, isPrimaryLight: true, mat: MAT_EMISSIVE, x: 2.7, y: 4.2, z: 1.7, r: 0.40, color: [1.0, 0.97, 0.90], emit: [13.0, 12.2, 10.8] })
+      );
+      updatePrimaryLightFromSliders();
+    }
+    else if (presetKey === 'mirrors') {
+      sceneConfig = {
+        hasFloor: true, floorY: 0, floorChecker: true,
+        floorColorA: [0.15, 0.18, 0.26], floorColorB: [0.05, 0.07, 0.12],
+        floorReflect: 0.52, floorScale: 1.0,
+        skyType: 'hallway', sunDir: [0.1, 0.8, -0.5], ambientStrength: 0.16, worldRadius: 6.5
+      };
+      state.camYaw = 0.22; state.camPitch = 0.16; state.camDist = 7.6;
+      state.targetX = 0; state.targetY = 1.45; state.targetZ = 0;
+      state.maxBounces = 8; state.glassIOR = 1.55; state.metalRoughness = 0.00;
+      state.lightY = 3.6; state.lightAngleDeg = 75; state.lightOrbitR = 1.5; state.lightRadius = 0.36;
+
+      primitives.push(
+        // Left Infinite Mirror Wall
+        makeBox({ name: 'Left Mirror Wall', mat: MAT_METAL, minX: -2.45, minY: 0, minZ: -3.2, maxX: -2.25, maxY: 4.1, maxZ: 3.2, color: [0.94, 0.97, 1.0], roughness: 0.0 }),
+        // Right Infinite Mirror Wall
+        makeBox({ name: 'Right Mirror Wall', mat: MAT_METAL, minX: 2.25, minY: 0, minZ: -3.2, maxX: 2.45, maxY: 4.1, maxZ: 3.2, color: [0.94, 0.97, 1.0], roughness: 0.0 }),
+        // Back Partial Mirror
+        makeBox({ name: 'Back Mirror Wall', mat: MAT_METAL, minX: -2.25, minY: 0, minZ: -3.4, maxX: 2.25, maxY: 4.1, maxZ: -3.2, color: [0.88, 0.93, 1.0], roughness: 0.01 }),
+        // Center Glass Sphere
+        makeSphere({ name: 'Glass Sphere', draggable: true, isPrimaryGlass: true, mat: MAT_GLASS, x: 0.0, y: 1.15, z: 0.45, r: 0.95, color: [0.99, 1.0, 1.0], absorb: [0.05, 0.015, 0.005] }),
+        // Glowing Neon Orbs creating infinite trails!
+        makeSphere({ name: 'Cyan Neon Orb', draggable: true, mat: MAT_EMISSIVE, x: -1.15, y: 2.05, z: -0.8, r: 0.34, color: [0.38, 0.94, 1.0], emit: [3.4, 9.2, 11.5] }),
+        makeSphere({ name: 'Amber Neon Orb', draggable: true, mat: MAT_EMISSIVE, x: 1.18, y: 1.65, z: -1.3, r: 0.34, color: [1.0, 0.72, 0.32], emit: [11.0, 6.2, 2.2] }),
+        makeSphere({ name: 'Violet Neon Orb', draggable: true, mat: MAT_EMISSIVE, x: -0.95, y: 0.55, z: 1.5, r: 0.30, color: [0.76, 0.48, 1.0], emit: [7.2, 3.6, 11.5] }),
+        makeSphere({ name: 'Key Light Orb', draggable: true, isPrimaryLight: true, mat: MAT_EMISSIVE, x: 0.4, y: 3.6, z: 1.4, r: 0.36, color: [1.0, 0.96, 0.90], emit: [9.5, 8.8, 7.8] })
+      );
+      updatePrimaryLightFromSliders();
+    }
+    else if (presetKey === 'sunset') {
+      sceneConfig = {
+        hasFloor: true, floorY: 0, floorChecker: false,
+        floorColorA: [0.06, 0.09, 0.16], floorColorB: [0.06, 0.09, 0.16],
+        floorReflect: 0.68, floorScale: 1.0,
+        skyType: 'sunset', sunDir: [0.35, 0.18, -0.92], ambientStrength: 0.28, worldRadius: 6.2
+      };
+      state.camYaw = -0.28; state.camPitch = 0.18; state.camDist = 9.0;
+      state.targetX = 0; state.targetY = 1.4; state.targetZ = 0;
+      state.maxBounces = 5; state.glassIOR = 1.48; state.metalRoughness = 0.06;
+      state.lightY = 3.8; state.lightAngleDeg = 132; state.lightOrbitR = 3.8; state.lightRadius = 0.52;
+
+      primitives.push(
+        makeSphere({ name: 'Levitating Glass', draggable: true, isPrimaryGlass: true, mat: MAT_GLASS, x: 0.0, y: 1.85, z: 0.2, r: 1.05, color: [1.0, 0.99, 0.97], absorb: [0.03, 0.025, 0.06] }),
+        makeSphere({ name: 'Rose-Gold Mirror', draggable: true, mat: MAT_METAL, x: -2.25, y: 1.35, z: -0.75, r: 0.88, color: [1.0, 0.72, 0.64] }),
+        makeSphere({ name: 'Silver Mercury', draggable: true, mat: MAT_METAL, x: 2.15, y: 1.55, z: -0.55, r: 0.82, color: [0.92, 0.95, 1.0] }),
+        makeSphere({ name: 'Pearl Orb', draggable: true, mat: MAT_DIFFUSE, x: -1.15, y: 0.62, z: 1.95, r: 0.52, color: [0.96, 0.88, 0.80] }),
+        makeSphere({ name: 'Teal Glass Drop', draggable: true, mat: MAT_GLASS, x: 1.45, y: 0.78, z: 1.65, r: 0.58, color: [0.96, 1.0, 1.0], absorb: [0.16, 0.02, 0.03] }),
+        makeSphere({ name: 'Copper Moon', draggable: true, mat: MAT_METAL, x: 0.45, y: 2.95, z: -1.85, r: 0.56, color: [0.98, 0.62, 0.34] }),
+        makeSphere({ name: 'Sunset Sun Orb', draggable: true, isPrimaryLight: true, mat: MAT_EMISSIVE, x: -2.5, y: 3.8, z: 2.8, r: 0.52, color: [1.0, 0.82, 0.55], emit: [13.5, 7.6, 3.6] })
+      );
+      updatePrimaryLightFromSliders();
+    }
+    else if (presetKey === 'bvh') {
+      sceneConfig = {
+        hasFloor: true, floorY: 0, floorChecker: true,
+        floorColorA: [0.76, 0.82, 0.90], floorColorB: [0.08, 0.11, 0.19],
+        floorReflect: 0.25, floorScale: 0.85,
+        skyType: 'studio', sunDir: [0.4, 0.7, -0.6], ambientStrength: 0.24, worldRadius: 6.5
+      };
+      state.camYaw = 0.42; state.camPitch = 0.36; state.camDist = 10.6;
+      state.targetX = 0; state.targetY = 0.9; state.targetZ = 0;
+      state.maxBounces = 5; state.glassIOR = 1.52; state.metalRoughness = 0.04;
+      state.lightY = 5.4; state.lightAngleDeg = 48; state.lightOrbitR = 4.2; state.lightRadius = 0.52;
+
+      // 18 spatially clustered primitives for impressive BVH tree hierarchy & 3-5x speedup!
+      primitives.push(
+        // Cluster A (Center Hero)
+        makeSphere({ name: 'Hero Glass', draggable: true, isPrimaryGlass: true, mat: MAT_GLASS, x: 0.0, y: 1.05, z: 0.2, r: 1.05, color: [0.99, 1.0, 1.0], absorb: [0.05, 0.015, 0.01] }),
+        makeSphere({ name: 'Hero Chrome', draggable: true, mat: MAT_METAL, x: -1.55, y: 0.78, z: -0.65, r: 0.78, color: [0.95, 0.97, 1.0] }),
+        // Cluster B (Front-Right)
+        makeSphere({ name: 'Gold Cluster 1', draggable: true, mat: MAT_METAL, x: 2.65, y: 0.68, z: 1.75, r: 0.68, color: [1.0, 0.78, 0.36] }),
+        makeSphere({ name: 'Glass Cluster 2', draggable: true, mat: MAT_GLASS, x: 3.45, y: 0.48, z: 0.65, r: 0.48, color: [0.98, 1.0, 1.0], absorb: [0.12, 0.02, 0.01] }),
+        makeSphere({ name: 'Coral Orb', draggable: true, mat: MAT_DIFFUSE, x: 2.15, y: 0.42, z: 2.75, r: 0.42, color: [0.96, 0.34, 0.44] }),
+        // Cluster C (Back-Left)
+        makeBox({ name: 'Obsidian Block', mat: MAT_METAL, minX: -4.1, minY: 0, minZ: -3.4, maxX: -2.9, maxY: 1.65, maxZ: -2.2, color: [0.76, 0.85, 0.98], roughness: 0.05 }),
+        makeSphere({ name: 'Sapphire Orb', draggable: true, mat: MAT_DIFFUSE, x: -3.5, y: 2.12, z: -2.8, r: 0.47, color: [0.24, 0.58, 0.98] }),
+        makeSphere({ name: 'Mint Orb', draggable: true, mat: MAT_DIFFUSE, x: -2.35, y: 0.46, z: -3.2, r: 0.46, color: [0.22, 0.88, 0.62] }),
+        // Cluster D (Back-Right)
+        makeBox({ name: 'Copper Pillar', mat: MAT_METAL, minX: 2.4, minY: 0, minZ: -3.5, maxX: 3.4, maxY: 1.4, maxZ: -2.5, color: [0.96, 0.58, 0.38], roughness: 0.08 }),
+        makeSphere({ name: 'Crystal Top', draggable: true, mat: MAT_GLASS, x: 2.9, y: 1.88, z: -3.0, r: 0.48, color: [1.0, 1.0, 1.0], absorb: [0.02, 0.04, 0.14] }),
+        makeSphere({ name: 'Amber Orb', draggable: true, mat: MAT_DIFFUSE, x: 1.55, y: 0.44, z: -2.85, r: 0.44, color: [0.98, 0.72, 0.22] }),
+        // Cluster E (Front-Left)
+        makeSphere({ name: 'Mirror Left 1', draggable: true, mat: MAT_METAL, x: -3.1, y: 0.66, z: 1.85, r: 0.66, color: [0.92, 0.96, 1.0] }),
+        makeSphere({ name: 'Violet Orb', draggable: true, mat: MAT_DIFFUSE, x: -2.05, y: 0.44, z: 2.55, r: 0.44, color: [0.65, 0.44, 0.98] }),
+        makeSphere({ name: 'Mini Glass', draggable: true, mat: MAT_GLASS, x: -3.85, y: 0.42, z: 0.82, r: 0.42, color: [0.98, 1.0, 1.0], absorb: [0.04, 0.01, 0.08] }),
+        // Distant Accent Orbs
+        makeSphere({ name: 'Far Pearl', mat: MAT_DIFFUSE, x: -0.25, y: 0.52, z: -3.9, r: 0.52, color: [0.92, 0.93, 0.97] }),
+        makeSphere({ name: 'Far Gold', mat: MAT_METAL, x: 0.95, y: 0.55, z: -1.65, r: 0.55, color: [1.0, 0.80, 0.40] }),
+        makeSphere({ name: 'Cyan Beacon', draggable: true, mat: MAT_EMISSIVE, x: -0.8, y: 0.35, z: 2.9, r: 0.32, color: [0.4, 0.92, 1.0], emit: [2.4, 5.4, 7.2] }),
+        // Key Light
+        makeSphere({ name: 'Key Light Orb', draggable: true, isPrimaryLight: true, mat: MAT_EMISSIVE, x: 2.8, y: 5.4, z: 3.1, r: 0.52, color: [1.0, 0.95, 0.86], emit: [12.5, 11.2, 9.2] })
+      );
+      updatePrimaryLightFromSliders();
+
+      if (!keepViewMode) {
+        state.viewMode = 'split';
+      }
+    }
+
+    syncFlatPrimsAndBuildBVH();
+    syncUIFromState();
+    resetAccumulation(true);
+    updateProbeTrace();
+  }
+
+  // =========================================================================
+  // FAST PSEUDO-RANDOM (XORSHIFT32) FOR PROGRESSIVE AA & SOFT SHADOWS
+  // =========================================================================
+  let rngState = 2463534242;
+  function rand() {
+    let x = rngState;
+    x ^= x << 13;
+    x ^= x >>> 17;
+    x ^= x << 5;
+    rngState = x;
+    return ((x >>> 0) * 2.3283064365386963e-10);
+  }
+
+  // =========================================================================
+  // CAMERA BASIS & PROJECTION
+  // =========================================================================
+  const cam = {
+    posX: 0, posY: 3, posZ: 8,
+    fwdX: 0, fwdY: 0, fwdZ: -1,
+    rightX: 1, rightY: 0, rightZ: 0,
+    upX: 0, upY: 1, upZ: 0,
+    halfH: 0.42,
+    halfW: 0.75
+  };
+
+  function updateCameraBasis(aspect) {
+    const cp = Math.cos(state.camPitch);
+    const sp = Math.sin(state.camPitch);
+    const cy = Math.cos(state.camYaw);
+    const sy = Math.sin(state.camYaw);
+
+    cam.posX = state.targetX + state.camDist * cp * sy;
+    cam.posY = state.targetY + state.camDist * sp;
+    cam.posZ = state.targetZ + state.camDist * cp * cy;
+    if (sceneConfig.hasFloor && cam.posY < sceneConfig.floorY + 0.25) {
+      cam.posY = sceneConfig.floorY + 0.25;
+    }
+
+    let fx = state.targetX - cam.posX;
+    let fy = state.targetY - cam.posY;
+    let fz = state.targetZ - cam.posZ;
+    const fl = Math.hypot(fx, fy, fz) || 1;
+    fx /= fl; fy /= fl; fz /= fl;
+    cam.fwdX = fx; cam.fwdY = fy; cam.fwdZ = fz;
+
+    // right = normalize(cross(fwd, worldUp(0,1,0)))
+    let rx = -fz;
+    let ry = 0;
+    let rz = fx;
+    const rl = Math.hypot(rx, rz) || 1;
+    rx /= rl; rz /= rl;
+    cam.rightX = rx; cam.rightY = 0; cam.rightZ = rz;
+
+    // up = cross(right, fwd)
+    cam.upX = ry * fz - rz * fy;
+    cam.upY = rz * fx - rx * fz;
+    cam.upZ = rx * fy - ry * fx;
+
+    cam.halfH = Math.tan((state.fovDeg * Math.PI / 180) * 0.5);
+    cam.halfW = cam.halfH * aspect;
+  }
+
+  function project3DToViewport(wx, wy, wz, vpX, vpY, vpW, vpH) {
+    const dx = wx - cam.posX;
+    const dy = wy - cam.posY;
+    const dz = wz - cam.posZ;
+    const zCam = dx * cam.fwdX + dy * cam.fwdY + dz * cam.fwdZ;
+    if (zCam <= 0.08) return null;
+    const xCam = dx * cam.rightX + dy * cam.rightY + dz * cam.rightZ;
+    const yCam = dx * cam.upX + dy * cam.upY + dz * cam.upZ;
+    const u = 0.5 + (xCam / (zCam * cam.halfW)) * 0.5;
+    const v = 0.5 - (yCam / (zCam * cam.halfH)) * 0.5;
+    return { x: vpX + u * vpW, y: vpY + v * vpH, z: zCam, u, v };
+  }
+
+  // =========================================================================
+  // INTERSECTION KERNEL (SPHERE, AABB, FLOOR PLANE, BVH + BRUTE-FORCE)
+  // =========================================================================
+  // Reusable hit struct (avoid allocations in hot ray loop)
+  const hitRes = {
+    t: INF,
+    primIdx: -1, // -2 = floor plane, >= 0 = primitive index
+    nx: 0, ny: 1, nz: 0,
+    hitX: 0, hitY: 0, hitZ: 0
+  };
+
+  // Telemetry accumulators per slice/frame
+  let statRays = 0;
+  let statBVHNodes = 0;
+  let statPrimTests = 0;
+
+  function testPrimIntersect(pi, ox, oy, oz, dx, dy, dz, invX, invY, invZ, tMax) {
+    statPrimTests++;
+    if (pType[pi] === PRIM_SPHERE) {
+      const ocx = ox - pX[pi];
+      const ocy = oy - pY[pi];
+      const ocz = oz - pZ[pi];
+      const b = ocx * dx + ocy * dy + ocz * dz;
+      const c = ocx * ocx + ocy * ocy + ocz * ocz - pR2[pi];
+      const disc = b * b - c;
+      if (disc < 0) return -1;
+      const sq = Math.sqrt(disc);
+      let t = -b - sq;
+      if (t > EPS && t < tMax) return t;
+      t = -b + sq;
+      if (t > EPS && t < tMax) return t;
+      return -1;
+    } else {
+      // Exact slab AABB intersection
+      const t1 = (pMinX[pi] - ox) * invX;
+      const t2 = (pMaxX[pi] - ox) * invX;
+      let tmin = t1 < t2 ? t1 : t2;
+      let tmax = t1 > t2 ? t1 : t2;
+
+      const t3 = (pMinY[pi] - oy) * invY;
+      const t4 = (pMaxY[pi] - oy) * invY;
+      const tyMin = t3 < t4 ? t3 : t4;
+      const tyMax = t3 > t4 ? t3 : t4;
+      if (tyMin > tmin) tmin = tyMin;
+      if (tyMax < tmax) tmax = tyMax;
+      if (tmax < tmin) return -1;
+
+      const t5 = (pMinZ[pi] - oz) * invZ;
+      const t6 = (pMaxZ[pi] - oz) * invZ;
+      const tzMin = t5 < t6 ? t5 : t6;
+      const tzMax = t5 > t6 ? t5 : t6;
+      if (tzMin > tmin) tmin = tzMin;
+      if (tzMax < tmax) tmax = tzMax;
+      if (tmax < tmin || tmax <= EPS) return -1;
+
+      const t = tmin > EPS ? tmin : tmax;
+      return (t > EPS && t < tMax) ? t : -1;
+    }
+  }
+
+  function intersectBoxNearT(nodeIdx, ox, oy, oz, invX, invY, invZ, bestT) {
+    const t1 = (bvhMinX[nodeIdx] - ox) * invX;
+    const t2 = (bvhMaxX[nodeIdx] - ox) * invX;
+    let tmin = t1 < t2 ? t1 : t2;
+    let tmax = t1 > t2 ? t1 : t2;
+
+    const t3 = (bvhMinY[nodeIdx] - oy) * invY;
+    const t4 = (bvhMaxY[nodeIdx] - oy) * invY;
+    const tyMin = t3 < t4 ? t3 : t4;
+    const tyMax = t3 > t4 ? t3 : t4;
+    if (tyMin > tmin) tmin = tyMin;
+    if (tyMax < tmax) tmax = tyMax;
+    if (tmax < tmin) return INF;
+
+    const t5 = (bvhMinZ[nodeIdx] - oz) * invZ;
+    const t6 = (bvhMaxZ[nodeIdx] - oz) * invZ;
+    const tzMin = t5 < t6 ? t5 : t6;
+    const tzMax = t5 > t6 ? t5 : t6;
+    if (tzMin > tmin) tmin = tzMin;
+    if (tzMax < tmax) tmax = tzMax;
+
+    if (tmax < tmin || tmax < EPS || tmin >= bestT) return INF;
+    return tmin > 0 ? tmin : 0;
+  }
+
+  function intersectScene(ox, oy, oz, dx, dy, dz, maxT, recordBVHSet) {
+    statRays++;
+    let bestT = maxT;
+    let bestIdx = -1;
+
+    // 1. Infinite Floor Plane
+    if (sceneConfig.hasFloor && Math.abs(dy) > 1e-6) {
+      const tf = (sceneConfig.floorY - oy) / dy;
+      if (tf > EPS && tf < bestT) {
+        bestT = tf;
+        bestIdx = -2;
+      }
+    }
+
+    const invX = dx !== 0 ? 1 / dx : (dx >= 0 ? 1e30 : -1e30);
+    const invY = dy !== 0 ? 1 / dy : (dy >= 0 ? 1e30 : -1e30);
+    const invZ = dz !== 0 ? 1 / dz : (dz >= 0 ? 1e30 : -1e30);
+
+    // 2. Finite primitives via BVH or Brute-Force
+    const n = primitives.length;
+    if (state.useBVH && bvhNodeCount > 0) {
+      if (intersectBoxNearT(0, ox, oy, oz, invX, invY, invZ, bestT) < bestT) {
+        let sp = 0;
+        bvhStack[sp++] = 0;
+        while (sp > 0) {
+          const ni = bvhStack[--sp];
+          statBVHNodes++;
+          if (recordBVHSet) recordBVHSet.add(ni);
+
+          const left = bvhLeft[ni];
+          if (left === -1) {
+            const start = bvhStart[ni];
+            const end = start + bvhRight[ni];
+            for (let k = start; k < end; k++) {
+              const pi = bvhPrimIndices[k];
+              const t = testPrimIntersect(pi, ox, oy, oz, dx, dy, dz, invX, invY, invZ, bestT);
+              if (t > 0 && t < bestT) {
+                bestT = t;
+                bestIdx = pi;
+              }
+            }
+          } else {
+            const right = bvhRight[ni];
+            const tL = intersectBoxNearT(left, ox, oy, oz, invX, invY, invZ, bestT);
+            const tR = intersectBoxNearT(right, ox, oy, oz, invX, invY, invZ, bestT);
+            if (tL < bestT && tR < bestT) {
+              if (tL < tR) {
+                bvhStack[sp++] = right;
+                bvhStack[sp++] = left;
+              } else {
+                bvhStack[sp++] = left;
+                bvhStack[sp++] = right;
+              }
+            } else if (tL < bestT) {
+              bvhStack[sp++] = left;
+            } else if (tR < bestT) {
+              bvhStack[sp++] = right;
+            }
+          }
+        }
+      }
+    } else {
+      for (let pi = 0; pi < n; pi++) {
+        const t = testPrimIntersect(pi, ox, oy, oz, dx, dy, dz, invX, invY, invZ, bestT);
+        if (t > 0 && t < bestT) {
+          bestT = t;
+          bestIdx = pi;
+        }
+      }
+    }
+
+    hitRes.t = bestT;
+    hitRes.primIdx = bestIdx;
+    if (bestIdx === -1) return false;
+
+    const hx = ox + dx * bestT;
+    const hy = oy + dy * bestT;
+    const hz = oz + dz * bestT;
+    hitRes.hitX = hx; hitRes.hitY = hy; hitRes.hitZ = hz;
+
+    if (bestIdx === -2) {
+      hitRes.nx = 0;
+      hitRes.ny = dy < 0 ? 1 : -1;
+      hitRes.nz = 0;
+    } else if (pType[bestIdx] === PRIM_SPHERE) {
+      const invR = 1 / pR[bestIdx];
+      hitRes.nx = (hx - pX[bestIdx]) * invR;
+      hitRes.ny = (hy - pY[bestIdx]) * invR;
+      hitRes.nz = (hz - pZ[bestIdx]) * invR;
+    } else {
+      // Box face normal
+      const e = 2.5e-4;
+      if (Math.abs(hx - pMinX[bestIdx]) < e) { hitRes.nx = -1; hitRes.ny = 0; hitRes.nz = 0; }
+      else if (Math.abs(hx - pMaxX[bestIdx]) < e) { hitRes.nx = 1; hitRes.ny = 0; hitRes.nz = 0; }
+      else if (Math.abs(hy - pMinY[bestIdx]) < e) { hitRes.nx = 0; hitRes.ny = -1; hitRes.nz = 0; }
+      else if (Math.abs(hy - pMaxY[bestIdx]) < e) { hitRes.nx = 0; hitRes.ny = 1; hitRes.nz = 0; }
+      else if (Math.abs(hz - pMinZ[bestIdx]) < e) { hitRes.nx = 0; hitRes.ny = 0; hitRes.nz = -1; }
+      else { hitRes.nx = 0; hitRes.ny = 0; hitRes.nz = 1; }
+    }
+    return true;
+  }
+
+  // Fast shadow occlusion test (returns transmittance 0..1; glass casts colored caustics/partial shadow!)
+  function traceShadowTransmittance(ox, oy, oz, dx, dy, dz, dist, lightPrimIdx) {
+    statRays++;
+    let trans = 1.0;
+    const maxT = dist - 0.02;
+    if (maxT <= EPS) return 1.0;
+
+    const invX = dx !== 0 ? 1 / dx : (dx >= 0 ? 1e30 : -1e30);
+    const invY = dy !== 0 ? 1 / dy : (dy >= 0 ? 1e30 : -1e30);
+    const invZ = dz !== 0 ? 1 / dz : (dz >= 0 ? 1e30 : -1e30);
+
+    if (state.useBVH && bvhNodeCount > 0) {
+      if (intersectBoxNearT(0, ox, oy, oz, invX, invY, invZ, maxT) < maxT) {
+        let sp = 0;
+        bvhStack[sp++] = 0;
+        while (sp > 0) {
+          const ni = bvhStack[--sp];
+          statBVHNodes++;
+          const left = bvhLeft[ni];
+          if (left === -1) {
+            const start = bvhStart[ni];
+            const end = start + bvhRight[ni];
+            for (let k = start; k < end; k++) {
+              const pi = bvhPrimIndices[k];
+              if (pi === lightPrimIdx) continue;
+              const t = testPrimIntersect(pi, ox, oy, oz, dx, dy, dz, invX, invY, invZ, maxT);
+              if (t > 0 && t < maxT) {
+                if (pMat[pi] === MAT_GLASS && state.refraction) {
+                  // Refractive glass allows caustic light focus in center of shadow!
+                  const hx = ox + dx * t, hy = oy + dy * t, hz = oz + dz * t;
+                  const nx = (hx - pX[pi]) / pR[pi];
+                  const ny = (hy - pY[pi]) / pR[pi];
+                  const nz = (hz - pZ[pi]) / pR[pi];
+                  const nd = Math.abs(nx * dx + ny * dy + nz * dz);
+                  trans *= (0.18 + 0.65 * Math.pow(nd, 2.2));
+                } else {
+                  return 0.0;
+                }
+              }
+            }
+          } else {
+            const right = bvhRight[ni];
+            if (intersectBoxNearT(left, ox, oy, oz, invX, invY, invZ, maxT) < maxT) {
+              bvhStack[sp++] = left;
+            }
+            if (intersectBoxNearT(right, ox, oy, oz, invX, invY, invZ, maxT) < maxT) {
+              bvhStack[sp++] = right;
+            }
+          }
+        }
+      }
+    } else {
+      const n = primitives.length;
+      for (let pi = 0; pi < n; pi++) {
+        if (pi === lightPrimIdx) continue;
+        const t = testPrimIntersect(pi, ox, oy, oz, dx, dy, dz, invX, invY, invZ, maxT);
+        if (t > 0 && t < maxT) {
+          if (pMat[pi] === MAT_GLASS && state.refraction) {
+            const hx = ox + dx * t, hy = oy + dy * t, hz = oz + dz * t;
+            const nx = (hx - pX[pi]) / pR[pi];
+            const ny = (hy - pY[pi]) / pR[pi];
+            const nz = (hz - pZ[pi]) / pR[pi];
+            const nd = Math.abs(nx * dx + ny * dy + nz * dz);
+            trans *= (0.18 + 0.65 * Math.pow(nd, 2.2));
+          } else {
+            return 0.0;
+          }
+        }
+      }
+    }
+    return trans;
+  }
+
+  // =========================================================================
+  // SKY & ENVIRONMENT DOME
+  // =========================================================================
+  const skyOut = [0, 0, 0];
+  function sampleSky(dx, dy, dz) {
+    const t = Math.max(0, Math.min(1, dy * 0.5 + 0.5));
+    const st = sceneConfig.skyType;
+
+    if (st === 'cornell') {
+      skyOut[0] = 0.03; skyOut[1] = 0.035; skyOut[2] = 0.05;
+      return;
+    }
+    if (st === 'sunset') {
+      const h = Math.max(0, dy);
+      const horiz = Math.pow(1 - h, 4.2);
+      let r = 0.04 + 0.14 * (1 - h) + 1.05 * horiz;
+      let g = 0.06 + 0.12 * (1 - h) + 0.44 * horiz;
+      let b = 0.16 + 0.24 * (1 - h) + 0.18 * horiz;
+      // Glowing low sun disk
+      const sd = dx * sceneConfig.sunDir[0] + dy * sceneConfig.sunDir[1] + dz * sceneConfig.sunDir[2];
+      if (sd > 0) {
+        const glow = Math.pow(sd, 12) * 0.7 + Math.pow(sd, 96) * 2.2 + (sd > 0.9965 ? 9.0 : 0);
+        r += glow * 1.15;
+        g += glow * 0.68;
+        b += glow * 0.30;
+      }
+      skyOut[0] = r; skyOut[1] = g; skyOut[2] = b;
+      return;
+    }
+    if (st === 'obsidian' || st === 'hallway') {
+      const horiz = Math.pow(1 - Math.abs(dy), 5.0);
+      let r = 0.012 + 0.04 * horiz;
+      let g = 0.022 + 0.08 * horiz;
+      let b = 0.055 + 0.16 * horiz;
+      // Subtle studio softbox strips for crisp specular reflections on diamond & chrome!
+      if (dy > 0.42 && Math.abs(dx) < 0.35 && dz > -0.55 && dz < 0.45) {
+        r += 0.32; g += 0.38; b += 0.52;
+      }
+      skyOut[0] = r; skyOut[1] = g; skyOut[2] = b;
+      return;
+    }
+    // Classic Studio Twilight Sky Dome with crisp softbox highlights
+    const horiz = Math.pow(1 - Math.max(0, dy), 3.4);
+    let r = 0.03 + 0.10 * horiz + 0.04 * t;
+    let g = 0.06 + 0.17 * horiz + 0.09 * t;
+    let b = 0.14 + 0.26 * horiz + 0.22 * t;
+    // Key studio softbox overhead-right
+    const sd = dx * 0.45 + dy * 0.72 + dz * 0.53;
+    if (sd > 0.86) {
+      const box = Math.pow((sd - 0.86) / 0.14, 2.0) * 0.9;
+      r += box * 1.0; g += box * 0.94; b += box * 0.88;
+    }
+    // Cool rim strip left
+    const rim = -dx * 0.72 + dy * 0.45 - dz * 0.52;
+    if (rim > 0.88) {
+      const strip = Math.pow((rim - 0.88) / 0.12, 2.0) * 0.75;
+      r += strip * 0.4; g += strip * 0.8; b += strip * 1.1;
+    }
+    skyOut[0] = r; skyOut[1] = g; skyOut[2] = b;
+  }
+
+  // Analytical sphere-proximity Ambient Occlusion (super fast & noise-free!)
+  function computeAnalyticalAO(hx, hy, hz, nx, ny, nz, ignoreIdx) {
+    if (!state.ambientOcclusion) return 1.0;
+    let occ = 0.0;
+    const n = primitives.length;
+    for (let i = 0; i < n; i++) {
+      if (i === ignoreIdx || pMat[i] === MAT_EMISSIVE) continue;
+      if (pType[i] === PRIM_SPHERE) {
+        const vx = pX[i] - hx;
+        const vy = pY[i] - hy;
+        const vz = pZ[i] - hz;
+        const d2 = vx * vx + vy * vy + vz * vz;
+        const r = pR[i];
+        if (d2 > 1e-5 && d2 < (r + 3.2) * (r + 3.2)) {
+          const d = Math.sqrt(d2);
+          const cosA = (vx * nx + vy * ny + vz * nz) / d;
+          if (cosA > 0) {
+            const solid = (r * r) / d2;
+            occ += Math.min(0.85, solid * cosA * 0.85);
+          }
+        }
+      }
+    }
+    if (sceneConfig.hasFloor && ignoreIdx !== -2) {
+      const fh = hy - sceneConfig.floorY;
+      if (fh < 1.2 && ny < 0.2) {
+        occ += Math.max(0, (1.2 - fh) / 1.2) * (0.2 - ny) * 0.42;
+      }
+    }
+    return Math.max(0.18, 1.0 - Math.min(0.82, occ));
+  }
+
+  // =========================================================================
+  // RECURSIVE PHYSICAL RAY TRACER (SNELL, FRESNEL, METALS, SOFT SHADOWS)
+  // =========================================================================
+  function traceRay(ox, oy, oz, dx, dy, dz, depth, jitterMode, outCol, iorOffset) {
+    if (depth > state.maxBounces) {
+      outCol[0] = 0; outCol[1] = 0; outCol[2] = 0;
+      return;
+    }
+
+    if (!intersectScene(ox, oy, oz, dx, dy, dz, INF, null)) {
+      sampleSky(dx, dy, dz);
+      outCol[0] = skyOut[0]; outCol[1] = skyOut[1]; outCol[2] = skyOut[2];
+      return;
+    }
+
+    const idx = hitRes.primIdx;
+    const hx = hitRes.hitX, hy = hitRes.hitY, hz = hitRes.hitZ;
+    let nx = hitRes.nx, ny = hitRes.ny, nz = hitRes.nz;
+    const hitT = hitRes.t;
+
+    // Emissive Light Primitive
+    if (idx >= 0 && pMat[idx] === MAT_EMISSIVE) {
+      // Subtle limb glow
+      const nd = Math.abs(nx * dx + ny * dy + nz * dz);
+      const boost = 0.65 + 0.55 * nd;
+      outCol[0] = pEmitR[idx] * boost;
+      outCol[1] = pEmitG[idx] * boost;
+      outCol[2] = pEmitB[idx] * boost;
+      return;
+    }
+
+    // Determine surface material & albedo
+    let mat = MAT_DIFFUSE;
+    let albR = 0.8, albG = 0.8, albB = 0.8;
+    let reflStrength = 0.0;
+    let rough = 0.0;
+
+    if (idx === -2) {
+      // Floor plane
+      if (sceneConfig.floorChecker) {
+        const s = sceneConfig.floorScale;
+        const cx = Math.floor(hx * s);
+        const cz = Math.floor(hz * s);
+        const check = ((cx + cz) & 1) === 0;
+        const distFade = Math.exp(-hitT * 0.032);
+        const cA = sceneConfig.floorColorA;
+        const cB = sceneConfig.floorColorB;
+        const avgR = 0.5 * (cA[0] + cB[0]);
+        const avgG = 0.5 * (cA[1] + cB[1]);
+        const avgB = 0.5 * (cA[2] + cB[2]);
+        const tr = check ? cA[0] : cB[0];
+        const tg = check ? cA[1] : cB[1];
+        const tb = check ? cA[2] : cB[2];
+        albR = avgR + (tr - avgR) * distFade;
+        albG = avgG + (tg - avgG) * distFade;
+        albB = avgB + (tb - avgB) * distFade;
+      } else {
+        albR = sceneConfig.floorColorA[0];
+        albG = sceneConfig.floorColorA[1];
+        albB = sceneConfig.floorColorA[2];
+      }
+      // Schlick Fresnel grazing boost on floor
+      const cosV = Math.max(0, -(dx * nx + dy * ny + dz * nz));
+      const f = Math.pow(1 - cosV, 4.0);
+      reflStrength = sceneConfig.floorReflect + (0.85 - sceneConfig.floorReflect) * f * 0.55;
+      rough = 0.015;
+    } else {
+      mat = pMat[idx];
+      albR = pColR[idx]; albG = pColG[idx]; albB = pColB[idx];
+      rough = pRough[idx] >= 0 ? pRough[idx] : state.metalRoughness;
+    }
+
+    // -----------------------------------------------------------------------
+    // DIELECTRIC GLASS (EXACT SNELL'S LAW + SCHLICK FRESNEL + TIR + BEER-LAMBERT)
+    // -----------------------------------------------------------------------
+    if (idx >= 0 && mat === MAT_GLASS) {
+      const baseIOR = (pIOR[idx] > 0 ? pIOR[idx] : state.glassIOR) + (iorOffset || 0);
+      let cosI = -(dx * nx + dy * ny + dz * nz);
+      let entering = true;
+      let eta = 1.0 / baseIOR;
+      if (cosI < 0) {
+        entering = false;
+        nx = -nx; ny = -ny; nz = -nz;
+        cosI = -cosI;
+        eta = baseIOR;
+      }
+
+      // Beer-Lambert internal absorption when exiting glass
+      let attR = 1, attG = 1, attB = 1;
+      if (!entering) {
+        attR = Math.exp(-pAbsR[idx] * hitT * 2.2);
+        attG = Math.exp(-pAbsG[idx] * hitT * 2.2);
+        attB = Math.exp(-pAbsB[idx] * hitT * 2.2);
+      }
+
+      // Reflection direction R = D + 2*cosI*N
+      const rdx = dx + 2 * cosI * nx;
+      const rdy = dy + 2 * cosI * ny;
+      const rdz = dz + 2 * cosI * nz;
+
+      const sinT2 = eta * eta * Math.max(0, 1.0 - cosI * cosI);
+      const isTIR = (!state.refraction) || (sinT2 > 1.0);
+
+      let fresnel = 1.0;
+      let tdx = 0, tdy = 0, tdz = 0;
+      if (!isTIR) {
+        const cosT = Math.sqrt(Math.max(0, 1.0 - sinT2));
+        const k = eta * cosI - cosT;
+        tdx = eta * dx + k * nx;
+        tdy = eta * dy + k * ny;
+        tdz = eta * dz + k * nz;
+        // Exact Schlick Fresnel (using rarer medium angle)
+        let r0 = (1.0 - baseIOR) / (1.0 + baseIOR);
+        r0 = r0 * r0;
+        const cTheta = entering ? cosI : cosT;
+        const m = Math.max(0, 1.0 - cTheta);
+        const m2 = m * m;
+        fresnel = r0 + (1.0 - r0) * m2 * m2 * m;
+      }
+
+      // Specular direct highlight from lights on outer glass surface
+      let specR = 0, specG = 0, specB = 0;
+      if (entering && state.reflections) {
+        for (let li = 0; li < lights.length; li++) {
+          const lIdx = lights[li];
+          let lx = pX[lIdx] - hx, ly = pY[lIdx] - hy, lz = pZ[lIdx] - hz;
+          const ld = Math.hypot(lx, ly, lz) || 1;
+          lx /= ld; ly /= ld; lz /= ld;
+          const rv = rdx * lx + rdy * ly + rdz * lz;
+          if (rv > 0.85) {
+            const sp = Math.pow(rv, 180) * 1.4;
+            specR += pEmitR[lIdx] * sp;
+            specG += pEmitG[lIdx] * sp;
+            specB += pEmitB[lIdx] * sp;
+          }
+        }
+      }
+
+      const reflCol = [0, 0, 0];
+      const refrCol = [0, 0, 0];
+
+      if (isTIR || !state.refraction) {
+        if (state.reflections && depth < state.maxBounces) {
+          traceRay(hx + nx * EPS * 2, hy + ny * EPS * 2, hz + nz * EPS * 2, rdx, rdy, rdz, depth + 1, jitterMode, reflCol, iorOffset);
+        } else {
+          sampleSky(rdx, rdy, rdz);
+          reflCol[0] = skyOut[0]; reflCol[1] = skyOut[1]; reflCol[2] = skyOut[2];
+        }
+        outCol[0] = (reflCol[0] + specR) * attR;
+        outCol[1] = (reflCol[1] + specG) * attG;
+        outCol[2] = (reflCol[2] + specB) * attB;
+        return;
+      }
+
+      // Split on early bounces (0..2) for noise-free crystal clarity, Russian roulette deeper
+      if (depth <= 2) {
+        if (state.reflections && fresnel > 0.015 && depth < state.maxBounces) {
+          traceRay(hx + nx * EPS * 2, hy + ny * EPS * 2, hz + nz * EPS * 2, rdx, rdy, rdz, depth + 1, jitterMode, reflCol, iorOffset);
+        }
+        if (depth < state.maxBounces) {
+          // Chromatic dispersion (Diamond Fire) on primary entry when IOR >= 1.85
+          if (state.dispersion && entering && depth === 0 && baseIOR >= 1.85 && !iorOffset) {
+            const disp = (baseIOR - 1.75) * 0.045;
+            const cR = [0, 0, 0], cG = [0, 0, 0], cB = [0, 0, 0];
+            // Red channel (lower IOR)
+            const etaR = 1.0 / (baseIOR - disp);
+            const stR = etaR * etaR * Math.max(0, 1 - cosI * cosI);
+            const kR = etaR * cosI - Math.sqrt(Math.max(0, 1 - stR));
+            traceRay(hx - nx * EPS * 2, hy - ny * EPS * 2, hz - nz * EPS * 2, etaR * dx + kR * nx, etaR * dy + kR * ny, etaR * dz + kR * nz, depth + 1, jitterMode, cR, -disp);
+            // Green channel
+            traceRay(hx - nx * EPS * 2, hy - ny * EPS * 2, hz - nz * EPS * 2, tdx, tdy, tdz, depth + 1, jitterMode, cG, 0);
+            // Blue channel (higher IOR)
+            const etaB = 1.0 / (baseIOR + disp);
+            const stB = etaB * etaB * Math.max(0, 1 - cosI * cosI);
+            const kB = etaB * cosI - Math.sqrt(Math.max(0, 1 - stB));
+            traceRay(hx - nx * EPS * 2, hy - ny * EPS * 2, hz - nz * EPS * 2, etaB * dx + kB * nx, etaB * dy + kB * ny, etaB * dz + kB * nz, depth + 1, jitterMode, cB, disp);
+            refrCol[0] = cR[0]; refrCol[1] = cG[1]; refrCol[2] = cB[2];
+          } else {
+            traceRay(hx - nx * EPS * 2, hy - ny * EPS * 2, hz - nz * EPS * 2, tdx, tdy, tdz, depth + 1, jitterMode, refrCol, iorOffset);
+          }
+        } else {
+          sampleSky(tdx, tdy, tdz);
+          refrCol[0] = skyOut[0]; refrCol[1] = skyOut[1]; refrCol[2] = skyOut[2];
+        }
+        const fUse = state.reflections ? fresnel : 0.0;
+        outCol[0] = (reflCol[0] * fUse + refrCol[0] * (1 - fUse) + specR) * attR;
+        outCol[1] = (reflCol[1] * fUse + refrCol[1] * (1 - fUse) + specG) * attG;
+        outCol[2] = (reflCol[2] * fUse + refrCol[2] * (1 - fUse) + specB) * attB;
+      } else {
+        // Deeper bounce: pick refraction or reflection probabilistically
+        if (state.reflections && rand() < fresnel) {
+          traceRay(hx + nx * EPS * 2, hy + ny * EPS * 2, hz + nz * EPS * 2, rdx, rdy, rdz, depth + 1, jitterMode, reflCol, iorOffset);
+          outCol[0] = reflCol[0] * attR; outCol[1] = reflCol[1] * attG; outCol[2] = reflCol[2] * attB;
+        } else {
+          traceRay(hx - nx * EPS * 2, hy - ny * EPS * 2, hz - nz * EPS * 2, tdx, tdy, tdz, depth + 1, jitterMode, refrCol, iorOffset);
+          outCol[0] = refrCol[0] * attR; outCol[1] = refrCol[1] * attG; outCol[2] = refrCol[2] * attB;
+        }
+      }
+      return;
+    }
+
+    // Ensure normal faces incoming ray for opaque surfaces
+    const dDotN = dx * nx + dy * ny + dz * nz;
+    if (dDotN > 0) {
+      nx = -nx; ny = -ny; nz = -nz;
+    }
+
+    // -----------------------------------------------------------------------
+    // MIRROR / BRUSHED METAL
+    // -----------------------------------------------------------------------
+    if (idx >= 0 && mat === MAT_METAL) {
+      const cosI = -(dx * nx + dy * ny + dz * nz);
+      let rdx = dx + 2 * cosI * nx;
+      let rdy = dy + 2 * cosI * ny;
+      let rdz = dz + 2 * cosI * nz;
+
+      if (rough > 0.002 && jitterMode) {
+        const jx = (rand() * 2 - 1) * rough;
+        const jy = (rand() * 2 - 1) * rough;
+        const jz = (rand() * 2 - 1) * rough;
+        rdx += jx; rdy += jy; rdz += jz;
+        const rl = Math.hypot(rdx, rdy, rdz) || 1;
+        rdx /= rl; rdy /= rl; rdz /= rl;
+        if (rdx * nx + rdy * ny + rdz * nz < 0) {
+          rdx = dx + 2 * cosI * nx;
+          rdy = dy + 2 * cosI * ny;
+          rdz = dz + 2 * cosI * nz;
+        }
+      }
+
+      let rR = 0, rG = 0, rB = 0;
+      if (state.reflections && depth < state.maxBounces) {
+        const sub = [0, 0, 0];
+        traceRay(hx + nx * EPS * 2, hy + ny * EPS * 2, hz + nz * EPS * 2, rdx, rdy, rdz, depth + 1, jitterMode, sub, 0);
+        rR = sub[0]; rG = sub[1]; rB = sub[2];
+      } else {
+        sampleSky(rdx, rdy, rdz);
+        rR = skyOut[0]; rG = skyOut[1]; rB = skyOut[2];
+      }
+
+      // Add crisp direct specular lobe for brushed metals
+      const shininess = Math.max(12, 180 / (1 + rough * 18));
+      let spR = 0, spG = 0, spB = 0;
+      for (let li = 0; li < lights.length; li++) {
+        const lIdx = lights[li];
+        let lx = pX[lIdx] - hx, ly = pY[lIdx] - hy, lz = pZ[lIdx] - hz;
+        const d2 = lx * lx + ly * ly + lz * lz;
+        const dist = Math.sqrt(d2) || 1;
+        lx /= dist; ly /= dist; lz /= dist;
+        const ndl = nx * lx + ny * ly + nz * lz;
+        if (ndl <= 0) continue;
+        const rv = Math.max(0, rdx * lx + rdy * ly + rdz * lz);
+        if (rv > 0.1) {
+          const spec = Math.pow(rv, shininess) * (0.35 + rough * 1.4) / (1 + d2 * 0.035);
+          const vis = state.shadows ? traceShadowTransmittance(hx + nx * EPS * 3, hy + ny * EPS * 3, hz + nz * EPS * 3, lx, ly, lz, dist, lIdx) : 1.0;
+          spR += pEmitR[lIdx] * spec * vis;
+          spG += pEmitG[lIdx] * spec * vis;
+          spB += pEmitB[lIdx] * spec * vis;
+        }
+      }
+
+      // Metallic Fresnel tinting (glancing angles approach pure white)
+      const m = Math.max(0, 1 - cosI);
+      const fres = m * m * m * m * m;
+      const tR = albR + (1 - albR) * fres;
+      const tG = albG + (1 - albG) * fres;
+      const tB = albB + (1 - albB) * fres;
+
+      outCol[0] = rR * tR + spR * albR;
+      outCol[1] = rG * tG + spG * albG;
+      outCol[2] = rB * tB + spB * albB;
+      return;
+    }
+
+    // -----------------------------------------------------------------------
+    // DIFFUSE LAMBERTIAN + FLOOR REFLECTION + SOFT AREA SHADOWS + AO + GI
+    // -----------------------------------------------------------------------
+    const ao = computeAnalyticalAO(hx, hy, hz, nx, ny, nz, idx);
+    sampleSky(nx, ny, nz);
+    let colR = albR * skyOut[0] * sceneConfig.ambientStrength * ao;
+    let colG = albG * skyOut[1] * sceneConfig.ambientStrength * ao;
+    let colB = albB * skyOut[2] * sceneConfig.ambientStrength * ao;
+
+    // Cornell Box subtle analytical color bounce (red left wall / green right wall GI!)
+    if (sceneConfig.skyType === 'cornell' && state.ambientOcclusion) {
+      const leftW = Math.max(0, 1 - (hx + 2.6) / 4.2) * Math.max(0.15, -nx * 0.65 + 0.35);
+      const rightW = Math.max(0, 1 - (2.6 - hx) / 4.2) * Math.max(0.15, nx * 0.65 + 0.35);
+      colR += albR * (0.28 * leftW + 0.04 * rightW) * ao;
+      colG += albG * (0.04 * leftW + 0.24 * rightW) * ao;
+      colB += albB * (0.04 * leftW + 0.06 * rightW) * ao;
+    }
+
+    // Direct lighting from all Emissive Area Lights
+    for (let li = 0; li < lights.length; li++) {
+      const lIdx = lights[li];
+      let tx = pX[lIdx], ty = pY[lIdx], tz = pZ[lIdx];
+      // Soft penumbra jitter across area light on progressive samples!
+      if (jitterMode) {
+        if (pType[lIdx] === PRIM_SPHERE) {
+          const lr = pR[lIdx] * 0.85;
+          tx += (rand() * 2 - 1) * lr;
+          ty += (rand() * 2 - 1) * lr;
+          tz += (rand() * 2 - 1) * lr;
+        } else {
+          tx = pMinX[lIdx] + rand() * (pMaxX[lIdx] - pMinX[lIdx]);
+          ty = pMinY[lIdx] - 0.02;
+          tz = pMinZ[lIdx] + rand() * (pMaxZ[lIdx] - pMinZ[lIdx]);
+        }
+      }
+
+      let lx = tx - hx, ly = ty - hy, lz = tz - hz;
+      const d2 = lx * lx + ly * ly + lz * lz;
+      const dist = Math.sqrt(d2) || 1;
+      lx /= dist; ly /= dist; lz /= dist;
+
+      const ndl = nx * lx + ny * ly + nz * lz;
+      if (ndl <= 0) continue;
+
+      let vis = 1.0;
+      if (state.shadows) {
+        vis = traceShadowTransmittance(hx + nx * EPS * 3, hy + ny * EPS * 3, hz + nz * EPS * 3, lx, ly, lz, dist, lIdx);
+      }
+      if (vis <= 0.001) continue;
+
+      const atten = 1.0 / (1.0 + 0.042 * d2);
+      const diff = ndl * atten * vis * 0.34;
+      colR += albR * pEmitR[lIdx] * diff;
+      colG += albG * pEmitG[lIdx] * diff;
+      colB += albB * pEmitB[lIdx] * diff;
+
+      // Subtle Blinn-Phong micro-specular highlight
+      let hxV = lx - dx, hyV = ly - dy, hzV = lz - dz;
+      const hl = Math.hypot(hxV, hyV, hzV) || 1;
+      const ndh = Math.max(0, (nx * hxV + ny * hyV + nz * hzV) / hl);
+      if (ndh > 0.2) {
+        const sp = Math.pow(ndh, 48) * atten * vis * 0.08;
+        colR += pEmitR[lIdx] * sp;
+        colG += pEmitG[lIdx] * sp;
+        colB += pEmitB[lIdx] * sp;
+      }
+    }
+
+    // Sunset directional sun light
+    if (sceneConfig.skyType === 'sunset') {
+      const sx = sceneConfig.sunDir[0], sy = sceneConfig.sunDir[1], sz = sceneConfig.sunDir[2];
+      const nds = nx * sx + ny * sy + nz * sz;
+      if (nds > 0) {
+        const vis = state.shadows ? traceShadowTransmittance(hx + nx * EPS * 3, hy + ny * EPS * 3, hz + nz * EPS * 3, sx, sy, sz, 40, -1) : 1.0;
+        colR += albR * 1.15 * nds * vis;
+        colG += albG * 0.62 * nds * vis;
+        colB += albB * 0.28 * nds * vis;
+      }
+    }
+
+    // Reflective Checkerboard Floor Bounce
+    if (reflStrength > 0.01 && state.reflections && depth < state.maxBounces) {
+      const cosI = -(dx * nx + dy * ny + dz * nz);
+      let rdx = dx + 2 * cosI * nx;
+      let rdy = dy + 2 * cosI * ny;
+      let rdz = dz + 2 * cosI * nz;
+      if (rough > 0.002 && jitterMode) {
+        rdx += (rand() * 2 - 1) * rough;
+        rdy += (rand() * 2 - 1) * rough;
+        rdz += (rand() * 2 - 1) * rough;
+        const rl = Math.hypot(rdx, rdy, rdz) || 1;
+        rdx /= rl; rdy /= rl; rdz /= rl;
+      }
+      const sub = [0, 0, 0];
+      traceRay(hx + nx * EPS * 2, hy + ny * EPS * 2, hz + nz * EPS * 2, rdx, rdy, rdz, depth + 1, jitterMode, sub, 0);
+      colR = colR * (1 - reflStrength) + sub[0] * reflStrength;
+      colG = colG * (1 - reflStrength) + sub[1] * reflStrength;
+      colB = colB * (1 - reflStrength) + sub[2] * reflStrength;
+    }
+
+    outCol[0] = colR;
+    outCol[1] = colG;
+    outCol[2] = colB;
+  }
+
+  // =========================================================================
+  // PROBE RAY TREE RECORDER (FOR 2D X-RAY INSPECTOR & 3D PATH OVERLAY)
+  // =========================================================================
+  const probeData = {
+    segments: [],      // { x0,y0,z0, x1,y1,z1, kind:'primary'|'reflect'|'refract'|'tir'|'shadow-lit'|'shadow-occ', depth, label }
+    hits: [],          // { x,y,z, nx,ny,nz, name, mat, depth, fresnel, thetaI, thetaT, tir }
+    visitedBVH: new Set(),
+    fanSegments: [],   // extra fan rays when xrayFan is enabled
+    bvhNodesHit: 0,
+    totalBVHNodes: 0
+  };
+
+  function recordProbeRayRecursive(ox, oy, oz, dx, dy, dz, depth, kind, segList, hitList, bvhSet) {
+    if (depth > state.maxBounces) return;
+    if (!intersectScene(ox, oy, oz, dx, dy, dz, INF, bvhSet)) {
+      const len = 7.0;
+      segList.push({ x0: ox, y0: oy, z0: oz, x1: ox + dx * len, y1: oy + dy * len, z1: oz + dz * len, kind, depth });
+      return;
+    }
+
+    const idx = hitRes.primIdx;
+    const hx = hitRes.hitX, hy = hitRes.hitY, hz = hitRes.hitZ;
+    let nx = hitRes.nx, ny = hitRes.ny, nz = hitRes.nz;
+    segList.push({ x0: ox, y0: oy, z0: oz, x1: hx, y1: hy, z1: hz, kind, depth });
+
+    const name = idx === -2 ? 'Checker Floor' : primitives[idx].name;
+    const mat = idx === -2 ? MAT_DIFFUSE : pMat[idx];
+
+    if (idx >= 0 && mat === MAT_EMISSIVE) {
+      hitList.push({ x: hx, y: hy, z: hz, nx, ny, nz, name, mat, depth });
+      return;
+    }
+
+    if (idx >= 0 && mat === MAT_GLASS) {
+      const baseIOR = pIOR[idx] > 0 ? pIOR[idx] : state.glassIOR;
+      let cosI = -(dx * nx + dy * ny + dz * nz);
+      let entering = true;
+      let eta = 1.0 / baseIOR;
+      if (cosI < 0) {
+        entering = false;
+        nx = -nx; ny = -ny; nz = -nz;
+        cosI = -cosI;
+        eta = baseIOR;
+      }
+      const sinT2 = eta * eta * Math.max(0, 1 - cosI * cosI);
+      const isTIR = (!state.refraction) || (sinT2 > 1.0);
+      const thetaI = Math.acos(Math.min(1, Math.max(-1, cosI))) * 180 / Math.PI;
+      let thetaT = 90;
+      let fresnel = 1.0;
+
+      const rdx = dx + 2 * cosI * nx;
+      const rdy = dy + 2 * cosI * ny;
+      const rdz = dz + 2 * cosI * nz;
+
+      if (!isTIR) {
+        const cosT = Math.sqrt(Math.max(0, 1 - sinT2));
+        thetaT = Math.acos(Math.min(1, Math.max(-1, cosT))) * 180 / Math.PI;
+        let r0 = (1 - baseIOR) / (1 + baseIOR); r0 *= r0;
+        const cTheta = entering ? cosI : cosT;
+        fresnel = r0 + (1 - r0) * Math.pow(1 - cTheta, 5);
+        hitList.push({ x: hx, y: hy, z: hz, nx, ny, nz, name, mat, depth, entering, fresnel, thetaI, thetaT, tir: false });
+
+        // Trace refracted branch
+        const k = eta * cosI - cosT;
+        const tdx = eta * dx + k * nx;
+        const tdy = eta * dy + k * ny;
+        const tdz = eta * dz + k * nz;
+        recordProbeRayRecursive(hx - nx * EPS * 3, hy - ny * EPS * 3, hz - nz * EPS * 3, tdx, tdy, tdz, depth + 1, 'refract', segList, hitList, bvhSet);
+
+        // Also show reflected branch on entry if reflections enabled
+        if (state.reflections && entering && depth <= 1) {
+          recordProbeRayRecursive(hx + nx * EPS * 3, hy + ny * EPS * 3, hz + nz * EPS * 3, rdx, rdy, rdz, depth + 1, 'reflect', segList, hitList, bvhSet);
+        }
+      } else {
+        hitList.push({ x: hx, y: hy, z: hz, nx, ny, nz, name, mat, depth, entering, fresnel: 1.0, thetaI, thetaT: 90, tir: true });
+        if (state.reflections) {
+          recordProbeRayRecursive(hx + nx * EPS * 3, hy + ny * EPS * 3, hz + nz * EPS * 3, rdx, rdy, rdz, depth + 1, 'tir', segList, hitList, bvhSet);
+        }
+      }
+      return;
+    }
+
+    // Opaque surface
+    if (dx * nx + dy * ny + dz * nz > 0) { nx = -nx; ny = -ny; nz = -nz; }
+    hitList.push({ x: hx, y: hy, z: hz, nx, ny, nz, name, mat, depth });
+
+    // Record shadow ray to primary light
+    if (state.shadows && lights.length > 0 && (mat === MAT_DIFFUSE || idx === -2)) {
+      const lIdx = lights[lights.length - 1]; // primary light
+      let lx = pX[lIdx] - hx, ly = pY[lIdx] - hy, lz = pZ[lIdx] - hz;
+      const dist = Math.hypot(lx, ly, lz) || 1;
+      lx /= dist; ly /= dist; lz /= dist;
+      if (nx * lx + ny * ly + nz * lz > 0) {
+        const vis = traceShadowTransmittance(hx + nx * EPS * 3, hy + ny * EPS * 3, hz + nz * EPS * 3, lx, ly, lz, dist, lIdx);
+        segList.push({
+          x0: hx, y0: hy, z0: hz,
+          x1: pX[lIdx], y1: pY[lIdx], z1: pZ[lIdx],
+          kind: vis > 0.05 ? 'shadow-lit' : 'shadow-occ',
+          depth
+        });
+      }
+    }
+
+    // Specular reflection bounce (metal or reflective floor)
+    const shouldReflect = (mat === MAT_METAL) || (idx === -2 && sceneConfig.floorReflect > 0.05);
+    if (shouldReflect && state.reflections && depth < state.maxBounces) {
+      const cosI = -(dx * nx + dy * ny + dz * nz);
+      const rdx = dx + 2 * cosI * nx;
+      const rdy = dy + 2 * cosI * ny;
+      const rdz = dz + 2 * cosI * nz;
+      recordProbeRayRecursive(hx + nx * EPS * 3, hy + ny * EPS * 3, hz + nz * EPS * 3, rdx, rdy, rdz, depth + 1, 'reflect', segList, hitList, bvhSet);
+    }
+  }
+
+  function computePrimaryRayDir(normX, normY) {
+    const sx = (normX * 2 - 1) * cam.halfW;
+    const sy = (1 - normY * 2) * cam.halfH;
+    let dx = cam.fwdX + sx * cam.rightX + sy * cam.upX;
+    let dy = cam.fwdY + sx * cam.rightY + sy * cam.upY;
+    let dz = cam.fwdZ + sx * cam.rightZ + sy * cam.upZ;
+    const dl = Math.hypot(dx, dy, dz) || 1;
+    return [dx / dl, dy / dl, dz / dl];
+  }
+
+  function updateProbeTrace() {
+    probeData.segments.length = 0;
+    probeData.hits.length = 0;
+    probeData.visitedBVH.clear();
+    probeData.fanSegments.length = 0;
+
+    // Save global counters so probe doesn't skew render telemetry
+    const sR = statRays, sN = statBVHNodes, sP = statPrimTests;
+
+    let dir;
+    if (state.probeXRayWorld) {
+      let dx = state.probeXRayWorld.x - cam.posX;
+      let dy = (state.targetY - 0.15) - cam.posY;
+      let dz = state.probeXRayWorld.z - cam.posZ;
+      const dl = Math.hypot(dx, dy, dz) || 1;
+      dir = [dx / dl, dy / dl, dz / dl];
+    } else {
+      dir = computePrimaryRayDir(state.probeNormX, state.probeNormY);
+    }
+
+    recordProbeRayRecursive(cam.posX, cam.posY, cam.posZ, dir[0], dir[1], dir[2], 0, 'primary', probeData.segments, probeData.hits, probeData.visitedBVH);
+
+    // Optional 5-ray fan in X-Ray mode
+    if (state.xrayFan) {
+      const offsets = [-0.14, -0.07, 0.07, 0.14];
+      for (let i = 0; i < offsets.length; i++) {
+        const ang = offsets[i];
+        const ca = Math.cos(ang), sa = Math.sin(ang);
+        const fdx = dir[0] * ca - dir[2] * sa;
+        const fdz = dir[0] * sa + dir[2] * ca;
+        const fdy = dir[1];
+        const fl = Math.hypot(fdx, fdy, fdz) || 1;
+        recordProbeRayRecursive(cam.posX, cam.posY, cam.posZ, fdx / fl, fdy / fl, fdz / fl, 0, 'primary', probeData.fanSegments, [], null);
+      }
+    }
+
+    probeData.bvhNodesHit = probeData.visitedBVH.size;
+    probeData.totalBVHNodes = bvhNodeCount;
+
+    statRays = sR; statBVHNodes = sN; statPrimTests = sP;
+
+    // Trigger subtle crystalline ping if inspecting multi-bounce ray when audio is on
+    const bounceCount = probeData.hits.length;
+    if (state.audioOn && state.viewMode !== 'full' && bounceCount >= 2 && bounceCount !== state.lastProbeBounceSig) {
+      const now = performance.now();
+      if (now - state.lastPingTime > 150) {
+        playCrystalPing(bounceCount);
+        state.lastPingTime = now;
+      }
+    }
+    state.lastProbeBounceSig = bounceCount;
+
+    updateProbeLogUI();
+  }
+
+  // =========================================================================
+  // WEB AUDIO SYNTHESIZER (MUTED BY DEFAULT)
+  // =========================================================================
+  let audioCtx = null;
+  function ensureAudio() {
+    if (!audioCtx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) audioCtx = new AC();
+    }
+    if (audioCtx && audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+  }
+
+  function playCrystalPing(bounces) {
+    if (!state.audioOn) return;
+    ensureAudio();
+    if (!audioCtx) return;
+    const scale = [523.25, 587.33, 659.25, 783.99, 880.0, 1046.5, 1174.66, 1318.5, 1567.98];
+    const freq = scale[Math.min(scale.length - 1, Math.max(0, bounces - 1))];
+    const now = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const osc2 = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine';
+    osc2.type = 'triangle';
+    osc.frequency.setValueAtTime(freq, now);
+    osc2.frequency.setValueAtTime(freq * 2.003, now);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.055, now + 0.012);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.38);
+    osc.connect(gain);
+    osc2.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(now);
+    osc2.start(now);
+    osc.stop(now + 0.42);
+    osc2.stop(now + 0.42);
+  }
+
+  function playSceneChord() {
+    if (!state.audioOn) return;
+    ensureAudio();
+    if (!audioCtx) return;
+    const freqs = [440, 554.37, 659.25, 880];
+    freqs.forEach((f, idx) => {
+      const now = audioCtx.currentTime + idx * 0.045;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(f, now);
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.exponentialRampToValueAtTime(0.038, now + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.45);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(now);
+      osc.stop(now + 0.48);
+    });
+  }
+
+  // =========================================================================
+  // PROGRESSIVE MULTI-RESOLUTION RAY TRACER BUFFER & CANVAS
+  // =========================================================================
+  const canvas = document.getElementById('sim-canvas');
+  const ctx = canvas.getContext('2d', { alpha: false });
+
+  // Offscreen ray tracer canvas
+  const rtCanvas = document.createElement('canvas');
+  const rtCtx = rtCanvas.getContext('2d');
+  let rtImgData = null;
+  let accumBuf = null; // Float32Array(bufW * bufH * 3)
+  let bufW = 320, bufH = 180;
+  let currentSPP = 0;
+  let nextRow = 0;
+  let isInteractivePreview = false;
+  let needsFullResUpgrade = false;
+  let lastRenderTimeMs = 0;
+  let lastRaysPerSec = 0;
+  let lastRaysPerFrame = 0;
+  let lastAvgBVHNodes = 0;
+  let lastAvgPrimTests = 0;
+
+  let cssW = window.innerWidth;
+  let cssH = window.innerHeight;
+  let dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+  // Active viewport geometry (CSS pixels)
+  const layout = {
+    vpX: 0, vpY: 0, vpW: 800, vpH: 600,
+    xrayX: 14, xrayY: 300, xrayW: 340, xrayH: 250,
+    xrayVisible: false
+  };
+
+  function computeLayout() {
+    if (state.viewMode === 'split') {
+      const splitX = Math.round(cssW * 0.52);
+      layout.vpX = 0; layout.vpY = 0; layout.vpW = splitX; layout.vpH = cssH;
+      layout.xrayX = splitX; layout.xrayY = 0; layout.xrayW = cssW - splitX; layout.xrayH = cssH;
+      layout.xrayVisible = true;
+    } else if (state.viewMode === 'overlay') {
+      layout.vpX = 0; layout.vpY = 0; layout.vpW = cssW; layout.vpH = cssH;
+      const w = Math.min(390, Math.max(270, Math.round(cssW * 0.28)));
+      const h = Math.min(280, Math.max(210, Math.round(cssH * 0.33)));
+      layout.xrayW = w;
+      layout.xrayH = h;
+      layout.xrayX = 14;
+      layout.xrayY = Math.max(200, cssH - h - 72);
+      layout.xrayVisible = true;
+    } else {
+      layout.vpX = 0; layout.vpY = 0; layout.vpW = cssW; layout.vpH = cssH;
+      layout.xrayVisible = false;
+    }
+    updateCameraBasis(layout.vpW / Math.max(1, layout.vpH));
+  }
+
+  function resizeBuffers(previewMode) {
+    isInteractivePreview = previewMode;
+    let targetW, targetH;
+    if (previewMode) {
+      const scale = Math.min(0.32, 235 / Math.max(1, layout.vpW));
+      targetW = Math.max(96, Math.round(layout.vpW * scale));
+      targetH = Math.max(64, Math.round(layout.vpH * scale));
+    } else {
+      targetW = Math.max(120, Math.round(layout.vpW * state.resScale));
+      targetH = Math.max(80, Math.round(layout.vpH * state.resScale));
+    }
+    if (targetW !== bufW || targetH !== bufH || !accumBuf) {
+      bufW = targetW;
+      bufH = targetH;
+      rtCanvas.width = bufW;
+      rtCanvas.height = bufH;
+      rtImgData = rtCtx.createImageData(bufW, bufH);
+      accumBuf = new Float32Array(bufW * bufH * 3);
+    } else {
+      accumBuf.fill(0);
+    }
+    currentSPP = 0;
+    nextRow = 0;
+  }
+
+  function resetAccumulation(interactivePreview) {
+    computeLayout();
+    resizeBuffers(!!interactivePreview);
+    needsFullResUpgrade = !!interactivePreview;
+  }
+
+  function handleResize() {
+    cssW = window.innerWidth;
+    cssH = window.innerHeight;
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.round(cssW * dpr);
+    canvas.height = Math.round(cssH * dpr);
+    resetAccumulation(false);
+    updateProbeTrace();
+  }
+
+  // ACES Filmic Tone Mapping + Gamma 2.2 LUT/Function
+  function toneMapByte(v) {
+    if (v <= 0) return 0;
+    // ACES filmic approximation
+    const a = 2.51, b = 0.03, c = 2.43, d = 0.59, e = 0.14;
+    const mapped = (v * (a * v + b)) / (v * (c * v + d) + e);
+    const clamped = mapped < 0 ? 0 : (mapped > 1 ? 1 : mapped);
+    return (Math.pow(clamped, 0.454545) * 255.0 + 0.5) | 0;
+  }
+
+  const pixelCol = [0, 0, 0];
+
+  function renderRaySlice() {
+    const isMoving = state.isDraggingCam || state.isPanningCam || state.dragPrimIdx >= 0 || (state.animateScene && !state.paused);
+    if (state.paused && currentSPP >= 1 && !isMoving) return;
+
+    if (isMoving) {
+      if (!isInteractivePreview) resizeBuffers(true);
+      accumBuf.fill(0);
+      currentSPP = 0;
+      nextRow = 0;
+      needsFullResUpgrade = true;
+    } else if (needsFullResUpgrade) {
+      resizeBuffers(false);
+      needsFullResUpgrade = false;
+    }
+
+    if (currentSPP >= MAX_SPP) return;
+
+    const t0 = performance.now();
+    statRays = 0;
+    statBVHNodes = 0;
+    statPrimTests = 0;
+
+    const data = rtImgData.data;
+    const invW = 1.0 / bufW;
+    const invH = 1.0 / bufH;
+    const jitter = currentSPP > 0;
+    const sppNext = currentSPP + 1;
+    const invSpp = 1.0 / sppNext;
+
+    // Budget per rAF slice: full frame in preview, ~13ms slices in progressive full-res
+    const budgetMs = isInteractivePreview ? 24 : 13.5;
+    let rowsDone = 0;
+
+    while (nextRow < bufH) {
+      const y = nextRow;
+      let idx3 = y * bufW * 3;
+      let idx4 = y * bufW * 4;
+
+      for (let x = 0; x < bufW; x++) {
+        const jx = jitter ? rand() : 0.5;
+        const jy = jitter ? rand() : 0.5;
+        const u = (x + jx) * invW;
+        const v = (y + jy) * invH;
+        const sx = (u * 2 - 1) * cam.halfW;
+        const sy = (1 - v * 2) * cam.halfH;
+
+        let dx = cam.fwdX + sx * cam.rightX + sy * cam.upX;
+        let dy = cam.fwdY + sx * cam.rightY + sy * cam.upY;
+        let dz = cam.fwdZ + sx * cam.rightZ + sy * cam.upZ;
+        const invL = 1.0 / Math.hypot(dx, dy, dz);
+        dx *= invL; dy *= invL; dz *= invL;
+
+        traceRay(cam.posX, cam.posY, cam.posZ, dx, dy, dz, 0, jitter, pixelCol, 0);
+
+        const ar = accumBuf[idx3] + pixelCol[0];
+        const ag = accumBuf[idx3 + 1] + pixelCol[1];
+        const ab = accumBuf[idx3 + 2] + pixelCol[2];
+        accumBuf[idx3] = ar;
+        accumBuf[idx3 + 1] = ag;
+        accumBuf[idx3 + 2] = ab;
+
+        data[idx4]     = toneMapByte(ar * invSpp);
+        data[idx4 + 1] = toneMapByte(ag * invSpp);
+        data[idx4 + 2] = toneMapByte(ab * invSpp);
+        data[idx4 + 3] = 255;
+
+        idx3 += 3;
+        idx4 += 4;
+      }
+
+      nextRow++;
+      rowsDone++;
+      if (!isInteractivePreview && (rowsDone & 3) === 0 && (performance.now() - t0) >= budgetMs) {
+        break;
+      }
+    }
+
+    rtCtx.putImageData(rtImgData, 0, 0);
+
+    const elapsed = Math.max(0.2, performance.now() - t0);
+    lastRenderTimeMs = elapsed;
+    if (statRays > 0) {
+      const mRaysSec = (statRays / elapsed) * 0.001; // rays/ms * 1000 / 1e6 = * 0.001
+      lastRaysPerSec = lastRaysPerSec === 0 ? mRaysSec : lastRaysPerSec * 0.7 + mRaysSec * 0.3;
+      const frac = rowsDone / bufH;
+      lastRaysPerFrame = Math.round(statRays / Math.max(0.01, frac));
+      lastAvgBVHNodes = statBVHNodes / statRays;
+      lastAvgPrimTests = statPrimTests / statRays;
+    }
+
+    if (nextRow >= bufH) {
+      currentSPP = sppNext;
+      nextRow = 0;
+    }
+  }
+
+  // =========================================================================
+  // 2D TOP-DOWN RAY & BVH X-RAY INSPECTOR + 3D OVERLAY RENDERER
+  // =========================================================================
+  function getXRayTransform() {
+    // Center world view inside visible portion of X-Ray pane (avoid drawer overlap in split mode!)
+    let visW = layout.xrayW;
+    if (state.viewMode === 'split' && state.drawerOpen && cssW > 960) {
+      visW = Math.max(220, layout.xrayW - 344);
+    }
+    const cx = layout.xrayX + visW * 0.5;
+    const cy = layout.xrayY + layout.xrayH * 0.5;
+    const span = sceneConfig.worldRadius * 2.15;
+    const scale = Math.min(visW - 36, layout.xrayH - 76) / span;
+    return {
+      cx, cy, scale, visW,
+      toScreen(wx, wz) {
+        return { x: cx + (wx - state.targetX) * scale, y: cy + (wz - state.targetZ) * scale };
+      },
+      toWorld(sx, sy) {
+        return { x: state.targetX + (sx - cx) / scale, z: state.targetZ + (sy - cy) / scale };
+      }
+    };
+  }
+
+  function draw3DOverlays() {
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(layout.vpX, layout.vpY, layout.vpW, layout.vpH);
+    ctx.clip();
+
+    // Hover / Drag ring around interactive Light Orb or Sphere
+    const activeIdx = state.dragPrimIdx >= 0 ? state.dragPrimIdx : state.hoverPrimIdx;
+    if (activeIdx >= 0 && activeIdx < primitives.length) {
+      const pr = primitives[activeIdx];
+      const p = project3DToViewport(pr.x, pr.y, pr.z, layout.vpX, layout.vpY, layout.vpW, layout.vpH);
+      if (p) {
+        const edge = project3DToViewport(pr.x + cam.rightX * pr.r, pr.y + cam.rightY * pr.r, pr.z + cam.rightZ * pr.r, layout.vpX, layout.vpY, layout.vpW, layout.vpH);
+        const radPx = edge ? Math.max(14, Math.hypot(edge.x - p.x, edge.y - p.y)) : 28;
+        ctx.strokeStyle = pr.isPrimaryLight ? 'rgba(255, 190, 92, 0.92)' : 'rgba(88, 220, 255, 0.92)';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([6, 4]);
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, radPx + 5, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
+
+    // 3D Projected Ray Path Overlay when X-Ray is active
+    if (layout.xrayVisible && state.xrayShow3D && probeData.segments.length > 0) {
+      for (let i = 0; i < probeData.segments.length; i++) {
+        const seg = probeData.segments[i];
+        if ((seg.kind === 'shadow-lit' || seg.kind === 'shadow-occ') && !state.xrayShowShadow) continue;
+        // Skip primary segment from exact camera position (starts at eye)
+        if (seg.kind === 'primary') {
+          const h = project3DToViewport(seg.x1, seg.y1, seg.z1, layout.vpX, layout.vpY, layout.vpW, layout.vpH);
+          if (h) {
+            ctx.strokeStyle = 'rgba(88, 220, 255, 0.95)';
+            ctx.lineWidth = 1.6;
+            ctx.beginPath();
+            ctx.arc(h.x, h.y, 7, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(h.x - 12, h.y); ctx.lineTo(h.x - 4, h.y);
+            ctx.moveTo(h.x + 4, h.y); ctx.lineTo(h.x + 12, h.y);
+            ctx.moveTo(h.x, h.y - 12); ctx.lineTo(h.x, h.y - 4);
+            ctx.moveTo(h.x, h.y + 4); ctx.lineTo(h.x, h.y + 12);
+            ctx.stroke();
+          }
+          continue;
+        }
+        const p0 = project3DToViewport(seg.x0, seg.y0, seg.z0, layout.vpX, layout.vpY, layout.vpW, layout.vpH);
+        const p1 = project3DToViewport(seg.x1, seg.y1, seg.z1, layout.vpX, layout.vpY, layout.vpW, layout.vpH);
+        if (!p0 || !p1) continue;
+
+        ctx.save();
+        if (seg.kind === 'reflect') {
+          ctx.strokeStyle = 'rgba(255, 190, 92, 0.92)';
+          ctx.lineWidth = 2.0;
+        } else if (seg.kind === 'refract') {
+          ctx.strokeStyle = 'rgba(192, 132, 252, 0.95)';
+          ctx.lineWidth = 2.2;
+        } else if (seg.kind === 'tir') {
+          ctx.strokeStyle = 'rgba(255, 96, 131, 0.95)';
+          ctx.lineWidth = 2.2;
+        } else if (seg.kind === 'shadow-lit') {
+          ctx.strokeStyle = 'rgba(74, 242, 178, 0.65)';
+          ctx.lineWidth = 1.3;
+          ctx.setLineDash([5, 4]);
+        } else {
+          ctx.strokeStyle = 'rgba(255, 96, 131, 0.65)';
+          ctx.lineWidth = 1.3;
+          ctx.setLineDash([4, 4]);
+        }
+        ctx.beginPath();
+        ctx.moveTo(p0.x, p0.y);
+        ctx.lineTo(p1.x, p1.y);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // Hit vertices in 3D
+      for (let i = 0; i < probeData.hits.length; i++) {
+        const hit = probeData.hits[i];
+        const p = project3DToViewport(hit.x, hit.y, hit.z, layout.vpX, layout.vpY, layout.vpW, layout.vpH);
+        if (!p) continue;
+        ctx.fillStyle = i === 0 ? '#58dcff' : (hit.tir ? '#ff6083' : '#ffbe5c');
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 3.6, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    ctx.restore();
+  }
+
+  function drawXRayInspector() {
+    if (!layout.xrayVisible) return;
+
+    const x = layout.xrayX, y = layout.xrayY, w = layout.xrayW, h = layout.xrayH;
+    const isOverlay = state.viewMode === 'overlay';
+
+    ctx.save();
+    // Clip & backdrop
+    ctx.beginPath();
+    if (isOverlay) {
+      const r = 14;
+      ctx.roundRect(x, y, w, h, r);
+    } else {
+      ctx.rect(x, y, w, h);
+    }
+    ctx.clip();
+
+    ctx.fillStyle = isOverlay ? 'rgba(6, 10, 22, 0.86)' : '#050915';
+    ctx.fillRect(x, y, w, h);
+
+    const xf = getXRayTransform();
+
+    // Subtle polar / Cartesian XZ radar grid
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.07)';
+    ctx.lineWidth = 1;
+    const step = 1.0;
+    const minW = -12, maxW = 12;
+    ctx.beginPath();
+    for (let g = minW; g <= maxW; g += step) {
+      const a = xf.toScreen(g, minW);
+      const b = xf.toScreen(g, maxW);
+      ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
+      const c = xf.toScreen(minW, g);
+      const d = xf.toScreen(maxW, g);
+      ctx.moveTo(c.x, c.y); ctx.lineTo(d.x, d.y);
+    }
+    ctx.stroke();
+
+    // Origin axes
+    const orig = xf.toScreen(0, 0);
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.16)';
+    ctx.beginPath();
+    ctx.moveTo(orig.x - 8, orig.y); ctx.lineTo(orig.x + 8, orig.y);
+    ctx.moveTo(orig.x, orig.y - 8); ctx.lineTo(orig.x, orig.y + 8);
+    ctx.stroke();
+
+    // 1. Hierarchical BVH Bounding Boxes (XZ projection)
+    if (state.xrayShowBVH && bvhNodeCount > 0) {
+      const depthColors = [
+        'rgba(88, 220, 255, 0.55)',
+        'rgba(74, 242, 178, 0.65)',
+        'rgba(255, 190, 92, 0.72)',
+        'rgba(167, 139, 250, 0.78)',
+        'rgba(255, 96, 131, 0.82)'
+      ];
+      for (let ni = 0; ni < bvhNodeCount; ni++) {
+        const pMin = xf.toScreen(bvhMinX[ni], bvhMinZ[ni]);
+        const pMax = xf.toScreen(bvhMaxX[ni], bvhMaxZ[ni]);
+        const bw = pMax.x - pMin.x;
+        const bh = pMax.y - pMin.y;
+        const visited = probeData.visitedBVH.has(ni);
+
+        if (visited) {
+          const col = depthColors[Math.min(depthColors.length - 1, bvhDepth[ni])];
+          ctx.fillStyle = bvhLeft[ni] === -1 ? 'rgba(74, 242, 178, 0.09)' : 'rgba(88, 220, 255, 0.035)';
+          ctx.fillRect(pMin.x, pMin.y, bw, bh);
+          ctx.strokeStyle = col;
+          ctx.lineWidth = bvhLeft[ni] === -1 ? 1.6 : 1.1;
+          ctx.setLineDash([]);
+          ctx.strokeRect(pMin.x, pMin.y, bw, bh);
+        } else {
+          ctx.strokeStyle = 'rgba(148, 179, 255, 0.14)';
+          ctx.lineWidth = 0.85;
+          ctx.setLineDash([3, 3]);
+          ctx.strokeRect(pMin.x, pMin.y, bw, bh);
+        }
+      }
+      ctx.setLineDash([]);
+    }
+
+    // 2. Scene Primitives (Top-Down XZ Schematic)
+    for (let i = 0; i < primitives.length; i++) {
+      const pr = primitives[i];
+      if (pr.type === PRIM_SPHERE) {
+        const p = xf.toScreen(pr.x, pr.z);
+        const rad = Math.max(3, pr.r * xf.scale);
+
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, rad, 0, Math.PI * 2);
+        if (pr.mat === MAT_GLASS) {
+          ctx.fillStyle = 'rgba(88, 220, 255, 0.14)';
+          ctx.strokeStyle = '#58dcff';
+          ctx.lineWidth = 1.8;
+          ctx.fill(); ctx.stroke();
+          // Inner IOR ring
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, rad * 0.72, 0, Math.PI * 2);
+          ctx.strokeStyle = 'rgba(192, 132, 252, 0.45)';
+          ctx.lineWidth = 1;
+          ctx.stroke();
+        } else if (pr.mat === MAT_METAL) {
+          ctx.fillStyle = `rgba(${Math.round(pr.color[0]*210)}, ${Math.round(pr.color[1]*210)}, ${Math.round(pr.color[2]*220)}, 0.22)`;
+          ctx.strokeStyle = '#d6e4ff';
+          ctx.lineWidth = 1.6;
+          ctx.fill(); ctx.stroke();
+        } else if (pr.mat === MAT_EMISSIVE) {
+          const grd = ctx.createRadialGradient(p.x, p.y, 1, p.x, p.y, rad * 2.4);
+          grd.addColorStop(0, 'rgba(255, 225, 140, 0.95)');
+          grd.addColorStop(0.5, 'rgba(255, 190, 92, 0.35)');
+          grd.addColorStop(1, 'rgba(255, 190, 92, 0)');
+          ctx.fillStyle = grd;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, rad * 2.4, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, rad, 0, Math.PI * 2);
+          ctx.fillStyle = '#fff5d6';
+          ctx.fill();
+        } else {
+          ctx.fillStyle = `rgba(${Math.round(pr.color[0]*220)}, ${Math.round(pr.color[1]*220)}, ${Math.round(pr.color[2]*220)}, 0.28)`;
+          ctx.strokeStyle = `rgba(${Math.round(pr.color[0]*255)}, ${Math.round(pr.color[1]*255)}, ${Math.round(pr.color[2]*255)}, 0.85)`;
+          ctx.lineWidth = 1.3;
+          ctx.fill(); ctx.stroke();
+        }
+      } else {
+        // Box primitive (skip full Cornell floor/ceiling from covering everything)
+        if (pr.name === 'Cornell Floor' || pr.name === 'Cornell Ceiling') continue;
+        const pMin = xf.toScreen(pr.minX, pr.minZ);
+        const pMax = xf.toScreen(pr.maxX, pr.maxZ);
+        const bw = pMax.x - pMin.x, bh = pMax.y - pMin.y;
+        ctx.fillStyle = pr.mat === MAT_EMISSIVE
+          ? 'rgba(255, 210, 120, 0.35)'
+          : `rgba(${Math.round(pr.color[0]*200)}, ${Math.round(pr.color[1]*200)}, ${Math.round(pr.color[2]*200)}, 0.25)`;
+        ctx.strokeStyle = pr.mat === MAT_METAL ? '#94d9ff' : `rgba(${Math.round(pr.color[0]*255)}, ${Math.round(pr.color[1]*255)}, ${Math.round(pr.color[2]*255)}, 0.85)`;
+        ctx.lineWidth = 1.5;
+        ctx.fillRect(pMin.x, pMin.y, bw, bh);
+        ctx.strokeRect(pMin.x, pMin.y, bw, bh);
+      }
+    }
+
+    // 3. Camera Icon & Frustum Cone
+    const camP = xf.toScreen(cam.posX, cam.posZ);
+    const fLen = 1.8;
+    const flx = cam.fwdX - cam.rightX * cam.halfW;
+    const flz = cam.fwdZ - cam.rightZ * cam.halfW;
+    const frx = cam.fwdX + cam.rightX * cam.halfW;
+    const frz = cam.fwdZ + cam.rightZ * cam.halfW;
+    const pFL = xf.toScreen(cam.posX + flx * fLen, cam.posZ + flz * fLen);
+    const pFR = xf.toScreen(cam.posX + frx * fLen, cam.posZ + frz * fLen);
+
+    ctx.fillStyle = 'rgba(88, 220, 255, 0.08)';
+    ctx.strokeStyle = 'rgba(88, 220, 255, 0.32)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(camP.x, camP.y);
+    ctx.lineTo(pFL.x, pFL.y);
+    ctx.lineTo(pFR.x, pFR.y);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // 4. Optional Multi-Ray Fan
+    if (state.xrayFan && probeData.fanSegments.length > 0) {
+      for (let i = 0; i < probeData.fanSegments.length; i++) {
+        const seg = probeData.fanSegments[i];
+        if (seg.kind === 'shadow-lit' || seg.kind === 'shadow-occ') continue;
+        const a = xf.toScreen(seg.x0, seg.z0);
+        const b = xf.toScreen(seg.x1, seg.z1);
+        ctx.strokeStyle = seg.kind === 'primary' ? 'rgba(88, 220, 255, 0.25)'
+                        : seg.kind === 'refract' ? 'rgba(192, 132, 252, 0.30)'
+                        : 'rgba(255, 190, 92, 0.28)';
+        ctx.lineWidth = 1.1;
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+      }
+    }
+
+    // 5. Primary Probe Ray Tree (Primary, Reflections, Refractions, TIR, Shadow Rays)
+    for (let i = 0; i < probeData.segments.length; i++) {
+      const seg = probeData.segments[i];
+      if ((seg.kind === 'shadow-lit' || seg.kind === 'shadow-occ') && !state.xrayShowShadow) continue;
+      const a = xf.toScreen(seg.x0, seg.z0);
+      const b = xf.toScreen(seg.x1, seg.z1);
+
+      ctx.save();
+      if (seg.kind === 'primary') {
+        ctx.strokeStyle = '#58dcff';
+        ctx.lineWidth = 2.2;
+        ctx.shadowColor = 'rgba(88, 220, 255, 0.65)';
+        ctx.shadowBlur = 8;
+      } else if (seg.kind === 'reflect') {
+        ctx.strokeStyle = '#ffbe5c';
+        ctx.lineWidth = 2.0;
+        ctx.shadowColor = 'rgba(255, 190, 92, 0.55)';
+        ctx.shadowBlur = 7;
+      } else if (seg.kind === 'refract') {
+        ctx.strokeStyle = '#c084fc';
+        ctx.lineWidth = 2.2;
+        ctx.shadowColor = 'rgba(192, 132, 252, 0.65)';
+        ctx.shadowBlur = 7;
+      } else if (seg.kind === 'tir') {
+        ctx.strokeStyle = '#ff5896';
+        ctx.lineWidth = 2.2;
+        ctx.shadowColor = 'rgba(255, 88, 150, 0.65)';
+        ctx.shadowBlur = 7;
+      } else if (seg.kind === 'shadow-lit') {
+        ctx.strokeStyle = 'rgba(74, 242, 178, 0.72)';
+        ctx.lineWidth = 1.3;
+        ctx.setLineDash([4, 4]);
+      } else {
+        ctx.strokeStyle = 'rgba(255, 96, 131, 0.72)';
+        ctx.lineWidth = 1.3;
+        ctx.setLineDash([3, 3]);
+      }
+
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+
+      // Directional arrowhead midpoint for non-shadow rays
+      if (seg.kind !== 'shadow-lit' && seg.kind !== 'shadow-occ') {
+        const dx = b.x - a.x, dy = b.y - a.y;
+        const len = Math.hypot(dx, dy);
+        if (len > 22) {
+          const mx = a.x + dx * 0.52, my = a.y + dy * 0.52;
+          const ang = Math.atan2(dy, dx);
+          ctx.fillStyle = ctx.strokeStyle;
+          ctx.beginPath();
+          ctx.moveTo(mx + Math.cos(ang) * 5, my + Math.sin(ang) * 5);
+          ctx.lineTo(mx + Math.cos(ang + 2.5) * 4.5, my + Math.sin(ang + 2.5) * 4.5);
+          ctx.lineTo(mx + Math.cos(ang - 2.5) * 4.5, my + Math.sin(ang - 2.5) * 4.5);
+          ctx.closePath();
+          ctx.fill();
+        }
+      }
+      ctx.restore();
+    }
+
+    // 6. Hit Points & Surface Normals
+    for (let i = 0; i < probeData.hits.length; i++) {
+      const hit = probeData.hits[i];
+      const p = xf.toScreen(hit.x, hit.z);
+
+      if (state.xrayShowNormals) {
+        const nl = 18;
+        ctx.strokeStyle = 'rgba(238, 243, 255, 0.75)';
+        ctx.lineWidth = 1.3;
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y);
+        ctx.lineTo(p.x + hit.nx * nl, p.y + hit.nz * nl);
+        ctx.stroke();
+      }
+
+      ctx.fillStyle = i === 0 ? '#58dcff' : (hit.tir ? '#ff5896' : '#ffbe5c');
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 3.8, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Bounce badge
+      ctx.font = '600 9.5px ui-monospace, Menlo, Consolas, monospace';
+      ctx.fillStyle = '#eef3ff';
+      const tag = hit.tir ? `TIR` : (hit.mat === MAT_GLASS ? `S${hit.depth}` : `B${hit.depth}`);
+      ctx.fillText(tag, p.x + 6, p.y - 5);
+    }
+
+    // Camera Dot
+    ctx.fillStyle = '#58dcff';
+    ctx.strokeStyle = '#040711';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(camP.x, camP.y, 5.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Header Label inside Inspector
+    ctx.fillStyle = 'rgba(8, 13, 26, 0.78)';
+    ctx.fillRect(x, y, w, 28);
+    ctx.fillStyle = '#58dcff';
+    ctx.font = '700 10.5px system-ui, -apple-system, sans-serif';
+    ctx.fillText('TOP-DOWN XZ RAY & BVH X-RAY INSPECTOR', x + 12, y + 18);
+
+    const statusTxt = state.probeLocked
+      ? `LOCKED · BVH ${probeData.bvhNodesHit}/${probeData.totalBVHNodes}`
+      : `LIVE SWEEP · BVH ${probeData.bvhNodesHit}/${probeData.totalBVHNodes}`;
+    ctx.font = '600 10px ui-monospace, Menlo, Consolas, monospace';
+    ctx.fillStyle = state.probeLocked ? '#4af2b2' : '#9aa9cc';
+    const tw = ctx.measureText(statusTxt).width;
+    const rightEdge = (state.viewMode === 'split' && state.drawerOpen && cssW > 960) ? x + xf.visW - 12 : x + w - 12;
+    ctx.fillText(statusTxt, Math.max(x + 245, rightEdge - tw), y + 18);
+
+    ctx.restore();
+
+    // Crisp outer border / split divider
+    ctx.save();
+    if (isOverlay) {
+      ctx.strokeStyle = 'rgba(88, 220, 255, 0.35)';
+      ctx.lineWidth = 1.25;
+      ctx.beginPath();
+      ctx.roundRect(x, y, w, h, 14);
+      ctx.stroke();
+    } else {
+      ctx.strokeStyle = 'rgba(88, 220, 255, 0.38)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, cssH);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function composeFrame() {
+    ctx.save();
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = '#040711';
+    ctx.fillRect(0, 0, cssW, cssH);
+
+    // Blit ray-traced buffer into 3D viewport
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(rtCanvas, layout.vpX, layout.vpY, layout.vpW, layout.vpH);
+
+    // Subtle scanline progress hairline when rendering sample 1 at high res
+    if (!isInteractivePreview && currentSPP === 0 && nextRow > 0 && nextRow < bufH) {
+      const py = layout.vpY + (nextRow / bufH) * layout.vpH;
+      ctx.strokeStyle = 'rgba(88, 220, 255, 0.45)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(layout.vpX, py);
+      ctx.lineTo(layout.vpX + layout.vpW, py);
+      ctx.stroke();
+    }
+
+    draw3DOverlays();
+    drawXRayInspector();
+    ctx.restore();
+  }
+
+  // =========================================================================
+  // INTERACTIVE POINTER HANDLING (ORBIT, DRAG 3D OBJECTS, SWEEP X-RAY)
+  // =========================================================================
+  const tooltipEl = document.getElementById('obj-tooltip');
+
+  function pointInXRay(px, py) {
+    return layout.xrayVisible && px >= layout.xrayX && px <= layout.xrayX + layout.xrayW && py >= layout.xrayY && py <= layout.xrayY + layout.xrayH;
+  }
+
+  function pointIn3D(px, py) {
+    return px >= layout.vpX && px <= layout.vpX + layout.vpW && py >= layout.vpY && py <= layout.vpY + layout.vpH;
+  }
+
+  function pickDraggablePrimitive(px, py) {
+    if (!pointIn3D(px, py)) return -1;
+    const u = (px - layout.vpX) / layout.vpW;
+    const v = (py - layout.vpY) / layout.vpH;
+    const dir = computePrimaryRayDir(u, v);
+    const sR = statRays, sN = statBVHNodes, sP = statPrimTests;
+    const hit = intersectScene(cam.posX, cam.posY, cam.posZ, dir[0], dir[1], dir[2], INF, null);
+    statRays = sR; statBVHNodes = sN; statPrimTests = sP;
+    if (hit && hitRes.primIdx >= 0 && primitives[hitRes.primIdx].draggable) {
+      return hitRes.primIdx;
+    }
+    return -1;
+  }
+
+  canvas.addEventListener('pointerdown', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const px = e.clientX - rect.left;
+    const py = e.clientY - rect.top;
+    state.lastMouseX = px;
+    state.lastMouseY = py;
+
+    // Clicking inside 2D X-Ray Inspector toggles probe ray lock at that point
+    if (pointInXRay(px, py)) {
+      const xf = getXRayTransform();
+      state.probeXRayWorld = xf.toWorld(px, py);
+      state.probeLocked = !state.probeLocked;
+      updateLockButtonUI();
+      updateProbeTrace();
+      if (state.audioOn) playCrystalPing(Math.max(2, probeData.hits.length));
+      return;
+    }
+
+    canvas.setPointerCapture(e.pointerId);
+
+    // Right-click or Shift+click pans camera
+    if (e.button === 2 || e.shiftKey) {
+      state.isPanningCam = true;
+      canvas.classList.add('dragging');
+      return;
+    }
+
+    // Check if user clicked a draggable 3D Light Orb or Sphere
+    const picked = pickDraggablePrimitive(px, py);
+    if (picked >= 0) {
+      state.dragPrimIdx = picked;
+      const pr = primitives[picked];
+      // Drag along plane facing camera passing through object center
+      state.dragPlaneN = [cam.fwdX, cam.fwdY, cam.fwdZ];
+      state.dragPlaneD = pr.x * cam.fwdX + pr.y * cam.fwdY + pr.z * cam.fwdZ;
+
+      const u = (px - layout.vpX) / layout.vpW;
+      const v = (py - layout.vpY) / layout.vpH;
+      const dir = computePrimaryRayDir(u, v);
+      const denom = dir[0] * cam.fwdX + dir[1] * cam.fwdY + dir[2] * cam.fwdZ;
+      const t = (state.dragPlaneD - (cam.posX * cam.fwdX + cam.posY * cam.fwdY + cam.posZ * cam.fwdZ)) / (denom || 1);
+      state.dragOffset = [
+        pr.x - (cam.posX + dir[0] * t),
+        pr.y - (cam.posY + dir[1] * t),
+        pr.z - (cam.posZ + dir[2] * t)
+      ];
+      canvas.classList.add('dragging');
+      tooltipEl.classList.remove('visible');
+      return;
+    }
+
+    // Otherwise orbit 3D camera
+    state.isDraggingCam = true;
+    canvas.classList.add('dragging');
+  });
+
+  canvas.addEventListener('pointermove', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const px = e.clientX - rect.left;
+    const py = e.clientY - rect.top;
+    const dx = px - state.lastMouseX;
+    const dy = py - state.lastMouseY;
+    state.lastMouseX = px;
+    state.lastMouseY = py;
+
+    if (state.dragPrimIdx >= 0) {
+      const pr = primitives[state.dragPrimIdx];
+      const u = Math.max(0, Math.min(1, (px - layout.vpX) / layout.vpW));
+      const v = Math.max(0, Math.min(1, (py - layout.vpY) / layout.vpH));
+      const dir = computePrimaryRayDir(u, v);
+      const nx = state.dragPlaneN[0], ny = state.dragPlaneN[1], nz = state.dragPlaneN[2];
+      const denom = dir[0] * nx + dir[1] * ny + dir[2] * nz;
+      if (Math.abs(denom) > 1e-4) {
+        const t = (state.dragPlaneD - (cam.posX * nx + cam.posY * ny + cam.posZ * nz)) / denom;
+        if (t > 0.5 && t < 30) {
+          pr.x = Math.max(-6, Math.min(6, cam.posX + dir[0] * t + state.dragOffset[0]));
+          const minY = sceneConfig.hasFloor ? sceneConfig.floorY + pr.r : 0.25 + pr.r;
+          pr.y = Math.max(minY, Math.min(8.5, cam.posY + dir[1] * t + state.dragOffset[1]));
+          pr.z = Math.max(-6, Math.min(6, cam.posZ + dir[2] * t + state.dragOffset[2]));
+          pr.basePos = [pr.x, pr.y, pr.z];
+
+          if (pr.isPrimaryLight) {
+            state.lightY = Math.max(1.2, Math.min(8.0, pr.y));
+            state.lightOrbitR = Math.hypot(pr.x, pr.z);
+            state.lightAngleDeg = ((Math.atan2(pr.z, pr.x) * 180 / Math.PI) + 360) % 360;
+            syncLightSliders();
+          }
+
+          syncFlatPrimsAndBuildBVH();
+          updateProbeTrace();
+        }
+      }
+      return;
+    }
+
+    if (state.isDraggingCam) {
+      state.camYaw -= dx * 0.0068;
+      state.camPitch = Math.max(-0.08, Math.min(1.42, state.camPitch + dy * 0.0062));
+      updateCameraBasis(layout.vpW / Math.max(1, layout.vpH));
+      updateProbeTrace();
+      return;
+    }
+
+    if (state.isPanningCam) {
+      const panScale = state.camDist * 0.0014;
+      state.targetX -= cam.rightX * dx * panScale - cam.upX * dy * panScale;
+      state.targetY = Math.max(0.2, Math.min(5.0, state.targetY + cam.upY * dy * panScale));
+      state.targetZ -= cam.rightZ * dx * panScale - cam.upZ * dy * panScale;
+      updateCameraBasis(layout.vpW / Math.max(1, layout.vpH));
+      updateProbeTrace();
+      return;
+    }
+
+    // Hover interactions: X-Ray Inspector sweep OR 3D probe sweep + draggable orb hover
+    if (pointInXRay(px, py)) {
+      canvas.classList.add('xray-hover');
+      canvas.classList.remove('hover-obj');
+      tooltipEl.classList.remove('visible');
+      state.hoverPrimIdx = -1;
+      if (!state.probeLocked) {
+        const xf = getXRayTransform();
+        state.probeXRayWorld = xf.toWorld(px, py);
+        updateProbeTrace();
+      }
+      return;
+    }
+
+    canvas.classList.remove('xray-hover');
+    if (pointIn3D(px, py)) {
+      if (layout.xrayVisible && !state.probeLocked) {
+        state.probeXRayWorld = null;
+        state.probeNormX = (px - layout.vpX) / layout.vpW;
+        state.probeNormY = (py - layout.vpY) / layout.vpH;
+        updateProbeTrace();
+      }
+      const hovered = pickDraggablePrimitive(px, py);
+      state.hoverPrimIdx = hovered;
+      if (hovered >= 0) {
+        canvas.classList.add('hover-obj');
+        tooltipEl.textContent = `Drag ${primitives[hovered].name}`;
+        tooltipEl.style.left = `${e.clientX}px`;
+        tooltipEl.style.top = `${e.clientY}px`;
+        tooltipEl.classList.add('visible');
+      } else {
+        canvas.classList.remove('hover-obj');
+        tooltipEl.classList.remove('visible');
+      }
+    }
+  });
+
+  function endDrag() {
+    const wasDragging = state.isDraggingCam || state.isPanningCam || state.dragPrimIdx >= 0;
+    if (state.dragPrimIdx >= 0 && state.audioOn) {
+      playCrystalPing(1);
+    }
+    state.isDraggingCam = false;
+    state.isPanningCam = false;
+    state.dragPrimIdx = -1;
+    canvas.classList.remove('dragging');
+    if (wasDragging) {
+      needsFullResUpgrade = true;
+      updateProbeTrace();
+    }
+  }
+
+  canvas.addEventListener('pointerup', endDrag);
+  canvas.addEventListener('pointercancel', endDrag);
+  canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+  canvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const factor = e.deltaY > 0 ? 1.08 : 0.925;
+    state.camDist = Math.max(2.6, Math.min(20.0, state.camDist * factor));
+    updateCameraBasis(layout.vpW / Math.max(1, layout.vpH));
+    resetAccumulation(false);
+    updateProbeTrace();
+  }, { passive: false });
+
+  // =========================================================================
+  // UI BINDINGS & TELEMETRY UPDATES
+  // =========================================================================
+  const el = (id) => document.getElementById(id);
+
+  function getIORLabel(ior) {
+    if (ior < 1.06) return 'Air';
+    if (ior < 1.24) return 'Aerogel';
+    if (ior < 1.38) return 'Water';
+    if (ior < 1.48) return 'Quartz';
+    if (ior < 1.62) return 'Crown Glass';
+    if (ior < 1.88) return 'Sapphire';
+    if (ior < 2.18) return 'Cubic Zirconia';
+    return 'Diamond';
+  }
+
+  function syncLightSliders() {
+    el('sl-light-y').value = state.lightY.toFixed(1);
+    el('val-light-y').textContent = `${state.lightY.toFixed(2)} m`;
+    el('sl-light-ang').value = Math.round(state.lightAngleDeg);
+    el('val-light-ang').textContent = `${Math.round(state.lightAngleDeg)}°`;
+    el('sl-light-rad').value = state.lightRadius.toFixed(2);
+    el('val-light-rad').textContent = `${state.lightRadius.toFixed(2)} m`;
+  }
+
+  function updateLockButtonUI() {
+    const btn = el('btn-lock-probe');
+    if (state.probeLocked) {
+      btn.textContent = '📌 Locked (L)';
+      btn.classList.add('active-lock');
+    } else {
+      btn.textContent = '📌 Lock Ray (L)';
+      btn.classList.remove('active-lock');
+    }
+  }
+
+  function syncUIFromState() {
+    // Preset buttons
+    document.querySelectorAll('.preset-btn').forEach((b) => {
+      b.classList.toggle('active', b.dataset.preset === state.preset);
+    });
+
+    // View mode segmented buttons & transport buttons
+    document.querySelectorAll('#view-mode-row .seg-btn').forEach((b) => {
+      b.classList.toggle('active', b.dataset.vmode === state.viewMode);
+    });
+    el('btn-xray').classList.toggle('active', state.viewMode === 'overlay');
+    el('btn-split').classList.toggle('amber-active', state.viewMode === 'split');
+
+    // Sliders
+    el('sl-bounces').value = state.maxBounces;
+    el('val-bounces').textContent = `${state.maxBounces} bounce${state.maxBounces > 1 ? 's' : ''}`;
+    el('sl-ior').value = state.glassIOR.toFixed(2);
+    el('val-ior').textContent = state.glassIOR.toFixed(2);
+    el('val-ior-name').textContent = getIORLabel(state.glassIOR);
+    el('sl-rough').value = state.metalRoughness.toFixed(2);
+    el('val-rough').textContent = state.metalRoughness.toFixed(2);
+    el('sl-res').value = state.resScale.toFixed(2);
+    el('val-res').textContent = `${state.resScale.toFixed(2)}×`;
+    el('sl-fov').value = state.fovDeg;
+    el('val-fov').textContent = `${state.fovDeg}°`;
+    syncLightSliders();
+
+    // Checkboxes
+    el('chk-shadows').checked = state.shadows;
+    el('chk-reflections').checked = state.reflections;
+    el('chk-refraction').checked = state.refraction;
+    el('chk-bvh').checked = state.useBVH;
+    el('chk-ao').checked = state.ambientOcclusion;
+    el('chk-disp').checked = state.dispersion;
+    el('chk-animate').checked = state.animateScene;
+    el('chk-xray-bvh').checked = state.xrayShowBVH;
+    el('chk-xray-shadow').checked = state.xrayShowShadow;
+    el('chk-xray-normals').checked = state.xrayShowNormals;
+    el('chk-xray-3d').checked = state.xrayShow3D;
+    el('chk-xray-fan').checked = state.xrayFan;
+
+    // Accel Badge
+    const ab = el('accel-badge');
+    if (state.useBVH) {
+      ab.textContent = 'BVH Tree';
+      ab.classList.remove('brute');
+    } else {
+      ab.textContent = 'Brute Force';
+      ab.classList.add('brute');
+    }
+    updateLockButtonUI();
+  }
+
+  function updateProbeLogUI() {
+    const logEl = el('probe-log');
+    const badge = el('probe-bounces-badge');
+    const nSegs = probeData.segments.length;
+    badge.textContent = `${nSegs} rays`;
+
+    if (probeData.hits.length === 0) {
+      logEl.innerHTML = `<div class="row-hi">Primary Ray → Sky Dome (no hit)</div><div>BVH Nodes Visited: ${probeData.bvhNodesHit} / ${probeData.totalBVHNodes}</div>`;
+      return;
+    }
+
+    const lines = [];
+    lines.push(`<div class="row-shad">BVH Traversal: ${probeData.bvhNodesHit} / ${probeData.totalBVHNodes} nodes visited</div>`);
+    const maxLines = Math.min(7, probeData.hits.length);
+    for (let i = 0; i < maxLines; i++) {
+      const h = probeData.hits[i];
+      if (h.mat === MAT_GLASS) {
+        if (h.tir) {
+          lines.push(`<div class="row-occ">[B${h.depth}] ${h.name} · TIR (θᵢ=${h.thetaI.toFixed(1)}°)</div>`);
+        } else {
+          const io = h.entering ? 'Enter' : 'Exit';
+          lines.push(`<div class="row-refr">[B${h.depth}] ${h.name} (${io}) θᵢ=${h.thetaI.toFixed(0)}°→θₜ=${h.thetaT.toFixed(0)}° · R=${(h.fresnel*100).toFixed(0)}%</div>`);
+        }
+      } else if (h.mat === MAT_METAL) {
+        lines.push(`<div class="row-refl">[B${h.depth}] ${h.name} · Specular Reflect</div>`);
+      } else {
+        lines.push(`<div class="row-hi">[B${h.depth}] ${h.name} · Diffuse / Floor</div>`);
+      }
+    }
+    logEl.innerHTML = lines.join('');
+  }
+
+  let lastHudUpdate = 0;
+  function updateTelemetryHUD(now) {
+    if (now - lastHudUpdate < 110) return;
+    lastHudUpdate = now;
+
+    el('tel-res').textContent = `${bufW}×${bufH}`;
+    el('tel-mrays').textContent = `${lastRaysPerSec.toFixed(2)} M/s`;
+    el('tel-spp').textContent = `${Math.min(MAX_SPP, currentSPP)} / ${MAX_SPP}`;
+    el('tel-rays').textContent = lastRaysPerFrame >= 1000000
+      ? `${(lastRaysPerFrame / 1e6).toFixed(2)} M`
+      : `${Math.round(lastRaysPerFrame / 1000)} K`;
+    el('tel-depth').textContent = `${state.maxBounces}`;
+
+    const totalP = Math.max(1, primitives.length);
+    const speedup = state.useBVH && lastAvgPrimTests > 0.1
+      ? Math.max(1.0, totalP / (lastAvgPrimTests + lastAvgBVHNodes * 0.22))
+      : 1.0;
+    el('tel-bvh').textContent = state.useBVH ? `${speedup.toFixed(2)}×` : `1.00×`;
+
+    const pct = Math.min(100, Math.round((currentSPP / MAX_SPP) * 100));
+    el('aa-fill').style.width = `${pct}%`;
+    el('tel-aa-pct').textContent = `${pct}%`;
+
+    el('tel-nodes').textContent = state.useBVH ? lastAvgBVHNodes.toFixed(1) : 'OFF';
+    el('tel-prims').textContent = `${lastAvgPrimTests.toFixed(1)} / ${totalP}`;
+    el('tel-ms').textContent = `${lastRenderTimeMs.toFixed(1)} ms`;
+
+    const stEl = el('render-status');
+    stEl.classList.remove('preview', 'paused');
+    if (state.paused) {
+      stEl.textContent = 'Paused';
+      stEl.classList.add('paused');
+    } else if (isInteractivePreview) {
+      stEl.textContent = '60fps Preview';
+      stEl.classList.add('preview');
+    } else if (currentSPP >= MAX_SPP) {
+      stEl.textContent = 'Converged';
+    } else {
+      stEl.textContent = 'Progressive AA';
+    }
+  }
+
+  // Tabs
+  document.querySelectorAll('.tab-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach((b) => b.classList.remove('active'));
+      document.querySelectorAll('.tab-pane').forEach((p) => p.classList.remove('active'));
+      btn.classList.add('active');
+      el(`tab-${btn.dataset.tab}`).classList.add('active');
+    });
+  });
+
+  // Preset buttons
+  document.querySelectorAll('.preset-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      loadPreset(btn.dataset.preset, false);
+      if (state.audioOn) playSceneChord();
+    });
+  });
+
+  // View mode setter
+  function setViewMode(mode) {
+    state.viewMode = mode;
+    syncUIFromState();
+    resetAccumulation(false);
+    updateProbeTrace();
+    if (state.audioOn) playCrystalPing(mode === 'split' ? 4 : 2);
+  }
+
+  document.querySelectorAll('#view-mode-row .seg-btn').forEach((btn) => {
+    btn.addEventListener('click', () => setViewMode(btn.dataset.vmode));
+  });
+
+  // Sliders
+  el('sl-bounces').addEventListener('input', (e) => {
+    state.maxBounces = parseInt(e.target.value, 10);
+    el('val-bounces').textContent = `${state.maxBounces} bounce${state.maxBounces > 1 ? 's' : ''}`;
+    resetAccumulation(false);
+    updateProbeTrace();
+  });
+
+  function setGlassIOR(val) {
+    state.glassIOR = Math.max(1.0, Math.min(2.42, val));
+    el('sl-ior').value = state.glassIOR.toFixed(2);
+    el('val-ior').textContent = state.glassIOR.toFixed(2);
+    el('val-ior-name').textContent = getIORLabel(state.glassIOR);
+    resetAccumulation(false);
+    updateProbeTrace();
+  }
+  el('sl-ior').addEventListener('input', (e) => setGlassIOR(parseFloat(e.target.value)));
+  el('btn-ior-water').addEventListener('click', () => setGlassIOR(1.33));
+  el('btn-ior-glass').addEventListener('click', () => setGlassIOR(1.52));
+  el('btn-ior-sapphire').addEventListener('click', () => setGlassIOR(1.77));
+  el('btn-ior-diamond').addEventListener('click', () => setGlassIOR(2.42));
+
+  el('sl-rough').addEventListener('input', (e) => {
+    state.metalRoughness = parseFloat(e.target.value);
+    el('val-rough').textContent = state.metalRoughness.toFixed(2);
+    resetAccumulation(false);
+  });
+
+  el('sl-res').addEventListener('input', (e) => {
+    state.resScale = parseFloat(e.target.value);
+    el('val-res').textContent = `${state.resScale.toFixed(2)}×`;
+    resetAccumulation(false);
+  });
+
+  el('sl-fov').addEventListener('input', (e) => {
+    state.fovDeg = parseInt(e.target.value, 10);
+    el('val-fov').textContent = `${state.fovDeg}°`;
+    resetAccumulation(false);
+    updateProbeTrace();
+  });
+
+  el('sl-light-y').addEventListener('input', (e) => {
+    state.lightY = parseFloat(e.target.value);
+    el('val-light-y').textContent = `${state.lightY.toFixed(2)} m`;
+    updatePrimaryLightFromSliders();
+    syncFlatPrimsAndBuildBVH();
+    resetAccumulation(false);
+    updateProbeTrace();
+  });
+
+  el('sl-light-ang').addEventListener('input', (e) => {
+    state.lightAngleDeg = parseFloat(e.target.value);
+    el('val-light-ang').textContent = `${Math.round(state.lightAngleDeg)}°`;
+    updatePrimaryLightFromSliders();
+    syncFlatPrimsAndBuildBVH();
+    resetAccumulation(false);
+    updateProbeTrace();
+  });
+
+  el('sl-light-rad').addEventListener('input', (e) => {
+    state.lightRadius = parseFloat(e.target.value);
+    el('val-light-rad').textContent = `${state.lightRadius.toFixed(2)} m`;
+    updatePrimaryLightFromSliders();
+    syncFlatPrimsAndBuildBVH();
+    resetAccumulation(false);
+  });
+
+  // Checkboxes
+  const bindChk = (id, key, rebuild) => {
+    el(id).addEventListener('change', (e) => {
+      state[key] = e.target.checked;
+      if (rebuild) syncUIFromState();
+      resetAccumulation(false);
+      updateProbeTrace();
+    });
+  };
+  bindChk('chk-shadows', 'shadows', false);
+  bindChk('chk-reflections', 'reflections', false);
+  bindChk('chk-refraction', 'refraction', false);
+  bindChk('chk-bvh', 'useBVH', true);
+  bindChk('chk-ao', 'ambientOcclusion', false);
+  bindChk('chk-disp', 'dispersion', false);
+  bindChk('chk-animate', 'animateScene', false);
+  bindChk('chk-xray-bvh', 'xrayShowBVH', false);
+  bindChk('chk-xray-shadow', 'xrayShowShadow', false);
+  bindChk('chk-xray-normals', 'xrayShowNormals', false);
+  bindChk('chk-xray-3d', 'xrayShow3D', false);
+  bindChk('chk-xray-fan', 'xrayFan', false);
+
+  el('btn-lock-probe').addEventListener('click', () => {
+    state.probeLocked = !state.probeLocked;
+    updateLockButtonUI();
+    if (state.audioOn) playCrystalPing(3);
+  });
+
+  el('btn-reset-cam').addEventListener('click', () => {
+    loadPreset(state.preset, true);
+  });
+
+  // Transport Bar Buttons
+  function togglePause() {
+    state.paused = !state.paused;
+    const btn = el('btn-play');
+    btn.textContent = state.paused ? '▶ Play' : '⏸ Pause';
+    btn.classList.toggle('active', !state.paused);
+  }
+  el('btn-play').addEventListener('click', togglePause);
+
+  el('btn-reset').addEventListener('click', () => {
+    loadPreset(state.preset, true);
+    if (state.audioOn) playSceneChord();
+  });
+
+  el('btn-xray').addEventListener('click', () => {
+    setViewMode(state.viewMode === 'overlay' ? 'full' : 'overlay');
+  });
+
+  el('btn-split').addEventListener('click', () => {
+    setViewMode(state.viewMode === 'split' ? 'full' : 'split');
+  });
+
+  el('btn-sound').addEventListener('click', () => {
+    state.audioOn = !state.audioOn;
+    const btn = el('btn-sound');
+    btn.textContent = state.audioOn ? '🔊 Audio' : '🔇 Audio';
+    btn.classList.toggle('active', state.audioOn);
+    if (state.audioOn) playCrystalPing(4);
+  });
+
+  function toggleDrawer() {
+    state.drawerOpen = !state.drawerOpen;
+    el('drawer').classList.toggle('collapsed', !state.drawerOpen);
+    el('btn-toggle-drawer').classList.toggle('active', state.drawerOpen);
+  }
+  el('btn-toggle-drawer').addEventListener('click', toggleDrawer);
+
+  function toggleZen() {
+    state.zenMode = !state.zenMode;
+    document.body.classList.toggle('zen-mode', state.zenMode);
+  }
+  el('btn-zen').addEventListener('click', toggleZen);
+  el('btn-zen-restore').addEventListener('click', toggleZen);
+
+  // Keyboard shortcuts
+  window.addEventListener('keydown', (e) => {
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+    const k = e.key.toLowerCase();
+    if (k === ' ') {
+      e.preventDefault();
+      togglePause();
+    } else if (k === 'h') {
+      toggleZen();
+    } else if (k === 'x') {
+      setViewMode(state.viewMode === 'overlay' ? 'full' : 'overlay');
+    } else if (k === 'v') {
+      setViewMode(state.viewMode === 'split' ? 'full' : 'split');
+    } else if (k === 'l') {
+      state.probeLocked = !state.probeLocked;
+      updateLockButtonUI();
+    } else if (k === 'r') {
+      loadPreset(state.preset, true);
+    }
+  });
+
+  window.addEventListener('resize', handleResize);
+
+  // =========================================================================
+  // MAIN ANIMATION LOOP
+  // =========================================================================
+  let lastFrameTs = performance.now();
+
+  function tick(now) {
+    const dt = Math.min(0.05, (now - lastFrameTs) * 0.001);
+    lastFrameTs = now;
+
+    if (state.animateScene && !state.paused && state.dragPrimIdx < 0) {
+      state.animTime += dt;
+      state.lightAngleDeg = (state.lightAngleDeg + dt * 28) % 360;
+      updatePrimaryLightFromSliders();
+      // Gently bob floating glass / non-light spheres
+      for (let i = 0; i < primitives.length; i++) {
+        const pr = primitives[i];
+        if (pr.type === PRIM_SPHERE && !pr.isPrimaryLight && pr.draggable) {
+          const base = pr.basePos;
+          const bob = Math.sin(state.animTime * 1.9 + i * 1.3) * 0.14;
+          const minY = sceneConfig.hasFloor ? sceneConfig.floorY + pr.r : pr.r + 0.05;
+          pr.y = Math.max(minY, base[1] + bob);
+        }
+      }
+      syncFlatPrimsAndBuildBVH();
+      syncLightSliders();
+      if (layout.xrayVisible) updateProbeTrace();
+    }
+
+    renderRaySlice();
+    composeFrame();
+    updateTelemetryHUD(now);
+
+    requestAnimationFrame(tick);
+  }
+
+  // =========================================================================
+  // BOOTSTRAP
+  // =========================================================================
+  handleResize();
+  loadPreset('classic', false);
+  requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>

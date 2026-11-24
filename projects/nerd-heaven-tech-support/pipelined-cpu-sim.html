@@ -1,0 +1,3345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Pipeline — 5-Stage RISC CPU, Assembly &amp; Cache/Hazard Simulator</title>
+<style>
+  :root {
+    --bg-deep: #040711;
+    --panel-bg: rgba(9, 13, 24, 0.80);
+    --panel-bg-strong: rgba(8, 12, 22, 0.94);
+    --panel-border: rgba(148, 179, 255, 0.16);
+    --panel-border-hi: rgba(148, 179, 255, 0.36);
+    --text-main: #eef3ff;
+    --text-dim: #9aa9cc;
+    --text-muted: #68789c;
+    --accent-amber: #ffbe5c;
+    --accent-cyan: #58dcff;
+    --accent-mint: #4af2b2;
+    --accent-emerald: #34d399;
+    --accent-rose: #ff6083;
+    --accent-violet: #a78bfa;
+    --accent-gold: #ffd166;
+    --radius-lg: 14px;
+    --radius-md: 10px;
+    --radius-sm: 7px;
+    --mono: ui-monospace, "Cascadia Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Inter, Helvetica, Arial, sans-serif;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg-deep);
+    color: var(--text-main);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    touch-action: none;
+  }
+
+  #sim-canvas {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    cursor: default;
+  }
+
+  /* HUD Layer */
+  .hud {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 10;
+  }
+  body.zen-mode .hud > :not(.zen-restore) {
+    opacity: 0;
+    pointer-events: none !important;
+  }
+
+  .panel {
+    pointer-events: auto;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-lg);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.52), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    transition: opacity 0.25s ease, transform 0.25s ease;
+  }
+
+  /* Top-Left Telemetry Card */
+  .top-left {
+    position: fixed;
+    top: 14px;
+    left: 14px;
+    width: min(420px, calc(100vw - 368px));
+    min-width: 295px;
+    padding: 11px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .brand-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .brand-title-wrap {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .brand-title {
+    font-size: 16px;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    background: linear-gradient(120deg, #e8f8ff 0%, #58dcff 48%, #ffd166 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .mode-badge {
+    font-size: 9.5px;
+    font-weight: 750;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 999px;
+    border: 1px solid rgba(88, 220, 255, 0.4);
+    background: rgba(88, 220, 255, 0.12);
+    color: var(--accent-cyan);
+  }
+
+  .status-pill {
+    font-size: 10px;
+    font-weight: 750;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: rgba(74, 242, 178, 0.14);
+    color: var(--accent-mint);
+    border: 1px solid rgba(74, 242, 178, 0.36);
+    white-space: nowrap;
+  }
+  .status-pill.warn {
+    background: rgba(255, 190, 92, 0.18);
+    color: var(--accent-amber);
+    border-color: rgba(255, 190, 92, 0.45);
+  }
+  .status-pill.danger {
+    background: rgba(255, 96, 131, 0.2);
+    color: var(--accent-rose);
+    border-color: rgba(255, 96, 131, 0.48);
+  }
+  .status-pill.idle {
+    background: rgba(167, 139, 250, 0.16);
+    color: var(--accent-violet);
+    border-color: rgba(167, 139, 250, 0.4);
+  }
+
+  .telemetry-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+  }
+
+  .tele-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(148, 179, 255, 0.1);
+    border-radius: var(--radius-sm);
+    padding: 5px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+
+  .tele-label {
+    font-size: 9px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .tele-val {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-main);
+  }
+  .tele-val.amber { color: var(--accent-amber); }
+  .tele-val.cyan { color: var(--accent-cyan); }
+  .tele-val.mint { color: var(--accent-mint); }
+  .tele-val.rose { color: var(--accent-rose); }
+  .tele-val.violet { color: var(--accent-violet); }
+
+  .ipc-bar-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+  .ipc-track {
+    flex: 1;
+    height: 5px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+    overflow: hidden;
+  }
+  .ipc-fill {
+    height: 100%;
+    width: 0%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #ff6083, #ffbe5c 45%, #4af2b2 100%);
+    transition: width 0.14s ease;
+  }
+
+  .clock-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding-top: 4px;
+    border-top: 1px solid rgba(148, 179, 255, 0.1);
+    font-size: 10.5px;
+    color: var(--text-dim);
+    font-family: var(--mono);
+  }
+  .clock-row span strong {
+    color: var(--text-main);
+    font-weight: 650;
+  }
+
+  /* Right Collapsible Drawer (330px) */
+  .drawer {
+    position: fixed;
+    top: 14px;
+    right: 14px;
+    bottom: 14px;
+    width: 330px;
+    max-width: calc(100vw - 28px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: transform 0.25s ease, opacity 0.25s ease;
+  }
+  .drawer.collapsed {
+    transform: translateX(calc(100% + 24px));
+    pointer-events: none;
+  }
+
+  .drawer-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+    padding: 8px 8px 6px;
+    border-bottom: 1px solid var(--panel-border);
+    background: rgba(4, 7, 15, 0.42);
+  }
+
+  .tab-btn {
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    padding: 7px 6px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .tab-btn:hover {
+    color: var(--text-main);
+    background: rgba(255, 255, 255, 0.04);
+  }
+  .tab-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.16);
+    border-color: rgba(88, 220, 255, 0.4);
+  }
+
+  .drawer-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 11px 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .drawer-body::-webkit-scrollbar {
+    width: 5px;
+  }
+  .drawer-body::-webkit-scrollbar-thumb {
+    background: rgba(148, 179, 255, 0.22);
+    border-radius: 999px;
+  }
+
+  .tab-pane {
+    display: none;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .tab-pane.active {
+    display: flex;
+  }
+
+  .section {
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(148, 179, 255, 0.11);
+    border-radius: var(--radius-md);
+    padding: 9px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .section-title {
+    font-size: 10px;
+    font-weight: 750;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  /* Program Presets */
+  .preset-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .preset-btn {
+    text-align: left;
+    padding: 7px 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(148, 179, 255, 0.14);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-main);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .preset-btn:hover {
+    border-color: rgba(88, 220, 255, 0.45);
+    background: rgba(88, 220, 255, 0.08);
+  }
+  .preset-btn.active {
+    border-color: var(--accent-cyan);
+    background: rgba(88, 220, 255, 0.14);
+    box-shadow: 0 0 14px rgba(88, 220, 255, 0.14);
+  }
+  .preset-name {
+    font-size: 11px;
+    font-weight: 700;
+  }
+  .preset-sub {
+    font-size: 9.2px;
+    color: var(--text-muted);
+    line-height: 1.25;
+  }
+
+  /* Assembly Editor */
+  .asm-editor {
+    width: 100%;
+    min-height: 196px;
+    resize: vertical;
+    background: rgba(4, 7, 17, 0.88);
+    border: 1px solid rgba(148, 179, 255, 0.22);
+    border-radius: var(--radius-sm);
+    color: #d8ebff;
+    font-family: var(--mono);
+    font-size: 11px;
+    line-height: 1.45;
+    padding: 8px 9px;
+    outline: none;
+    user-select: text;
+    white-space: pre;
+    overflow-x: auto;
+    tab-size: 2;
+  }
+  .asm-editor:focus {
+    border-color: var(--accent-cyan);
+    box-shadow: 0 0 0 2px rgba(88, 220, 255, 0.15);
+  }
+
+  .asm-status {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--accent-mint);
+    min-height: 14px;
+    line-height: 1.3;
+  }
+  .asm-status.error {
+    color: var(--accent-rose);
+  }
+
+  /* Controls & Sliders */
+  .control-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .control-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+  .control-head .val {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-main);
+    font-weight: 650;
+  }
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 5px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.18);
+    outline: none;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 13px;
+    height: 13px;
+    border-radius: 50%;
+    background: var(--accent-cyan);
+    border: 2px solid #08101f;
+    box-shadow: 0 0 10px rgba(88, 220, 255, 0.65);
+    cursor: pointer;
+  }
+  input[type="range"].amber::-webkit-slider-thumb {
+    background: var(--accent-amber);
+    box-shadow: 0 0 10px rgba(255, 190, 92, 0.65);
+  }
+
+  /* Toggle Switches */
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 11.2px;
+    color: var(--text-dim);
+    cursor: pointer;
+  }
+  .toggle-row input {
+    display: none;
+  }
+  .toggle-desc {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+  .toggle-desc strong {
+    color: var(--text-main);
+    font-weight: 650;
+    font-size: 11.2px;
+  }
+  .toggle-desc small {
+    color: var(--text-muted);
+    font-size: 9.5px;
+  }
+  .switch {
+    width: 34px;
+    height: 18px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.2);
+    border: 1px solid rgba(148, 179, 255, 0.25);
+    position: relative;
+    transition: all 0.18s ease;
+    flex-shrink: 0;
+  }
+  .switch::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #c8d7f5;
+    transition: transform 0.18s ease, background 0.18s ease;
+  }
+  .toggle-row input:checked + .switch {
+    background: rgba(88, 220, 255, 0.34);
+    border-color: var(--accent-cyan);
+  }
+  .toggle-row input:checked + .switch::after {
+    transform: translateX(16px);
+    background: #fff;
+  }
+  .toggle-row.gold input:checked + .switch {
+    background: rgba(255, 209, 102, 0.34);
+    border-color: var(--accent-gold);
+  }
+  .toggle-row.mint input:checked + .switch {
+    background: rgba(74, 242, 178, 0.32);
+    border-color: var(--accent-mint);
+  }
+
+  /* Buttons */
+  .btn-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .btn {
+    border: 1px solid rgba(148, 179, 255, 0.22);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-main);
+    font-size: 11px;
+    font-weight: 700;
+    padding: 7px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+  .btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 179, 255, 0.45);
+  }
+  .btn:active {
+    transform: scale(0.98);
+  }
+  .btn.primary {
+    background: linear-gradient(135deg, rgba(88, 220, 255, 0.28), rgba(56, 140, 255, 0.24));
+    border-color: rgba(88, 220, 255, 0.55);
+    color: #e6f9ff;
+  }
+  .btn.primary:hover {
+    background: linear-gradient(135deg, rgba(88, 220, 255, 0.4), rgba(56, 140, 255, 0.35));
+  }
+
+  /* Hardware Stats & Memory Tables */
+  .stat-list {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 5px;
+  }
+  .stat-chip {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(148, 179, 255, 0.1);
+    border-radius: 6px;
+    padding: 5px 7px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+  .stat-chip strong {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-main);
+  }
+
+  .mem-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--mono);
+    font-size: 10.5px;
+  }
+  .mem-table th {
+    text-align: left;
+    color: var(--text-muted);
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 3px 5px;
+    border-bottom: 1px solid rgba(148, 179, 255, 0.14);
+  }
+  .mem-table td {
+    padding: 3px 5px;
+    border-bottom: 1px solid rgba(148, 179, 255, 0.06);
+    color: var(--text-main);
+  }
+  .mem-table tr.hi-write td {
+    background: rgba(74, 242, 178, 0.14);
+    color: var(--accent-mint);
+  }
+  .mem-table tr.hi-read td {
+    background: rgba(88, 220, 255, 0.12);
+    color: var(--accent-cyan);
+  }
+  .mem-table tr.hi-miss td {
+    background: rgba(255, 96, 131, 0.16);
+    color: var(--accent-rose);
+  }
+
+  .ram-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+    font-family: var(--mono);
+    font-size: 10px;
+  }
+  .ram-cell {
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(148, 179, 255, 0.1);
+    border-radius: 5px;
+    padding: 4px 5px;
+    display: flex;
+    justify-content: space-between;
+    color: var(--text-dim);
+  }
+  .ram-cell strong {
+    color: var(--text-main);
+  }
+  .ram-cell.active {
+    border-color: var(--accent-mint);
+    background: rgba(74, 242, 178, 0.14);
+  }
+
+  .note-small {
+    font-size: 10px;
+    color: var(--text-muted);
+    line-height: 1.38;
+  }
+  .note-small code {
+    font-family: var(--mono);
+    color: var(--accent-cyan);
+    font-size: 9.8px;
+  }
+
+  /* Bottom-Center Transport Bar */
+  .bottom-bar {
+    position: fixed;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 7px 10px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    flex-wrap: nowrap;
+  }
+
+  .bar-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-main);
+    font-size: 11px;
+    font-weight: 650;
+    padding: 6px 9px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    white-space: nowrap;
+  }
+  .bar-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 179, 255, 0.4);
+  }
+  .bar-btn.active {
+    background: rgba(88, 220, 255, 0.2);
+    border-color: var(--accent-cyan);
+    color: #fff;
+  }
+  .bar-btn.amber {
+    border-color: rgba(255, 190, 92, 0.35);
+    color: #ffe2ad;
+  }
+
+  .bar-divider {
+    width: 1px;
+    height: 19px;
+    background: rgba(148, 179, 255, 0.16);
+    margin: 0 2px;
+  }
+
+  /* Bottom-Left Hints */
+  .hint-pill {
+    position: fixed;
+    bottom: 14px;
+    left: 14px;
+    padding: 7px 10px;
+    font-size: 10.5px;
+    color: var(--text-dim);
+    max-width: 315px;
+    line-height: 1.45;
+  }
+  .hint-pill kbd {
+    font-family: var(--mono);
+    font-size: 9.5px;
+    padding: 1px 4px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #fff;
+  }
+
+  .zen-restore {
+    position: fixed;
+    bottom: 14px;
+    right: 14px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+  }
+  body.zen-mode .zen-restore {
+    opacity: 0.9;
+    pointer-events: auto;
+  }
+
+  @media (max-width: 960px) {
+    .top-left {
+      width: calc(100vw - 28px);
+      max-width: none;
+    }
+    .drawer {
+      top: auto;
+      bottom: 62px;
+      height: 52vh;
+      width: calc(100vw - 28px);
+    }
+    .hint-pill {
+      display: none;
+    }
+  }
+</style>
+</head>
+<body>
+<canvas id="sim-canvas"></canvas>
+
+<div class="hud">
+  <!-- Top-Left Telemetry Card -->
+  <div class="panel top-left">
+    <div class="brand-row">
+      <div class="brand-title-wrap">
+        <div class="brand-title">Pipeline</div>
+        <span class="mode-badge">5-Stage RISC</span>
+      </div>
+      <span id="cpu-status" class="status-pill">Running</span>
+    </div>
+
+    <div class="telemetry-grid">
+      <div class="tele-card">
+        <span class="tele-label">Cycle</span>
+        <span id="tel-cycle" class="tele-val cyan">0</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Retired</span>
+        <span id="tel-retired" class="tele-val mint">0</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">CPI / IPC</span>
+        <span id="tel-cpi" class="tele-val">—</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Stall Cycles</span>
+        <span id="tel-stalls" class="tele-val amber">0</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Branch Flushes</span>
+        <span id="tel-flushes" class="tele-val rose">0</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">L1 Cache Hit</span>
+        <span id="tel-hitrate" class="tele-val mint">—</span>
+      </div>
+    </div>
+
+    <div class="ipc-bar-wrap">
+      <span>Throughput</span>
+      <div class="ipc-track"><div id="ipc-fill" class="ipc-fill"></div></div>
+      <span id="tel-ipc-pct" style="font-family: var(--mono); color: var(--text-main);">0.00 IPC</span>
+    </div>
+
+    <div class="clock-row">
+      <span>PC: <strong id="tel-pc">0x00</strong></span>
+      <span>FWD: <strong id="tel-fwd-badge" style="color:var(--accent-gold)">ON</strong></span>
+      <span>BP: <strong id="tel-bp-badge" style="color:var(--text-muted)">OFF</strong></span>
+      <span>L1: <strong id="tel-l1-badge" style="color:var(--accent-mint)">ON</strong></span>
+    </div>
+  </div>
+
+  <!-- Collapsible 330px Right Drawer -->
+  <aside id="drawer" class="panel drawer">
+    <div class="drawer-tabs">
+      <button class="tab-btn active" data-tab="programs">Programs</button>
+      <button class="tab-btn" data-tab="hardware">Hardware</button>
+      <button class="tab-btn" data-tab="memory">Regs &amp; RAM</button>
+    </div>
+
+    <div class="drawer-body">
+      <!-- TAB 1: PROGRAMS & LIVE ASSEMBLY -->
+      <div id="tab-programs" class="tab-pane active">
+        <div class="section">
+          <div class="section-title">
+            <span>RISC Assembly Programs</span>
+            <span style="color:var(--accent-cyan); font-family:var(--mono);">6 Presets</span>
+          </div>
+          <div class="preset-grid">
+            <button class="preset-btn active" data-preset="raw">
+              <span class="preset-name">RAW &amp; Forwarding</span>
+              <span class="preset-sub">EX→EX &amp; MEM→EX bypass chain</span>
+            </button>
+            <button class="preset-btn" data-preset="fibonacci">
+              <span class="preset-name">Fibonacci Loop</span>
+              <span class="preset-sub">1, 1, 2, 3, 5, 8, 13, 21, 34, 55</span>
+            </button>
+            <button class="preset-btn" data-preset="loaduse">
+              <span class="preset-name">Load-Use Hazard</span>
+              <span class="preset-sub">LW directly before ADD/MUL</span>
+            </button>
+            <button class="preset-btn" data-preset="cache">
+              <span class="preset-name">L1 Cache Thrash</span>
+              <span class="preset-sub">Conflict miss vs spatial hit</span>
+            </button>
+            <button class="preset-btn" data-preset="branch">
+              <span class="preset-name">Branch &amp; Flush</span>
+              <span class="preset-sub">Countdown loop mispredict test</span>
+            </button>
+            <button class="preset-btn" data-preset="arraysum">
+              <span class="preset-name">Array Sum</span>
+              <span class="preset-sub">8-word RAM accumulator loop</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">
+            <span>Live Assembly Editor</span>
+            <span id="asm-count" style="font-family:var(--mono); color:var(--text-muted);">0 instr</span>
+          </div>
+          <textarea id="asm-editor" class="asm-editor" spellcheck="false"></textarea>
+          <div id="asm-status" class="asm-status">Ready.</div>
+          <div class="btn-row">
+            <button id="btn-assemble" class="btn primary">⚡ Assemble &amp; Run</button>
+            <button id="btn-reload-preset" class="btn">↺ Restore Preset</button>
+          </div>
+          <div class="note-small">
+            ISA: <code>ADD SUB MUL AND OR XOR SLT</code>, <code>ADDI LI</code>, <code>LW SW</code>, <code>BEQ BNE BLT J</code>, <code>NOP HALT</code>. Registers <code>R0–R7</code> (<code>R0=0</code>).
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 2: HARDWARE HAZARDS & CACHE -->
+      <div id="tab-hardware" class="tab-pane">
+        <div class="section">
+          <div class="section-title"><span>Pipeline Hazard Controls</span></div>
+
+          <label class="toggle-row gold">
+            <span class="toggle-desc">
+              <strong>Data Forwarding (Bypass)</strong>
+              <small>EX→EX &amp; MEM→EX gold shortcuts vs amber NOP stalls</small>
+            </span>
+            <input id="tog-forwarding" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+
+          <label class="toggle-row">
+            <span class="toggle-desc">
+              <strong>2-Bit Branch Predictor (BTB)</strong>
+              <small>Predicts taken loops; OFF = always not-taken</small>
+            </span>
+            <input id="tog-branch-pred" type="checkbox" />
+            <span class="switch"></span>
+          </label>
+
+          <label class="toggle-row mint">
+            <span class="toggle-desc">
+              <strong>L1 Direct-Mapped Data Cache</strong>
+              <small>4 sets × 2 words (8B line); OFF forces RAM stalls</small>
+            </span>
+            <input id="tog-cache" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Timing &amp; Visuals</span></div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Clock Frequency</span>
+              <span id="val-clock" class="val">1.6 Hz</span>
+            </div>
+            <input id="sl-clock" type="range" min="0.4" max="10" step="0.2" value="1.6" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>L1 Cache Miss Penalty</span>
+              <span id="val-miss-penalty" class="val">2 cycles</span>
+            </div>
+            <input id="sl-miss-penalty" class="amber" type="range" min="1" max="5" step="1" value="2" />
+          </div>
+
+          <label class="toggle-row">
+            <span>Animate Bus Signal Pulses</span>
+            <input id="tog-packets" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+
+          <label class="toggle-row gold">
+            <span>Highlight Bypass Arcs</span>
+            <input id="tog-fwd-arcs" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Microarchitecture Counters</span></div>
+          <div class="stat-list">
+            <div class="stat-chip"><span>EX→EX Fwd</span><strong id="st-ex-fwd" style="color:var(--accent-gold)">0</strong></div>
+            <div class="stat-chip"><span>MEM→EX Fwd</span><strong id="st-mem-fwd" style="color:var(--accent-gold)">0</strong></div>
+            <div class="stat-chip"><span>RAW Stalls</span><strong id="st-raw-stalls" style="color:var(--accent-amber)">0</strong></div>
+            <div class="stat-chip"><span>Load-Use</span><strong id="st-lu-stalls" style="color:var(--accent-amber)">0</strong></div>
+            <div class="stat-chip"><span>L1 Hits</span><strong id="st-l1-hits" style="color:var(--accent-mint)">0</strong></div>
+            <div class="stat-chip"><span>L1 Misses</span><strong id="st-l1-misses" style="color:var(--accent-rose)">0</strong></div>
+            <div class="stat-chip"><span>BP Hits</span><strong id="st-bp-hits" style="color:var(--accent-cyan)">0</strong></div>
+            <div class="stat-chip"><span>Mispredicts</span><strong id="st-bp-miss" style="color:var(--accent-rose)">0</strong></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 3: REGISTERS, L1 CACHE & RAM -->
+      <div id="tab-memory" class="tab-pane">
+        <div class="section">
+          <div class="section-title">
+            <span>Register File (R0–R7)</span>
+            <span style="font-family:var(--mono); color:var(--text-muted);">32-bit</span>
+          </div>
+          <table class="mem-table">
+            <thead>
+              <tr><th>Reg</th><th>Dec</th><th>Hex</th><th>Activity</th></tr>
+            </thead>
+            <tbody id="reg-table-body"></tbody>
+          </table>
+        </div>
+
+        <div class="section">
+          <div class="section-title">
+            <span>Direct-Mapped L1 Cache</span>
+            <span style="font-family:var(--mono); color:var(--accent-mint);">4×8B</span>
+          </div>
+          <table class="mem-table">
+            <thead>
+              <tr><th>Set</th><th>V</th><th>Tag</th><th>W0</th><th>W1</th></tr>
+            </thead>
+            <tbody id="cache-table-body"></tbody>
+          </table>
+        </div>
+
+        <div class="section">
+          <div class="section-title">
+            <span>Main RAM (Words 0–17)</span>
+            <span style="font-family:var(--mono); color:var(--text-muted);">Byte Addr</span>
+          </div>
+          <div id="ram-grid" class="ram-grid"></div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Bottom-Left Hints -->
+  <div class="panel hint-pill">
+    <div><kbd>Space</kbd> Play/Pause · <kbd>S</kbd>/<kbd>→</kbd> Step Cycle · <kbd>R</kbd> Reset</div>
+    <div><kbd>F</kbd> Forwarding · <kbd>B</kbd> Branch Pred · <kbd>H</kbd> Cinema · <strong>Drag Gantt</strong> scroll</div>
+  </div>
+
+  <!-- Bottom-Center Transport Bar -->
+  <div class="panel bottom-bar">
+    <button id="btn-play" class="bar-btn active">⏸ Pause</button>
+    <button id="btn-step" class="bar-btn amber">⏭ Step</button>
+    <button id="btn-reset" class="bar-btn">↺ Reset</button>
+    <div class="bar-divider"></div>
+    <button class="bar-btn speed-btn" data-speed="0.5">0.5×</button>
+    <button class="bar-btn speed-btn active" data-speed="1">1×</button>
+    <button class="bar-btn speed-btn" data-speed="2">2×</button>
+    <button class="bar-btn speed-btn" data-speed="4">4×</button>
+    <div class="bar-divider"></div>
+    <button id="btn-sound" class="bar-btn">🔇 Audio</button>
+    <button id="btn-toggle-drawer" class="bar-btn active">Controls</button>
+    <button id="btn-zen" class="bar-btn" title="Hide HUD (H)">Cinema</button>
+  </div>
+
+  <button id="btn-zen-restore" class="panel bar-btn zen-restore">Show HUD (H)</button>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // === SIM CORE START ===
+  const PRESETS = {
+    raw: {
+      name: 'RAW & Forwarding',
+      description: 'Back-to-back ALU dependencies exercising EX→EX and MEM→EX bypass paths.',
+      code: `# RAW Data Hazard & Forwarding Demo
+# Toggle Forwarding ON/OFF to compare Gold Bypass vs Amber Stalls
+ADDI R1, R0, 12      # R1 = 12
+ADDI R2, R0, 7       # R2 = 7
+ADD  R3, R1, R2      # EX->EX fwd R2, MEM->EX fwd R1 -> 19
+SUB  R4, R3, R1      # EX->EX fwd R3 -> 7
+MUL  R5, R4, R3      # EX->EX fwd R4, MEM->EX fwd R3 -> 133
+XOR  R6, R5, R2      # EX->EX fwd R5 -> 130
+OR   R7, R6, R1      # EX->EX fwd R6 -> 142
+ADDI R1, R7, -42     # EX->EX fwd R7 -> 100
+HALT`
+    },
+    fibonacci: {
+      name: 'Fibonacci Loop',
+      description: 'Computes Fibonacci sequence 1, 1, 2, 3, 5, 8, 13, 21, 34, 55 into RAM.',
+      code: `# Fibonacci Sequence Loop (1, 1, 2, 3, 5, 8, 13, 21, 34, 55)
+# R1 = F(n-1), R2 = F(n), R3 = next, R4 = counter, R5 = byte ptr
+ADDI R1, R0, 0       # F(0) = 0
+ADDI R2, R0, 1       # F(1) = 1
+ADDI R4, R0, 9       # 9 loop iterations -> R2 = 55
+ADDI R5, R0, 0       # RAM pointer = 0
+SW   R2, 0(R5)       # RAM[0] = 1
+LOOP:
+ADD  R3, R1, R2      # R3 = F(n-1) + F(n)
+ADD  R1, R2, R0      # R1 = F(n)
+ADD  R2, R3, R0      # R2 = F(n+1)
+ADDI R5, R5, 4       # advance word pointer
+SW   R2, 0(R5)       # store F(n+1) to L1 Cache / RAM
+ADDI R4, R4, -1      # decrement counter
+BNE  R4, R0, LOOP    # repeat while R4 != 0
+ADD  R6, R2, R0      # copy final F(10) = 55 into R6
+HALT`
+    },
+    loaduse: {
+      name: 'Load-Use Hazard',
+      description: 'LW followed immediately by dependent ALU instructions forces a 1-cycle bubble.',
+      code: `# Load-Use Hazard: LW immediately followed by dependent ALU ops
+# Even WITH Forwarding ON, a 1-cycle stall bubble is unavoidable!
+ADDI R1, R0, 0       # base address = 0
+LW   R2, 0(R1)       # load RAM[0] = 10 (L1 Miss -> fills line)
+ADD  R3, R2, R2      # LOAD-USE STALL! 1 bubble + MEM->EX fwd -> 20
+LW   R4, 4(R1)       # load RAM[1] = 20 (L1 HIT! Spatial locality)
+ADD  R5, R4, R3      # LOAD-USE STALL! 1 bubble -> 40
+LW   R6, 8(R1)       # load RAM[2] = 30 (L1 Miss -> Set 1)
+MUL  R7, R6, R2      # LOAD-USE STALL! 1 bubble -> 300
+SW   R7, 12(R1)      # store 300 into RAM[3] (L1 HIT!)
+HALT`
+    },
+    cache: {
+      name: 'L1 Cache Thrash',
+      description: 'Direct-mapped Set 0 conflict thrashing (stride 32B) vs sequential spatial hits.',
+      code: `# L1 Cache Thrashing vs. Spatial Locality
+# 4-set Direct-Mapped Cache, 8B lines (2 words) -> stride 32B conflicts!
+ADDI R1, R0, 0
+# Phase 1: Conflict Thrashing on Set 0 (addr 0 & addr 32 evict each other)
+LW   R2, 0(R1)       # Set 0, Tag 0 -> MISS
+LW   R3, 32(R1)      # Set 0, Tag 1 -> MISS (evicts Tag 0!)
+LW   R2, 0(R1)       # Set 0, Tag 0 -> MISS (thrash!)
+LW   R3, 32(R1)      # Set 0, Tag 1 -> MISS (thrash!)
+# Phase 2: Spatial & Temporal Locality (consecutive words share 8B lines)
+LW   R4, 8(R1)       # Set 1, Tag 0 -> MISS (brings words 2 & 3)
+LW   R5, 12(R1)      # Set 1, Tag 0 -> HIT! (1 cycle)
+LW   R6, 16(R1)      # Set 2, Tag 0 -> MISS (brings words 4 & 5)
+LW   R7, 20(R1)      # Set 2, Tag 0 -> HIT! (1 cycle)
+LW   R4, 8(R1)       # Set 1, Tag 0 -> HIT! (temporal)
+LW   R5, 12(R1)      # Set 1, Tag 0 -> HIT!
+HALT`
+    },
+    branch: {
+      name: 'Branch & Flush',
+      description: 'Countdown loop testing taken-branch pipeline flushes vs 2-bit BTB prediction.',
+      code: `# Countdown Branch & Pipeline Flush Test
+# Toggle 2-Bit Branch Predictor OFF/ON to eliminate Crimson Flushes!
+ADDI R1, R0, 6       # countdown = 6
+ADDI R2, R0, 0       # sum = 0
+COUNT:
+ADD  R2, R2, R1      # sum += countdown (6+5+4+3+2+1 = 21)
+ADDI R1, R1, -1      # countdown--
+BNE  R1, R0, COUNT   # taken 5x, falls through on 6th
+ADDI R3, R2, 100     # post-loop -> R3 = 121
+HALT`
+    },
+    arraysum: {
+      name: 'Array Sum',
+      description: 'Accumulates 8 words from RAM[0..7] (10..80 -> 360) with spatial cache hits.',
+      code: `# Array Sum Accumulator: sums RAM[0..7] (10+20+...+80 = 360)
+ADDI R1, R0, 0       # byte ptr = 0
+ADDI R2, R0, 32      # end ptr = 8 words * 4B = 32
+ADDI R3, R0, 0       # sum = 0
+SUM_LOOP:
+LW   R4, 0(R1)       # load arr[i] (Miss/Hit spatial pair!)
+ADD  R3, R3, R4      # load-use -> sum += arr[i]
+ADDI R1, R1, 4       # ptr += 4
+SLT  R5, R1, R2      # R5 = (ptr < 32) ? 1 : 0
+BNE  R5, R0, SUM_LOOP
+SW   R3, 32(R0)      # store total (360) into RAM[8]
+HALT`
+    }
+  };
+
+  function parseReg(tok, lineNum) {
+    const m = /^R([0-7])$/i.exec(tok.trim());
+    if (!m) throw new Error(`Line ${lineNum}: Invalid register "${tok}" (use R0–R7)`);
+    return parseInt(m[1], 10);
+  }
+
+  function parseImm(tok, lineNum) {
+    const t = tok.trim();
+    const val = /^[-+]?0x[0-9a-f]+$/i.test(t) ? parseInt(t, 16) : parseInt(t, 10);
+    if (!Number.isFinite(val)) throw new Error(`Line ${lineNum}: Invalid immediate "${tok}"`);
+    return val | 0;
+  }
+
+  function assembleProgram(source) {
+    const rawLines = source.split(/\r?\n/);
+    const labels = {};
+    const parsed = [];
+
+    // Pass 1: strip comments and collect labels
+    for (let i = 0; i < rawLines.length; i++) {
+      const lineNum = i + 1;
+      let line = rawLines[i].replace(/(#|;|\/\/).*$/, '').trim();
+      if (!line) continue;
+
+      while (true) {
+        const lm = /^([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(.*)$/.exec(line);
+        if (!lm) break;
+        labels[lm[1].toUpperCase()] = parsed.length;
+        line = lm[2].trim();
+      }
+      if (!line) continue;
+      parsed.push({ lineNum, text: line });
+    }
+
+    // Pass 2: decode instructions
+    const R_OPS = new Set(['ADD', 'SUB', 'MUL', 'AND', 'OR', 'XOR', 'SLT']);
+    const BR_OPS = new Set(['BEQ', 'BNE', 'BLT']);
+    const instrs = [];
+
+    for (let pc = 0; pc < parsed.length; pc++) {
+      const { lineNum, text } = parsed[pc];
+      const m = /^([A-Za-z]+)(?:\s+(.*))?$/.exec(text);
+      if (!m) throw new Error(`Line ${lineNum}: Cannot parse "${text}"`);
+      const op = m[1].toUpperCase();
+      const rest = (m[2] || '').trim();
+      const args = rest ? rest.split(',').map(s => s.trim()).filter(Boolean) : [];
+
+      const ins = {
+        pc,
+        lineNum,
+        op,
+        text: text.replace(/\s+/g, ' '),
+        rd: 0,
+        rs1: 0,
+        rs2: 0,
+        imm: 0,
+        usesRs1: false,
+        usesRs2: false,
+        regWrite: false,
+        isMemRead: false,
+        isMemWrite: false,
+        isBranch: false,
+        isJump: false,
+        isHalt: false,
+        isNop: false,
+        targetPc: null,
+        targetLabel: null
+      };
+
+      if (R_OPS.has(op)) {
+        if (args.length !== 3) throw new Error(`Line ${lineNum}: ${op} expects 3 operands`);
+        ins.rd = parseReg(args[0], lineNum);
+        ins.rs1 = parseReg(args[1], lineNum);
+        ins.rs2 = parseReg(args[2], lineNum);
+        ins.usesRs1 = true;
+        ins.usesRs2 = true;
+        ins.regWrite = ins.rd !== 0;
+      } else if (op === 'ADDI') {
+        if (args.length !== 3) throw new Error(`Line ${lineNum}: ADDI expects rd, rs1, imm`);
+        ins.rd = parseReg(args[0], lineNum);
+        ins.rs1 = parseReg(args[1], lineNum);
+        ins.imm = parseImm(args[2], lineNum);
+        ins.usesRs1 = true;
+        ins.regWrite = ins.rd !== 0;
+      } else if (op === 'LI') {
+        if (args.length !== 2) throw new Error(`Line ${lineNum}: LI expects rd, imm`);
+        ins.op = 'ADDI';
+        ins.rd = parseReg(args[0], lineNum);
+        ins.rs1 = 0;
+        ins.imm = parseImm(args[1], lineNum);
+        ins.usesRs1 = true;
+        ins.regWrite = ins.rd !== 0;
+      } else if (op === 'LW' || op === 'SW') {
+        let regTok, baseTok, offTok;
+        if (args.length === 2) {
+          regTok = args[0];
+          const mm = /^([-+]?(?:0x)?[0-9a-f]+)?\s*\(\s*(R[0-7])\s*\)$/i.exec(args[1]);
+          if (!mm) throw new Error(`Line ${lineNum}: Expected offset(Rs) in "${args[1]}"`);
+          offTok = mm[1] || '0';
+          baseTok = mm[2];
+        } else if (args.length === 3) {
+          regTok = args[0];
+          baseTok = args[1];
+          offTok = args[2];
+        } else {
+          throw new Error(`Line ${lineNum}: ${op} expects rd, offset(rs1)`);
+        }
+        ins.rs1 = parseReg(baseTok, lineNum);
+        ins.imm = parseImm(offTok, lineNum);
+        ins.usesRs1 = true;
+        if (op === 'LW') {
+          ins.rd = parseReg(regTok, lineNum);
+          ins.isMemRead = true;
+          ins.regWrite = ins.rd !== 0;
+        } else {
+          ins.rs2 = parseReg(regTok, lineNum);
+          ins.usesRs2 = true;
+          ins.isMemWrite = true;
+        }
+      } else if (BR_OPS.has(op)) {
+        if (args.length !== 3) throw new Error(`Line ${lineNum}: ${op} expects rs1, rs2, label`);
+        ins.rs1 = parseReg(args[0], lineNum);
+        ins.rs2 = parseReg(args[1], lineNum);
+        ins.usesRs1 = true;
+        ins.usesRs2 = true;
+        ins.isBranch = true;
+        const lbl = args[2].toUpperCase();
+        if (Object.prototype.hasOwnProperty.call(labels, lbl)) {
+          ins.targetPc = labels[lbl];
+          ins.targetLabel = args[2];
+        } else {
+          ins.targetPc = parseImm(args[2], lineNum);
+          ins.targetLabel = String(ins.targetPc);
+        }
+      } else if (op === 'J') {
+        if (args.length !== 1) throw new Error(`Line ${lineNum}: J expects label`);
+        ins.isJump = true;
+        const lbl = args[0].toUpperCase();
+        if (Object.prototype.hasOwnProperty.call(labels, lbl)) {
+          ins.targetPc = labels[lbl];
+          ins.targetLabel = args[0];
+        } else {
+          ins.targetPc = parseImm(args[0], lineNum);
+          ins.targetLabel = String(ins.targetPc);
+        }
+      } else if (op === 'NOP') {
+        ins.isNop = true;
+      } else if (op === 'HALT') {
+        ins.isHalt = true;
+      } else {
+        throw new Error(`Line ${lineNum}: Unknown opcode "${op}"`);
+      }
+
+      instrs.push(ins);
+    }
+
+    if (instrs.length === 0) {
+      throw new Error('Program is empty.');
+    }
+    return instrs;
+  }
+
+  class PipelinedCPU {
+    constructor() {
+      this.config = {
+        forwarding: true,
+        branchPred: false,
+        cacheEnabled: true,
+        missPenalty: 2
+      };
+      this.program = [];
+      this.reset([]);
+    }
+
+    initRam() {
+      this.ram = new Int32Array(64);
+      // Pre-populate words 0..15 with clear test array [10, 20, ..., 160]
+      for (let i = 0; i < 16; i++) {
+        this.ram[i] = (i + 1) * 10;
+      }
+    }
+
+    initCache() {
+      // 4 sets, direct-mapped, 2 words (8 bytes) per cache line
+      this.cache = [];
+      for (let s = 0; s < 4; s++) {
+        this.cache.push({
+          set: s,
+          valid: false,
+          tag: 0,
+          words: [0, 0],
+          lastAccessCycle: -1,
+          lastStatus: null // 'HIT' | 'MISS'
+        });
+      }
+    }
+
+    reset(program) {
+      if (program) this.program = program;
+      this.cycle = 0;
+      this.pc = 0;
+      this.nextUid = 1;
+      this.regs = new Int32Array(8);
+      this.initRam();
+      this.initCache();
+
+      // 2-bit saturating predictor table indexed by PC: 0=SNT, 1=WNT, 2=WT, 3=ST
+      this.bpTable = {};
+      this.btb = {};
+
+      // Architectural pipeline latches (inputs to stages for the upcoming cycle)
+      this.latches = {
+        IF_ID: null,
+        ID_EX: null,
+        EX_MEM: null,
+        MEM_WB: null
+      };
+
+      // Snapshot of what executed in the MOST RECENT completed cycle (for rendering)
+      this.view = {
+        IF: null,
+        ID: null,
+        EX: null,
+        MEM: null,
+        WB: null,
+        fwdA: null, // 'EX_MEM' | 'MEM_WB' | null
+        fwdB: null,
+        fwdAReg: 0,
+        fwdBReg: 0,
+        fwdAVal: 0,
+        fwdBVal: 0,
+        stallReason: null, // 'RAW' | 'LOAD_USE' | 'CACHE_MISS' | null
+        flushed: false,
+        cacheEvent: null, // { type:'HIT'|'MISS'|'BYPASS', set, tag, wordOffset, addr, value, isWrite }
+        regRead: [],
+        regWrite: null,
+        ramTouchWord: -1,
+        branchEvent: null // { taken, mispredicted, op, targetPc }
+      };
+
+      this.memStallRemaining = 0;
+      this.pendingCacheFill = null;
+      this.fetchHalted = false;
+      this.halted = false;
+
+      // Telemetry counters
+      this.stats = {
+        retired: 0,
+        stallCycles: 0,
+        rawStalls: 0,
+        loadUseStalls: 0,
+        cacheMissStalls: 0,
+        branchFlushes: 0,
+        branchMispredictions: 0,
+        branchCorrect: 0,
+        exExForwards: 0,
+        memExForwards: 0,
+        cacheHits: 0,
+        cacheMisses: 0
+      };
+
+      // Gantt timeline rows: { uid, pc, text, cells: { [cycle]: state } }
+      this.ganttRows = [];
+      this.ganttByUid = new Map();
+      this.events = []; // audio / visual event tags from the latest cycle
+    }
+
+    ensureGanttRow(slot) {
+      if (!slot || slot.isBubble) return null;
+      let row = this.ganttByUid.get(slot.uid);
+      if (!row) {
+        row = { uid: slot.uid, pc: slot.pc, text: slot.instr.text, cells: {} };
+        this.ganttByUid.set(slot.uid, row);
+        this.ganttRows.push(row);
+        if (this.ganttRows.length > 80) {
+          const old = this.ganttRows.shift();
+          this.ganttByUid.delete(old.uid);
+        }
+      }
+      return row;
+    }
+
+    recordGantt(slot, label) {
+      const row = this.ensureGanttRow(slot);
+      if (row) row.cells[this.cycle] = label;
+    }
+
+    makeBubble(reason) {
+      return {
+        isBubble: true,
+        reason: reason || 'NOP',
+        uid: -1,
+        pc: -1,
+        instr: { op: 'NOP', text: reason === 'STALL' ? 'BUBBLE (STALL)' : 'NOP (BUBBLE)' },
+        regWrite: false,
+        isMemRead: false,
+        isMemWrite: false,
+        isBranch: false,
+        isJump: false,
+        rd: 0, rs1: 0, rs2: 0
+      };
+    }
+
+    predictBranch(pc, instr) {
+      if (!this.config.branchPred) {
+        return { taken: false, target: pc + 1, state: 0 };
+      }
+      if (!instr.isBranch && !instr.isJump) {
+        return { taken: false, target: pc + 1, state: 0 };
+      }
+      if (instr.isJump) {
+        if (this.btb[pc] !== undefined) {
+          return { taken: true, target: this.btb[pc], state: 3 };
+        }
+        return { taken: false, target: pc + 1, state: 1 };
+      }
+      const st = this.bpTable[pc] !== undefined ? this.bpTable[pc] : 1; // Weakly NT initial
+      const taken = st >= 2 && this.btb[pc] !== undefined;
+      return { taken, target: taken ? this.btb[pc] : pc + 1, state: st };
+    }
+
+    updateBranchPredictor(pc, actualTaken, actualTarget) {
+      if (actualTaken) this.btb[pc] = actualTarget;
+      let st = this.bpTable[pc] !== undefined ? this.bpTable[pc] : 1;
+      if (actualTaken) st = Math.min(3, st + 1);
+      else st = Math.max(0, st - 1);
+      this.bpTable[pc] = st;
+    }
+
+    stepCycle() {
+      if (this.halted) return false;
+      this.cycle++;
+      this.events = [];
+
+      const view = {
+        IF: null,
+        ID: null,
+        EX: null,
+        MEM: null,
+        WB: null,
+        fwdA: null,
+        fwdB: null,
+        fwdAReg: 0,
+        fwdBReg: 0,
+        fwdAVal: 0,
+        fwdBVal: 0,
+        stallReason: null,
+        flushed: false,
+        cacheEvent: null,
+        regRead: [],
+        regWrite: null,
+        ramTouchWord: -1,
+        branchEvent: null
+      };
+
+      const curIF_ID = this.latches.IF_ID;
+      const curID_EX = this.latches.ID_EX;
+      const curEX_MEM = this.latches.EX_MEM;
+      const curMEM_WB = this.latches.MEM_WB;
+
+      // ---------------------------------------------------------
+      // 1. WB STAGE (First half of clock cycle: writes Register File)
+      // ---------------------------------------------------------
+      if (curMEM_WB) {
+        view.WB = curMEM_WB;
+        if (!curMEM_WB.isBubble) {
+          if (curMEM_WB.regWrite && curMEM_WB.rd !== 0) {
+            this.regs[curMEM_WB.rd] = curMEM_WB.result | 0;
+            view.regWrite = { reg: curMEM_WB.rd, value: curMEM_WB.result | 0 };
+          }
+          this.stats.retired++;
+          this.recordGantt(curMEM_WB, 'WB');
+        }
+      }
+
+      // ---------------------------------------------------------
+      // 2. MEM STAGE (Direct-Mapped L1 Data Cache + Main RAM)
+      // ---------------------------------------------------------
+      let memStalled = false;
+      let nextMEM_WB = null;
+
+      if (curEX_MEM) {
+        view.MEM = curEX_MEM;
+        if (curEX_MEM.isBubble) {
+          nextMEM_WB = curEX_MEM;
+        } else if (curEX_MEM.isMemRead || curEX_MEM.isMemWrite) {
+          const addr = curEX_MEM.aluResult | 0;
+          const wordAddr = ((addr >> 2) & 63);
+          const blockWordBase = wordAddr & ~1;
+          const wordOffset = wordAddr & 1;
+          const setIdx = (wordAddr >> 1) & 3;
+          const tag = (wordAddr >> 3) & 0xFFFF;
+          const line = this.cache[setIdx];
+
+          if (this.memStallRemaining > 0) {
+            // Continuing an in-progress cache miss stall
+            this.memStallRemaining--;
+            if (this.memStallRemaining > 0) {
+              memStalled = true;
+              this.stats.stallCycles++;
+              this.stats.cacheMissStalls++;
+              view.stallReason = 'CACHE_MISS';
+              view.cacheEvent = {
+                type: 'MISS', set: setIdx, tag, wordOffset, addr,
+                isWrite: curEX_MEM.isMemWrite, remaining: this.memStallRemaining
+              };
+              view.ramTouchWord = wordAddr;
+              this.recordGantt(curEX_MEM, 'MISS');
+              this.events.push('stall');
+            } else {
+              // Miss fill completes this cycle!
+              if (this.config.cacheEnabled) {
+                line.valid = true;
+                line.tag = tag;
+                line.words[0] = this.ram[blockWordBase];
+                line.words[1] = this.ram[(blockWordBase + 1) & 63];
+                line.lastAccessCycle = this.cycle;
+                line.lastStatus = 'MISS';
+              }
+              let resultVal = curEX_MEM.aluResult | 0;
+              if (curEX_MEM.isMemWrite) {
+                const sv = curEX_MEM.storeVal | 0;
+                this.ram[wordAddr] = sv;
+                if (this.config.cacheEnabled) line.words[wordOffset] = sv;
+                resultVal = sv;
+              } else {
+                resultVal = this.config.cacheEnabled ? line.words[wordOffset] : this.ram[wordAddr];
+              }
+              view.ramTouchWord = wordAddr;
+              view.cacheEvent = {
+                type: 'FILL', set: setIdx, tag, wordOffset, addr, value: resultVal,
+                isWrite: curEX_MEM.isMemWrite
+              };
+              this.recordGantt(curEX_MEM, 'MEM');
+              nextMEM_WB = {
+                ...curEX_MEM,
+                memData: resultVal,
+                result: curEX_MEM.isMemRead ? resultVal : curEX_MEM.aluResult
+              };
+            }
+          } else {
+            // Fresh L1 Cache lookup
+            const isHit = this.config.cacheEnabled && line.valid && line.tag === tag;
+            if (isHit) {
+              this.stats.cacheHits++;
+              line.lastAccessCycle = this.cycle;
+              line.lastStatus = 'HIT';
+              let resultVal = curEX_MEM.aluResult | 0;
+              if (curEX_MEM.isMemWrite) {
+                const sv = curEX_MEM.storeVal | 0;
+                line.words[wordOffset] = sv;
+                this.ram[wordAddr] = sv; // write-through keeps RAM coherent
+                resultVal = sv;
+                view.ramTouchWord = wordAddr;
+              } else {
+                resultVal = line.words[wordOffset];
+              }
+              view.cacheEvent = {
+                type: 'HIT', set: setIdx, tag, wordOffset, addr, value: resultVal,
+                isWrite: curEX_MEM.isMemWrite
+              };
+              this.recordGantt(curEX_MEM, 'MEM');
+              this.events.push('hit');
+              nextMEM_WB = {
+                ...curEX_MEM,
+                memData: resultVal,
+                result: curEX_MEM.isMemRead ? resultVal : curEX_MEM.aluResult
+              };
+            } else {
+              // Cache miss (or cache disabled) -> stall for missPenalty cycles
+              this.stats.cacheMisses++;
+              if (this.config.cacheEnabled) {
+                line.lastAccessCycle = this.cycle;
+                line.lastStatus = 'MISS';
+              }
+              this.memStallRemaining = this.config.missPenalty;
+              memStalled = true;
+              this.stats.stallCycles++;
+              this.stats.cacheMissStalls++;
+              view.stallReason = 'CACHE_MISS';
+              view.cacheEvent = {
+                type: 'MISS', set: setIdx, tag, wordOffset, addr,
+                isWrite: curEX_MEM.isMemWrite, remaining: this.memStallRemaining
+              };
+              view.ramTouchWord = wordAddr;
+              this.recordGantt(curEX_MEM, 'MISS');
+              this.events.push('miss');
+            }
+          }
+        } else {
+          // Non-memory instruction passes cleanly through MEM
+          this.recordGantt(curEX_MEM, 'MEM');
+          nextMEM_WB = { ...curEX_MEM, result: curEX_MEM.aluResult };
+        }
+      }
+
+      // If MEM stalled on cache miss, freeze EX, ID, and IF!
+      if (memStalled) {
+        // Preserve forwarding from retiring WB into frozen ID_EX before WB leaves pipeline
+        if (curID_EX && !curID_EX.isBubble && curMEM_WB && !curMEM_WB.isBubble && curMEM_WB.regWrite && curMEM_WB.rd !== 0) {
+          const exMemWritesRd = curEX_MEM && !curEX_MEM.isBubble && curEX_MEM.regWrite && curEX_MEM.rd === curMEM_WB.rd;
+          if (!exMemWritesRd) {
+            if (curID_EX.usesRs1 && curID_EX.rs1 === curMEM_WB.rd) {
+              curID_EX.rs1Val = curMEM_WB.result | 0;
+            }
+            if (curID_EX.usesRs2 && curID_EX.rs2 === curMEM_WB.rd) {
+              curID_EX.rs2Val = curMEM_WB.result | 0;
+            }
+          }
+        }
+        view.EX = curID_EX;
+        view.ID = curIF_ID;
+        if (curID_EX && !curID_EX.isBubble) this.recordGantt(curID_EX, 'STALL');
+        if (curIF_ID && !curIF_ID.isBubble) this.recordGantt(curIF_ID, 'STALL');
+
+        this.latches.MEM_WB = this.makeBubble('STALL');
+        // EX_MEM, ID_EX, IF_ID, and PC remain frozen!
+        this.view = view;
+        this.events.push('tick');
+        return true;
+      }
+
+      // ---------------------------------------------------------
+      // 3. EX STAGE (ALU + Data Forwarding + Branch Resolution)
+      // ---------------------------------------------------------
+      let nextEX_MEM = null;
+      let branchMispredicted = false;
+      let redirectPc = null;
+
+      if (curID_EX) {
+        view.EX = curID_EX;
+        if (curID_EX.isBubble) {
+          nextEX_MEM = curID_EX;
+        } else {
+          let opA = curID_EX.rs1Val | 0;
+          let opBReg = curID_EX.rs2Val | 0;
+
+          // Data Forwarding Unit
+          if (this.config.forwarding) {
+            // Operand A (rs1)
+            if (curID_EX.usesRs1 && curID_EX.rs1 !== 0) {
+              if (curEX_MEM && !curEX_MEM.isBubble && curEX_MEM.regWrite && !curEX_MEM.isMemRead && curEX_MEM.rd === curID_EX.rs1) {
+                opA = curEX_MEM.aluResult | 0;
+                view.fwdA = 'EX_MEM';
+                view.fwdAReg = curID_EX.rs1;
+                view.fwdAVal = opA;
+                this.stats.exExForwards++;
+                this.events.push('forward');
+              } else if (curMEM_WB && !curMEM_WB.isBubble && curMEM_WB.regWrite && curMEM_WB.rd === curID_EX.rs1) {
+                opA = curMEM_WB.result | 0;
+                view.fwdA = 'MEM_WB';
+                view.fwdAReg = curID_EX.rs1;
+                view.fwdAVal = opA;
+                this.stats.memExForwards++;
+                this.events.push('forward');
+              }
+            }
+            // Operand B (rs2)
+            if (curID_EX.usesRs2 && curID_EX.rs2 !== 0) {
+              if (curEX_MEM && !curEX_MEM.isBubble && curEX_MEM.regWrite && !curEX_MEM.isMemRead && curEX_MEM.rd === curID_EX.rs2) {
+                opBReg = curEX_MEM.aluResult | 0;
+                view.fwdB = 'EX_MEM';
+                view.fwdBReg = curID_EX.rs2;
+                view.fwdBVal = opBReg;
+                this.stats.exExForwards++;
+                this.events.push('forward');
+              } else if (curMEM_WB && !curMEM_WB.isBubble && curMEM_WB.regWrite && curMEM_WB.rd === curID_EX.rs2) {
+                opBReg = curMEM_WB.result | 0;
+                view.fwdB = 'MEM_WB';
+                view.fwdBReg = curID_EX.rs2;
+                view.fwdBVal = opBReg;
+                this.stats.memExForwards++;
+                this.events.push('forward');
+              }
+            }
+          }
+
+          const op = curID_EX.instr.op;
+          let aluResult = 0;
+          let actualTaken = false;
+          let actualTarget = curID_EX.pc + 1;
+
+          switch (op) {
+            case 'ADD': aluResult = (opA + opBReg) | 0; break;
+            case 'SUB': aluResult = (opA - opBReg) | 0; break;
+            case 'MUL': aluResult = Math.imul(opA, opBReg); break;
+            case 'AND': aluResult = opA & opBReg; break;
+            case 'OR':  aluResult = opA | opBReg; break;
+            case 'XOR': aluResult = opA ^ opBReg; break;
+            case 'SLT': aluResult = (opA < opBReg) ? 1 : 0; break;
+            case 'ADDI':
+            case 'LW':
+            case 'SW':
+              aluResult = (opA + curID_EX.imm) | 0;
+              break;
+            case 'BEQ':
+              actualTaken = (opA === opBReg);
+              actualTarget = actualTaken ? curID_EX.instr.targetPc : (curID_EX.pc + 1);
+              aluResult = actualTaken ? 1 : 0;
+              break;
+            case 'BNE':
+              actualTaken = (opA !== opBReg);
+              actualTarget = actualTaken ? curID_EX.instr.targetPc : (curID_EX.pc + 1);
+              aluResult = actualTaken ? 1 : 0;
+              break;
+            case 'BLT':
+              actualTaken = (opA < opBReg);
+              actualTarget = actualTaken ? curID_EX.instr.targetPc : (curID_EX.pc + 1);
+              aluResult = actualTaken ? 1 : 0;
+              break;
+            case 'J':
+              actualTaken = true;
+              actualTarget = curID_EX.instr.targetPc;
+              break;
+            default:
+              aluResult = 0;
+          }
+
+          if (curID_EX.isBranch || curID_EX.isJump) {
+            const predTaken = !!curID_EX.predictedTaken;
+            const predTarget = curID_EX.predictedTarget;
+            branchMispredicted = (actualTaken !== predTaken) || (actualTaken && actualTarget !== predTarget);
+            this.updateBranchPredictor(curID_EX.pc, actualTaken, actualTarget);
+
+            if (branchMispredicted) {
+              this.stats.branchMispredictions++;
+              redirectPc = actualTarget;
+              view.flushed = true;
+              this.events.push('flush');
+            } else {
+              this.stats.branchCorrect++;
+            }
+            view.branchEvent = {
+              op,
+              taken: actualTaken,
+              mispredicted: branchMispredicted,
+              targetPc: actualTarget
+            };
+          }
+
+          const exResultSlot = {
+            ...curID_EX,
+            opA,
+            opB: (op === 'ADDI' || op === 'LW' || op === 'SW') ? curID_EX.imm : opBReg,
+            aluResult,
+            storeVal: opBReg,
+            fwdUsed: !!(view.fwdA || view.fwdB)
+          };
+          view.EX = exResultSlot;
+          nextEX_MEM = exResultSlot;
+          this.recordGantt(curID_EX, exResultSlot.fwdUsed ? 'EX*' : 'EX');
+        }
+      }
+
+      // ---------------------------------------------------------
+      // 4. ID STAGE & HAZARD DETECTION + 5. IF STAGE
+      // ---------------------------------------------------------
+      let nextID_EX = null;
+      let nextIF_ID = null;
+
+      if (branchMispredicted) {
+        // Flush speculative instructions in ID and IF!
+        let flushedHere = 0;
+        if (curIF_ID && !curIF_ID.isBubble) {
+          view.ID = { ...curIF_ID, flushed: true };
+          this.recordGantt(curIF_ID, 'FLUSH');
+          flushedHere++;
+        }
+        // Also flush the wrong-path fetch slot if PC was inside the program
+        if (!this.fetchHalted && this.pc >= 0 && this.pc < this.program.length) {
+          const specInstr = this.program[this.pc];
+          const specSlot = {
+            isBubble: false,
+            flushed: true,
+            uid: this.nextUid++,
+            pc: this.pc,
+            instr: specInstr
+          };
+          view.IF = specSlot;
+          this.recordGantt(specSlot, 'FLUSH');
+          flushedHere++;
+        }
+        // Always account for at least 1 flushed speculative cycle on misprediction
+        this.stats.branchFlushes += Math.max(1, flushedHere);
+        nextID_EX = this.makeBubble('FLUSH');
+        nextIF_ID = null;
+        this.fetchHalted = false;
+        this.pc = redirectPc;
+      } else {
+        // Check for Data Hazards in ID
+        let hazardStall = false;
+        let hazardType = null;
+
+        if (curIF_ID && !curIF_ID.isBubble) {
+          const ins = curIF_ID.instr;
+          const checkReg = (producer) => {
+            if (!producer || producer.isBubble || !producer.regWrite || producer.rd === 0) return false;
+            return (ins.usesRs1 && ins.rs1 === producer.rd) || (ins.usesRs2 && ins.rs2 === producer.rd);
+          };
+
+          if (this.config.forwarding) {
+            // Only Load-Use hazard requires a 1-cycle bubble!
+            if (curID_EX && curID_EX.isMemRead && checkReg(curID_EX)) {
+              hazardStall = true;
+              hazardType = 'LOAD_USE';
+            }
+          } else {
+            // Without forwarding, any RAW dependency against EX or MEM stalls
+            if (checkReg(curID_EX) || checkReg(curEX_MEM)) {
+              hazardStall = true;
+              hazardType = (curID_EX && curID_EX.isMemRead && checkReg(curID_EX)) ? 'LOAD_USE' : 'RAW';
+            }
+          }
+        }
+
+        if (hazardStall) {
+          // Freeze IF & ID, inject amber NOP stall bubble into ID/EX
+          view.ID = { ...curIF_ID, stalled: true, stallType: hazardType };
+          view.stallReason = hazardType;
+          this.stats.stallCycles++;
+          if (hazardType === 'LOAD_USE') this.stats.loadUseStalls++;
+          else this.stats.rawStalls++;
+          this.recordGantt(curIF_ID, 'STALL');
+          this.events.push('stall');
+
+          nextID_EX = this.makeBubble('STALL');
+          nextIF_ID = curIF_ID; // hold IF/ID
+          // PC stays frozen; IF does not fetch a new instruction
+        } else {
+          // ID executes normally
+          if (curIF_ID) {
+            if (curIF_ID.isBubble) {
+              view.ID = curIF_ID;
+              nextID_EX = curIF_ID;
+            } else {
+              const ins = curIF_ID.instr;
+              const rs1Val = this.regs[ins.rs1] | 0;
+              const rs2Val = this.regs[ins.rs2] | 0;
+              if (ins.usesRs1) view.regRead.push(ins.rs1);
+              if (ins.usesRs2 && !view.regRead.includes(ins.rs2)) view.regRead.push(ins.rs2);
+
+              const decoded = {
+                ...curIF_ID,
+                rs1: ins.rs1,
+                rs2: ins.rs2,
+                rd: ins.rd,
+                imm: ins.imm,
+                rs1Val,
+                rs2Val,
+                usesRs1: ins.usesRs1,
+                usesRs2: ins.usesRs2,
+                regWrite: ins.regWrite,
+                isMemRead: ins.isMemRead,
+                isMemWrite: ins.isMemWrite,
+                isBranch: ins.isBranch,
+                isJump: ins.isJump
+              };
+              view.ID = decoded;
+              nextID_EX = decoded;
+              this.recordGantt(curIF_ID, 'ID');
+            }
+          }
+
+          // IF fetches next instruction
+          if (!this.fetchHalted && this.pc >= 0 && this.pc < this.program.length) {
+            const ins = this.program[this.pc];
+            if (ins.isHalt) {
+              this.fetchHalted = true;
+              view.IF = { isBubble: false, isHaltMarker: true, uid: this.nextUid++, pc: this.pc, instr: ins };
+              this.recordGantt(view.IF, 'HALT');
+              nextIF_ID = null;
+            } else {
+              const pred = this.predictBranch(this.pc, ins);
+              const fetched = {
+                isBubble: false,
+                uid: this.nextUid++,
+                pc: this.pc,
+                instr: ins,
+                predictedTaken: pred.taken,
+                predictedTarget: pred.target,
+                bpState: pred.state
+              };
+              view.IF = fetched;
+              this.recordGantt(fetched, 'IF');
+              nextIF_ID = fetched;
+              this.pc = pred.taken ? pred.target : (this.pc + 1);
+            }
+          } else {
+            this.fetchHalted = true;
+            nextIF_ID = null;
+          }
+        }
+      }
+
+      // Latch next-cycle pipeline registers
+      this.latches.IF_ID = nextIF_ID;
+      this.latches.ID_EX = nextID_EX;
+      this.latches.EX_MEM = nextEX_MEM;
+      this.latches.MEM_WB = nextMEM_WB;
+      this.view = view;
+      this.events.push('tick');
+
+      // Check full drain / halt
+      const anyActive = (slot) => slot && !slot.isBubble;
+      if (
+        this.fetchHalted &&
+        !anyActive(this.latches.IF_ID) &&
+        !anyActive(this.latches.ID_EX) &&
+        !anyActive(this.latches.EX_MEM) &&
+        !anyActive(this.latches.MEM_WB)
+      ) {
+        this.halted = true;
+        this.events.push('halt');
+      }
+
+      return true;
+    }
+
+    getMetrics() {
+      const c = this.cycle;
+      const r = this.stats.retired;
+      const cpi = r > 0 ? c / r : 0;
+      const ipc = c > 0 ? r / c : 0;
+      const cacheTotal = this.stats.cacheHits + this.stats.cacheMisses;
+      const hitRate = cacheTotal > 0 ? (this.stats.cacheHits / cacheTotal) * 100 : null;
+      return { cycle: c, retired: r, cpi, ipc, hitRate, cacheTotal };
+    }
+  }
+  // === SIM CORE END ===
+
+  // =========================================================================
+  // WEB AUDIO ENGINE (MUTED BY DEFAULT)
+  // =========================================================================
+  class CpuAudio {
+    constructor() {
+      this.enabled = false;
+      this.ctx = null;
+    }
+    toggle() {
+      this.enabled = !this.enabled;
+      if (this.enabled && !this.ctx) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (AC) this.ctx = new AC();
+      }
+      if (this.enabled && this.ctx && this.ctx.state === 'suspended') {
+        this.ctx.resume().catch(() => {});
+      }
+      return this.enabled;
+    }
+    playEvents(events) {
+      if (!this.enabled || !this.ctx || this.ctx.state !== 'running') return;
+      const t = this.ctx.currentTime;
+      if (events.includes('halt')) {
+        this.tone(523.25, 523.25, 0.22, 'triangle', 0.055, t);
+        this.tone(659.25, 659.25, 0.25, 'triangle', 0.045, t + 0.04);
+        return;
+      }
+      if (events.includes('flush')) {
+        this.tone(520, 150, 0.11, 'sawtooth', 0.05, t);
+      } else if (events.includes('miss') || events.includes('stall')) {
+        this.tone(145, 68, 0.09, 'triangle', 0.08, t);
+      } else if (events.includes('forward')) {
+        this.tone(1180, 1680, 0.045, 'sine', 0.045, t);
+      } else if (events.includes('hit')) {
+        this.tone(987, 1318, 0.038, 'sine', 0.038, t);
+      } else if (events.includes('tick')) {
+        this.tone(780, 620, 0.016, 'square', 0.018, t);
+      }
+    }
+    tone(f0, f1, dur, type, vol, start) {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(f0, start);
+      if (f1 !== f0) osc.frequency.exponentialRampToValueAtTime(Math.max(20, f1), start + dur);
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.linearRampToValueAtTime(vol, start + 0.004);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + dur);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(start);
+      osc.stop(start + dur + 0.01);
+    }
+  }
+
+  // =========================================================================
+  // APPLICATION STATE & DOM REFERENCES
+  // =========================================================================
+  const canvas = document.getElementById('sim-canvas');
+  const ctx = canvas.getContext('2d', { alpha: false });
+  const cpu = new PipelinedCPU();
+  const audio = new CpuAudio();
+
+  let W = window.innerWidth;
+  let H = window.innerHeight;
+  let DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+  let currentPresetKey = 'raw';
+  let isPlaying = true;
+  let clockHz = 1.6;
+  let speedMul = 1;
+  let showPackets = true;
+  let showFwdArcs = true;
+  let drawerOpen = true;
+  let zenMode = false;
+
+  let cycleAccum = 0;
+  let animPhase = 1; // 0 -> 1 animation progress within a cycle
+  let ganttScrollCols = 0; // manual offset from latest column
+  let ganttDrag = { active: false, startX: 0, startScroll: 0 };
+  let hoverInfo = null;
+  let hitZones = []; // { x, y, w, h, title, lines }
+
+  const dom = {
+    cpuStatus: document.getElementById('cpu-status'),
+    telCycle: document.getElementById('tel-cycle'),
+    telRetired: document.getElementById('tel-retired'),
+    telCpi: document.getElementById('tel-cpi'),
+    telStalls: document.getElementById('tel-stalls'),
+    telFlushes: document.getElementById('tel-flushes'),
+    telHitrate: document.getElementById('tel-hitrate'),
+    ipcFill: document.getElementById('ipc-fill'),
+    telIpcPct: document.getElementById('tel-ipc-pct'),
+    telPc: document.getElementById('tel-pc'),
+    telFwdBadge: document.getElementById('tel-fwd-badge'),
+    telBpBadge: document.getElementById('tel-bp-badge'),
+    telL1Badge: document.getElementById('tel-l1-badge'),
+    drawer: document.getElementById('drawer'),
+    asmEditor: document.getElementById('asm-editor'),
+    asmStatus: document.getElementById('asm-status'),
+    asmCount: document.getElementById('asm-count'),
+    btnAssemble: document.getElementById('btn-assemble'),
+    btnReloadPreset: document.getElementById('btn-reload-preset'),
+    togForwarding: document.getElementById('tog-forwarding'),
+    togBranchPred: document.getElementById('tog-branch-pred'),
+    togCache: document.getElementById('tog-cache'),
+    togPackets: document.getElementById('tog-packets'),
+    togFwdArcs: document.getElementById('tog-fwd-arcs'),
+    slClock: document.getElementById('sl-clock'),
+    valClock: document.getElementById('val-clock'),
+    slMissPenalty: document.getElementById('sl-miss-penalty'),
+    valMissPenalty: document.getElementById('val-miss-penalty'),
+    stExFwd: document.getElementById('st-ex-fwd'),
+    stMemFwd: document.getElementById('st-mem-fwd'),
+    stRawStalls: document.getElementById('st-raw-stalls'),
+    stLuStalls: document.getElementById('st-lu-stalls'),
+    stL1Hits: document.getElementById('st-l1-hits'),
+    stL1Misses: document.getElementById('st-l1-misses'),
+    stBpHits: document.getElementById('st-bp-hits'),
+    stBpMiss: document.getElementById('st-bp-miss'),
+    regTableBody: document.getElementById('reg-table-body'),
+    cacheTableBody: document.getElementById('cache-table-body'),
+    ramGrid: document.getElementById('ram-grid'),
+    btnPlay: document.getElementById('btn-play'),
+    btnStep: document.getElementById('btn-step'),
+    btnReset: document.getElementById('btn-reset'),
+    btnSound: document.getElementById('btn-sound'),
+    btnToggleDrawer: document.getElementById('btn-toggle-drawer'),
+    btnZen: document.getElementById('btn-zen'),
+    btnZenRestore: document.getElementById('btn-zen-restore')
+  };
+
+  function resize() {
+    W = window.innerWidth;
+    H = window.innerHeight;
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.floor(W * DPR);
+    canvas.height = Math.floor(H * DPR);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  // =========================================================================
+  // PROGRAM LOADING & HUD SYNCHRONIZATION
+  // =========================================================================
+  function loadCode(code, autoPlay = true) {
+    try {
+      const prog = assembleProgram(code);
+      cpu.reset(prog);
+      ganttScrollCols = 0;
+      animPhase = 0;
+      cycleAccum = 0;
+      dom.asmCount.textContent = `${prog.length} instr`;
+      dom.asmStatus.textContent = `Assembled ${prog.length} instructions — ready.`;
+      dom.asmStatus.classList.remove('error');
+      if (autoPlay) setPlaying(true);
+      // Execute cycle 1 immediately so the chip is alive on load
+      cpu.stepCycle();
+      animPhase = 0;
+      updateHUD();
+    } catch (err) {
+      dom.asmStatus.textContent = err.message;
+      dom.asmStatus.classList.add('error');
+    }
+  }
+
+  function selectPreset(key) {
+    currentPresetKey = key;
+    const p = PRESETS[key];
+    if (!p) return;
+    document.querySelectorAll('.preset-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.preset === key);
+    });
+    dom.asmEditor.value = p.code;
+    loadCode(p.code, true);
+  }
+
+  function setPlaying(val) {
+    isPlaying = val;
+    dom.btnPlay.textContent = isPlaying ? '⏸ Pause' : '▶ Play';
+    dom.btnPlay.classList.toggle('active', isPlaying);
+    updateStatusPill();
+  }
+
+  function doStep() {
+    if (cpu.halted) return;
+    const stepped = cpu.stepCycle();
+    if (stepped) {
+      animPhase = 0;
+      ganttScrollCols = 0;
+      audio.playEvents(cpu.events);
+      if (cpu.halted) setPlaying(false);
+      updateHUD();
+    }
+  }
+
+  function updateStatusPill() {
+    const el = dom.cpuStatus;
+    el.className = 'status-pill';
+    if (cpu.halted) {
+      el.textContent = 'Halted';
+      el.classList.add('idle');
+    } else if (cpu.view.flushed) {
+      el.textContent = 'Branch Flush';
+      el.classList.add('danger');
+    } else if (cpu.view.stallReason === 'CACHE_MISS') {
+      el.textContent = 'L1 Cache Miss';
+      el.classList.add('danger');
+    } else if (cpu.view.stallReason) {
+      el.textContent = cpu.view.stallReason === 'LOAD_USE' ? 'Load-Use Stall' : 'RAW Stall';
+      el.classList.add('warn');
+    } else if (!isPlaying) {
+      el.textContent = 'Paused';
+      el.classList.add('idle');
+    } else if (cpu.view.fwdA || cpu.view.fwdB) {
+      el.textContent = 'Forwarding';
+      el.classList.add('warn');
+    } else {
+      el.textContent = 'Running';
+    }
+  }
+
+  function toHex32(v) {
+    return '0x' + (v >>> 0).toString(16).toUpperCase().padStart(2, '0');
+  }
+
+  function updateHUD() {
+    const m = cpu.getMetrics();
+    dom.telCycle.textContent = String(m.cycle);
+    dom.telRetired.textContent = String(m.retired);
+    dom.telCpi.textContent = m.retired > 0 ? `${m.cpi.toFixed(2)} / ${m.ipc.toFixed(2)}` : '—';
+    dom.telStalls.textContent = String(cpu.stats.stallCycles);
+    dom.telFlushes.textContent = String(cpu.stats.branchFlushes);
+    dom.telHitrate.textContent = m.hitRate !== null ? `${m.hitRate.toFixed(0)}%` : '—';
+
+    const ipcClamped = Math.max(0, Math.min(1, m.ipc));
+    dom.ipcFill.style.width = `${(ipcClamped * 100).toFixed(1)}%`;
+    dom.telIpcPct.textContent = `${m.ipc.toFixed(2)} IPC`;
+    dom.telPc.textContent = '0x' + ((cpu.pc * 4) >>> 0).toString(16).toUpperCase().padStart(2, '0');
+
+    dom.telFwdBadge.textContent = cpu.config.forwarding ? 'ON' : 'OFF';
+    dom.telFwdBadge.style.color = cpu.config.forwarding ? 'var(--accent-gold)' : 'var(--accent-rose)';
+    dom.telBpBadge.textContent = cpu.config.branchPred ? '2-BIT' : 'OFF';
+    dom.telBpBadge.style.color = cpu.config.branchPred ? 'var(--accent-cyan)' : 'var(--text-muted)';
+    dom.telL1Badge.textContent = cpu.config.cacheEnabled ? 'ON' : 'OFF';
+    dom.telL1Badge.style.color = cpu.config.cacheEnabled ? 'var(--accent-mint)' : 'var(--accent-rose)';
+
+    // Hardware tab counters
+    dom.stExFwd.textContent = String(cpu.stats.exExForwards);
+    dom.stMemFwd.textContent = String(cpu.stats.memExForwards);
+    dom.stRawStalls.textContent = String(cpu.stats.rawStalls);
+    dom.stLuStalls.textContent = String(cpu.stats.loadUseStalls);
+    dom.stL1Hits.textContent = String(cpu.stats.cacheHits);
+    dom.stL1Misses.textContent = String(cpu.stats.cacheMisses);
+    dom.stBpHits.textContent = String(cpu.stats.branchCorrect);
+    dom.stBpMiss.textContent = String(cpu.stats.branchMispredictions);
+
+    // Register File table
+    let regHtml = '';
+    for (let i = 0; i < 8; i++) {
+      const val = cpu.regs[i];
+      const isW = cpu.view.regWrite && cpu.view.regWrite.reg === i;
+      const isR = cpu.view.regRead.includes(i);
+      const cls = isW ? 'hi-write' : (isR ? 'hi-read' : '');
+      const act = i === 0 ? 'ZERO' : (isW ? 'WRITE' : (isR ? 'READ' : '—'));
+      regHtml += `<tr class="${cls}"><td>R${i}</td><td>${val}</td><td>${toHex32(val)}</td><td>${act}</td></tr>`;
+    }
+    dom.regTableBody.innerHTML = regHtml;
+
+    // L1 Cache table
+    let cacheHtml = '';
+    for (let s = 0; s < 4; s++) {
+      const ln = cpu.cache[s];
+      const activeSet = cpu.view.cacheEvent && cpu.view.cacheEvent.set === s;
+      const cls = activeSet
+        ? (cpu.view.cacheEvent.type === 'HIT' ? 'hi-write' : 'hi-miss')
+        : '';
+      cacheHtml += `<tr class="${cls}"><td>S${s}</td><td>${ln.valid ? 1 : 0}</td><td>${ln.valid ? ln.tag : '—'}</td><td>${ln.valid ? ln.words[0] : '—'}</td><td>${ln.valid ? ln.words[1] : '—'}</td></tr>`;
+    }
+    dom.cacheTableBody.innerHTML = cacheHtml;
+
+    // RAM grid (first 18 words)
+    let ramHtml = '';
+    for (let i = 0; i < 18; i++) {
+      const act = cpu.view.ramTouchWord === i ? 'active' : '';
+      const bAddr = '0x' + (i * 4).toString(16).toUpperCase().padStart(2, '0');
+      ramHtml += `<div class="ram-cell ${act}"><span>${bAddr}</span><strong>${cpu.ram[i]}</strong></div>`;
+    }
+    dom.ramGrid.innerHTML = ramHtml;
+
+    updateStatusPill();
+  }
+
+  // =========================================================================
+  // EVENT LISTENERS & CONTROLS
+  // =========================================================================
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      const pane = document.getElementById(`tab-${btn.dataset.tab}`);
+      if (pane) pane.classList.add('active');
+    });
+  });
+
+  document.querySelectorAll('.preset-btn').forEach(btn => {
+    btn.addEventListener('click', () => selectPreset(btn.dataset.preset));
+  });
+
+  dom.btnAssemble.addEventListener('click', () => loadCode(dom.asmEditor.value, true));
+  dom.btnReloadPreset.addEventListener('click', () => selectPreset(currentPresetKey));
+
+  dom.togForwarding.addEventListener('change', () => {
+    cpu.config.forwarding = dom.togForwarding.checked;
+    loadCode(dom.asmEditor.value, isPlaying);
+  });
+  dom.togBranchPred.addEventListener('change', () => {
+    cpu.config.branchPred = dom.togBranchPred.checked;
+    loadCode(dom.asmEditor.value, isPlaying);
+  });
+  dom.togCache.addEventListener('change', () => {
+    cpu.config.cacheEnabled = dom.togCache.checked;
+    loadCode(dom.asmEditor.value, isPlaying);
+  });
+  dom.togPackets.addEventListener('change', () => { showPackets = dom.togPackets.checked; });
+  dom.togFwdArcs.addEventListener('change', () => { showFwdArcs = dom.togFwdArcs.checked; });
+
+  dom.slClock.addEventListener('input', () => {
+    clockHz = parseFloat(dom.slClock.value);
+    dom.valClock.textContent = `${clockHz.toFixed(1)} Hz`;
+  });
+  dom.slMissPenalty.addEventListener('input', () => {
+    cpu.config.missPenalty = parseInt(dom.slMissPenalty.value, 10);
+    dom.valMissPenalty.textContent = `${cpu.config.missPenalty} cycle${cpu.config.missPenalty > 1 ? 's' : ''}`;
+  });
+
+  dom.btnPlay.addEventListener('click', () => {
+    if (cpu.halted) {
+      loadCode(dom.asmEditor.value, true);
+    } else {
+      setPlaying(!isPlaying);
+    }
+  });
+  dom.btnStep.addEventListener('click', () => {
+    setPlaying(false);
+    doStep();
+  });
+  dom.btnReset.addEventListener('click', () => loadCode(dom.asmEditor.value, isPlaying));
+
+  document.querySelectorAll('.speed-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      speedMul = parseFloat(btn.dataset.speed);
+      document.querySelectorAll('.speed-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    });
+  });
+
+  dom.btnSound.addEventListener('click', () => {
+    const on = audio.toggle();
+    dom.btnSound.textContent = on ? '🔊 Audio' : '🔇 Audio';
+    dom.btnSound.classList.toggle('active', on);
+  });
+
+  dom.btnToggleDrawer.addEventListener('click', () => {
+    drawerOpen = !drawerOpen;
+    dom.drawer.classList.toggle('collapsed', !drawerOpen);
+    dom.btnToggleDrawer.classList.toggle('active', drawerOpen);
+  });
+
+  function setZen(val) {
+    zenMode = val;
+    document.body.classList.toggle('zen-mode', zenMode);
+  }
+  dom.btnZen.addEventListener('click', () => setZen(true));
+  dom.btnZenRestore.addEventListener('click', () => setZen(false));
+
+  window.addEventListener('keydown', (e) => {
+    if (document.activeElement === dom.asmEditor) return;
+    if (e.code === 'Space') {
+      e.preventDefault();
+      if (cpu.halted) loadCode(dom.asmEditor.value, true);
+      else setPlaying(!isPlaying);
+    } else if (e.key === 's' || e.key === 'S' || e.code === 'ArrowRight') {
+      e.preventDefault();
+      setPlaying(false);
+      doStep();
+    } else if (e.key === 'r' || e.key === 'R') {
+      loadCode(dom.asmEditor.value, isPlaying);
+    } else if (e.key === 'f' || e.key === 'F') {
+      dom.togForwarding.checked = !dom.togForwarding.checked;
+      cpu.config.forwarding = dom.togForwarding.checked;
+      loadCode(dom.asmEditor.value, isPlaying);
+    } else if (e.key === 'b' || e.key === 'B') {
+      dom.togBranchPred.checked = !dom.togBranchPred.checked;
+      cpu.config.branchPred = dom.togBranchPred.checked;
+      loadCode(dom.asmEditor.value, isPlaying);
+    } else if (e.key === 'h' || e.key === 'H') {
+      setZen(!zenMode);
+    }
+  });
+
+  // Canvas interactions: hover micro-inspector & drag Gantt chart horizontally
+  let ganttRectCache = { x: 0, y: 0, w: 0, h: 0 };
+  canvas.addEventListener('pointerdown', (e) => {
+    const mx = e.clientX, my = e.clientY;
+    if (mx >= ganttRectCache.x && mx <= ganttRectCache.x + ganttRectCache.w &&
+        my >= ganttRectCache.y && my <= ganttRectCache.y + ganttRectCache.h) {
+      ganttDrag.active = true;
+      ganttDrag.startX = mx;
+      ganttDrag.startScroll = ganttScrollCols;
+      canvas.setPointerCapture(e.pointerId);
+    }
+  });
+  canvas.addEventListener('pointermove', (e) => {
+    const mx = e.clientX, my = e.clientY;
+    if (ganttDrag.active) {
+      const dx = mx - ganttDrag.startX;
+      ganttScrollCols = Math.max(0, Math.round(ganttDrag.startScroll + dx / 36));
+      return;
+    }
+    hoverInfo = null;
+    for (let i = hitZones.length - 1; i >= 0; i--) {
+      const z = hitZones[i];
+      if (mx >= z.x && mx <= z.x + z.w && my >= z.y && my <= z.y + z.h) {
+        hoverInfo = { x: mx, y: my, title: z.title, lines: z.lines };
+        break;
+      }
+    }
+  });
+  canvas.addEventListener('pointerup', () => { ganttDrag.active = false; });
+  canvas.addEventListener('pointerleave', () => { ganttDrag.active = false; hoverInfo = null; });
+  canvas.addEventListener('wheel', (e) => {
+    const mx = e.clientX, my = e.clientY;
+    if (mx >= ganttRectCache.x && mx <= ganttRectCache.x + ganttRectCache.w &&
+        my >= ganttRectCache.y && my <= ganttRectCache.y + ganttRectCache.h) {
+      e.preventDefault();
+      ganttScrollCols = Math.max(0, ganttScrollCols + (e.deltaY > 0 ? -2 : 2));
+    }
+  }, { passive: false });
+
+  // =========================================================================
+  // CANVAS DRAWING HELPERS
+  // =========================================================================
+  const STAGE_COLORS = {
+    IF:   '#38bdf8',
+    ID:   '#a78bfa',
+    EX:   '#22d3ee',
+    MEM:  '#34d399',
+    WB:   '#4af2b2',
+    STALL:'#fbbf24',
+    FLUSH:'#fb7185',
+    MISS: '#f43f5e',
+    GOLD: '#ffd166'
+  };
+
+  function roundRect(x, y, w, h, r) {
+    const rr = Math.min(r, w * 0.5, h * 0.5);
+    ctx.beginPath();
+    ctx.moveTo(x + rr, y);
+    ctx.arcTo(x + w, y, x + w, y + h, rr);
+    ctx.arcTo(x + w, y + h, x, y + h, rr);
+    ctx.arcTo(x, y + h, x, y, rr);
+    ctx.arcTo(x, y, x + w, y, rr);
+    ctx.closePath();
+  }
+
+  function drawGlowBox(x, y, w, h, r, fill, stroke, glowColor, glowBlur = 14) {
+    ctx.save();
+    if (glowColor) {
+      ctx.shadowColor = glowColor;
+      ctx.shadowBlur = glowBlur;
+    }
+    roundRect(x, y, w, h, r);
+    ctx.fillStyle = fill;
+    ctx.fill();
+    if (stroke) {
+      ctx.strokeStyle = stroke;
+      ctx.lineWidth = 1.25;
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawWire(points, color, width = 2, active = false, packetT = -1, dashed = false) {
+    if (points.length < 2) return;
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(points[0][0], points[0][1]);
+    for (let i = 1; i < points.length; i++) ctx.lineTo(points[i][0], points[i][1]);
+    if (dashed) ctx.setLineDash([5, 4]);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    if (active) {
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 10;
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Arrowhead at end
+    const a = points[points.length - 2];
+    const b = points[points.length - 1];
+    const ang = Math.atan2(b[1] - a[1], b[0] - a[0]);
+    const ah = 6;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(b[0], b[1]);
+    ctx.lineTo(b[0] - ah * Math.cos(ang - 0.45), b[1] - ah * Math.sin(ang - 0.45));
+    ctx.lineTo(b[0] - ah * Math.cos(ang + 0.45), b[1] - ah * Math.sin(ang + 0.45));
+    ctx.closePath();
+    ctx.fill();
+
+    // Animated signal packet gliding along polyline
+    if (active && showPackets && packetT >= 0 && packetT <= 1) {
+      let totalLen = 0;
+      const segs = [];
+      for (let i = 0; i < points.length - 1; i++) {
+        const dx = points[i + 1][0] - points[i][0];
+        const dy = points[i + 1][1] - points[i][1];
+        const len = Math.hypot(dx, dy);
+        segs.push({ p0: points[i], p1: points[i + 1], len });
+        totalLen += len;
+      }
+      let target = packetT * totalLen;
+      for (const s of segs) {
+        if (target <= s.len || s === segs[segs.length - 1]) {
+          const u = s.len > 0 ? Math.min(1, target / s.len) : 0;
+          const px = s.p0[0] + (s.p1[0] - s.p0[0]) * u;
+          const py = s.p0[1] + (s.p1[1] - s.p0[1]) * u;
+          ctx.shadowColor = color;
+          ctx.shadowBlur = 14;
+          ctx.fillStyle = '#ffffff';
+          ctx.beginPath();
+          ctx.arc(px, py, 3.2, 0, Math.PI * 2);
+          ctx.fill();
+          break;
+        }
+        target -= s.len;
+      }
+    }
+    ctx.restore();
+  }
+
+  function drawCurvedBypass(x1, y1, x2, y2, lift, color, label, active, packetT) {
+    ctx.save();
+    const cx1 = x1;
+    const cy1 = Math.min(y1, y2) - lift;
+    const cx2 = x2;
+    const cy2 = Math.min(y1, y2) - lift;
+
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.bezierCurveTo(cx1, cy1, cx2, cy2, x2, y2);
+    ctx.strokeStyle = active ? color : 'rgba(255, 209, 102, 0.14)';
+    ctx.lineWidth = active ? 2.6 : 1.1;
+    if (!active) ctx.setLineDash([4, 5]);
+    if (active) {
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 14;
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Arrowhead at destination (x2, y2)
+    ctx.fillStyle = active ? color : 'rgba(255, 209, 102, 0.22)';
+    ctx.beginPath();
+    ctx.moveTo(x2, y2);
+    ctx.lineTo(x2 - 5, y2 - 8);
+    ctx.lineTo(x2 + 5, y2 - 8);
+    ctx.closePath();
+    ctx.fill();
+
+    // Label pill at apex
+    const mx = (x1 + x2) * 0.5;
+    const my = Math.min(y1, y2) - lift * 0.74;
+    if (active) {
+      ctx.font = '700 10px ui-monospace, Menlo, Consolas, monospace';
+      const tw = ctx.measureText(label).width + 12;
+      drawGlowBox(mx - tw / 2, my - 9, tw, 17, 8, 'rgba(22, 16, 6, 0.92)', color, color, 10);
+      ctx.fillStyle = '#fff4d2';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(label, mx, my);
+
+      // Moving golden electron packet on Bezier
+      if (showPackets) {
+        const t = Math.min(1, Math.max(0, packetT));
+        const mt = 1 - t;
+        const px = mt * mt * mt * x1 + 3 * mt * mt * t * cx1 + 3 * mt * t * t * cx2 + t * t * t * x2;
+        const py = mt * mt * mt * y1 + 3 * mt * mt * t * cy1 + 3 * mt * t * t * cy2 + t * t * t * y2;
+        ctx.shadowColor = color;
+        ctx.shadowBlur = 16;
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(px, py, 3.8, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    ctx.restore();
+  }
+
+  function truncate(str, maxChars) {
+    if (!str) return '';
+    return str.length > maxChars ? str.slice(0, maxChars - 1) + '…' : str;
+  }
+
+  // =========================================================================
+  // MAIN SILICON FLOORPLAN + GANTT RENDERER
+  // =========================================================================
+  function render(nowSec) {
+    hitZones = [];
+    ctx.save();
+    ctx.scale(DPR, DPR);
+
+    // 1. Deep Midnight Silicon Backdrop & Etched Wafer Grid
+    const bgGrad = ctx.createRadialGradient(W * 0.42, H * 0.35, 30, W * 0.45, H * 0.5, Math.max(W, H) * 0.85);
+    bgGrad.addColorStop(0, '#091226');
+    bgGrad.addColorStop(0.55, '#050916');
+    bgGrad.addColorStop(1, '#03060f');
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, W, H);
+
+    // Subtle wafer gridlines
+    ctx.strokeStyle = 'rgba(110, 155, 255, 0.042)';
+    ctx.lineWidth = 1;
+    const gridStep = 36;
+    ctx.beginPath();
+    for (let x = (W % gridStep) * 0.5; x < W; x += gridStep) {
+      ctx.moveTo(x, 0); ctx.lineTo(x, H);
+    }
+    for (let y = (H % gridStep) * 0.5; y < H; y += gridStep) {
+      ctx.moveTo(0, y); ctx.lineTo(W, y);
+    }
+    ctx.stroke();
+
+    // Compute clean safe region avoiding HUD overlays
+    const rightMargin = (!zenMode && drawerOpen && W > 960) ? 358 : 20;
+    const leftMargin = 18;
+    const topMargin = zenMode ? 22 : (W > 960 ? 186 : 196);
+    const bottomMargin = zenMode ? 24 : 66;
+
+    const areaX = leftMargin;
+    const areaW = Math.max(540, W - leftMargin - rightMargin);
+    const areaY = topMargin;
+    const areaH = Math.max(320, H - topMargin - bottomMargin);
+
+    // Vertical split: Chip Floorplan (~63%) + Pipeline Gantt Timeline (~35%)
+    const ganttH = Math.max(122, Math.min(220, Math.floor(areaH * 0.36)));
+    const chipY = areaY;
+    const chipH = Math.max(195, areaH - ganttH - 12);
+    const ganttY = chipY + chipH + 12;
+
+    drawSiliconFloorplan(areaX, chipY, areaW, chipH, nowSec);
+    drawGanttTimeline(areaX, ganttY, areaW, ganttH);
+
+    if (hoverInfo) drawHoverTooltip(hoverInfo);
+    ctx.restore();
+  }
+
+  function drawSiliconFloorplan(x, y, w, h, nowSec) {
+    const v = cpu.view;
+    const pkt = Math.min(1, animPhase * 1.15);
+
+    // Outer Silicon Die Chassis
+    drawGlowBox(x, y, w, h, 14, 'rgba(7, 12, 25, 0.72)', 'rgba(120, 165, 255, 0.18)', null);
+
+    // Subtle corner die fiducials
+    ctx.strokeStyle = 'rgba(88, 220, 255, 0.28)';
+    ctx.lineWidth = 1.5;
+    const fm = 9;
+    [[x + 6, y + 6, 1, 1], [x + w - 6, y + 6, -1, 1], [x + 6, y + h - 6, 1, -1], [x + w - 6, y + h - 6, -1, -1]].forEach(([fx, fy, dx, dy]) => {
+      ctx.beginPath();
+      ctx.moveTo(fx + dx * fm, fy); ctx.lineTo(fx, fy); ctx.lineTo(fx, fy + dy * fm);
+      ctx.stroke();
+    });
+
+    // Top die header label
+    ctx.font = '700 10px ui-monospace, Menlo, Consolas, monospace';
+    ctx.fillStyle = 'rgba(148, 179, 255, 0.5)';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText('RISC-32 SILICON FLOORPLAN  //  5-STAGE PIPELINED DATAPATH', x + 16, y + 9);
+
+    ctx.textAlign = 'right';
+    const hazardTxt = v.flushed
+      ? '⚡ BRANCH MISPREDICT — PIPELINE FLUSHED'
+      : v.stallReason === 'CACHE_MISS'
+        ? '⛔ L1 CACHE MISS — STALLING PIPELINE'
+        : v.stallReason
+          ? `⚠ ${v.stallReason.replace('_', '-')} HAZARD — BUBBLE INSERTED`
+          : (v.fwdA || v.fwdB)
+            ? '⚡ DATA FORWARDING ACTIVE — ZERO STALL'
+            : '✓ PIPELINE FLOW NOMINAL';
+    ctx.fillStyle = v.flushed || v.stallReason === 'CACHE_MISS'
+      ? STAGE_COLORS.FLUSH
+      : v.stallReason
+        ? STAGE_COLORS.STALL
+        : (v.fwdA || v.fwdB)
+          ? STAGE_COLORS.GOLD
+          : STAGE_COLORS.WB;
+    ctx.fillText(hazardTxt, x + w - 16, y + 9);
+
+    // Stage geometry: 5 stages separated by 4 vertical Pipeline Register bars
+    const innerPadX = 16;
+    const innerTop = y + 48; // leave top corridor for golden Forwarding arcs!
+    const innerBot = y + h - 22; // leave bottom corridor for WB→ID return bus!
+    const innerH = Math.max(120, innerBot - innerTop);
+
+    const pipeRegW = Math.max(16, Math.min(22, w * 0.022));
+    const gap = Math.max(8, Math.min(16, w * 0.014));
+    const availW = w - innerPadX * 2 - pipeRegW * 4 - gap * 8;
+
+    // Proportional stage widths: IF, ID, EX, MEM, WB
+    const weights = [0.20, 0.22, 0.21, 0.24, 0.13];
+    const stageNames = ['IF', 'ID', 'EX', 'MEM', 'WB'];
+    const stageTitles = ['Fetch', 'Decode & Regs', 'Execute (ALU)', 'L1 Cache & RAM', 'Write-Back'];
+    const regNames = ['IF/ID', 'ID/EX', 'EX/MEM', 'MEM/WB'];
+
+    const stages = [];
+    const pipeRegs = [];
+    let cx = x + innerPadX;
+    for (let i = 0; i < 5; i++) {
+      const sw = availW * weights[i];
+      stages.push({ name: stageNames[i], title: stageTitles[i], x: cx, y: innerTop, w: sw, h: innerH, color: STAGE_COLORS[stageNames[i]] });
+      cx += sw + gap;
+      if (i < 4) {
+        pipeRegs.push({ name: regNames[i], x: cx, y: innerTop + 6, w: pipeRegW, h: innerH - 12 });
+        cx += pipeRegW + gap;
+      }
+    }
+
+    // Draw stage cards & active instruction headers
+    const stageSlots = [v.IF, v.ID, v.EX, v.MEM, v.WB];
+    for (let i = 0; i < 5; i++) {
+      const st = stages[i];
+      const slot = stageSlots[i];
+      const isFlush = slot && slot.flushed;
+      const isStall = slot && (slot.stalled || (slot.isBubble && slot.reason === 'STALL') || (i === 3 && v.stallReason === 'CACHE_MISS'));
+      const isActive = slot && !slot.isBubble;
+      const accent = isFlush ? STAGE_COLORS.FLUSH : isStall ? STAGE_COLORS.STALL : st.color;
+
+      drawGlowBox(
+        st.x, st.y, st.w, st.h, 10,
+        isActive ? 'rgba(13, 21, 40, 0.86)' : 'rgba(9, 14, 28, 0.65)',
+        isActive ? accent + '88' : 'rgba(148, 179, 255, 0.14)',
+        isActive ? accent + '44' : null,
+        isActive ? 14 : 0
+      );
+
+      // Stage header bar
+      ctx.save();
+      roundRect(st.x, st.y, st.w, 24, 10);
+      ctx.fillStyle = isActive ? accent + '22' : 'rgba(255,255,255,0.03)';
+      ctx.fill();
+      ctx.font = '800 10.5px ui-monospace, Menlo, Consolas, monospace';
+      ctx.fillStyle = accent;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(st.name, st.x + 8, st.y + 12);
+
+      ctx.font = '600 9.5px system-ui, sans-serif';
+      ctx.fillStyle = 'rgba(210, 224, 255, 0.72)';
+      ctx.textAlign = 'right';
+      ctx.fillText(st.title, st.x + st.w - 8, st.y + 12);
+      ctx.restore();
+
+      // Current Instruction Banner inside stage
+      const bannerY = st.y + 28;
+      const bannerH = 22;
+      const insLabel = !slot
+        ? 'IDLE'
+        : slot.flushed
+          ? 'FLUSHED'
+          : slot.isBubble
+            ? (slot.reason === 'STALL' ? 'NOP (STALL)' : 'NOP')
+            : slot.instr.text;
+      drawGlowBox(
+        st.x + 6, bannerY, st.w - 12, bannerH, 5,
+        isFlush ? 'rgba(244, 63, 94, 0.22)' : isStall ? 'rgba(251, 191, 36, 0.18)' : isActive ? 'rgba(4, 10, 22, 0.85)' : 'rgba(255,255,255,0.02)',
+        isFlush ? STAGE_COLORS.FLUSH : isStall ? STAGE_COLORS.STALL : isActive ? accent + '66' : 'rgba(148, 179, 255, 0.08)',
+        null
+      );
+      ctx.font = '700 10px ui-monospace, Menlo, Consolas, monospace';
+      ctx.fillStyle = isFlush ? '#ffc2d0' : isStall ? '#ffe399' : isActive ? '#eef5ff' : 'rgba(148, 179, 255, 0.35)';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      const maxCh = Math.max(8, Math.floor((st.w - 18) / 6.2));
+      ctx.fillText(truncate(insLabel, maxCh), st.x + st.w * 0.5, bannerY + bannerH * 0.5);
+
+      // Register hover tooltip zone
+      hitZones.push({
+        x: st.x, y: st.y, w: st.w, h: st.h,
+        title: `${st.name} — ${st.title}`,
+        lines: [
+          `Active: ${insLabel}`,
+          slot && !slot.isBubble ? `PC: 0x${(slot.pc * 4).toString(16).toUpperCase().padStart(2, '0')} (#${slot.uid})` : 'No active instruction'
+        ]
+      });
+    }
+
+    // Draw glowing Pipeline Register bars (IF/ID, ID/EX, EX/MEM, MEM/WB)
+    const latchObjs = [cpu.latches.IF_ID, cpu.latches.ID_EX, cpu.latches.EX_MEM, cpu.latches.MEM_WB];
+    for (let i = 0; i < 4; i++) {
+      const pr = pipeRegs[i];
+      const lat = latchObjs[i];
+      const occupied = lat && !lat.isBubble;
+      const isBubble = lat && lat.isBubble;
+      const glowC = isBubble ? STAGE_COLORS.STALL : occupied ? STAGE_COLORS.EX : null;
+      const strokeC = isBubble ? STAGE_COLORS.STALL : occupied ? 'rgba(88, 220, 255, 0.72)' : 'rgba(148, 179, 255, 0.22)';
+      drawGlowBox(pr.x, pr.y, pr.w, pr.h, 6, 'rgba(11, 20, 42, 0.94)', strokeC, glowC, occupied ? 12 : 6);
+
+      // Clock pulse tick at bottom of register bar
+      const pulse = 0.5 + 0.5 * Math.sin(nowSec * 6 + i);
+      ctx.fillStyle = occupied ? `rgba(88, 220, 255, ${0.45 + pulse * 0.45})` : 'rgba(148, 179, 255, 0.18)';
+      ctx.fillRect(pr.x + 3, pr.y + pr.h - 10, pr.w - 6, 4);
+
+      // Vertical rotated label
+      ctx.save();
+      ctx.translate(pr.x + pr.w * 0.5, pr.y + pr.h * 0.5);
+      ctx.rotate(-Math.PI / 2);
+      ctx.font = '800 9.5px ui-monospace, Menlo, Consolas, monospace';
+      ctx.fillStyle = isBubble ? STAGE_COLORS.STALL : occupied ? '#dff8ff' : 'rgba(148, 179, 255, 0.48)';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(pr.name, 0, 0);
+      ctx.restore();
+
+      // Inter-stage data bus arrows connecting Stage[i] -> PipeReg[i] -> Stage[i+1]
+      const midY = pr.y + pr.h * 0.52;
+      drawWire([[stages[i].x + stages[i].w, midY], [pr.x, midY]], occupied ? '#58dcff' : 'rgba(148,179,255,0.22)', occupied ? 2 : 1.2, occupied, pkt);
+      drawWire([[pr.x + pr.w, midY], [stages[i + 1].x, midY]], occupied ? '#58dcff' : 'rgba(148,179,255,0.22)', occupied ? 2 : 1.2, occupied, pkt);
+    }
+
+    // ---------------------------------------------------------
+    // STAGE 1 INTERNALS: IF (PC + Instruction Memory + 2-Bit BTB)
+    // ---------------------------------------------------------
+    {
+      const st = stages[0];
+      const by = st.y + 56;
+      const bh = st.h - 62;
+      const pcBoxH = 30;
+      const pcStr = '0x' + ((cpu.pc * 4) >>> 0).toString(16).toUpperCase().padStart(2, '0');
+      drawGlowBox(st.x + 8, by, st.w - 16, pcBoxH, 6, 'rgba(12, 28, 52, 0.85)', STAGE_COLORS.IF + '99', STAGE_COLORS.IF + '55', 8);
+      ctx.font = '700 9.5px ui-monospace, Menlo, Consolas, monospace';
+      ctx.fillStyle = STAGE_COLORS.IF;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('PC', st.x + 15, by + pcBoxH * 0.5);
+      ctx.fillStyle = '#ffffff';
+      ctx.textAlign = 'right';
+      ctx.fillText(`${pcStr} (+4)`, st.x + st.w - 15, by + pcBoxH * 0.5);
+
+      // Instruction Memory Window
+      const imY = by + pcBoxH + 8;
+      const imH = Math.max(48, bh - pcBoxH - (cpu.config.branchPred ? 36 : 12));
+      drawGlowBox(st.x + 8, imY, st.w - 16, imH, 6, 'rgba(6, 11, 24, 0.82)', 'rgba(148,179,255,0.18)', null);
+      ctx.font = '700 8.5px ui-monospace, Menlo, Consolas, monospace';
+      ctx.fillStyle = 'rgba(148,179,255,0.55)';
+      ctx.textAlign = 'left';
+      ctx.fillText('INSTR MEMORY', st.x + 14, imY + 10);
+
+      const activePc = v.IF && !v.IF.isBubble ? v.IF.pc : cpu.pc;
+      const visibleLines = Math.max(2, Math.floor((imH - 18) / 15));
+      const startIdx = Math.max(0, Math.min(Math.max(0, cpu.program.length - visibleLines), activePc - 1));
+      const maxCh = Math.max(10, Math.floor((st.w - 30) / 5.7));
+      for (let k = 0; k < visibleLines; k++) {
+        const idx = startIdx + k;
+        if (idx >= cpu.program.length) break;
+        const ry = imY + 22 + k * 15;
+        const isCurr = idx === activePc;
+        if (isCurr) {
+          ctx.fillStyle = v.IF && v.IF.flushed ? 'rgba(251, 113, 133, 0.24)' : 'rgba(56, 189, 248, 0.22)';
+          ctx.fillRect(st.x + 11, ry - 7, st.w - 22, 14);
+        }
+        ctx.font = (isCurr ? '700' : '500') + ' 9px ui-monospace, Menlo, Consolas, monospace';
+        ctx.fillStyle = isCurr ? '#ffffff' : 'rgba(154, 169, 204, 0.65)';
+        ctx.textAlign = 'left';
+        ctx.fillText(truncate(`${idx.toString().padStart(2, '0')}: ${cpu.program[idx].text}`, maxCh), st.x + 14, ry);
+      }
+
+      // 2-Bit BTB Predictor Badge
+      if (cpu.config.branchPred) {
+        const bpY = imY + imH + 6;
+        const bpH = 22;
+        const predTaken = v.IF && v.IF.predictedTaken;
+        drawGlowBox(st.x + 8, bpY, st.w - 16, bpH, 5, 'rgba(14, 24, 48, 0.85)', predTaken ? STAGE_COLORS.GOLD : 'rgba(88,220,255,0.45)', predTaken ? STAGE_COLORS.GOLD : null, 8);
+        ctx.font = '700 9px ui-monospace, Menlo, Consolas, monospace';
+        ctx.fillStyle = predTaken ? STAGE_COLORS.GOLD : STAGE_COLORS.IF;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(predTaken ? `BTB: PREDICT TAKEN → #${v.IF.predictedTarget}` : '2-BIT BTB ACTIVE', st.x + st.w * 0.5, bpY + bpH * 0.5);
+      }
+    }
+
+    // ---------------------------------------------------------
+    // STAGE 2 INTERNALS: ID (8-Register File R0–R7 + Hazard Unit)
+    // ---------------------------------------------------------
+    const regFileAnchor = { x: stages[1].x + stages[1].w * 0.5, y: stages[1].y + stages[1].h - 8 };
+    {
+      const st = stages[1];
+      const by = st.y + 56;
+      const bh = st.h - 62;
+
+      // Register File 2×4 Grid
+      const gridH = Math.max(82, bh - 28);
+      drawGlowBox(st.x + 8, by, st.w - 16, gridH, 7, 'rgba(6, 11, 24, 0.85)', 'rgba(167, 139, 250, 0.3)', null);
+      ctx.font = '700 8.5px ui-monospace, Menlo, Consolas, monospace';
+      ctx.fillStyle = 'rgba(167, 139, 250, 0.85)';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      ctx.fillText('REGISTER FILE (R0–R7)', st.x + 14, by + 6);
+
+      const cellGap = 4;
+      const cellW = (st.w - 28 - cellGap) * 0.5;
+      const cellH = Math.max(15, (gridH - 24 - cellGap * 3) * 0.25);
+
+      for (let r = 0; r < 8; r++) {
+        const col = r % 2;
+        const row = Math.floor(r / 2);
+        const rx = st.x + 12 + col * (cellW + cellGap);
+        const ry = by + 19 + row * (cellH + cellGap);
+        const isW = v.regWrite && v.regWrite.reg === r;
+        const isR = v.regRead.includes(r);
+
+        const bg = isW ? 'rgba(74, 242, 178, 0.24)' : isR ? 'rgba(88, 220, 255, 0.22)' : 'rgba(255, 255, 255, 0.03)';
+        const bd = isW ? STAGE_COLORS.WB : isR ? STAGE_COLORS.IF : 'rgba(148, 179, 255, 0.14)';
+        drawGlowBox(rx, ry, cellW, cellH, 4, bg, bd, isW ? STAGE_COLORS.WB : isR ? STAGE_COLORS.IF : null, 8);
+
+        ctx.font = '700 9.5px ui-monospace, Menlo, Consolas, monospace';
+        ctx.textBaseline = 'middle';
+        ctx.textAlign = 'left';
+        ctx.fillStyle = isW ? STAGE_COLORS.WB : isR ? '#9cecff' : 'rgba(154, 169, 204, 0.8)';
+        ctx.fillText(`R${r}`, rx + 5, ry + cellH * 0.5);
+
+        ctx.textAlign = 'right';
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(String(cpu.regs[r]), rx + cellW - 5, ry + cellH * 0.5);
+      }
+
+      // Hazard Detection Unit pill at bottom of ID
+      const hzY = by + gridH + 5;
+      const hzH = Math.max(18, bh - gridH - 8);
+      const isHz = v.stallReason === 'RAW' || v.stallReason === 'LOAD_USE';
+      drawGlowBox(
+        st.x + 8, hzY, st.w - 16, hzH, 5,
+        isHz ? 'rgba(251, 191, 36, 0.22)' : 'rgba(15, 23, 42, 0.7)',
+        isHz ? STAGE_COLORS.STALL : 'rgba(148, 179, 255, 0.16)',
+        isHz ? STAGE_COLORS.STALL : null, 10
+      );
+      ctx.font = '700 8.8px ui-monospace, Menlo, Consolas, monospace';
+      ctx.fillStyle = isHz ? '#ffe599' : 'rgba(148, 179, 255, 0.55)';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(isHz ? `HAZARD: ${v.stallReason.replace('_', '-')} STALL` : 'HAZARD UNIT: CLEAR', st.x + st.w * 0.5, hzY + hzH * 0.5);
+    }
+
+    // ---------------------------------------------------------
+    // STAGE 3 INTERNALS: EX (Glowing V-Notch ALU + Forwarding Muxes)
+    // ---------------------------------------------------------
+    const aluMuxA = { x: stages[2].x + 22, y: stages[2].y + 74 };
+    const aluMuxB = { x: stages[2].x + 22, y: stages[2].y + stages[2].h - 46 };
+    {
+      const st = stages[2];
+      const exSlot = v.EX;
+      const exActive = exSlot && !exSlot.isBubble;
+      const midY = st.y + 56 + (st.h - 64) * 0.46;
+
+      // Forwarding MUX A & MUX B badges
+      const muxW = 30, muxH = 22;
+      const drawMux = (mx, my, label, fwdSrc) => {
+        const active = !!fwdSrc;
+        drawGlowBox(mx - muxW / 2, my - muxH / 2, muxW, muxH, 5,
+          active ? 'rgba(255, 209, 102, 0.25)' : 'rgba(10, 18, 36, 0.85)',
+          active ? STAGE_COLORS.GOLD : 'rgba(148,179,255,0.22)',
+          active ? STAGE_COLORS.GOLD : null, 10);
+        ctx.font = '700 8.5px ui-monospace, Menlo, Consolas, monospace';
+        ctx.fillStyle = active ? '#fff3cc' : 'rgba(154,169,204,0.75)';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(label, mx, my);
+      };
+      drawMux(aluMuxA.x, aluMuxA.y, 'MUXA', v.fwdA);
+      drawMux(aluMuxB.x, aluMuxB.y, 'MUXB', v.fwdB);
+
+      // Iconic V-notch ALU polygon
+      const ax = st.x + 48;
+      const aw = Math.max(46, st.w - 60);
+      const ah = Math.min(112, Math.max(66, st.h - 94));
+      const ay = midY - ah * 0.5;
+      const notch = 16;
+
+      ctx.save();
+      if (exActive) {
+        ctx.shadowColor = v.branchEvent && v.branchEvent.mispredicted ? STAGE_COLORS.FLUSH : STAGE_COLORS.EX;
+        ctx.shadowBlur = 18;
+      }
+      ctx.beginPath();
+      ctx.moveTo(ax, ay);
+      ctx.lineTo(ax + aw, ay + ah * 0.22);
+      ctx.lineTo(ax + aw, ay + ah * 0.78);
+      ctx.lineTo(ax, ay + ah);
+      ctx.lineTo(ax, ay + ah * 0.62);
+      ctx.lineTo(ax + notch, ay + ah * 0.5);
+      ctx.lineTo(ax, ay + ah * 0.38);
+      ctx.closePath();
+
+      const aluGrad = ctx.createLinearGradient(ax, ay, ax + aw, ay + ah);
+      aluGrad.addColorStop(0, exActive ? 'rgba(14, 54, 82, 0.92)' : 'rgba(10, 20, 40, 0.78)');
+      aluGrad.addColorStop(1, exActive ? 'rgba(9, 28, 56, 0.92)' : 'rgba(6, 12, 26, 0.78)');
+      ctx.fillStyle = aluGrad;
+      ctx.fill();
+      ctx.strokeStyle = exActive
+        ? (v.branchEvent && v.branchEvent.mispredicted ? STAGE_COLORS.FLUSH : STAGE_COLORS.EX)
+        : 'rgba(148, 179, 255, 0.24)';
+      ctx.lineWidth = 1.6;
+      ctx.stroke();
+      ctx.restore();
+
+      // Operand wires from MUX to ALU
+      drawWire([[aluMuxA.x + muxW / 2, aluMuxA.y], [ax, ay + ah * 0.22]], v.fwdA ? STAGE_COLORS.GOLD : (exActive ? STAGE_COLORS.EX : 'rgba(148,179,255,0.2)'), v.fwdA ? 2.2 : 1.4, exActive, pkt);
+      drawWire([[aluMuxB.x + muxW / 2, aluMuxB.y], [ax, ay + ah * 0.78]], v.fwdB ? STAGE_COLORS.GOLD : (exActive ? STAGE_COLORS.EX : 'rgba(148,179,255,0.2)'), v.fwdB ? 2.2 : 1.4, exActive, pkt);
+
+      // ALU Text Readout
+      const aluCx = ax + aw * 0.56;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = '800 12px ui-monospace, Menlo, Consolas, monospace';
+      ctx.fillStyle = exActive ? '#ffffff' : 'rgba(148,179,255,0.4)';
+      ctx.fillText(exActive ? exSlot.instr.op : 'ALU', aluCx, ay + ah * 0.38);
+
+      if (exActive) {
+        ctx.font = '600 9.5px ui-monospace, Menlo, Consolas, monospace';
+        ctx.fillStyle = '#9be8ff';
+        const opTxt = exSlot.isJump ? `→ #${exSlot.instr.targetPc}` : `${exSlot.opA}, ${exSlot.opB}`;
+        ctx.fillText(truncate(opTxt, 14), aluCx, ay + ah * 0.56);
+
+        ctx.font = '800 10.5px ui-monospace, Menlo, Consolas, monospace';
+        ctx.fillStyle = STAGE_COLORS.WB;
+        const resTxt = exSlot.isBranch
+          ? (v.branchEvent && v.branchEvent.taken ? 'TAKEN' : 'NOT TAKEN')
+          : `= ${exSlot.aluResult}`;
+        ctx.fillText(resTxt, aluCx, ay + ah * 0.75);
+      }
+
+      // Branch outcome banner at bottom of EX
+      const brY = st.y + st.h - 24;
+      if (v.branchEvent) {
+        const mis = v.branchEvent.mispredicted;
+        drawGlowBox(st.x + 8, brY, st.w - 16, 18, 4,
+          mis ? 'rgba(244, 63, 94, 0.28)' : 'rgba(74, 242, 178, 0.18)',
+          mis ? STAGE_COLORS.FLUSH : STAGE_COLORS.WB,
+          mis ? STAGE_COLORS.FLUSH : STAGE_COLORS.WB, 10);
+        ctx.font = '700 8.8px ui-monospace, Menlo, Consolas, monospace';
+        ctx.fillStyle = mis ? '#ffd1dc' : '#c6ffe9';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(mis ? 'MISPREDICT → FLUSH!' : 'PREDICTED OK ✓', st.x + st.w * 0.5, brY + 9);
+      }
+    }
+
+    // ---------------------------------------------------------
+    // STAGE 4 INTERNALS: MEM (Direct-Mapped L1 Data Cache + RAM)
+    // ---------------------------------------------------------
+    {
+      const st = stages[3];
+      const by = st.y + 56;
+      const bh = st.h - 62;
+      const ce = v.cacheEvent;
+
+      // L1 Cache Table Box
+      const l1H = Math.max(82, bh - 34);
+      const l1Border = ce
+        ? (ce.type === 'HIT' ? STAGE_COLORS.MEM : ce.type === 'FILL' ? STAGE_COLORS.IF : STAGE_COLORS.MISS)
+        : 'rgba(52, 211, 153, 0.3)';
+      drawGlowBox(st.x + 8, by, st.w - 16, l1H, 7, 'rgba(6, 12, 24, 0.88)', l1Border, ce ? l1Border : null, ce ? 14 : 0);
+
+      ctx.font = '700 8.5px ui-monospace, Menlo, Consolas, monospace';
+      ctx.textBaseline = 'top';
+      ctx.textAlign = 'left';
+      ctx.fillStyle = cpu.config.cacheEnabled ? STAGE_COLORS.MEM : STAGE_COLORS.MISS;
+      ctx.fillText(cpu.config.cacheEnabled ? 'L1 DATA CACHE (4×8B)' : 'L1 CACHE BYPASSED', st.x + 14, by + 6);
+
+      if (ce) {
+        ctx.textAlign = 'right';
+        ctx.fillStyle = ce.type === 'HIT' ? '#6effc8' : ce.type === 'FILL' ? '#7dd3fc' : '#ff8ca3';
+        const tagTxt = ce.type === 'HIT' ? 'HIT 1c' : ce.type === 'FILL' ? 'FILLED' : `MISS -${ce.remaining}c`;
+        ctx.fillText(tagTxt, st.x + st.w - 14, by + 6);
+      }
+
+      // 4 Cache Lines (S0..S3)
+      const rowH = Math.max(15, (l1H - 22) * 0.25);
+      for (let s = 0; s < 4; s++) {
+        const ln = cpu.cache[s];
+        const ry = by + 19 + s * rowH;
+        const isTarget = ce && ce.set === s;
+        const rowBg = isTarget
+          ? (ce.type === 'HIT' ? 'rgba(52, 211, 153, 0.26)' : ce.type === 'FILL' ? 'rgba(56, 189, 248, 0.22)' : 'rgba(244, 63, 94, 0.28)')
+          : 'rgba(255, 255, 255, 0.025)';
+        const rowBd = isTarget
+          ? (ce.type === 'HIT' ? STAGE_COLORS.MEM : ce.type === 'FILL' ? STAGE_COLORS.IF : STAGE_COLORS.MISS)
+          : 'rgba(148, 179, 255, 0.1)';
+        drawGlowBox(st.x + 12, ry, st.w - 24, rowH - 3, 4, rowBg, rowBd, null);
+
+        ctx.font = '600 9px ui-monospace, Menlo, Consolas, monospace';
+        ctx.textBaseline = 'middle';
+        ctx.textAlign = 'left';
+        ctx.fillStyle = isTarget ? '#ffffff' : 'rgba(154,169,204,0.85)';
+        const lineStr = ln.valid
+          ? `S${s} T${ln.tag} [${ln.words[0]}, ${ln.words[1]}]`
+          : `S${s} —  [empty]`;
+        ctx.fillText(truncate(lineStr, Math.max(12, Math.floor((st.w - 30) / 5.7))), st.x + 16, ry + (rowH - 3) * 0.5);
+      }
+
+      // Main RAM Strip beneath L1 Cache
+      const ramY = by + l1H + 7;
+      const ramH = Math.max(20, bh - l1H - 8);
+      const ramActive = v.ramTouchWord >= 0;
+      drawGlowBox(
+        st.x + 8, ramY, st.w - 16, ramH, 5,
+        ramActive ? 'rgba(244, 63, 94, 0.18)' : 'rgba(10, 16, 32, 0.78)',
+        ramActive ? STAGE_COLORS.MISS : 'rgba(148, 179, 255, 0.18)',
+        ramActive ? STAGE_COLORS.MISS : null, 10
+      );
+      ctx.font = '700 8.8px ui-monospace, Menlo, Consolas, monospace';
+      ctx.fillStyle = ramActive ? '#ffd0da' : 'rgba(148, 179, 255, 0.55)';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      const ramLbl = ramActive
+        ? `MAIN RAM [0x${(v.ramTouchWord * 4).toString(16).toUpperCase().padStart(2, '0')}] = ${cpu.ram[v.ramTouchWord]}`
+        : 'MAIN RAM (256B)';
+      ctx.fillText(truncate(ramLbl, Math.max(12, Math.floor((st.w - 24) / 5.7))), st.x + st.w * 0.5, ramY + ramH * 0.5);
+    }
+
+    // ---------------------------------------------------------
+    // STAGE 5 INTERNALS: WB (Write-Back Mux + Return Bus to ID)
+    // ---------------------------------------------------------
+    const wbOutAnchor = { x: stages[4].x + stages[4].w * 0.5, y: stages[4].y + stages[4].h - 8 };
+    {
+      const st = stages[4];
+      const wbSlot = v.WB;
+      const wbActive = wbSlot && !wbSlot.isBubble && wbSlot.regWrite && wbSlot.rd !== 0;
+      const muxY = st.y + 62;
+      const muxH = Math.min(82, st.h - 76);
+
+      drawGlowBox(
+        st.x + 10, muxY, st.w - 20, muxH, 8,
+        wbActive ? 'rgba(12, 42, 34, 0.85)' : 'rgba(9, 15, 30, 0.75)',
+        wbActive ? STAGE_COLORS.WB : 'rgba(148, 179, 255, 0.18)',
+        wbActive ? STAGE_COLORS.WB : null, 12
+      );
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = '700 9px ui-monospace, Menlo, Consolas, monospace';
+      ctx.fillStyle = wbActive ? STAGE_COLORS.WB : 'rgba(148, 179, 255, 0.45)';
+      ctx.fillText('WB MUX', st.x + st.w * 0.5, muxY + muxH * 0.28);
+
+      ctx.font = '800 11px ui-monospace, Menlo, Consolas, monospace';
+      ctx.fillStyle = wbActive ? '#ffffff' : 'rgba(148, 179, 255, 0.32)';
+      ctx.fillText(wbActive ? `R${wbSlot.rd} ← ${wbSlot.result}` : 'NO WRITE', st.x + st.w * 0.5, muxY + muxH * 0.56);
+
+      if (wbActive) {
+        ctx.font = '600 8.5px ui-monospace, Menlo, Consolas, monospace';
+        ctx.fillStyle = '#9cfce0';
+        ctx.fillText(wbSlot.isMemRead ? 'SRC: MEM' : 'SRC: ALU', st.x + st.w * 0.5, muxY + muxH * 0.80);
+      }
+    }
+
+    // ---------------------------------------------------------
+    // GLOBAL RETURN BUSES & GOLDEN FORWARDING ARCS
+    // ---------------------------------------------------------
+    // 1. WB → ID Write-Back Return Bus along bottom channel
+    const wbBusY = y + h - 10;
+    const wbWriting = !!(v.regWrite);
+    drawWire(
+      [
+        [wbOutAnchor.x, stages[4].y + stages[4].h],
+        [wbOutAnchor.x, wbBusY],
+        [regFileAnchor.x, wbBusY],
+        [regFileAnchor.x, stages[1].y + stages[1].h]
+      ],
+      wbWriting ? STAGE_COLORS.WB : 'rgba(74, 242, 178, 0.16)',
+      wbWriting ? 2.2 : 1.1,
+      wbWriting,
+      pkt
+    );
+
+    // 2. Golden Data Forwarding Bypass Arcs (EX/MEM → EX and MEM/WB → EX)
+    if (showFwdArcs && cpu.config.forwarding) {
+      const exMemSrcX = pipeRegs[2].x + pipeRegs[2].w * 0.5;
+      const exMemSrcY = pipeRegs[2].y;
+      const memWbSrcX = pipeRegs[3].x + pipeRegs[3].w * 0.5;
+      const memWbSrcY = pipeRegs[3].y;
+      const exDstX1 = stages[2].x + stages[2].w * 0.38;
+      const exDstX2 = stages[2].x + stages[2].w * 0.62;
+      const exDstY = stages[2].y;
+
+      const exFwdActive = v.fwdA === 'EX_MEM' || v.fwdB === 'EX_MEM';
+      const exFwdReg = v.fwdA === 'EX_MEM' ? `R${v.fwdAReg}=${v.fwdAVal}` : `R${v.fwdBReg}=${v.fwdBVal}`;
+      drawCurvedBypass(
+        exMemSrcX, exMemSrcY, exDstX2, exDstY, 22,
+        STAGE_COLORS.GOLD, `EX→EX FWD (${exFwdReg})`, exFwdActive, pkt
+      );
+
+      const memFwdActive = v.fwdA === 'MEM_WB' || v.fwdB === 'MEM_WB';
+      const memFwdReg = v.fwdA === 'MEM_WB' ? `R${v.fwdAReg}=${v.fwdAVal}` : `R${v.fwdBReg}=${v.fwdBVal}`;
+      drawCurvedBypass(
+        memWbSrcX, memWbSrcY, exDstX1, exDstY, 34,
+        '#ffb703', `MEM→EX FWD (${memFwdReg})`, memFwdActive, pkt
+      );
+    }
+
+    // 3. Branch Misprediction Crimson Flush Shockwave (EX → IF/ID)
+    if (v.flushed) {
+      const exSrcX = stages[2].x + stages[2].w * 0.25;
+      const ifDstX = stages[0].x + stages[0].w * 0.5;
+      drawCurvedBypass(
+        exSrcX, stages[2].y, ifDstX, stages[0].y, 26,
+        STAGE_COLORS.FLUSH, `BRANCH FLUSH → PC=0x${(cpu.pc * 4).toString(16).toUpperCase().padStart(2, '0')}`, true, pkt
+      );
+    }
+  }
+
+  // =========================================================================
+  // CYCLE-BY-CYCLE PIPELINE GANTT TIMELINE
+  // =========================================================================
+  function drawGanttTimeline(x, y, w, h) {
+    ganttRectCache = { x, y, w, h };
+    drawGlowBox(x, y, w, h, 12, 'rgba(7, 12, 25, 0.78)', 'rgba(120, 165, 255, 0.18)', null);
+
+    // Header
+    ctx.font = '700 10px ui-monospace, Menlo, Consolas, monospace';
+    ctx.fillStyle = 'rgba(148, 179, 255, 0.65)';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('CYCLE-BY-CYCLE PIPELINE GANTT TIMELINE', x + 14, y + 14);
+
+    // Legend pills on top-right
+    const legend = [
+      ['IF', STAGE_COLORS.IF],
+      ['ID', STAGE_COLORS.ID],
+      ['EX', STAGE_COLORS.EX],
+      ['MEM', STAGE_COLORS.MEM],
+      ['WB', STAGE_COLORS.WB],
+      ['STALL', STAGE_COLORS.STALL],
+      ['FLUSH', STAGE_COLORS.FLUSH]
+    ];
+    let lx = x + w - 12;
+    ctx.font = '700 9px ui-monospace, Menlo, Consolas, monospace';
+    for (let i = legend.length - 1; i >= 0; i--) {
+      const [lbl, col] = legend[i];
+      const tw = ctx.measureText(lbl).width + 10;
+      lx -= tw;
+      if (lx < x + 280) break;
+      drawGlowBox(lx, y + 6, tw, 15, 4, col + '22', col + '77', null);
+      ctx.fillStyle = col;
+      ctx.textAlign = 'center';
+      ctx.fillText(lbl, lx + tw * 0.5, y + 13.5);
+      lx -= 5;
+    }
+
+    const labelColW = Math.min(188, Math.max(132, w * 0.22));
+    const gridX = x + labelColW;
+    const gridW = w - labelColW - 10;
+    const headerY = y + 26;
+    const rowTop = headerY + 18;
+    const rowH = 20;
+    const maxVisibleRows = Math.max(3, Math.floor((h - 48) / rowH));
+
+    const colW = 38;
+    const maxVisibleCols = Math.max(5, Math.floor(gridW / colW));
+    const endCycle = Math.max(maxVisibleCols, cpu.cycle - ganttScrollCols);
+    const startCycle = Math.max(1, endCycle - maxVisibleCols + 1);
+
+    // Cycle column headers
+    ctx.font = '700 9.5px ui-monospace, Menlo, Consolas, monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    for (let c = startCycle; c <= startCycle + maxVisibleCols - 1; c++) {
+      const cx = gridX + (c - startCycle) * colW;
+      const isNow = c === cpu.cycle;
+      if (isNow) {
+        ctx.fillStyle = 'rgba(88, 220, 255, 0.1)';
+        ctx.fillRect(cx, headerY, colW, h - 30);
+      }
+      ctx.fillStyle = isNow ? '#ffffff' : 'rgba(148, 179, 255, 0.5)';
+      ctx.fillText(`C${c}`, cx + colW * 0.5, headerY + 9);
+    }
+
+    // Divider line
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.12)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x + 8, rowTop - 1);
+    ctx.lineTo(x + w - 8, rowTop - 1);
+    ctx.moveTo(gridX - 2, headerY);
+    ctx.lineTo(gridX - 2, y + h - 6);
+    ctx.stroke();
+
+    // Visible instruction rows (most recent rows)
+    const rows = cpu.ganttRows.slice(-maxVisibleRows);
+    const maxLabelCh = Math.max(14, Math.floor((labelColW - 22) / 5.8));
+
+    for (let r = 0; r < rows.length; r++) {
+      const row = rows[r];
+      const ry = rowTop + r * rowH;
+
+      // Subtle alternating stripe
+      if (r % 2 === 1) {
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.018)';
+        ctx.fillRect(x + 8, ry, w - 16, rowH);
+      }
+
+      // Instruction text label
+      ctx.font = '600 9.5px ui-monospace, Menlo, Consolas, monospace';
+      ctx.fillStyle = 'rgba(218, 232, 255, 0.88)';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(truncate(`#${row.uid} ${row.text}`, maxLabelCh), x + 12, ry + rowH * 0.5);
+
+      // Cells for each visible cycle
+      for (let c = startCycle; c <= startCycle + maxVisibleCols - 1; c++) {
+        const val = row.cells[c];
+        if (!val) continue;
+        const cx = gridX + (c - startCycle) * colW + 2;
+        const cw = colW - 4;
+        const ch = rowH - 4;
+        const cy = ry + 2;
+
+        const hasFwd = val === 'EX*';
+        const disp = hasFwd ? 'EX' : val;
+        const col = disp === 'HALT' ? '#a78bfa' : (STAGE_COLORS[disp] || '#94a3b8');
+
+        drawGlowBox(cx, cy, cw, ch, 4, col + '2e', col + 'cc', c === cpu.cycle ? col : null, 8);
+        ctx.font = '800 9px ui-monospace, Menlo, Consolas, monospace';
+        ctx.fillStyle = '#ffffff';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(disp, cx + cw * 0.5, cy + ch * 0.5 + 0.5);
+
+        // Tiny gold forwarding diamond on forwarded EX cell
+        if (hasFwd) {
+          ctx.fillStyle = STAGE_COLORS.GOLD;
+          ctx.beginPath();
+          ctx.arc(cx + cw - 4.5, cy + 4.5, 2.3, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    }
+  }
+
+  function drawHoverTooltip(info) {
+    ctx.save();
+    ctx.font = '700 11px system-ui, sans-serif';
+    let maxW = ctx.measureText(info.title).width;
+    ctx.font = '500 10px ui-monospace, Menlo, Consolas, monospace';
+    for (const ln of info.lines) maxW = Math.max(maxW, ctx.measureText(ln).width);
+
+    const bw = maxW + 20;
+    const bh = 26 + info.lines.length * 14;
+    const bx = Math.min(W - bw - 14, info.x + 14);
+    const by = Math.max(14, info.y - bh - 10);
+
+    drawGlowBox(bx, by, bw, bh, 8, 'rgba(8, 13, 26, 0.94)', 'rgba(88, 220, 255, 0.45)', 'rgba(0,0,0,0.6)', 14);
+    ctx.font = '700 10.5px system-ui, sans-serif';
+    ctx.fillStyle = '#58dcff';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText(info.title, bx + 10, by + 7);
+
+    ctx.font = '500 9.8px ui-monospace, Menlo, Consolas, monospace';
+    ctx.fillStyle = '#e2ecff';
+    info.lines.forEach((ln, i) => ctx.fillText(ln, bx + 10, by + 23 + i * 14));
+    ctx.restore();
+  }
+
+  // =========================================================================
+  // MAIN ANIMATION LOOP
+  // =========================================================================
+  let lastTs = performance.now();
+  function frame(ts) {
+    const dt = Math.min(0.1, (ts - lastTs) / 1000);
+    lastTs = ts;
+
+    const effHz = clockHz * speedMul;
+    const period = 1 / Math.max(0.1, effHz);
+
+    if (isPlaying && !cpu.halted) {
+      cycleAccum += dt;
+      animPhase = Math.min(1, cycleAccum / period);
+      if (cycleAccum >= period) {
+        cycleAccum -= period;
+        doStep();
+      }
+    } else {
+      // Smoothly finish packet transit after a manual step
+      animPhase = Math.min(1, animPhase + dt * 2.6);
+    }
+
+    render(ts / 1000);
+    requestAnimationFrame(frame);
+  }
+
+  // Boot with RAW & Forwarding Demo
+  selectPreset('raw');
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

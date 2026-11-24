@@ -1,0 +1,3393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Attention — Transformer Self-Attention (Q/K/V), Embeddings &amp; Sampling</title>
+<style>
+  :root {
+    --bg-deep: #040711;
+    --panel-bg: rgba(9, 13, 24, 0.78);
+    --panel-bg-strong: rgba(8, 12, 22, 0.92);
+    --panel-border: rgba(148, 179, 255, 0.16);
+    --panel-border-hi: rgba(148, 179, 255, 0.36);
+    --text-main: #eef3ff;
+    --text-dim: #9aa9cc;
+    --text-muted: #68789c;
+    --accent-amber: #ffbe5c;
+    --accent-cyan: #58dcff;
+    --accent-mint: #4af2b2;
+    --accent-rose: #ff6083;
+    --accent-violet: #a78bfa;
+    --radius-lg: 14px;
+    --radius-md: 10px;
+    --radius-sm: 7px;
+    --mono: ui-monospace, "Cascadia Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Inter, Helvetica, Arial, sans-serif;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg-deep);
+    color: var(--text-main);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    touch-action: none;
+  }
+
+  #sim-canvas {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    cursor: default;
+  }
+  #sim-canvas.pointer {
+    cursor: pointer;
+  }
+
+  /* HUD Layer */
+  .hud {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 10;
+  }
+  body.zen-mode .hud > :not(.zen-restore) {
+    opacity: 0;
+    pointer-events: none !important;
+  }
+
+  .panel {
+    pointer-events: auto;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-lg);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.52), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    transition: opacity 0.25s ease, transform 0.25s ease;
+  }
+
+  /* Top-Left Brand + Telemetry */
+  .top-left {
+    position: fixed;
+    top: 14px;
+    left: 14px;
+    width: min(432px, calc(100vw - 364px));
+    min-width: 290px;
+    padding: 11px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .brand-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .brand-title-wrap {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .brand-title {
+    font-size: 16px;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    background: linear-gradient(120deg, #e0f7ff 0%, #58dcff 38%, #a78bfa 72%, #ffbe5c 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .mode-badge {
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 190, 92, 0.42);
+    background: rgba(255, 190, 92, 0.12);
+    color: var(--accent-amber);
+    white-space: nowrap;
+  }
+  .mode-badge.bert {
+    border-color: rgba(74, 242, 178, 0.42);
+    background: rgba(74, 242, 178, 0.12);
+    color: var(--accent-mint);
+  }
+
+  .status-pill {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: rgba(167, 139, 250, 0.16);
+    color: var(--accent-violet);
+    border: 1px solid rgba(167, 139, 250, 0.42);
+    white-space: nowrap;
+  }
+  .status-pill.cyan {
+    background: rgba(88, 220, 255, 0.14);
+    color: var(--accent-cyan);
+    border-color: rgba(88, 220, 255, 0.4);
+  }
+  .status-pill.mint {
+    background: rgba(74, 242, 178, 0.14);
+    color: var(--accent-mint);
+    border-color: rgba(74, 242, 178, 0.4);
+  }
+  .status-pill.amber {
+    background: rgba(255, 190, 92, 0.15);
+    color: var(--accent-amber);
+    border-color: rgba(255, 190, 92, 0.42);
+  }
+
+  .telemetry-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+  }
+
+  .tele-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(148, 179, 255, 0.1);
+    border-radius: var(--radius-sm);
+    padding: 5px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .tele-label {
+    font-size: 9px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .tele-val {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--text-main);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .tele-val.amber { color: var(--accent-amber); }
+  .tele-val.cyan { color: var(--accent-cyan); }
+  .tele-val.mint { color: var(--accent-mint); }
+  .tele-val.rose { color: var(--accent-rose); }
+  .tele-val.violet { color: var(--accent-violet); }
+
+  .formula-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding-top: 5px;
+    border-top: 1px solid rgba(148, 179, 255, 0.1);
+    font-size: 10.5px;
+    color: var(--text-dim);
+    font-family: var(--mono);
+  }
+  .formula-row .eq {
+    color: #c8dcff;
+    white-space: nowrap;
+  }
+  .formula-row .focus-readout {
+    color: var(--accent-cyan);
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Right Control Drawer (330px) */
+  .drawer {
+    position: fixed;
+    top: 14px;
+    right: 14px;
+    bottom: 14px;
+    width: 330px;
+    max-width: calc(100vw - 28px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: transform 0.25s ease, opacity 0.25s ease;
+  }
+  .drawer.collapsed {
+    transform: translateX(calc(100% + 24px));
+    pointer-events: none;
+  }
+
+  .drawer-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+    padding: 8px 8px 6px;
+    border-bottom: 1px solid var(--panel-border);
+    background: rgba(4, 7, 15, 0.45);
+  }
+
+  .tab-btn {
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    padding: 7px 5px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .tab-btn:hover {
+    color: var(--text-main);
+    background: rgba(255, 255, 255, 0.04);
+  }
+  .tab-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.16);
+    border-color: rgba(88, 220, 255, 0.42);
+  }
+
+  .drawer-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 11px 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .drawer-body::-webkit-scrollbar {
+    width: 5px;
+  }
+  .drawer-body::-webkit-scrollbar-thumb {
+    background: rgba(148, 179, 255, 0.22);
+    border-radius: 999px;
+  }
+
+  .tab-pane {
+    display: none;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .tab-pane.active {
+    display: flex;
+  }
+
+  .section {
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(148, 179, 255, 0.11);
+    border-radius: var(--radius-md);
+    padding: 10px 11px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .section-title {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  /* Sentence Input */
+  .input-row {
+    display: flex;
+    gap: 6px;
+  }
+  .text-input {
+    flex: 1;
+    min-width: 0;
+    background: rgba(4, 8, 18, 0.8);
+    border: 1px solid rgba(148, 179, 255, 0.22);
+    border-radius: var(--radius-sm);
+    color: var(--text-main);
+    font-family: var(--mono);
+    font-size: 11.5px;
+    padding: 7px 9px;
+    outline: none;
+    user-select: text;
+    transition: border-color 0.15s ease;
+  }
+  .text-input:focus {
+    border-color: var(--accent-cyan);
+    box-shadow: 0 0 0 2px rgba(88, 220, 255, 0.15);
+  }
+
+  /* Presets grid */
+  .preset-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .preset-btn {
+    text-align: left;
+    padding: 7px 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(148, 179, 255, 0.14);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-main);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .preset-btn:hover {
+    border-color: rgba(88, 220, 255, 0.45);
+    background: rgba(88, 220, 255, 0.08);
+  }
+  .preset-btn.active {
+    border-color: var(--accent-cyan);
+    background: rgba(88, 220, 255, 0.15);
+  }
+  .preset-name {
+    font-size: 11px;
+    font-weight: 700;
+  }
+  .preset-sub {
+    font-size: 9.5px;
+    color: var(--text-muted);
+    line-height: 1.25;
+  }
+
+  /* Head Selector List */
+  .head-list {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+  .head-btn {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 7px 9px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(148, 179, 255, 0.14);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-dim);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-align: left;
+  }
+  .head-btn:hover {
+    color: var(--text-main);
+    background: rgba(255, 255, 255, 0.06);
+  }
+  .head-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.13);
+    border-color: rgba(88, 220, 255, 0.48);
+  }
+  .head-btn[data-head="0"].active {
+    background: rgba(167, 139, 250, 0.16);
+    border-color: rgba(167, 139, 250, 0.55);
+  }
+  .head-btn[data-head="1"].active {
+    background: rgba(88, 220, 255, 0.16);
+    border-color: rgba(88, 220, 255, 0.55);
+  }
+  .head-btn[data-head="2"].active {
+    background: rgba(74, 242, 178, 0.15);
+    border-color: rgba(74, 242, 178, 0.52);
+  }
+  .head-btn[data-head="3"].active {
+    background: rgba(255, 190, 92, 0.16);
+    border-color: rgba(255, 190, 92, 0.55);
+  }
+  .head-btn[data-head="4"].active {
+    background: linear-gradient(90deg, rgba(167, 139, 250, 0.18), rgba(88, 220, 255, 0.16), rgba(255, 190, 92, 0.16));
+    border-color: rgba(238, 243, 255, 0.45);
+  }
+  .head-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+  .head-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .head-name {
+    font-size: 11.5px;
+    font-weight: 700;
+    color: inherit;
+  }
+  .head-desc {
+    font-size: 9.5px;
+    color: var(--text-muted);
+  }
+  .head-tag {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text-muted);
+    flex-shrink: 0;
+  }
+
+  /* Sliders */
+  .control-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .control-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11.5px;
+    color: var(--text-dim);
+  }
+  .control-head .val {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--text-main);
+    font-weight: 600;
+  }
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 5px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.18);
+    outline: none;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent-cyan);
+    border: 2px solid #08101f;
+    box-shadow: 0 0 10px rgba(88, 220, 255, 0.65);
+    cursor: pointer;
+  }
+  input[type="range"].amber::-webkit-slider-thumb {
+    background: var(--accent-amber);
+    box-shadow: 0 0 10px rgba(255, 190, 92, 0.65);
+  }
+  input[type="range"].violet::-webkit-slider-thumb {
+    background: var(--accent-violet);
+    box-shadow: 0 0 10px rgba(167, 139, 250, 0.65);
+  }
+  input[type="range"].mint::-webkit-slider-thumb {
+    background: var(--accent-mint);
+    box-shadow: 0 0 10px rgba(74, 242, 178, 0.65);
+  }
+
+  /* Segmented pills */
+  .seg-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 5px;
+  }
+  .seg-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-dim);
+    font-size: 10.8px;
+    font-weight: 650;
+    padding: 6.5px 6px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-align: center;
+  }
+  .seg-btn:hover {
+    color: #fff;
+    border-color: rgba(148, 179, 255, 0.35);
+  }
+  .seg-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.18);
+    border-color: var(--accent-cyan);
+  }
+  .seg-btn.active.amber {
+    background: rgba(255, 190, 92, 0.18);
+    border-color: var(--accent-amber);
+    color: #ffdfaa;
+  }
+  .seg-btn.active.mint {
+    background: rgba(74, 242, 178, 0.16);
+    border-color: var(--accent-mint);
+    color: #caffea;
+  }
+
+  /* Action Buttons */
+  .btn-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .btn {
+    border: 1px solid rgba(148, 179, 255, 0.22);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-main);
+    font-size: 11.5px;
+    font-weight: 700;
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+  .btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 179, 255, 0.45);
+  }
+  .btn:active {
+    transform: scale(0.98);
+  }
+  .btn.primary {
+    background: linear-gradient(135deg, rgba(88, 220, 255, 0.30), rgba(167, 139, 250, 0.28));
+    border-color: rgba(88, 220, 255, 0.58);
+    color: #effaff;
+    box-shadow: 0 0 16px rgba(88, 220, 255, 0.18);
+  }
+  .btn.primary:hover {
+    background: linear-gradient(135deg, rgba(88, 220, 255, 0.42), rgba(167, 139, 250, 0.38));
+  }
+  .btn.amber {
+    background: linear-gradient(135deg, rgba(255, 190, 92, 0.25), rgba(255, 120, 60, 0.22));
+    border-color: rgba(255, 190, 92, 0.55);
+    color: #fff3db;
+  }
+
+  /* Toggle switches */
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11.5px;
+    color: var(--text-dim);
+    cursor: pointer;
+  }
+  .toggle-row input {
+    display: none;
+  }
+  .switch {
+    width: 34px;
+    height: 18px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.2);
+    border: 1px solid rgba(148, 179, 255, 0.25);
+    position: relative;
+    transition: all 0.18s ease;
+    flex-shrink: 0;
+  }
+  .switch::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #c8d7f5;
+    transition: transform 0.18s ease, background 0.18s ease;
+  }
+  .toggle-row input:checked + .switch {
+    background: rgba(88, 220, 255, 0.32);
+    border-color: var(--accent-cyan);
+  }
+  .toggle-row input:checked + .switch::after {
+    transform: translateX(16px);
+    background: #fff;
+  }
+
+  /* Sampling Candidate Mini List in Drawer */
+  .cand-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .cand-item {
+    display: grid;
+    grid-template-columns: 74px 1fr 44px;
+    align-items: center;
+    gap: 7px;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    padding: 4px 6px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(148, 179, 255, 0.08);
+    cursor: pointer;
+    transition: border-color 0.14s ease, background 0.14s ease;
+  }
+  .cand-item:hover {
+    border-color: rgba(88, 220, 255, 0.45);
+    background: rgba(88, 220, 255, 0.08);
+  }
+  .cand-item.filtered {
+    opacity: 0.38;
+  }
+  .cand-tok {
+    color: var(--text-main);
+    font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .cand-bar-bg {
+    height: 6px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+    overflow: hidden;
+  }
+  .cand-bar-fill {
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #58dcff, #a78bfa);
+    transition: width 0.15s ease;
+  }
+  .cand-pct {
+    text-align: right;
+    color: var(--accent-cyan);
+    font-weight: 600;
+  }
+
+  /* Math Inspector Box */
+  .math-box {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    line-height: 1.55;
+    color: #c5d6f7;
+    background: rgba(4, 8, 18, 0.65);
+    border: 1px solid rgba(148, 179, 255, 0.14);
+    border-radius: var(--radius-sm);
+    padding: 8px 9px;
+  }
+  .math-box .hl-cyan { color: var(--accent-cyan); font-weight: 700; }
+  .math-box .hl-amber { color: var(--accent-amber); font-weight: 700; }
+  .math-box .hl-violet { color: var(--accent-violet); font-weight: 700; }
+  .math-box .hl-mint { color: var(--accent-mint); font-weight: 700; }
+
+  /* Bottom Transport Bar */
+  .bottom-bar {
+    position: fixed;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 7px 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: nowrap;
+  }
+
+  .bar-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-main);
+    font-size: 11.5px;
+    font-weight: 650;
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    white-space: nowrap;
+  }
+  .bar-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 179, 255, 0.4);
+  }
+  .bar-btn.active {
+    background: rgba(88, 220, 255, 0.2);
+    border-color: var(--accent-cyan);
+    color: #fff;
+  }
+  .bar-btn.sample-btn {
+    background: linear-gradient(135deg, rgba(88, 220, 255, 0.24), rgba(167, 139, 250, 0.22));
+    border-color: rgba(88, 220, 255, 0.5);
+    color: #eefaff;
+  }
+  .bar-btn.sample-btn:hover {
+    background: linear-gradient(135deg, rgba(88, 220, 255, 0.36), rgba(167, 139, 250, 0.34));
+  }
+
+  .bar-divider {
+    width: 1px;
+    height: 20px;
+    background: rgba(148, 179, 255, 0.16);
+    margin: 0 2px;
+  }
+
+  /* Bottom-left interaction hint */
+  .hint-pill {
+    position: fixed;
+    bottom: 14px;
+    left: 14px;
+    padding: 7px 11px;
+    font-size: 10.5px;
+    color: var(--text-dim);
+    max-width: 318px;
+    line-height: 1.45;
+  }
+  .hint-pill kbd {
+    font-family: var(--mono);
+    font-size: 9.5px;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #fff;
+  }
+
+  /* Toast / Event Banner */
+  .event-banner {
+    position: fixed;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%) translateY(-10px);
+    padding: 8px 14px;
+    border-radius: var(--radius-md);
+    background: rgba(8, 16, 30, 0.9);
+    border: 1px solid rgba(88, 220, 255, 0.52);
+    color: #dff6ff;
+    font-size: 12px;
+    font-weight: 650;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.22s ease, transform 0.22s ease;
+    z-index: 25;
+    backdrop-filter: blur(12px);
+    white-space: nowrap;
+  }
+  .event-banner.visible {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+
+  .zen-restore {
+    position: fixed;
+    bottom: 14px;
+    right: 14px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+  }
+  body.zen-mode .zen-restore {
+    opacity: 0.9;
+    pointer-events: auto;
+  }
+
+  .note-small {
+    font-size: 10.5px;
+    color: var(--text-muted);
+    line-height: 1.38;
+  }
+
+  @media (max-width: 960px) {
+    .top-left {
+      width: calc(100vw - 28px);
+      max-width: none;
+    }
+    .drawer {
+      top: auto;
+      bottom: 62px;
+      height: 50vh;
+      width: calc(100vw - 28px);
+    }
+    .hint-pill {
+      display: none;
+    }
+  }
+</style>
+</head>
+<body>
+<canvas id="sim-canvas"></canvas>
+
+<div class="hud">
+  <!-- Top-Left Telemetry -->
+  <div class="panel top-left">
+    <div class="brand-row">
+      <div class="brand-title-wrap">
+        <div class="brand-title">Attention</div>
+        <span id="arch-badge" class="mode-badge bert">Bidirectional BERT</span>
+      </div>
+      <span id="head-pill" class="status-pill">H1 · Coref</span>
+    </div>
+
+    <div class="telemetry-grid">
+      <div class="tele-card">
+        <span class="tele-label">Seq Length</span>
+        <span id="tel-seq" class="tele-val cyan">11 tok</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Active Head</span>
+        <span id="tel-head" class="tele-val violet">H1 Coref</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Causal Mask</span>
+        <span id="tel-mask" class="tele-val mint">OFF (Enc)</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Attn Entropy</span>
+        <span id="tel-entropy" class="tele-val mint">1.62 bits</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Softmax Temp</span>
+        <span id="tel-temp" class="tele-val amber">T = 0.85</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Top-P Nucleus</span>
+        <span id="tel-nucleus" class="tele-val rose">4 / 10 tok</span>
+      </div>
+    </div>
+
+    <div class="formula-row">
+      <span class="eq">softmax(QKᵀ/√d_k)V</span>
+      <span id="tel-pair" class="focus-readout">Q:"it" → K:"animal" (68%)</span>
+    </div>
+  </div>
+
+  <!-- Toast Banner -->
+  <div id="event-banner" class="event-banner">
+    <span id="event-banner-text">Sampled next token</span>
+  </div>
+
+  <!-- Collapsible 330px Right Control Drawer -->
+  <aside id="control-drawer" class="panel drawer">
+    <div class="drawer-tabs">
+      <button class="tab-btn active" data-tab="sequence">Sequence</button>
+      <button class="tab-btn" data-tab="sampling">Sampling</button>
+      <button class="tab-btn" data-tab="layers">Math &amp; View</button>
+    </div>
+
+    <div class="drawer-body">
+      <!-- TAB 1: SEQUENCE & HEADS -->
+      <div id="tab-sequence" class="tab-pane active">
+        <div class="section">
+          <div class="section-title">
+            <span>Live Input Prompt</span>
+            <span id="token-count-tag" style="font-family:var(--mono);color:var(--accent-cyan);">11 tokens</span>
+          </div>
+          <div class="input-row">
+            <input id="sentence-input" class="text-input" type="text" value="The animal didn't cross the street because it was too tired" spellcheck="false" />
+            <button id="btn-apply-text" class="btn primary" style="padding:6px 10px;">Run</button>
+          </div>
+          <div class="note-small">Click any token on the canvas to lock Query focus, or hover N×N heatmap cells.</div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">
+            <span>Linguistic &amp; Code Presets</span>
+            <span style="color:var(--accent-amber);font-size:9.5px;">Compare Winograd!</span>
+          </div>
+          <div class="preset-grid">
+            <button class="preset-btn active" data-preset="tired">
+              <span class="preset-name">Winograd: Tired</span>
+              <span class="preset-sub">"it" → animal (animate)</span>
+            </button>
+            <button class="preset-btn" data-preset="wide">
+              <span class="preset-name">Winograd: Wide</span>
+              <span class="preset-sub">"it" → street (spatial)</span>
+            </button>
+            <button class="preset-btn" data-preset="bank">
+              <span class="preset-name">Polysemy: Bank</span>
+              <span class="preset-sub">river bank vs bank vault</span>
+            </button>
+            <button class="preset-btn" data-preset="quantum">
+              <span class="preset-name">Quantum Coref</span>
+              <span class="preset-sub">Alice gave Bob her key</span>
+            </button>
+            <button class="preset-btn" data-preset="code">
+              <span class="preset-name">Code Syntax</span>
+              <span class="preset-sub">add(a, b) { return a+b }</span>
+            </button>
+            <button class="preset-btn" data-preset="cosmos">
+              <span class="preset-name">Relativity Prompt</span>
+              <span class="preset-sub">photon near black hole</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">
+            <span>Multi-Head Attention</span>
+            <span style="font-family:var(--mono);font-size:9.5px;">Keys 1–5</span>
+          </div>
+          <div class="head-list">
+            <button class="head-btn active" data-head="0">
+              <div class="head-left">
+                <span class="head-dot" style="background:#a78bfa;box-shadow:0 0 8px #a78bfa;"></span>
+                <div>
+                  <div class="head-name">H1 · Pronoun / Coreference</div>
+                  <div class="head-desc">Resolves "it", "her", &amp; code variables</div>
+                </div>
+              </div>
+              <span class="head-tag">W_1</span>
+            </button>
+            <button class="head-btn" data-head="1">
+              <div class="head-left">
+                <span class="head-dot" style="background:#58dcff;box-shadow:0 0 8px #58dcff;"></span>
+                <div>
+                  <div class="head-name">H2 · Syntax / Verb–Object</div>
+                  <div class="head-desc">Links predicates, subjects &amp; modifiers</div>
+                </div>
+              </div>
+              <span class="head-tag">W_2</span>
+            </button>
+            <button class="head-btn" data-head="2">
+              <div class="head-left">
+                <span class="head-dot" style="background:#4af2b2;box-shadow:0 0 8px #4af2b2;"></span>
+                <div>
+                  <div class="head-name">H3 · Local Positional Neighbor</div>
+                  <div class="head-desc">Sinusoidal phase proximity window</div>
+                </div>
+              </div>
+              <span class="head-tag">W_3</span>
+            </button>
+            <button class="head-btn" data-head="3">
+              <div class="head-left">
+                <span class="head-dot" style="background:#ffbe5c;box-shadow:0 0 8px #ffbe5c;"></span>
+                <div>
+                  <div class="head-name">H4 · Semantic Context</div>
+                  <div class="head-desc">Disambiguates polysemy &amp; topic clusters</div>
+                </div>
+              </div>
+              <span class="head-tag">W_4</span>
+            </button>
+            <button class="head-btn" data-head="4">
+              <div class="head-left">
+                <span class="head-dot" style="background:linear-gradient(135deg,#a78bfa,#58dcff,#4af2b2,#ffbe5c);"></span>
+                <div>
+                  <div class="head-name">All Heads Blended</div>
+                  <div class="head-desc">Simultaneous 4-head fiber overlay</div>
+                </div>
+              </div>
+              <span class="head-tag">Concat</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">
+            <span>Attention Masking</span>
+            <span style="font-family:var(--mono);font-size:9.5px;">Key M</span>
+          </div>
+          <div class="seg-row">
+            <button id="btn-mask-off" class="seg-btn active mint">Bidirectional (BERT)</button>
+            <button id="btn-mask-on" class="seg-btn">Causal Mask (GPT)</button>
+          </div>
+          <div class="control-row" style="margin-top:2px;">
+            <div class="control-head">
+              <span>Attention Sharpness (1/√d_k)</span>
+              <span id="val-sharpness" class="val">1.00×</span>
+            </div>
+            <input id="slider-sharpness" class="violet" type="range" min="0.35" max="2.4" step="0.05" value="1.00" />
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 2: SAMPLING STUDIO -->
+      <div id="tab-sampling" class="tab-pane">
+        <div class="section">
+          <div class="section-title">
+            <span>Autoregressive Decoding</span>
+            <span style="font-family:var(--mono);color:var(--accent-amber);">Next Token</span>
+          </div>
+          <button id="btn-sample-next" class="btn primary" style="width:100%;padding:9px 12px;font-size:12px;">
+            ⚡ Sample Next Token
+          </button>
+          <div class="btn-row">
+            <button id="btn-autogen" class="btn amber">▶ Auto-Gen (4)</button>
+            <button id="btn-reset-prompt" class="btn">↺ Reset Prompt</button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">
+            <span>Decoding Hyperparameters</span>
+            <span id="lbl-sample-entropy" style="font-family:var(--mono);color:var(--accent-mint);">H = 1.94b</span>
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Temperature (T)</span>
+              <span id="val-temp" class="val">0.85</span>
+            </div>
+            <input id="slider-temp" class="amber" type="range" min="0.10" max="2.50" step="0.05" value="0.85" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Top-K Filter</span>
+              <span id="val-topk" class="val">6</span>
+            </div>
+            <input id="slider-topk" type="range" min="1" max="10" step="1" value="6" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Top-P (Nucleus)</span>
+              <span id="val-topp" class="val">0.88</span>
+            </div>
+            <input id="slider-topp" class="mint" type="range" min="0.10" max="1.00" step="0.02" value="0.88" />
+          </div>
+
+          <div class="note-small">
+            Low <strong>T → 0.1</strong> sharpens onto greedy argmax; high <strong>T → 2.5</strong> flattens logits across creative tail tokens. Click any bar to force-append that token!
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">
+            <span>Candidate Nucleus Distribution</span>
+            <span id="lbl-nucleus-count" style="font-family:var(--mono);color:var(--accent-cyan);">4 active</span>
+          </div>
+          <div id="candidate-list" class="cand-list"></div>
+        </div>
+      </div>
+
+      <!-- TAB 3: MATH & LAYERS -->
+      <div id="tab-layers" class="tab-pane">
+        <div class="section">
+          <div class="section-title">
+            <span>Visual Subsystems</span>
+            <span style="font-family:var(--mono);font-size:9.5px;">d_k = 8</span>
+          </div>
+          <label class="toggle-row">
+            <span>Attention Flow Arcs</span>
+            <input id="tog-arcs" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Signal Photon Pulses</span>
+            <input id="tog-pulses" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Sinusoidal Positional Waves</span>
+            <input id="tog-poswaves" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>N×N Attention Heatmap</span>
+            <input id="tog-matrix" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Q / K / V Vector Inspector</span>
+            <input id="tog-qkv" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Next-Token Sampling Studio</span>
+            <input id="tog-sampling" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+        </div>
+
+        <div class="section">
+          <div class="section-title">
+            <span>Live Scaled Dot-Product Trace</span>
+            <span style="font-family:var(--mono);color:var(--accent-violet);">Exact</span>
+          </div>
+          <div id="math-trace" class="math-box">
+            Query i → Key j<br/>
+            Q·K = 0.00 | /√8 = 0.00<br/>
+            α_ij = 0.00%
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">
+            <span>Transformer Architecture Notes</span>
+          </div>
+          <div class="note-small">
+            • <strong>Self-Attention:</strong> Each token projects into Query <code style="color:#58dcff;">Q</code>, Key <code style="color:#a78bfa;">K</code>, and Value <code style="color:#4af2b2;">V</code> vectors (here <em>d_k = 8</em>).<br/>
+            • <strong>Causal Masking:</strong> Decoder LLMs (GPT) add <code style="color:#ff6083;">−∞</code> for future keys <em>j &gt; i</em> before Softmax, zeroing upper-triangular weights.<br/>
+            • <strong>Positional Encoding:</strong> Multi-frequency <code style="color:#ffbe5c;">sin/cos</code> waves inject sequence order into permutation-invariant attention.
+          </div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Bottom-Left Hints -->
+  <div class="panel hint-pill">
+    Hover / click tokens or <kbd>N×N</kbd> cells · <kbd>1</kbd>–<kbd>5</kbd> Heads · <kbd>M</kbd> Causal Mask · <kbd>S</kbd> Sample · <kbd>Space</kbd> Pause · <kbd>H</kbd> Cinema
+  </div>
+
+  <!-- Bottom-Center Transport Bar -->
+  <div class="panel bottom-bar">
+    <button id="btn-play" class="bar-btn active">⏸ Pause</button>
+    <button id="btn-bar-sample" class="bar-btn sample-btn">⚡ Sample</button>
+    <button id="btn-reset" class="bar-btn">↺ Reset</button>
+    <div class="bar-divider"></div>
+    <button id="btn-audio" class="bar-btn">🔇 Audio</button>
+    <button id="btn-drawer" class="bar-btn active">Controls</button>
+    <button id="btn-zen" class="bar-btn">Cinema (H)</button>
+  </div>
+
+  <!-- Cinema Restore -->
+  <button id="btn-zen-restore" class="bar-btn panel zen-restore">Exit Cinema (H)</button>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // =========================================================================
+  // 1. CONSTANTS, PRESETS & HEAD DEFINITIONS
+  // =========================================================================
+  const DK = 8;
+  const SQRT_DK = Math.sqrt(DK);
+
+  const HEADS = [
+    { id: 0, short: 'H1 Coref', pill: 'H1 · Coref', name: 'Pronoun / Coreference', color: '#a78bfa', rgb: [167, 139, 250], pillClass: '' },
+    { id: 1, short: 'H2 Syntax', pill: 'H2 · Syntax', name: 'Syntax / Verb-Object', color: '#58dcff', rgb: [88, 220, 255], pillClass: 'cyan' },
+    { id: 2, short: 'H3 Local', pill: 'H3 · Local', name: 'Local Positional Neighbor', color: '#4af2b2', rgb: [74, 242, 178], pillClass: 'mint' },
+    { id: 3, short: 'H4 Semant', pill: 'H4 · Semantic', name: 'Semantic Context', color: '#ffbe5c', rgb: [255, 190, 92], pillClass: 'amber' },
+    { id: 4, short: 'All 4 Hds', pill: 'ALL · Multi-Head', name: 'All Heads Blended', color: '#e2ecff', rgb: [226, 236, 255], pillClass: 'cyan' }
+  ];
+
+  const PRESETS = {
+    tired: {
+      text: "The animal didn't cross the street because it was too tired",
+      focusWord: 'it',
+      defaultHead: 0,
+      causal: false,
+      note: 'Winograd Schema: "tired" shifts pronoun "it" → "animal"'
+    },
+    wide: {
+      text: "The animal didn't cross the street because it was too wide",
+      focusWord: 'it',
+      defaultHead: 0,
+      causal: false,
+      note: 'Winograd Schema: "wide" shifts pronoun "it" → "street"'
+    },
+    bank: {
+      text: "The bank of the river flooded the bank vault",
+      focusWord: 'bank',
+      focusOccurrence: 0,
+      defaultHead: 3,
+      causal: false,
+      note: 'Polysemy: 1st "bank" → river/flooded; 2nd "bank" → vault'
+    },
+    quantum: {
+      text: "Alice gave Bob her quantum key",
+      focusWord: 'her',
+      defaultHead: 0,
+      causal: false,
+      note: 'Coreference: "her" resolves to "Alice" while "gave" links Alice→Bob→key'
+    },
+    code: {
+      text: "function add(a, b) { return a + b; }",
+      focusWord: 'a',
+      focusOccurrence: 1,
+      defaultHead: 0,
+      causal: true,
+      note: 'Code Attention: identifiers & delimiters track declarations in Causal GPT mode'
+    },
+    cosmos: {
+      text: "A photon bends near a massive black hole",
+      focusWord: 'hole',
+      defaultHead: 1,
+      causal: true,
+      note: 'Autoregressive Physics Prompt: try clicking Sample Next Token!'
+    }
+  };
+
+  // =========================================================================
+  // 2. LEXICON & LINGUISTICALLY GROUNDED 8D EMBEDDING / QKV ENGINE
+  // =========================================================================
+  // 8 interpretable semantic/syntactic dimensions for d_k = 8:
+  // 0: Animate / Agent (animal, Alice, Bob, photon, user, cat, dog)
+  // 1: Spatial / Object / Structure (street, road, hole, vault, key, river, city)
+  // 2: Predicate / Verb / Action (cross, flooded, gave, return, bends, was, didn't)
+  // 3: Property / Finance / Quantum / Physical State (tired, wide, vault, quantum, massive, black, gold)
+  // 4: Water / Nature / Code-Var-A (river, flooded, bank[water], water, a, x)
+  // 5: Pronoun / Code-Var-B / Delimiter (it, her, she, he, b, y, (, ), {, })
+  // 6: Positional cos(pos * w) / Local structural phase
+  // 7: Positional sin(pos * w) / Local structural phase
+  const DIM_LABELS = ['ANIM', 'SPAT', 'VERB', 'ATTR', 'DOM·A', 'REF·B', 'POSc', 'POSs'];
+
+  const LEXICON = {
+    // Animate / Agents
+    animal:  [ 1.75, -0.35, -0.15,  0.40,  0.20,  0.10],
+    alice:   [ 1.80, -0.20,  0.10,  0.35, -0.15,  0.55],
+    bob:     [ 1.45, -0.10,  0.15, -0.25, -0.10, -0.35],
+    cat:     [ 1.70, -0.30, -0.10,  0.35,  0.25,  0.10],
+    dog:     [ 1.70, -0.30, -0.10,  0.30,  0.20,  0.10],
+    photon:  [ 1.25,  0.45,  0.25,  0.95,  0.15, -0.10],
+    light:   [ 1.15,  0.40,  0.20,  0.85,  0.20, -0.10],
+    star:    [ 0.90,  0.85,  0.10,  0.90,  0.20, -0.15],
+
+    // Spatial / Places / Objects
+    street:  [-0.35,  1.80, -0.10,  0.25, -0.15, -0.10],
+    road:    [-0.35,  1.75, -0.10,  0.25, -0.15, -0.10],
+    river:   [-0.10,  1.20,  0.10, -0.55,  1.85, -0.20],
+    vault:   [-0.25,  1.15, -0.10,  1.85, -0.85,  0.10],
+    bank:    [-0.15,  1.10, -0.05,  0.40,  0.40,  0.00],
+    key:     [-0.15,  1.35,  0.15,  1.15, -0.20,  0.25],
+    hole:    [-0.10,  1.65, -0.05,  1.10, -0.20, -0.10],
+    horizon: [-0.15,  1.55,  0.05,  1.05, -0.15, -0.10],
+    gravity: [ 0.10,  1.15,  0.35,  1.35, -0.10, -0.15],
+    spacetime:[-0.10, 1.50,  0.15,  1.30, -0.10, -0.10],
+
+    // Verbs / Predicates
+    "didn't":[-0.10, -0.10,  1.20, -0.20, -0.10,  0.15],
+    cross:   [ 0.55,  0.75,  1.65, -0.10,  0.10, -0.20],
+    flooded: [-0.15,  0.55,  1.50, -0.35,  1.60, -0.15],
+    gave:    [ 0.70,  0.50,  1.75,  0.10, -0.15,  0.30],
+    was:     [ 0.15,  0.15,  1.15,  0.30,  0.05,  0.35],
+    bends:   [ 0.55,  0.70,  1.65,  0.65,  0.10, -0.15],
+    curves:  [ 0.35,  0.80,  1.55,  0.75,  0.05, -0.15],
+    warps:   [ 0.25,  0.85,  1.55,  0.85,  0.05, -0.15],
+    escapes: [ 0.50,  0.65,  1.55,  0.40,  0.10, -0.15],
+    orbits:  [ 0.55,  0.75,  1.55,  0.55,  0.05, -0.15],
+    rested:  [ 0.85, -0.10,  1.45,  0.55,  0.15,  0.10],
+    slept:   [ 0.90, -0.15,  1.45,  0.60,  0.15,  0.10],
+    blocked: [-0.10,  0.85,  1.45,  0.35, -0.10,  0.05],
+
+    // Adjectives / Attributes
+    tired:   [ 1.35, -0.60,  0.25,  1.45,  0.10,  0.20],
+    wide:    [-0.55,  1.45,  0.15,  1.40, -0.15, -0.10],
+    narrow:  [-0.50,  1.40,  0.10,  1.35, -0.15, -0.10],
+    quantum: [ 0.15,  0.55, -0.10,  1.70, -0.15,  0.20],
+    massive: [ 0.10,  0.90, -0.10,  1.65, -0.15, -0.10],
+    black:   [-0.10,  0.95, -0.10,  1.55, -0.15, -0.10],
+    deep:    [-0.15,  0.95, -0.05,  0.95,  0.75, -0.10],
+    golden:  [-0.10,  0.65, -0.10,  1.50, -0.40,  0.05],
+    too:     [ 0.10,  0.10,  0.35,  1.15,  0.05,  0.20],
+
+    // Pronouns & Function words
+    it:      [ 0.35,  0.35,  0.15,  0.20,  0.05,  1.55],
+    her:     [ 1.15, -0.10,  0.10,  0.25, -0.10,  1.65],
+    his:     [ 1.05, -0.10,  0.10,  0.15, -0.10,  1.55],
+    she:     [ 1.25, -0.15,  0.20,  0.20, -0.10,  1.65],
+    he:      [ 1.15, -0.15,  0.20,  0.15, -0.10,  1.55],
+    they:    [ 1.00,  0.20,  0.20,  0.15,  0.05,  1.50],
+    the:     [ 0.05,  0.25, -0.30,  0.10,  0.10,  0.25],
+    a:       [ 0.10,  0.20, -0.20,  0.10,  0.15,  0.20],
+    of:      [-0.05,  0.35,  0.15,  0.15,  0.35,  0.10],
+    near:    [ 0.10,  0.75,  0.45,  0.20,  0.15,  0.05],
+    because: [ 0.10,  0.10,  0.65,  0.25,  0.10,  0.75],
+    and:     [ 0.05,  0.05,  0.40,  0.10,  0.20,  0.45],
+    to:      [ 0.05,  0.25,  0.55,  0.10,  0.10,  0.20],
+    in:      [ 0.00,  0.55,  0.20,  0.15,  0.25,  0.10],
+    into:    [ 0.05,  0.70,  0.45,  0.20,  0.25,  0.10],
+    by:      [ 0.15,  0.35,  0.40,  0.15,  0.10,  0.15],
+
+    // Code tokens
+    function:[-0.25,  0.30,  1.45,  0.85,  0.25,  0.55],
+    return:  [-0.20,  0.20,  1.65,  0.70,  0.40,  0.50],
+    add:     [-0.10,  0.35,  1.55,  0.90,  0.65,  0.60],
+    '+':     [-0.20,  0.10,  1.35,  0.45,  0.85,  0.85],
+    '(':     [-0.25,  0.25,  0.20,  0.35, -0.25,  1.50],
+    ')':     [-0.25,  0.25,  0.20,  0.35, -0.25,  1.50],
+    '{':     [-0.25,  0.45,  0.30,  0.65, -0.35,  1.45],
+    '}':     [-0.25,  0.45,  0.30,  0.65, -0.35,  1.45],
+    ',':     [-0.15,  0.05,  0.10,  0.10,  0.30,  0.55],
+    ';':     [-0.20,  0.10,  0.35,  0.25,  0.10,  0.60]
+  };
+
+  function tokenize(text) {
+    const raw = text.trim();
+    if (!raw) return ['The', 'model', 'attends'];
+    const regex = /[A-Za-z0-9]+(?:'[A-Za-z]+)?|[(){}[\],;+=\-*/.:!?]/g;
+    const matches = raw.match(regex);
+    if (!matches || !matches.length) return ['The', 'model', 'attends'];
+    return matches.slice(0, 18);
+  }
+
+  function hashWord6(word) {
+    let h = 2166136261;
+    for (let i = 0; i < word.length; i++) {
+      h ^= word.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    const out = [];
+    for (let d = 0; d < 6; d++) {
+      const s = Math.sin((h + d * 9173) * 0.00013) * 1.25;
+      out.push(s);
+    }
+    return out;
+  }
+
+  function sinusoidalPE(pos, dim = DK) {
+    const pe = new Array(dim);
+    for (let i = 0; i < dim; i++) {
+      const pair = Math.floor(i / 2);
+      const freq = 1 / Math.pow(100, (2 * pair) / dim);
+      pe[i] = (i % 2 === 0) ? Math.sin(pos * freq * 1.35) : Math.cos(pos * freq * 1.35);
+    }
+    return pe;
+  }
+
+  function dot(a, b) {
+    let s = 0;
+    for (let i = 0; i < a.length; i++) s += a[i] * b[i];
+    return s;
+  }
+
+  function getBaseEmbedding(tok, pos, tokens) {
+    const low = tok.toLowerCase();
+    const isCode = tokens.some(t => t === 'function' || t === '{' || t === 'return' || t === '+');
+    let base6;
+    if (isCode && (low === 'a' || low === 'x')) {
+      base6 = [-0.20, 0.15, 0.10, 0.25, 1.85, -0.35];
+    } else if (isCode && (low === 'b' || low === 'y')) {
+      base6 = [-0.20, 0.15, 0.10, 0.25, -0.35, 1.85];
+    } else if (LEXICON[low]) {
+      base6 = LEXICON[low].slice();
+    } else {
+      base6 = hashWord6(low);
+    }
+    const pe = sinusoidalPE(pos, DK);
+    const emb = [
+      base6[0] + pe[0] * 0.12,
+      base6[1] + pe[1] * 0.12,
+      base6[2] + pe[2] * 0.12,
+      base6[3] + pe[3] * 0.12,
+      base6[4] + pe[4] * 0.12,
+      base6[5] + pe[5] * 0.12,
+      Math.cos(pos * 0.55),
+      Math.sin(pos * 0.55)
+    ];
+    return { emb, pe };
+  }
+
+  // Computes exact Q, K, V matrices (N x 8), raw scores Q·K/sqrt(d_k), and Softmax weights
+  // for all 4 specialized heads + blended head.
+  function computeTransformerState(tokens, causalMask, sharpness) {
+    const N = tokens.length;
+    const lower = tokens.map(t => t.toLowerCase());
+    const isCode = tokens.some(t => t === 'function' || t === '{' || t === 'return' || t === '+');
+    const hasTired = lower.includes('tired') || lower.includes('sleepy') || lower.includes('hungry') || lower.includes('exhausted');
+    const hasWide = lower.includes('wide') || lower.includes('narrow') || lower.includes('busy') || lower.includes('long');
+
+    const baseList = tokens.map((t, i) => getBaseEmbedding(t, i, tokens));
+    const embeddings = baseList.map(x => x.emb);
+    const posEncodings = baseList.map(x => x.pe);
+
+    // Helper: detect nearby context words for polysemy (e.g. "bank" near "river" vs "vault")
+    function nearWord(idx, targetSet, radius = 3) {
+      for (let j = Math.max(0, idx - radius); j <= Math.min(N - 1, idx + radius); j++) {
+        if (j !== idx && targetSet.has(lower[j])) return true;
+      }
+      return false;
+    }
+
+    const WATER_WORDS = new Set(['river', 'flooded', 'water', 'stream', 'shore', 'muddy', 'overflowed']);
+    const FINANCE_WORDS = new Set(['vault', 'money', 'gold', 'loan', 'account', 'deposit', 'safe', 'cash']);
+
+    const headResults = [];
+
+    for (let h = 0; h < 4; h++) {
+      const Q = new Array(N);
+      const K = new Array(N);
+      const V = new Array(N);
+
+      for (let i = 0; i < N; i++) {
+        const w = lower[i];
+        const e = embeddings[i];
+        const angle = i * 0.62;
+        let q = new Array(DK).fill(0);
+        let k = new Array(DK).fill(0);
+        let v = e.slice();
+
+        if (h === 0) {
+          // HEAD 1: PRONOUN / COREFERENCE & CODE IDENTIFIER TRACKING
+          // Keys highlight referent type cleanly:
+          k = [
+            e[0] * 1.45,
+            e[1] * 1.45,
+            e[2] * 0.35,
+            e[3] * 0.35,
+            e[4] * 1.40,
+            e[5] * 1.25,
+            Math.cos(angle) * 0.35,
+            Math.sin(angle) * 0.35
+          ];
+          // Suppress pronouns themselves as coreference targets so "it" attends to antecedent, not itself
+          if (w === 'it' || w === 'her' || w === 'his' || w === 'she' || w === 'he') {
+            k[0] *= 0.15; k[1] *= 0.15; k[5] *= -0.35;
+          }
+          if (isCode && (w === 'a' || w === 'b')) {
+            // Earlier declaration gets strong key weight, later usage gets muted key
+            const firstIdx = lower.indexOf(w);
+            const boost = (i === firstIdx) ? 1.75 : 0.35;
+            k[4] = (w === 'a' ? 2.1 : -0.4) * boost;
+            k[5] = (w === 'b' ? 2.1 : -0.4) * boost;
+          }
+          if (w === '(' || w === '{') {
+            k[3] = (w === '{') ? 2.1 : -0.5;
+            k[5] = (w === '(') ? 2.1 : 1.1;
+          }
+          if (w === ')' || w === '}') {
+            k[3] = -0.3; k[5] = -0.4;
+          }
+
+          // Queries:
+          if (w === 'it') {
+            if (hasWide && !hasTired) {
+              // Winograd: "wide" -> spatial antecedent ("street")
+              q = [-0.85, 2.35, -0.15, 0.20, -0.15, -0.25, Math.cos(angle) * 0.25, Math.sin(angle) * 0.25];
+            } else if (hasTired) {
+              // Winograd: "tired" -> animate antecedent ("animal")
+              q = [2.35, -0.85, -0.15, 0.25, 0.15, -0.25, Math.cos(angle) * 0.25, Math.sin(angle) * 0.25];
+            } else {
+              q = [1.35, 1.35, -0.15, 0.20, 0.10, -0.20, Math.cos(angle) * 0.3, Math.sin(angle) * 0.3];
+            }
+          } else if (w === 'her' || w === 'she') {
+            // Focus on female/primary animate agent ("Alice")
+            q = [1.95, -0.55, 0.10, 0.85, -0.25, 1.15, Math.cos(angle) * 0.2, Math.sin(angle) * 0.2];
+          } else if (w === 'his' || w === 'he') {
+            q = [1.85, -0.55, 0.10, -0.75, -0.20, -0.95, Math.cos(angle) * 0.2, Math.sin(angle) * 0.2];
+          } else if (isCode && w === 'a') {
+            q = [-0.20, 0.10, 0.15, 0.20, 2.25, -0.45, Math.cos(angle - 0.5) * 0.25, Math.sin(angle - 0.5) * 0.25];
+          } else if (isCode && w === 'b') {
+            q = [-0.20, 0.10, 0.15, 0.20, -0.45, 2.25, Math.cos(angle - 0.5) * 0.25, Math.sin(angle - 0.5) * 0.25];
+          } else if (w === ')') {
+            q = [-0.25, 0.20, 0.10, -0.60, -0.25, 2.35, 0.15, 0.15];
+          } else if (w === '}') {
+            q = [-0.25, 0.35, 0.20, 2.35, -0.25, 1.15, 0.15, 0.15];
+          } else {
+            q = [
+              e[0] * 1.10,
+              e[1] * 1.10,
+              e[2] * 0.45,
+              e[3] * 0.50,
+              e[4] * 1.05,
+              e[5] * 0.70,
+              Math.cos(angle - 0.5) * 0.65,
+              Math.sin(angle - 0.5) * 0.65
+            ];
+          }
+        } else if (h === 1) {
+          // HEAD 2: SYNTAX / VERB-OBJECT & MODIFIER-NOUN DEPENDENCY
+          const isVerb = e[2] > 0.9;
+          const isAttr = e[3] > 1.0 && e[2] < 0.8 && e[1] < 1.1;
+          k = [
+            e[0] * 1.35,
+            e[1] * 1.35,
+            e[2] * 1.10,
+            e[3] * 0.85,
+            e[4] * 0.65,
+            e[5] * 0.40,
+            Math.cos(angle) * 0.70,
+            Math.sin(angle) * 0.70
+          ];
+          if (isVerb) {
+            // Verbs attend strongly to subject (dim 0) & direct object (dim 1)
+            q = [1.45, 1.50, -0.35, 0.25, 0.45, 0.15, Math.cos(angle) * 0.65, Math.sin(angle) * 0.65];
+          } else if (isAttr) {
+            // Adjectives attend to the nouns they modify (nearby dim 0 / dim 1)
+            q = [e[0] * 1.15 + 0.45, e[1] * 1.15 + 0.55, 0.25, -0.25, 0.25, 0.10, Math.cos(angle + 0.55) * 1.15, Math.sin(angle + 0.55) * 1.15];
+          } else if (w === 'the' || w === 'a') {
+            // Determiners attend forward to their noun
+            q = [0.65, 1.10, -0.40, 0.50, 0.20, -0.10, Math.cos(angle + 0.62) * 1.45, Math.sin(angle + 0.62) * 1.45];
+          } else {
+            // Nouns attend to governing verbs & modifiers
+            q = [0.25, 0.35, 1.55, 1.15, 0.35, 0.10, Math.cos(angle - 0.55) * 0.80, Math.sin(angle - 0.55) * 0.80];
+          }
+        } else if (h === 2) {
+          // HEAD 3: LOCAL POSITIONAL NEIGHBOR (SINUSOIDAL ROTARY PROXIMITY)
+          const step = 0.58;
+          const phiK = i * step;
+          // In causal mode look at previous token (i-1), in bidirectional attend tightly around i & i±1
+          const shift = causalMask ? -0.92 : -0.35;
+          const phiQ = (i + shift) * step;
+          const phiK2 = i * step * 0.42;
+          const phiQ2 = (i + shift) * step * 0.42;
+          k = [
+            Math.cos(phiK) * 1.65,
+            Math.sin(phiK) * 1.65,
+            Math.cos(phiK2) * 1.25,
+            Math.sin(phiK2) * 1.25,
+            e[0] * 0.25,
+            e[1] * 0.25,
+            Math.cos(phiK * 1.6) * 0.90,
+            Math.sin(phiK * 1.6) * 0.90
+          ];
+          q = [
+            Math.cos(phiQ) * 1.65,
+            Math.sin(phiQ) * 1.65,
+            Math.cos(phiQ2) * 1.25,
+            Math.sin(phiQ2) * 1.25,
+            e[0] * 0.20,
+            e[1] * 0.20,
+            Math.cos(phiQ * 1.6) * 0.90,
+            Math.sin(phiQ * 1.6) * 0.90
+          ];
+        } else {
+          // HEAD 4: SEMANTIC CONTEXT & POLYSEMY DISAMBIGUATION
+          const waterCtx = nearWord(i, WATER_WORDS, 3);
+          const finCtx = nearWord(i, FINANCE_WORDS, 2);
+          k = [
+            e[0] * 1.05,
+            e[1] * 0.95,
+            e[2] * 0.70,
+            e[3] * 1.45,
+            e[4] * 1.55,
+            e[5] * 0.55,
+            Math.cos(angle) * 0.55,
+            Math.sin(angle) * 0.55
+          ];
+          if (w === 'bank') {
+            if (finCtx && !waterCtx) {
+              // Financial bank -> queries vault/finance cluster strongly
+              q = [-0.25, 0.95, -0.15, 2.25, -1.25, 0.15, Math.cos(angle + 0.5) * 0.75, Math.sin(angle + 0.5) * 0.75];
+              k[3] = 1.65; k[4] = -0.85;
+            } else if (waterCtx) {
+              // River bank -> queries river/flooded cluster strongly
+              q = [-0.15, 0.95, 0.75, -0.75, 2.35, -0.20, Math.cos(angle + 0.6) * 0.65, Math.sin(angle + 0.6) * 0.65];
+              k[3] = -0.55; k[4] = 1.70;
+            } else {
+              q = [e[0], e[1], e[2], e[3] * 1.3, e[4] * 1.3, e[5] * 0.5, Math.cos(angle) * 0.5, Math.sin(angle) * 0.5];
+            }
+          } else {
+            q = [
+              e[0] * 1.05,
+              e[1] * 0.95,
+              e[2] * 0.85,
+              e[3] * 1.40,
+              e[4] * 1.50,
+              e[5] * 0.55,
+              Math.cos(angle) * 0.55,
+              Math.sin(angle) * 0.55
+            ];
+          }
+        }
+
+        // Value vector V is a clean linear projection of token embedding per head
+        V[i] = [
+          e[0] * (h === 0 ? 1.2 : 0.85),
+          e[1] * (h === 1 ? 1.2 : 0.85),
+          e[2] * (h === 1 ? 1.15 : 0.75),
+          e[3] * (h === 3 ? 1.25 : 0.85),
+          e[4] * (h === 3 ? 1.2 : 0.85),
+          e[5] * (h === 0 ? 1.15 : 0.80),
+          posEncodings[i][0] * (h === 2 ? 1.1 : 0.55),
+          posEncodings[i][1] * (h === 2 ? 1.1 : 0.55)
+        ];
+        Q[i] = q;
+        K[i] = k;
+      }
+
+      // Compute exact raw Q·K, scaled Q·K / sqrt(d_k), and Softmax weights
+      const rawDots = Array.from({ length: N }, () => new Array(N).fill(0));
+      const scaled = Array.from({ length: N }, () => new Array(N).fill(0));
+      const weights = Array.from({ length: N }, () => new Array(N).fill(0));
+      const contextV = Array.from({ length: N }, () => new Array(DK).fill(0));
+
+      for (let i = 0; i < N; i++) {
+        let maxS = -Infinity;
+        for (let j = 0; j < N; j++) {
+          const dVal = dot(Q[i], K[j]);
+          rawDots[i][j] = dVal;
+          if (causalMask && j > i) {
+            scaled[i][j] = -Infinity;
+          } else {
+            const s = (dVal / SQRT_DK) * sharpness;
+            scaled[i][j] = s;
+            if (s > maxS) maxS = s;
+          }
+        }
+        let sumExp = 0;
+        for (let j = 0; j < N; j++) {
+          if (scaled[i][j] === -Infinity) {
+            weights[i][j] = 0;
+          } else {
+            const ex = Math.exp(scaled[i][j] - maxS);
+            weights[i][j] = ex;
+            sumExp += ex;
+          }
+        }
+        for (let j = 0; j < N; j++) {
+          weights[i][j] /= (sumExp || 1);
+          const w = weights[i][j];
+          for (let d = 0; d < DK; d++) {
+            contextV[i][d] += w * V[j][d];
+          }
+        }
+      }
+
+      headResults.push({ Q, K, V, rawDots, scaled, weights, contextV });
+    }
+
+    // Blended multi-head summary (average of the 4 heads)
+    const blendWeights = Array.from({ length: N }, (_, i) =>
+      Array.from({ length: N }, (_, j) =>
+        0.25 * (headResults[0].weights[i][j] + headResults[1].weights[i][j] + headResults[2].weights[i][j] + headResults[3].weights[i][j])
+      )
+    );
+    const blendRaw = Array.from({ length: N }, (_, i) =>
+      Array.from({ length: N }, (_, j) =>
+        0.25 * (headResults[0].rawDots[i][j] + headResults[1].rawDots[i][j] + headResults[2].rawDots[i][j] + headResults[3].rawDots[i][j])
+      )
+    );
+    const blendScaled = Array.from({ length: N }, (_, i) =>
+      Array.from({ length: N }, (_, j) =>
+        (causalMask && j > i) ? -Infinity : (blendRaw[i][j] / SQRT_DK) * sharpness
+      )
+    );
+    const blendQ = Array.from({ length: N }, (_, i) =>
+      Array.from({ length: DK }, (_, d) => 0.25 * (headResults[0].Q[i][d] + headResults[1].Q[i][d] + headResults[2].Q[i][d] + headResults[3].Q[i][d]))
+    );
+    const blendK = Array.from({ length: N }, (_, i) =>
+      Array.from({ length: DK }, (_, d) => 0.25 * (headResults[0].K[i][d] + headResults[1].K[i][d] + headResults[2].K[i][d] + headResults[3].K[i][d]))
+    );
+    const blendV = Array.from({ length: N }, (_, i) =>
+      Array.from({ length: DK }, (_, d) => 0.25 * (headResults[0].V[i][d] + headResults[1].V[i][d] + headResults[2].V[i][d] + headResults[3].V[i][d]))
+    );
+    const blendCtxV = Array.from({ length: N }, (_, i) =>
+      Array.from({ length: DK }, (_, d) => 0.25 * (headResults[0].contextV[i][d] + headResults[1].contextV[i][d] + headResults[2].contextV[i][d] + headResults[3].contextV[i][d]))
+    );
+
+    headResults.push({
+      Q: blendQ,
+      K: blendK,
+      V: blendV,
+      rawDots: blendRaw,
+      scaled: blendScaled,
+      weights: blendWeights,
+      contextV: blendCtxV
+    });
+
+    return { tokens, embeddings, posEncodings, heads: headResults };
+  }
+
+  function shannonEntropy(probs) {
+    let h = 0;
+    for (let i = 0; i < probs.length; i++) {
+      const p = probs[i];
+      if (p > 1e-9) h -= p * Math.log2(p);
+    }
+    return h;
+  }
+
+  // =========================================================================
+  // 3. AUTOREGRESSIVE NEXT-TOKEN LOGIT MODEL & TEMPERATURE / TOP-K / TOP-P
+  // =========================================================================
+  const CONTINUATION_RULES = [
+    { match: /tired$/i, cands: [['so', 3.4], ['and', 3.0], ['to', 2.4], ['after', 1.9], ['that', 1.5], ['today', 1.1], ['immediately', 0.6], ['quietly', 0.3], ['already', -0.1], ['outside', -0.4]] },
+    { match: /wide$/i, cands: [['for', 3.3], ['and', 2.9], ['to', 2.6], ['with', 1.8], ['at', 1.4], ['today', 0.9], ['across', 0.5], ['beyond', 0.2], ['ahead', -0.2], ['overall', -0.5]] },
+    { match: /vault$/i, cands: [['overnight', 3.2], ['before', 2.8], ['with', 2.5], ['inside', 2.0], ['during', 1.6], ['rapidly', 1.1], ['downtown', 0.7], ['completely', 0.3], ['silently', -0.1], ['below', -0.4]] },
+    { match: /key$/i, cands: [['to', 3.3], ['for', 2.9], ['before', 2.4], ['inside', 1.9], ['securely', 1.6], ['using', 1.2], ['and', 0.8], ['yesterday', 0.3], ['secretly', 0.0], ['without', -0.4]] },
+    { match: /\}$/, cands: [['const', 3.4], ['return', 2.8], ['console', 2.5], ['add', 2.1], ['export', 1.7], ['let', 1.3], ['if', 0.9], ['async', 0.4], ['class', 0.0], ['//', -0.3]] },
+    { match: /hole$/i, cands: [['because', 3.5], ['creating', 3.0], ['curving', 2.6], ['as', 2.2], ['where', 1.8], ['around', 1.3], ['inside', 0.9], ['toward', 0.5], ['silently', 0.1], ['forever', -0.4]] },
+    { match: /because$/i, cands: [['spacetime', 3.4], ['gravity', 3.1], ['it', 2.7], ['the', 2.3], ['curvature', 1.8], ['mass', 1.4], ['time', 0.9], ['energy', 0.5], ['light', 0.1], ['nature', -0.3]] },
+    { match: /(creating|curving|warps)$/i, cands: [['an', 3.2], ['a', 3.0], ['deep', 2.5], ['bright', 2.1], ['spacetime', 1.8], ['lensing', 1.4], ['rings', 0.9], ['gravity', 0.4], ['waves', 0.0], ['shadows', -0.4]] },
+    { match: /(spacetime|gravity|curvature)$/i, cands: [['warps', 3.4], ['bends', 3.0], ['pulls', 2.5], ['slows', 2.1], ['curves', 1.7], ['deeply', 1.1], ['around', 0.7], ['into', 0.3], ['near', -0.1], ['forever', -0.5]] },
+    { match: /(so|and)$/i, cands: [['it', 3.5], ['the', 2.9], ['rested', 2.5], ['waited', 2.1], ['turned', 1.7], ['slept', 1.3], ['paused', 0.8], ['watched', 0.4], ['drifted', 0.0], ['vanished', -0.4]] },
+    { match: /(to|for)$/i, cands: [['walk', 3.2], ['cross', 2.9], ['unlock', 2.5], ['rest', 2.2], ['escape', 1.8], ['reach', 1.4], ['enter', 0.9], ['measure', 0.5], ['observe', 0.1], ['dream', -0.3]] },
+    { match: /(the|a|an)$/i, cands: [['horizon', 3.3], ['river', 2.9], ['street', 2.6], ['animal', 2.2], ['quantum', 1.8], ['photon', 1.4], ['cosmos', 1.0], ['signal', 0.6], ['vector', 0.2], ['spark', -0.2]] },
+    { match: /(it|she|he|they)$/i, cands: [['rested', 3.3], ['waited', 2.9], ['glowed', 2.4], ['crossed', 2.0], ['decoded', 1.6], ['shifted', 1.2], ['paused', 0.8], ['remembered', 0.4], ['accelerated', 0.0], ['whispered', -0.4]] },
+    { match: /(with|inside|before|after|overnight|securely)$/i, cands: [['the', 3.4], ['deep', 2.8], ['a', 2.5], ['calm', 2.0], ['bright', 1.6], ['golden', 1.2], ['quantum', 0.8], ['hidden', 0.4], ['ancient', 0.0], ['silent', -0.3]] }
+  ];
+
+  function getNextTokenLogits(tokens) {
+    const joined = tokens.join(' ');
+    for (const rule of CONTINUATION_RULES) {
+      if (rule.match.test(joined)) {
+        return rule.cands.map(([token, logit]) => ({ token, logit }));
+      }
+    }
+    const last = (tokens[tokens.length - 1] || '').toLowerCase();
+    if (last === 'const' || last === 'let') {
+      return [['sum', 3.4], ['res', 3.0], ['val', 2.5], ['out', 2.0], ['ans', 1.6], ['x', 1.2], ['y', 0.7], ['total', 0.3], ['fn', -0.1], ['data', -0.4]].map(([token, logit]) => ({ token, logit }));
+    }
+    return [
+      ['the', 3.1], ['and', 2.7], ['through', 2.3], ['into', 1.9], ['beyond', 1.5],
+      ['light', 1.1], ['memory', 0.7], ['time', 0.3], ['space', -0.1], ['echo', -0.5]
+    ].map(([token, logit]) => ({ token, logit }));
+  }
+
+  function computeSamplingDistribution(tokens, temp, topK, topP) {
+    const raw = getNextTokenLogits(tokens);
+    // Sort descending by logit
+    const sorted = raw.map(x => ({ ...x })).sort((a, b) => b.logit - a.logit);
+
+    // Full softmax at temperature T (for reference display)
+    const scaled = sorted.map(x => x.logit / temp);
+    const maxS = Math.max(...scaled);
+    const exps = scaled.map(s => Math.exp(s - maxS));
+    const sumExp = exps.reduce((a, b) => a + b, 0) || 1;
+    const baseProbs = exps.map(e => e / sumExp);
+
+    // Apply Top-K first
+    const kLimit = Math.max(1, Math.min(topK, sorted.length));
+    let kSum = 0;
+    for (let i = 0; i < kLimit; i++) kSum += baseProbs[i];
+
+    // Apply Top-P (nucleus) over Top-K candidates
+    let cumP = 0;
+    let nucleusCount = 0;
+    const items = sorted.map((item, idx) => {
+      const inTopK = idx < kLimit;
+      const pAfterK = inTopK ? baseProbs[idx] / (kSum || 1) : 0;
+      let inNucleus = false;
+      if (inTopK && (nucleusCount === 0 || cumP < topP)) {
+        inNucleus = true;
+        nucleusCount++;
+      }
+      if (inTopK) cumP += pAfterK;
+      return {
+        token: item.token,
+        logit: item.logit,
+        baseProb: baseProbs[idx],
+        inTopK,
+        inNucleus,
+        cumBefore: cumP - pAfterK,
+        sampleProb: 0
+      };
+    });
+
+    // Renormalize over active nucleus
+    let nucSum = 0;
+    for (const it of items) {
+      if (it.inNucleus) nucSum += it.baseProb;
+    }
+    for (const it of items) {
+      it.sampleProb = it.inNucleus ? (it.baseProb / (nucSum || 1)) : 0;
+    }
+
+    const activeProbs = items.filter(it => it.inNucleus).map(it => it.sampleProb);
+    const entropy = shannonEntropy(activeProbs);
+
+    return { items, nucleusCount, entropy };
+  }
+
+  // =========================================================================
+  // 4. WEB AUDIO SYNTHESIZER (MUTED BY DEFAULT)
+  // =========================================================================
+  class ChimeAudio {
+    constructor() {
+      this.enabled = false;
+      this.ctx = null;
+      // Lydian crystalline pitch table (Hz)
+      this.scale = [261.63, 293.66, 329.63, 369.99, 392.00, 440.00, 493.88, 523.25, 587.33, 659.25, 739.99, 783.99, 880.00, 987.77, 1046.5];
+    }
+
+    ensure() {
+      if (!this.ctx) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (AC) this.ctx = new AC();
+      }
+      if (this.ctx && this.ctx.state === 'suspended') {
+        this.ctx.resume().catch(() => {});
+      }
+    }
+
+    setEnabled(on) {
+      this.enabled = on;
+      if (on) {
+        this.ensure();
+        this.playNote(523.25, 0.08, 0.25, 0);
+        setTimeout(() => this.playNote(659.25, 0.07, 0.30, 0.2), 70);
+      }
+    }
+
+    playNote(freq, gainPeak = 0.08, duration = 0.45, pan = 0, delay = 0) {
+      if (!this.enabled) return;
+      this.ensure();
+      if (!this.ctx) return;
+      const now = this.ctx.currentTime + delay;
+      const osc1 = this.ctx.createOscillator();
+      const osc2 = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      const panner = this.ctx.createStereoPanner ? this.ctx.createStereoPanner() : null;
+
+      osc1.type = 'sine';
+      osc1.frequency.setValueAtTime(freq, now);
+      osc2.type = 'triangle';
+      osc2.frequency.setValueAtTime(freq * 2.0, now);
+
+      const g2 = this.ctx.createGain();
+      g2.gain.setValueAtTime(0.18, now);
+
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.exponentialRampToValueAtTime(Math.max(0.001, gainPeak), now + 0.018);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+
+      osc1.connect(gain);
+      osc2.connect(g2);
+      g2.connect(gain);
+
+      if (panner) {
+        panner.pan.setValueAtTime(Math.max(-0.85, Math.min(0.85, pan)), now);
+        gain.connect(panner);
+        panner.connect(this.ctx.destination);
+      } else {
+        gain.connect(this.ctx.destination);
+      }
+
+      osc1.start(now);
+      osc2.start(now);
+      osc1.stop(now + duration + 0.02);
+      osc2.stop(now + duration + 0.02);
+    }
+
+    playAttentionChord(weights, n) {
+      if (!this.enabled) return;
+      const ranked = weights.map((w, idx) => ({ w, idx })).sort((a, b) => b.w - a.w).slice(0, 3);
+      ranked.forEach((item, rank) => {
+        if (item.w < 0.06) return;
+        const noteIdx = Math.min(this.scale.length - 1, Math.floor((item.idx / Math.max(1, n - 1)) * 10) + rank * 2);
+        const pan = (item.idx / Math.max(1, n - 1)) * 1.4 - 0.7;
+        this.playNote(this.scale[noteIdx], 0.035 + item.w * 0.085, 0.55, pan, rank * 0.048);
+      });
+    }
+
+    playSampleArpeggio(prob) {
+      if (!this.enabled) return;
+      const base = prob > 0.45 ? 4 : 2;
+      [0, 2, 4, 7].forEach((offset, idx) => {
+        const freq = this.scale[Math.min(this.scale.length - 1, base + offset)];
+        this.playNote(freq, 0.065, 0.45, -0.3 + idx * 0.2, idx * 0.055);
+      });
+    }
+  }
+
+  const audio = new ChimeAudio();
+
+  // =========================================================================
+  // 5. APPLICATION STATE & INTERACTION GEOMETRY
+  // =========================================================================
+  const state = {
+    presetKey: 'tired',
+    tokens: [],
+    model: null,
+    activeHead: 0,       // 0..3 specialized, 4 = all blended
+    causalMask: false,
+    sharpness: 1.0,
+    temp: 0.85,
+    topK: 6,
+    topP: 0.88,
+    samplingDist: null,
+
+    selectedQuery: 7,    // locked token index
+    selectedKey: -1,     // optional locked key index from matrix click
+    hoverToken: -1,
+    hoverMatrix: null,   // { i, j }
+    hoverCandidate: -1,
+
+    paused: false,
+    drawerOpen: true,
+    zenMode: false,
+    time: 0,
+    autogenLeft: 0,
+    autogenTimer: 0,
+
+    // Roulette sampling animation
+    roulette: {
+      active: false,
+      elapsed: 0,
+      duration: 0.48,
+      targetIdx: 0,
+      highlightIdx: 0,
+      chosenToken: null
+    },
+
+    // Visual layer toggles
+    layers: {
+      arcs: true,
+      pulses: true,
+      posWaves: true,
+      matrix: true,
+      qkv: true,
+      sampling: true
+    },
+
+    // Ambient neural dust particles
+    particles: []
+  };
+
+  // Cached hitboxes rebuilt every frame in render()
+  const hitboxes = {
+    tokens: [],       // [{ idx, x, y, w, h, cx, cy }]
+    matrixRect: null, // { x, y, size, cell, N }
+    candidates: []    // [{ idx, x, y, w, h, token }]
+  };
+
+  // DOM Elements
+  const canvas = document.getElementById('sim-canvas');
+  const ctx = canvas.getContext('2d');
+
+  const elArchBadge = document.getElementById('arch-badge');
+  const elHeadPill = document.getElementById('head-pill');
+  const elTelSeq = document.getElementById('tel-seq');
+  const elTelHead = document.getElementById('tel-head');
+  const elTelMask = document.getElementById('tel-mask');
+  const elTelEntropy = document.getElementById('tel-entropy');
+  const elTelTemp = document.getElementById('tel-temp');
+  const elTelNucleus = document.getElementById('tel-nucleus');
+  const elTelPair = document.getElementById('tel-pair');
+
+  const elBanner = document.getElementById('event-banner');
+  const elBannerText = document.getElementById('event-banner-text');
+  const elDrawer = document.getElementById('control-drawer');
+
+  const elSentenceInput = document.getElementById('sentence-input');
+  const elTokenCountTag = document.getElementById('token-count-tag');
+  const elBtnApplyText = document.getElementById('btn-apply-text');
+
+  const elBtnMaskOff = document.getElementById('btn-mask-off');
+  const elBtnMaskOn = document.getElementById('btn-mask-on');
+  const elSliderSharpness = document.getElementById('slider-sharpness');
+  const elValSharpness = document.getElementById('val-sharpness');
+
+  const elBtnSampleNext = document.getElementById('btn-sample-next');
+  const elBtnAutogen = document.getElementById('btn-autogen');
+  const elBtnResetPrompt = document.getElementById('btn-reset-prompt');
+  const elSliderTemp = document.getElementById('slider-temp');
+  const elValTemp = document.getElementById('val-temp');
+  const elSliderTopK = document.getElementById('slider-topk');
+  const elValTopK = document.getElementById('val-topk');
+  const elSliderTopP = document.getElementById('slider-topp');
+  const elValTopP = document.getElementById('val-topp');
+  const elLblSampleEntropy = document.getElementById('lbl-sample-entropy');
+  const elLblNucleusCount = document.getElementById('lbl-nucleus-count');
+  const elCandidateList = document.getElementById('candidate-list');
+
+  const elTogArcs = document.getElementById('tog-arcs');
+  const elTogPulses = document.getElementById('tog-pulses');
+  const elTogPosWaves = document.getElementById('tog-poswaves');
+  const elTogMatrix = document.getElementById('tog-matrix');
+  const elTogQKV = document.getElementById('tog-qkv');
+  const elTogSampling = document.getElementById('tog-sampling');
+  const elMathTrace = document.getElementById('math-trace');
+
+  const elBtnPlay = document.getElementById('btn-play');
+  const elBtnBarSample = document.getElementById('btn-bar-sample');
+  const elBtnReset = document.getElementById('btn-reset');
+  const elBtnAudio = document.getElementById('btn-audio');
+  const elBtnDrawer = document.getElementById('btn-drawer');
+  const elBtnZen = document.getElementById('btn-zen');
+  const elBtnZenRestore = document.getElementById('btn-zen-restore');
+
+  let bannerTimer = null;
+  function showBanner(msg) {
+    elBannerText.textContent = msg;
+    elBanner.classList.add('visible');
+    if (bannerTimer) clearTimeout(bannerTimer);
+    bannerTimer = setTimeout(() => {
+      elBanner.classList.remove('visible');
+    }, 2600);
+  }
+
+  // =========================================================================
+  // 6. CORE RECOMPUTE & UI SYNC
+  // =========================================================================
+  function getActiveQueryAndKey() {
+    const N = state.tokens.length;
+    const headData = state.model.heads[state.activeHead];
+    let qIdx = state.selectedQuery;
+    let kIdx = state.selectedKey;
+
+    if (state.hoverMatrix) {
+      qIdx = state.hoverMatrix.i;
+      kIdx = state.hoverMatrix.j;
+    } else if (state.hoverToken >= 0 && state.hoverToken < N) {
+      qIdx = state.hoverToken;
+      kIdx = -1;
+    }
+
+    qIdx = Math.max(0, Math.min(N - 1, qIdx));
+    const row = headData.weights[qIdx];
+
+    if (kIdx < 0 || kIdx >= N) {
+      // Pick strongest attended non-self key (or self if only 1 allowed)
+      let bestJ = 0;
+      let bestW = -1;
+      for (let j = 0; j < N; j++) {
+        if (state.causalMask && j > qIdx) continue;
+        const penalty = (j === qIdx && N > 1 && qIdx > 0) ? 0.82 : 1.0;
+        if (row[j] * penalty > bestW) {
+          bestW = row[j] * penalty;
+          bestJ = j;
+        }
+      }
+      kIdx = bestJ;
+    }
+    return { qIdx, kIdx };
+  }
+
+  function recomputeAll() {
+    state.model = computeTransformerState(state.tokens, state.causalMask, state.sharpness);
+    if (state.selectedQuery >= state.tokens.length) {
+      state.selectedQuery = state.tokens.length - 1;
+    }
+    if (state.selectedKey >= state.tokens.length) {
+      state.selectedKey = -1;
+    }
+    recomputeSampling();
+    syncHUD();
+  }
+
+  function recomputeSampling() {
+    state.samplingDist = computeSamplingDistribution(state.tokens, state.temp, state.topK, state.topP);
+    renderDrawerCandidates();
+    syncHUD();
+  }
+
+  function syncHUD() {
+    if (!state.model || !state.samplingDist) return;
+    const N = state.tokens.length;
+    const headMeta = HEADS[state.activeHead];
+    const headData = state.model.heads[state.activeHead];
+    const { qIdx, kIdx } = getActiveQueryAndKey();
+
+    elArchBadge.textContent = state.causalMask ? 'Causal GPT' : 'Bidirectional BERT';
+    elArchBadge.classList.toggle('bert', !state.causalMask);
+
+    elHeadPill.textContent = headMeta.pill;
+    elHeadPill.className = 'status-pill ' + (headMeta.pillClass || '');
+
+    elTelSeq.textContent = `${N} tok`;
+    elTelHead.textContent = headMeta.short;
+    elTelHead.style.color = headMeta.color;
+
+    elTelMask.textContent = state.causalMask ? 'ON (GPT)' : 'OFF (BERT)';
+    elTelMask.className = 'tele-val ' + (state.causalMask ? 'amber' : 'mint');
+
+    const row = headData.weights[qIdx];
+    const ent = shannonEntropy(row);
+    elTelEntropy.textContent = `${ent.toFixed(2)} bits`;
+
+    elTelTemp.textContent = `T = ${state.temp.toFixed(2)}`;
+    elTelNucleus.textContent = `${state.samplingDist.nucleusCount} / ${state.samplingDist.items.length} tok`;
+
+    const wPct = (row[kIdx] * 100).toFixed(1);
+    elTelPair.textContent = `Q:"${state.tokens[qIdx]}"[${qIdx}] → K:"${state.tokens[kIdx]}"[${kIdx}] (${wPct}%)`;
+    elTokenCountTag.textContent = `${N} tokens`;
+
+    elLblSampleEntropy.textContent = `H = ${state.samplingDist.entropy.toFixed(2)}b`;
+    elLblNucleusCount.textContent = `${state.samplingDist.nucleusCount} active`;
+
+    // Sync mask buttons
+    elBtnMaskOff.className = 'seg-btn' + (!state.causalMask ? ' active mint' : '');
+    elBtnMaskOn.className = 'seg-btn' + (state.causalMask ? ' active amber' : '');
+
+    // Math trace box
+    const qVec = headData.Q[qIdx];
+    const kVec = headData.K[kIdx];
+    const rawDot = headData.rawDots[qIdx][kIdx];
+    const scaledVal = headData.scaled[qIdx][kIdx];
+    const maskedOut = scaledVal === -Infinity;
+    elMathTrace.innerHTML =
+      `Focus: <span class="hl-cyan">Q[${qIdx}] "${escapeHtml(state.tokens[qIdx])}"</span> → ` +
+      `<span class="hl-violet">K[${kIdx}] "${escapeHtml(state.tokens[kIdx])}"</span><br/>` +
+      `Q·K = <span class="hl-amber">${rawDot >= 0 ? '+' : ''}${rawDot.toFixed(3)}</span> · ` +
+      `(Q·K / √8)×${state.sharpness.toFixed(2)} = ` +
+      `<span class="hl-amber">${maskedOut ? '−∞ (masked)' : (scaledVal >= 0 ? '+' : '') + scaledVal.toFixed(3)}</span><br/>` +
+      `Softmax α(${qIdx},${kIdx}) = <span class="hl-mint">${wPct}%</span> · ` +
+      `Row Entropy = <span class="hl-cyan">${ent.toFixed(2)} bits</span><br/>` +
+      `‖Q‖=${vecNorm(qVec).toFixed(2)} · ‖K‖=${vecNorm(kVec).toFixed(2)} · Head=${headMeta.name}`;
+  }
+
+  function escapeHtml(s) {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  function vecNorm(v) {
+    let s = 0;
+    for (let i = 0; i < v.length; i++) s += v[i] * v[i];
+    return Math.sqrt(s);
+  }
+
+  function renderDrawerCandidates() {
+    if (!state.samplingDist) return;
+    elCandidateList.innerHTML = '';
+    const items = state.samplingDist.items.slice(0, 8);
+    items.forEach((it) => {
+      const div = document.createElement('div');
+      div.className = 'cand-item' + (it.inNucleus ? '' : ' filtered');
+      const pct = it.inNucleus ? it.sampleProb * 100 : it.baseProb * 100;
+      div.innerHTML =
+        `<span class="cand-tok">${escapeHtml(it.token)}</span>` +
+        `<div class="cand-bar-bg"><div class="cand-bar-fill" style="width:${Math.min(100, pct * 1.15).toFixed(1)}%;${it.inNucleus ? '' : 'background:#64748b;'}"></div></div>` +
+        `<span class="cand-pct">${it.inNucleus ? pct.toFixed(1) + '%' : 'CUT'}</span>`;
+      div.addEventListener('click', () => {
+        appendSampledToken(it.token, it.inNucleus ? it.sampleProb : it.baseProb);
+      });
+      elCandidateList.appendChild(div);
+    });
+  }
+
+  function loadPreset(key, showToast = true) {
+    const p = PRESETS[key];
+    if (!p) return;
+    state.presetKey = key;
+    state.autogenLeft = 0;
+    state.tokens = tokenize(p.text);
+    elSentenceInput.value = p.text;
+    state.activeHead = p.defaultHead;
+    state.causalMask = p.causal;
+    state.selectedKey = -1;
+
+    // Select the pedagogical focus word
+    let targetIdx = state.tokens.length - 1;
+    let seen = 0;
+    const wantOcc = p.focusOccurrence || 0;
+    for (let i = 0; i < state.tokens.length; i++) {
+      if (state.tokens[i].toLowerCase() === p.focusWord) {
+        if (seen === wantOcc) {
+          targetIdx = i;
+          break;
+        }
+        seen++;
+      }
+    }
+    state.selectedQuery = targetIdx;
+
+    // Update UI buttons
+    document.querySelectorAll('.preset-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.preset === key);
+    });
+    document.querySelectorAll('.head-btn').forEach(b => {
+      b.classList.toggle('active', Number(b.dataset.head) === state.activeHead);
+    });
+
+    recomputeAll();
+    if (showToast) showBanner(p.note);
+  }
+
+  function applyCustomText() {
+    const text = elSentenceInput.value.trim();
+    if (!text) return;
+    state.autogenLeft = 0;
+    state.tokens = tokenize(text);
+    state.selectedQuery = Math.max(0, state.tokens.length - 1);
+    state.selectedKey = -1;
+    document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+    recomputeAll();
+    showBanner(`Tokenized ${state.tokens.length} tokens — hover or click any token`);
+  }
+
+  function triggerSampleNext() {
+    if (!state.samplingDist || state.roulette.active) return;
+    if (state.tokens.length >= 18) {
+      showBanner('Sequence limit (18 tokens) reached — click Reset Prompt');
+      state.autogenLeft = 0;
+      return;
+    }
+
+    const items = state.samplingDist.items;
+    const activeIndices = [];
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].inNucleus) activeIndices.push(i);
+    }
+
+    // Weighted random draw from Top-P / Top-K nucleus
+    let r = Math.random();
+    let chosenIdx = activeIndices[0] || 0;
+    for (const idx of activeIndices) {
+      r -= items[idx].sampleProb;
+      if (r <= 0) {
+        chosenIdx = idx;
+        break;
+      }
+    }
+
+    state.roulette = {
+      active: true,
+      elapsed: 0,
+      duration: 0.42,
+      targetIdx: chosenIdx,
+      highlightIdx: activeIndices[0] || 0,
+      chosenToken: items[chosenIdx].token,
+      chosenProb: items[chosenIdx].sampleProb
+    };
+  }
+
+  function appendSampledToken(tok, prob) {
+    if (state.tokens.length >= 18) {
+      showBanner('Sequence limit (18 tokens) reached — click Reset Prompt');
+      return;
+    }
+    state.tokens.push(tok);
+    elSentenceInput.value = state.tokens.join(' ').replace(/\s+([,.;})])/g, '$1').replace(/(\()\s+/g, '$1');
+    state.selectedQuery = state.tokens.length - 1;
+    state.selectedKey = -1;
+    recomputeAll();
+    audio.playSampleArpeggio(prob || 0.35);
+    showBanner(`Sampled "${tok}" (p = ${((prob || 0) * 100).toFixed(1)}% at T=${state.temp.toFixed(2)})`);
+  }
+
+  // =========================================================================
+  // 7. HIGH-DPI CANVAS SETUP & AMBIENT PARTICLES
+  // =========================================================================
+  let W = window.innerWidth;
+  let H = window.innerHeight;
+  let DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+  function initParticles() {
+    state.particles = [];
+    for (let i = 0; i < 48; i++) {
+      state.particles.push({
+        x: Math.random(),
+        y: Math.random(),
+        r: 0.7 + Math.random() * 1.5,
+        vx: (Math.random() - 0.5) * 0.008,
+        vy: (Math.random() - 0.5) * 0.008,
+        hue: [195, 258, 160, 38][i % 4],
+        alpha: 0.12 + Math.random() * 0.25
+      });
+    }
+  }
+
+  function resize() {
+    W = window.innerWidth;
+    H = window.innerHeight;
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.floor(W * DPR);
+    canvas.height = Math.floor(H * DPR);
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+  }
+
+  // =========================================================================
+  // 8. CANVAS DRAWING HELPERS
+  // =========================================================================
+  function roundRectPath(c, x, y, w, h, r) {
+    const rr = Math.min(r, w / 2, h / 2);
+    c.beginPath();
+    c.moveTo(x + rr, y);
+    c.arcTo(x + w, y, x + w, y + h, rr);
+    c.arcTo(x + w, y + h, x, y + h, rr);
+    c.arcTo(x, y + h, x, y, rr);
+    c.arcTo(x, y, x + w, y, rr);
+    c.closePath();
+  }
+
+  function drawPanelCard(x, y, w, h, title, rightLabel, accent = '#58dcff') {
+    ctx.save();
+    roundRectPath(ctx, x, y, w, h, 12);
+    ctx.fillStyle = 'rgba(9, 14, 27, 0.74)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.16)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Subtle top accent hair-line
+    const grad = ctx.createLinearGradient(x + 12, y, x + w - 12, y);
+    grad.addColorStop(0, 'rgba(88,220,255,0)');
+    grad.addColorStop(0.5, accent + '66');
+    grad.addColorStop(1, 'rgba(88,220,255,0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(x + 12, y, w - 24, 1.5);
+
+    // Header
+    ctx.font = '700 10px ui-monospace, "Cascadia Mono", Consolas, monospace';
+    ctx.fillStyle = '#9aa9cc';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(title, x + 12, y + 16);
+
+    if (rightLabel) {
+      ctx.fillStyle = accent;
+      ctx.textAlign = 'right';
+      ctx.fillText(rightLabel, x + w - 12, y + 16);
+    }
+
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.1)';
+    ctx.beginPath();
+    ctx.moveTo(x + 10, y + 27);
+    ctx.lineTo(x + w - 10, y + 27);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // =========================================================================
+  // 9. MAIN RENDER PIPELINE
+  // =========================================================================
+  function render() {
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+
+    // 1. Deep cosmic backdrop (#040711) with soft neural radial glows
+    ctx.fillStyle = '#040711';
+    ctx.fillRect(0, 0, W, H);
+
+    const g1 = ctx.createRadialGradient(W * 0.32, H * 0.28, 20, W * 0.32, H * 0.28, Math.max(W, H) * 0.55);
+    g1.addColorStop(0, 'rgba(56, 130, 246, 0.10)');
+    g1.addColorStop(0.5, 'rgba(110, 68, 210, 0.05)');
+    g1.addColorStop(1, 'rgba(4, 7, 17, 0)');
+    ctx.fillStyle = g1;
+    ctx.fillRect(0, 0, W, H);
+
+    const g2 = ctx.createRadialGradient(W * 0.72, H * 0.72, 20, W * 0.72, H * 0.72, Math.max(W, H) * 0.45);
+    g2.addColorStop(0, 'rgba(20, 184, 166, 0.06)');
+    g2.addColorStop(1, 'rgba(4, 7, 17, 0)');
+    ctx.fillStyle = g2;
+    ctx.fillRect(0, 0, W, H);
+
+    // Subtle architectural dot grid
+    ctx.fillStyle = 'rgba(148, 179, 255, 0.055)';
+    const step = 36;
+    for (let gx = (W % step) * 0.5; gx < W; gx += step) {
+      for (let gy = (H % step) * 0.5; gy < H; gy += step) {
+        ctx.fillRect(gx, gy, 1.2, 1.2);
+      }
+    }
+
+    // Floating neural particles
+    for (const p of state.particles) {
+      ctx.beginPath();
+      ctx.arc(p.x * W, p.y * H, p.r, 0, Math.PI * 2);
+      ctx.fillStyle = `hsla(${p.hue}, 85%, 72%, ${p.alpha})`;
+      ctx.fill();
+    }
+
+    if (!state.model) return;
+
+    // 2. Compute safe workspace rectangle avoiding HUD panels
+    const leftPad = 16;
+    const rightPad = (state.drawerOpen && !state.zenMode && W > 960) ? 356 : 16;
+    const topPad = state.zenMode ? 24 : 184;
+    const bottomPad = state.zenMode ? 26 : 68;
+
+    const safeX = leftPad;
+    const safeW = Math.max(360, W - leftPad - rightPad);
+    const safeY = topPad;
+    const safeH = Math.max(280, H - topPad - bottomPad);
+
+    const showAnyBottom = state.layers.matrix || state.layers.qkv || state.layers.sampling;
+    const topBandH = showAnyBottom ? Math.max(155, Math.min(255, safeH * 0.43)) : safeH * 0.88;
+    const tokenY = safeY + topBandH * 0.58;
+
+    const { qIdx, kIdx } = getActiveQueryAndKey();
+    const headData = state.model.heads[state.activeHead];
+    const headMeta = HEADS[state.activeHead];
+
+    // 3. Layout Token Pill Nodes horizontally across safeW
+    const N = state.tokens.length;
+    const padX = 14;
+    const availW = safeW - padX * 2;
+    const gap = Math.max(5, Math.min(12, availW / (N * 7.2)));
+
+    ctx.font = '700 13px ui-monospace, "Cascadia Mono", Consolas, monospace';
+    const naturalWidths = state.tokens.map(t => Math.max(40, ctx.measureText(t).width + 22));
+    const totalNatural = naturalWidths.reduce((a, b) => a + b, 0) + gap * (N - 1);
+    const scaleX = totalNatural > availW ? availW / totalNatural : 1;
+    const pillH = Math.max(30, Math.min(36, 36 * Math.min(1, scaleX * 1.15)));
+    const scaledTotal = totalNatural * scaleX;
+    let cursorX = safeX + (safeW - scaledTotal) * 0.5;
+
+    hitboxes.tokens = [];
+    for (let i = 0; i < N; i++) {
+      const pw = naturalWidths[i] * scaleX;
+      const px = cursorX;
+      const py = tokenY - pillH * 0.5;
+      hitboxes.tokens.push({
+        idx: i,
+        x: px,
+        y: py,
+        w: pw,
+        h: pillH,
+        cx: px + pw * 0.5,
+        cy: tokenY
+      });
+      cursorX += pw + gap * scaleX;
+    }
+
+    // 4. Draw Sinusoidal Positional Encoding Waves behind/under the token ribbon
+    if (state.layers.posWaves) {
+      drawPositionalWaves(safeX + 10, tokenY + pillH * 0.5 + 14, safeW - 20, Math.max(26, topBandH * 0.25), qIdx);
+    }
+
+    // 5. Draw Multi-Head Attention Arcs
+    if (state.layers.arcs) {
+      drawAttentionArcs(qIdx, kIdx, safeY, tokenY, pillH);
+    }
+
+    // 6. Draw Glowing Token Pill Nodes on top of arcs
+    drawTokenPills(qIdx, kIdx, headData, headMeta, scaleX);
+
+    // 7. Bottom Split Panels: [N×N Matrix] | [Q/K/V Vector Engine] | [Next-Token Sampling Studio]
+    hitboxes.matrixRect = null;
+    hitboxes.candidates = [];
+
+    if (showAnyBottom) {
+      const botY = safeY + topBandH + 10;
+      const botH = Math.max(150, safeY + safeH - botY);
+      const panels = [];
+      if (state.layers.matrix) panels.push({ id: 'matrix', weight: 1.02 });
+      if (state.layers.qkv) panels.push({ id: 'qkv', weight: 1.14 });
+      if (state.layers.sampling) panels.push({ id: 'sampling', weight: 1.08 });
+
+      const panelGap = 10;
+      const totalWeight = panels.reduce((a, b) => a + b.weight, 0);
+      const usableW = safeW - panelGap * (panels.length - 1);
+      let px = safeX;
+
+      for (const p of panels) {
+        const pw = (usableW * p.weight) / totalWeight;
+        if (p.id === 'matrix') {
+          drawAttentionMatrixPanel(px, botY, pw, botH, qIdx, kIdx, headData, headMeta);
+        } else if (p.id === 'qkv') {
+          drawQKVInspectorPanel(px, botY, pw, botH, qIdx, kIdx, headData, headMeta);
+        } else if (p.id === 'sampling') {
+          drawSamplingPanel(px, botY, pw, botH);
+        }
+        px += pw + panelGap;
+      }
+    }
+  }
+
+  function drawPositionalWaves(x, y, w, h, qIdx) {
+    const N = state.tokens.length;
+    const waveColors = [
+      'rgba(88, 220, 255, 0.34)',
+      'rgba(167, 139, 250, 0.32)',
+      'rgba(74, 242, 178, 0.28)',
+      'rgba(255, 190, 92, 0.28)'
+    ];
+    const cy = y + h * 0.45;
+    const amp = Math.min(14, h * 0.36);
+
+    ctx.save();
+    // Subtle baseline
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.08)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x, cy);
+    ctx.lineTo(x + w, cy);
+    ctx.stroke();
+
+    // Label
+    ctx.font = '600 9px ui-monospace, Consolas, monospace';
+    ctx.fillStyle = 'rgba(154, 169, 204, 0.55)';
+    ctx.textAlign = 'left';
+    ctx.fillText('PE(pos, 2i) = sin/cos(pos / 100^(2i/d))', x + 4, y + h - 3);
+
+    // 4 Sinusoidal frequencies
+    const startX = hitboxes.tokens[0].cx;
+    const endX = hitboxes.tokens[N - 1].cx;
+    const spanX = Math.max(1, endX - startX);
+
+    for (let f = 0; f < 4; f++) {
+      const freq = 1 / Math.pow(100, (2 * f) / DK);
+      ctx.beginPath();
+      const samples = 90;
+      for (let s = 0; s <= samples; s++) {
+        const u = s / samples;
+        const pos = u * Math.max(1, N - 1);
+        const px = startX + u * spanX;
+        const phase = state.time * (0.45 + f * 0.14);
+        const val = (f % 2 === 0)
+          ? Math.sin(pos * freq * 1.35 + phase * 0.35)
+          : Math.cos(pos * freq * 1.35 + phase * 0.35);
+        const py = cy + val * amp * (1 - f * 0.12);
+        if (s === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.strokeStyle = waveColors[f];
+      ctx.lineWidth = f === 0 ? 1.5 : 1.1;
+      ctx.stroke();
+    }
+
+    // Pin glowing sample dots at each token position
+    for (let i = 0; i < N; i++) {
+      const tb = hitboxes.tokens[i];
+      const val = Math.sin(i * 1.35 + state.time * 0.16);
+      const py = cy + val * amp;
+      ctx.beginPath();
+      ctx.moveTo(tb.cx, tb.y + tb.h + 2);
+      ctx.lineTo(tb.cx, py);
+      ctx.strokeStyle = i === qIdx ? 'rgba(88, 220, 255, 0.45)' : 'rgba(148, 179, 255, 0.12)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(tb.cx, py, i === qIdx ? 3.2 : 2.1, 0, Math.PI * 2);
+      ctx.fillStyle = i === qIdx ? '#58dcff' : 'rgba(167, 139, 250, 0.7)';
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function drawAttentionArcs(qIdx, kIdx, safeY, tokenY, pillH) {
+    const N = state.tokens.length;
+    const headIndices = state.activeHead === 4 ? [0, 1, 2, 3] : [state.activeHead];
+    const qBox = hitboxes.tokens[qIdx];
+    const maxArcLift = Math.max(54, tokenY - safeY - pillH * 0.5 - 10);
+
+    ctx.save();
+    for (const h of headIndices) {
+      const hMeta = HEADS[h];
+      const weights = state.model.heads[h].weights[qIdx];
+      const [r, g, b] = hMeta.rgb;
+
+      for (let j = 0; j < N; j++) {
+        const w = weights[j];
+        if (w < 0.025) continue;
+
+        const kBox = hitboxes.tokens[j];
+        const isMatrixFocus = state.hoverMatrix && state.hoverMatrix.i === qIdx && state.hoverMatrix.j === j;
+        const isPrimaryKey = (j === kIdx) && (state.activeHead !== 4);
+        const dimFactor = (state.hoverMatrix && !isMatrixFocus) ? 0.22 : 1.0;
+        const alpha = Math.min(0.96, (0.14 + Math.pow(w, 0.72) * 0.92) * dimFactor);
+        const lw = (1.1 + w * 6.5) * (isMatrixFocus ? 1.3 : 1.0);
+
+        if (j === qIdx) {
+          // Self-attention loop above the token
+          const loopR = 16 + h * 3.5;
+          ctx.beginPath();
+          ctx.arc(qBox.cx, qBox.y - 3, loopR, Math.PI * 0.88, Math.PI * 2.12);
+          ctx.strokeStyle = `rgba(${r},${g},${b},${alpha * 0.85})`;
+          ctx.lineWidth = lw * 0.8;
+          ctx.stroke();
+          continue;
+        }
+
+        const x1 = kBox.cx;
+        const y1 = kBox.y - 2;
+        const x2 = qBox.cx;
+        const y2 = qBox.y - 2;
+        const dist = Math.abs(x2 - x1);
+        const normDist = dist / Math.max(1, hitboxes.tokens[N - 1].cx - hitboxes.tokens[0].cx);
+        const headOffset = state.activeHead === 4 ? (h - 1.5) * 9 : 0;
+        const lift = Math.min(maxArcLift, 28 + normDist * (maxArcLift - 32) + headOffset);
+        const cpx = (x1 + x2) * 0.5;
+        const cpy = Math.max(safeY + 4, y1 - lift);
+
+        // Soft outer glow stroke
+        if (w > 0.14 || isMatrixFocus) {
+          ctx.beginPath();
+          ctx.moveTo(x1, y1);
+          ctx.quadraticCurveTo(cpx, cpy, x2, y2);
+          ctx.strokeStyle = `rgba(${r},${g},${b},${alpha * 0.22})`;
+          ctx.lineWidth = lw + 6;
+          ctx.stroke();
+        }
+
+        // Core luminous arc
+        const arcGrad = ctx.createLinearGradient(x1, y1, x2, y2);
+        arcGrad.addColorStop(0, `rgba(${r},${g},${b},${alpha * 0.65})`);
+        arcGrad.addColorStop(0.5, `rgba(${r},${g},${b},${alpha})`);
+        arcGrad.addColorStop(1, `rgba(255,255,255,${alpha * 0.95})`);
+
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.quadraticCurveTo(cpx, cpy, x2, y2);
+        ctx.strokeStyle = arcGrad;
+        ctx.lineWidth = lw;
+        ctx.stroke();
+
+        // Animated light pulses flowing Key(j) → Query(i)
+        if (state.layers.pulses && (w > 0.08 || isMatrixFocus)) {
+          const pulseCount = w > 0.35 ? 2 : 1;
+          for (let p = 0; p < pulseCount; p++) {
+            const speed = 0.42 + w * 0.55;
+            const t = (state.time * speed + j * 0.19 + h * 0.25 + p * 0.5) % 1;
+            const mt = 1 - t;
+            const px = mt * mt * x1 + 2 * mt * t * cpx + t * t * x2;
+            const py = mt * mt * y1 + 2 * mt * t * cpy + t * t * y2;
+
+            ctx.beginPath();
+            ctx.arc(px, py, 2.2 + w * 2.8, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(255, 255, 255, ${Math.min(1, alpha * 1.1)})`;
+            ctx.shadowColor = hMeta.color;
+            ctx.shadowBlur = 10;
+            ctx.fill();
+            ctx.shadowBlur = 0;
+          }
+        }
+
+        // Weight badge on peak arc(s)
+        if ((w >= 0.22 || isMatrixFocus || isPrimaryKey) && state.activeHead !== 4 && dimFactor > 0.5) {
+          const bx = 0.25 * x1 + 0.5 * cpx + 0.25 * x2;
+          const by = 0.25 * y1 + 0.5 * cpy + 0.25 * y2;
+          const label = (w * 100).toFixed(0) + '%';
+          ctx.font = '700 10px ui-monospace, Consolas, monospace';
+          const tw = ctx.measureText(label).width + 10;
+          roundRectPath(ctx, bx - tw * 0.5, by - 9, tw, 17, 8);
+          ctx.fillStyle = 'rgba(6, 10, 22, 0.92)';
+          ctx.fill();
+          ctx.strokeStyle = `rgba(${r},${g},${b},0.78)`;
+          ctx.lineWidth = 1;
+          ctx.stroke();
+          ctx.fillStyle = '#f0f7ff';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(label, bx, by);
+        }
+      }
+    }
+    ctx.restore();
+  }
+
+  function drawTokenPills(qIdx, kIdx, headData, headMeta, scaleX) {
+    const N = state.tokens.length;
+    const row = headData.weights[qIdx];
+    const [hr, hg, hb] = headMeta.rgb;
+
+    ctx.save();
+    for (let i = 0; i < N; i++) {
+      const tb = hitboxes.tokens[i];
+      const w = row[i];
+      const isQuery = i === qIdx;
+      const isKey = i === kIdx;
+      const isMasked = state.causalMask && i > qIdx;
+
+      // Attention glow halo for strongly attended keys
+      if ((w > 0.14 || isQuery) && !isMasked) {
+        ctx.save();
+        ctx.shadowColor = isQuery ? '#58dcff' : headMeta.color;
+        ctx.shadowBlur = isQuery ? 20 : 8 + w * 22;
+        roundRectPath(ctx, tb.x, tb.y, tb.w, tb.h, 9);
+        ctx.fillStyle = isQuery
+          ? 'rgba(88, 220, 255, 0.18)'
+          : `rgba(${hr},${hg},${hb},${0.06 + w * 0.26})`;
+        ctx.fill();
+        ctx.restore();
+      }
+
+      // Pill body
+      roundRectPath(ctx, tb.x, tb.y, tb.w, tb.h, 9);
+      if (isMasked) {
+        ctx.fillStyle = 'rgba(12, 16, 28, 0.52)';
+      } else if (isQuery) {
+        ctx.fillStyle = 'rgba(18, 36, 62, 0.92)';
+      } else {
+        ctx.fillStyle = `rgba(${11 + Math.round(hr * w * 0.22)}, ${16 + Math.round(hg * w * 0.22)}, ${30 + Math.round(hb * w * 0.24)}, 0.90)`;
+      }
+      ctx.fill();
+
+      // Border
+      ctx.lineWidth = isQuery ? 2.0 : (isKey ? 1.6 : 1.0);
+      if (isQuery) {
+        ctx.strokeStyle = '#58dcff';
+      } else if (isMasked) {
+        ctx.strokeStyle = 'rgba(255, 96, 131, 0.24)';
+      } else if (isKey || w > 0.18) {
+        ctx.strokeStyle = `rgba(${hr},${hg},${hb},${0.45 + w * 0.55})`;
+      } else {
+        ctx.strokeStyle = 'rgba(148, 179, 255, 0.22)';
+      }
+      ctx.stroke();
+
+      // Token label
+      const fontSize = Math.max(10, Math.min(13, Math.round(13 * Math.min(1, scaleX * 1.08))));
+      ctx.font = `700 ${fontSize}px ui-monospace, "Cascadia Mono", Consolas, monospace`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = isMasked ? 'rgba(154, 169, 204, 0.36)' : (isQuery ? '#ffffff' : '#e6efff');
+      ctx.fillText(state.tokens[i], tb.cx, tb.cy + 0.5);
+
+      // Tiny index / role tag above or below pill
+      ctx.font = '600 8.5px ui-monospace, Consolas, monospace';
+      if (isQuery) {
+        ctx.fillStyle = '#58dcff';
+        ctx.fillText(`Q[${i}]`, tb.cx, tb.y + tb.h + 10);
+      } else if (isMasked) {
+        ctx.fillStyle = 'rgba(255, 96, 131, 0.55)';
+        ctx.fillText('−∞', tb.cx, tb.y + tb.h + 10);
+      } else if (w >= 0.08) {
+        ctx.fillStyle = `rgba(${hr},${hg},${hb},0.92)`;
+        ctx.fillText(`${(w * 100).toFixed(0)}%`, tb.cx, tb.y + tb.h + 10);
+      } else {
+        ctx.fillStyle = 'rgba(104, 120, 156, 0.65)';
+        ctx.fillText(`${i}`, tb.cx, tb.y + tb.h + 10);
+      }
+    }
+    ctx.restore();
+  }
+
+  function drawAttentionMatrixPanel(x, y, w, h, qIdx, kIdx, headData, headMeta) {
+    const N = state.tokens.length;
+    drawPanelCard(
+      x, y, w, h,
+      'N×N ATTENTION MATRIX',
+      state.causalMask ? 'LOWER-TRI MASK' : 'FULL BIDIRECTIONAL',
+      headMeta.color
+    );
+
+    const innerTop = y + 34;
+    const labelLeft = Math.min(54, w * 0.22);
+    const labelTop = 20;
+    const padB = 12;
+    const padR = 12;
+    const availW = w - labelLeft - padR;
+    const availH = h - (innerTop - y) - labelTop - padB;
+    const gridSize = Math.max(40, Math.min(availW, availH));
+    const cell = gridSize / N;
+    const gx = x + labelLeft + (availW - gridSize) * 0.5;
+    const gy = innerTop + labelTop + (availH - gridSize) * 0.5;
+
+    hitboxes.matrixRect = { x: gx, y: gy, size: gridSize, cell, N };
+
+    const [hr, hg, hb] = headMeta.rgb;
+
+    ctx.save();
+    // Axis labels
+    const lblFont = Math.max(7.5, Math.min(9.5, cell * 0.55));
+    ctx.font = `600 ${lblFont}px ui-monospace, Consolas, monospace`;
+
+    for (let i = 0; i < N; i++) {
+      const tok = state.tokens[i].length > 6 ? state.tokens[i].slice(0, 5) + '…' : state.tokens[i];
+      // Row (Query) label
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = i === qIdx ? '#58dcff' : '#8596ba';
+      ctx.fillText(tok, gx - 5, gy + (i + 0.5) * cell);
+
+      // Col (Key) label
+      ctx.save();
+      ctx.translate(gx + (i + 0.5) * cell, gy - 4);
+      ctx.rotate(-Math.PI * 0.22);
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'bottom';
+      ctx.fillStyle = i === kIdx ? headMeta.color : '#8596ba';
+      ctx.fillText(tok, 0, 0);
+      ctx.restore();
+    }
+
+    // Matrix cells
+    for (let i = 0; i < N; i++) {
+      for (let j = 0; j < N; j++) {
+        const cx = gx + j * cell;
+        const cy = gy + i * cell;
+        const masked = state.causalMask && j > i;
+        const val = headData.weights[i][j];
+
+        if (masked) {
+          ctx.fillStyle = 'rgba(255, 96, 131, 0.06)';
+          ctx.fillRect(cx + 0.7, cy + 0.7, cell - 1.4, cell - 1.4);
+          // Subtle diagonal hatch
+          ctx.strokeStyle = 'rgba(255, 96, 131, 0.16)';
+          ctx.lineWidth = 0.8;
+          ctx.beginPath();
+          ctx.moveTo(cx + 2, cy + cell - 2);
+          ctx.lineTo(cx + cell - 2, cy + 2);
+          ctx.stroke();
+        } else {
+          const intensity = Math.pow(val, 0.65);
+          ctx.fillStyle = `rgba(${hr}, ${hg}, ${hb}, ${0.06 + intensity * 0.88})`;
+          ctx.fillRect(cx + 0.7, cy + 0.7, cell - 1.4, cell - 1.4);
+        }
+
+        // Highlight active row / col subtly
+        if (i === qIdx && !masked) {
+          ctx.strokeStyle = 'rgba(88, 220, 255, 0.28)';
+          ctx.lineWidth = 0.8;
+          ctx.strokeRect(cx + 0.7, cy + 0.7, cell - 1.4, cell - 1.4);
+        }
+      }
+    }
+
+    // Focus crosshair border on (qIdx, kIdx)
+    const fx = gx + kIdx * cell;
+    const fy = gy + qIdx * cell;
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1.8;
+    ctx.strokeRect(fx + 0.5, fy + 0.5, cell - 1, cell - 1);
+
+    // Outer frame
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.22)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(gx, gy, gridSize, gridSize);
+    ctx.restore();
+  }
+
+  function drawQKVInspectorPanel(x, y, w, h, qIdx, kIdx, headData, headMeta) {
+    const qTok = state.tokens[qIdx];
+    const kTok = state.tokens[kIdx];
+    const rawDot = headData.rawDots[qIdx][kIdx];
+    const scaled = headData.scaled[qIdx][kIdx];
+    const weight = headData.weights[qIdx][kIdx];
+
+    drawPanelCard(
+      x, y, w, h,
+      'Q / K / V VECTOR ENGINE',
+      `Q[${qIdx}]·K[${kIdx}] / √8`,
+      '#58dcff'
+    );
+
+    const qVec = headData.Q[qIdx];
+    const kVec = headData.K[kIdx];
+    const vOut = headData.contextV[qIdx];
+    const prod = qVec.map((qv, d) => qv * kVec[d]);
+
+    const padX = 12;
+    const innerW = w - padX * 2;
+    const startY = y + 36;
+    const availH = h - 46;
+
+    // 4 Vector rows: Q, K, Q⊙K, V_out
+    const rows = [
+      { label: `Q["${qTok}"]`, vec: qVec, posCol: '#58dcff', negCol: '#ff6083', scale: 2.3 },
+      { label: `K["${kTok}"]`, vec: kVec, posCol: '#a78bfa', negCol: '#ff8a5c', scale: 2.3 },
+      { label: 'Q ⊙ K', vec: prod, posCol: '#ffbe5c', negCol: '#ff6083', scale: 3.6 },
+      { label: `V_out = Σ αV`, vec: vOut, posCol: '#4af2b2', negCol: '#ff6083', scale: 1.8 }
+    ];
+
+    const footerH = 34;
+    const rowGap = 6;
+    const rowH = Math.max(20, (availH - footerH - rowGap * (rows.length - 1)) / rows.length);
+    const labelW = Math.min(92, innerW * 0.30);
+    const barAreaX = x + padX + labelW;
+    const barAreaW = innerW - labelW;
+    const colW = barAreaW / DK;
+
+    ctx.save();
+    // Dimension headers at very top
+    ctx.font = '600 8px ui-monospace, Consolas, monospace';
+    ctx.fillStyle = '#68789c';
+    ctx.textAlign = 'center';
+    for (let d = 0; d < DK; d++) {
+      ctx.fillText(DIM_LABELS[d], barAreaX + (d + 0.5) * colW, startY + 2);
+    }
+
+    const barsStartY = startY + 10;
+    const effRowH = Math.max(18, (availH - footerH - 12 - rowGap * (rows.length - 1)) / rows.length);
+
+    rows.forEach((r, ri) => {
+      const ry = barsStartY + ri * (effRowH + rowGap);
+      const midY = ry + effRowH * 0.52;
+
+      // Row label
+      ctx.font = '700 10px ui-monospace, Consolas, monospace';
+      ctx.fillStyle = r.posCol;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      const lbl = r.label.length > 12 ? r.label.slice(0, 11) + '…' : r.label;
+      ctx.fillText(lbl, x + padX, midY);
+
+      // Zero baseline
+      ctx.strokeStyle = 'rgba(148, 179, 255, 0.14)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(barAreaX, midY);
+      ctx.lineTo(barAreaX + barAreaW, midY);
+      ctx.stroke();
+
+      // 8 signed bars
+      const maxBarH = effRowH * 0.44;
+      for (let d = 0; d < DK; d++) {
+        const val = r.vec[d];
+        const norm = Math.max(-1, Math.min(1, val / r.scale));
+        const bh = Math.max(1.5, Math.abs(norm) * maxBarH);
+        const bx = barAreaX + d * colW + 2.5;
+        const bw = Math.max(3, colW - 5);
+        const by = norm >= 0 ? (midY - bh) : midY;
+
+        ctx.fillStyle = norm >= 0 ? r.posCol : r.negCol;
+        ctx.globalAlpha = 0.35 + Math.abs(norm) * 0.65;
+        roundRectPath(ctx, bx, by, bw, bh, 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+    });
+
+    // Bottom exact formula readout strip
+    const footY = y + h - footerH - 6;
+    roundRectPath(ctx, x + padX, footY, innerW, footerH, 7);
+    ctx.fillStyle = 'rgba(4, 8, 18, 0.72)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(88, 220, 255, 0.22)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    const scaledStr = scaled === -Infinity ? '−∞' : `${scaled >= 0 ? '+' : ''}${scaled.toFixed(2)}`;
+    ctx.font = '700 10.5px ui-monospace, Consolas, monospace';
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#ffbe5c';
+    ctx.fillText(`Q·K = ${rawDot >= 0 ? '+' : ''}${rawDot.toFixed(2)}`, x + padX + 9, footY + footerH * 0.35);
+
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#4af2b2';
+    ctx.fillText(`α = ${(weight * 100).toFixed(1)}%`, x + padX + innerW - 9, footY + footerH * 0.35);
+
+    ctx.font = '600 9.5px ui-monospace, Consolas, monospace';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#9aa9cc';
+    ctx.fillText(`Scaled (÷√8): ${scaledStr}`, x + padX + 9, footY + footerH * 0.74);
+
+    ctx.textAlign = 'right';
+    ctx.fillStyle = headMeta.color;
+    ctx.fillText(`${headMeta.short}`, x + padX + innerW - 9, footY + footerH * 0.74);
+
+    ctx.restore();
+  }
+
+  function drawSamplingPanel(x, y, w, h) {
+    if (!state.samplingDist) return;
+    drawPanelCard(
+      x, y, w, h,
+      'NEXT-TOKEN SAMPLING STUDIO',
+      `T=${state.temp.toFixed(2)} · K=${state.topK} · P=${state.topP.toFixed(2)}`,
+      '#ffbe5c'
+    );
+
+    const items = state.samplingDist.items.slice(0, 8);
+    const padX = 12;
+    const topY = y + 36;
+    const footerH = 22;
+    const availH = h - 42 - footerH;
+    const rowGap = 4;
+    const rowH = Math.max(14, (availH - rowGap * (items.length - 1)) / items.length);
+    const tokW = Math.min(76, w * 0.27);
+    const pctW = 46;
+    const barX = x + padX + tokW;
+    const barW = Math.max(40, w - padX * 2 - tokW - pctW - 6);
+
+    const maxProb = Math.max(0.25, ...items.map(it => it.inNucleus ? it.sampleProb : it.baseProb));
+
+    ctx.save();
+    hitboxes.candidates = [];
+
+    items.forEach((it, idx) => {
+      const ry = topY + idx * (rowH + rowGap);
+      const isHover = state.hoverCandidate === idx;
+      const isRoulette = state.roulette.active && state.roulette.highlightIdx === idx;
+      const prob = it.inNucleus ? it.sampleProb : it.baseProb;
+      const fillW = Math.max(3, (prob / maxProb) * barW);
+
+      hitboxes.candidates.push({
+        idx,
+        x: x + padX,
+        y: ry,
+        w: w - padX * 2,
+        h: rowH,
+        token: it.token,
+        prob
+      });
+
+      // Row hover / roulette highlight
+      if (isRoulette || isHover) {
+        roundRectPath(ctx, x + padX - 3, ry - 1, w - padX * 2 + 6, rowH + 2, 5);
+        ctx.fillStyle = isRoulette ? 'rgba(255, 190, 92, 0.22)' : 'rgba(88, 220, 255, 0.12)';
+        ctx.fill();
+      }
+
+      // Candidate token name
+      ctx.font = '700 10.5px ui-monospace, Consolas, monospace';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = isRoulette ? '#fff5dc' : (it.inNucleus ? '#eef3ff' : 'rgba(154, 169, 204, 0.38)');
+      const tokStr = it.token.length > 9 ? it.token.slice(0, 8) + '…' : it.token;
+      ctx.fillText(tokStr, x + padX + 2, ry + rowH * 0.5);
+
+      // Bar track
+      const bh = Math.min(11, rowH * 0.62);
+      const by = ry + (rowH - bh) * 0.5;
+      roundRectPath(ctx, barX, by, barW, bh, 4);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.06)';
+      ctx.fill();
+
+      // Bar fill
+      roundRectPath(ctx, barX, by, fillW, bh, 4);
+      if (isRoulette) {
+        ctx.fillStyle = '#ffbe5c';
+        ctx.shadowColor = '#ffbe5c';
+        ctx.shadowBlur = 12;
+      } else if (it.inNucleus) {
+        const g = ctx.createLinearGradient(barX, 0, barX + fillW, 0);
+        g.addColorStop(0, '#58dcff');
+        g.addColorStop(0.65, '#a78bfa');
+        g.addColorStop(1, '#ffbe5c');
+        ctx.fillStyle = g;
+      } else {
+        ctx.fillStyle = 'rgba(104, 120, 156, 0.30)';
+      }
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      // Probability / CUT label
+      ctx.font = '700 10px ui-monospace, Consolas, monospace';
+      ctx.textAlign = 'right';
+      ctx.fillStyle = isRoulette
+        ? '#ffbe5c'
+        : (it.inNucleus ? '#58dcff' : 'rgba(255, 96, 131, 0.55)');
+      ctx.fillText(it.inNucleus ? `${(prob * 100).toFixed(1)}%` : 'CUT', x + w - padX, ry + rowH * 0.5);
+
+      // Draw dashed Top-P Nucleus cutoff line right after last active token
+      if (it.inNucleus && idx + 1 < items.length && !items[idx + 1].inNucleus) {
+        const lineY = ry + rowH + rowGap * 0.5;
+        ctx.save();
+        ctx.setLineDash([4, 3]);
+        ctx.strokeStyle = 'rgba(255, 190, 92, 0.65)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(x + padX, lineY);
+        ctx.lineTo(x + w - padX, lineY);
+        ctx.stroke();
+        ctx.restore();
+      }
+    });
+
+    // Footer tip
+    ctx.font = '600 9.5px ui-monospace, Consolas, monospace';
+    ctx.fillStyle = '#7e90b5';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`Nucleus: ${state.samplingDist.nucleusCount} tok · H=${state.samplingDist.entropy.toFixed(2)}b`, x + padX, y + h - 12);
+
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#ffbe5c';
+    ctx.fillText('Click bar or [S] to sample', x + w - padX, y + h - 12);
+
+    ctx.restore();
+  }
+
+  // =========================================================================
+  // 10. ANIMATION LOOP
+  // =========================================================================
+  let lastTS = performance.now();
+  function frame(ts) {
+    const dt = Math.min(0.05, (ts - lastTS) / 1000);
+    lastTS = ts;
+
+    if (!state.paused) {
+      state.time += dt;
+      for (const p of state.particles) {
+        p.x = (p.x + p.vx * dt + 1) % 1;
+        p.y = (p.y + p.vy * dt + 1) % 1;
+      }
+    }
+
+    // Roulette sampling animation
+    if (state.roulette.active) {
+      state.roulette.elapsed += dt;
+      const nuc = state.samplingDist.nucleusCount || 1;
+      const tick = Math.floor(state.roulette.elapsed * 26);
+      state.roulette.highlightIdx = tick % nuc;
+      if (state.roulette.elapsed >= state.roulette.duration) {
+        state.roulette.active = false;
+        appendSampledToken(state.roulette.chosenToken, state.roulette.chosenProb);
+      }
+    } else if (state.autogenLeft > 0 && !state.paused) {
+      state.autogenTimer += dt;
+      if (state.autogenTimer >= 0.45) {
+        state.autogenTimer = 0;
+        state.autogenLeft--;
+        triggerSampleNext();
+      }
+    }
+
+    render();
+    requestAnimationFrame(frame);
+  }
+
+  // =========================================================================
+  // 11. CANVAS POINTER INTERACTION
+  // =========================================================================
+  function getCanvasCoords(ev) {
+    const rect = canvas.getBoundingClientRect();
+    return { x: ev.clientX - rect.left, y: ev.clientY - rect.top };
+  }
+
+  function hitTest(mx, my) {
+    // 1. Token pills
+    for (const tb of hitboxes.tokens) {
+      if (mx >= tb.x && mx <= tb.x + tb.w && my >= tb.y - 4 && my <= tb.y + tb.h + 14) {
+        return { type: 'token', idx: tb.idx };
+      }
+    }
+    // 2. N x N Matrix cells
+    const mr = hitboxes.matrixRect;
+    if (mr && mx >= mr.x && mx <= mr.x + mr.size && my >= mr.y && my <= mr.y + mr.size) {
+      const j = Math.min(mr.N - 1, Math.max(0, Math.floor((mx - mr.x) / mr.cell)));
+      const i = Math.min(mr.N - 1, Math.max(0, Math.floor((my - mr.y) / mr.cell)));
+      return { type: 'matrix', i, j };
+    }
+    // 3. Sampling candidate bars
+    for (const cb of hitboxes.candidates) {
+      if (mx >= cb.x && mx <= cb.x + cb.w && my >= cb.y && my <= cb.y + cb.h) {
+        return { type: 'candidate', idx: cb.idx, token: cb.token, prob: cb.prob };
+      }
+    }
+    return null;
+  }
+
+  canvas.addEventListener('pointermove', (ev) => {
+    const { x, y } = getCanvasCoords(ev);
+    const hit = hitTest(x, y);
+
+    let changed = false;
+    if (hit && hit.type === 'token') {
+      if (state.hoverToken !== hit.idx || state.hoverMatrix !== null || state.hoverCandidate !== -1) {
+        state.hoverToken = hit.idx;
+        state.hoverMatrix = null;
+        state.hoverCandidate = -1;
+        changed = true;
+      }
+      canvas.classList.add('pointer');
+    } else if (hit && hit.type === 'matrix') {
+      if (!state.hoverMatrix || state.hoverMatrix.i !== hit.i || state.hoverMatrix.j !== hit.j) {
+        state.hoverMatrix = { i: hit.i, j: hit.j };
+        state.hoverToken = -1;
+        state.hoverCandidate = -1;
+        changed = true;
+      }
+      canvas.classList.add('pointer');
+    } else if (hit && hit.type === 'candidate') {
+      if (state.hoverCandidate !== hit.idx) {
+        state.hoverCandidate = hit.idx;
+        state.hoverToken = -1;
+        state.hoverMatrix = null;
+        changed = true;
+      }
+      canvas.classList.add('pointer');
+    } else {
+      if (state.hoverToken !== -1 || state.hoverMatrix !== null || state.hoverCandidate !== -1) {
+        state.hoverToken = -1;
+        state.hoverMatrix = null;
+        state.hoverCandidate = -1;
+        changed = true;
+      }
+      canvas.classList.remove('pointer');
+    }
+
+    if (changed) syncHUD();
+  });
+
+  canvas.addEventListener('pointerleave', () => {
+    state.hoverToken = -1;
+    state.hoverMatrix = null;
+    state.hoverCandidate = -1;
+    canvas.classList.remove('pointer');
+    syncHUD();
+  });
+
+  canvas.addEventListener('click', (ev) => {
+    const { x, y } = getCanvasCoords(ev);
+    const hit = hitTest(x, y);
+    if (!hit) return;
+
+    if (hit.type === 'token') {
+      state.selectedQuery = hit.idx;
+      state.selectedKey = -1;
+      syncHUD();
+      const weights = state.model.heads[state.activeHead].weights[hit.idx];
+      audio.playAttentionChord(weights, state.tokens.length);
+    } else if (hit.type === 'matrix') {
+      state.selectedQuery = hit.i;
+      state.selectedKey = hit.j;
+      syncHUD();
+      const w = state.model.heads[state.activeHead].weights[hit.i][hit.j];
+      audio.playNote(329.63 + w * 520, 0.05 + w * 0.07, 0.35, (hit.j / Math.max(1, state.tokens.length - 1)) * 1.2 - 0.6);
+    } else if (hit.type === 'candidate') {
+      appendSampledToken(hit.token, hit.prob);
+    }
+  });
+
+  // =========================================================================
+  // 12. HUD & KEYBOARD EVENT WIRING
+  // =========================================================================
+  // Drawer tabs
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const target = btn.dataset.tab;
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b === btn));
+      document.querySelectorAll('.tab-pane').forEach(p => p.classList.toggle('active', p.id === 'tab-' + target));
+    });
+  });
+
+  // Presets
+  document.querySelectorAll('.preset-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      loadPreset(btn.dataset.preset, true);
+      const weights = state.model.heads[state.activeHead].weights[state.selectedQuery];
+      audio.playAttentionChord(weights, state.tokens.length);
+    });
+  });
+
+  // Head selector
+  function selectHead(hIdx) {
+    state.activeHead = hIdx;
+    document.querySelectorAll('.head-btn').forEach(b => b.classList.toggle('active', Number(b.dataset.head) === hIdx));
+    syncHUD();
+    const weights = state.model.heads[state.activeHead].weights[state.selectedQuery];
+    audio.playAttentionChord(weights, state.tokens.length);
+  }
+
+  document.querySelectorAll('.head-btn').forEach(btn => {
+    btn.addEventListener('click', () => selectHead(Number(btn.dataset.head)));
+  });
+
+  // Sentence input
+  elBtnApplyText.addEventListener('click', applyCustomText);
+  elSentenceInput.addEventListener('keydown', (e) => {
+    e.stopPropagation();
+    if (e.key === 'Enter') applyCustomText();
+  });
+
+  // Causal Mask toggle
+  function setCausalMask(on) {
+    state.causalMask = on;
+    recomputeAll();
+    showBanner(on ? 'Causal Mask ON — GPT Autoregressive Lower-Triangular' : 'Causal Mask OFF — BERT Full Bidirectional');
+  }
+  elBtnMaskOff.addEventListener('click', () => setCausalMask(false));
+  elBtnMaskOn.addEventListener('click', () => setCausalMask(true));
+
+  // Sharpness slider
+  elSliderSharpness.addEventListener('input', () => {
+    state.sharpness = parseFloat(elSliderSharpness.value);
+    elValSharpness.textContent = state.sharpness.toFixed(2) + '×';
+    recomputeAll();
+  });
+
+  // Sampling controls
+  elSliderTemp.addEventListener('input', () => {
+    state.temp = parseFloat(elSliderTemp.value);
+    elValTemp.textContent = state.temp.toFixed(2);
+    recomputeSampling();
+  });
+  elSliderTopK.addEventListener('input', () => {
+    state.topK = parseInt(elSliderTopK.value, 10);
+    elValTopK.textContent = String(state.topK);
+    recomputeSampling();
+  });
+  elSliderTopP.addEventListener('input', () => {
+    state.topP = parseFloat(elSliderTopP.value);
+    elValTopP.textContent = state.topP.toFixed(2);
+    recomputeSampling();
+  });
+
+  elBtnSampleNext.addEventListener('click', triggerSampleNext);
+  elBtnBarSample.addEventListener('click', triggerSampleNext);
+  elBtnAutogen.addEventListener('click', () => {
+    state.autogenLeft = 4;
+    state.autogenTimer = 0.45;
+    showBanner('Auto-generating 4 tokens autoregressively...');
+  });
+  elBtnResetPrompt.addEventListener('click', () => loadPreset(state.presetKey, true));
+
+  // Visual toggles
+  elTogArcs.addEventListener('change', () => { state.layers.arcs = elTogArcs.checked; });
+  elTogPulses.addEventListener('change', () => { state.layers.pulses = elTogPulses.checked; });
+  elTogPosWaves.addEventListener('change', () => { state.layers.posWaves = elTogPosWaves.checked; });
+  elTogMatrix.addEventListener('change', () => { state.layers.matrix = elTogMatrix.checked; });
+  elTogQKV.addEventListener('change', () => { state.layers.qkv = elTogQKV.checked; });
+  elTogSampling.addEventListener('change', () => { state.layers.sampling = elTogSampling.checked; });
+
+  // Transport Bar
+  function togglePlay() {
+    state.paused = !state.paused;
+    elBtnPlay.textContent = state.paused ? '▶ Play' : '⏸ Pause';
+    elBtnPlay.classList.toggle('active', !state.paused);
+  }
+  elBtnPlay.addEventListener('click', togglePlay);
+
+  elBtnReset.addEventListener('click', () => {
+    state.sharpness = 1.0;
+    elSliderSharpness.value = '1.00';
+    elValSharpness.textContent = '1.00×';
+    state.temp = 0.85;
+    elSliderTemp.value = '0.85';
+    elValTemp.textContent = '0.85';
+    state.topK = 6;
+    elSliderTopK.value = '6';
+    elValTopK.textContent = '6';
+    state.topP = 0.88;
+    elSliderTopP.value = '0.88';
+    elValTopP.textContent = '0.88';
+    loadPreset(state.presetKey, true);
+  });
+
+  elBtnAudio.addEventListener('click', () => {
+    audio.setEnabled(!audio.enabled);
+    elBtnAudio.textContent = audio.enabled ? '🔊 Audio' : '🔇 Audio';
+    elBtnAudio.classList.toggle('active', audio.enabled);
+  });
+
+  function toggleDrawer() {
+    state.drawerOpen = !state.drawerOpen;
+    elDrawer.classList.toggle('collapsed', !state.drawerOpen);
+    elBtnDrawer.classList.toggle('active', state.drawerOpen);
+  }
+  elBtnDrawer.addEventListener('click', toggleDrawer);
+
+  function toggleZen() {
+    state.zenMode = !state.zenMode;
+    document.body.classList.toggle('zen-mode', state.zenMode);
+  }
+  elBtnZen.addEventListener('click', toggleZen);
+  elBtnZenRestore.addEventListener('click', toggleZen);
+
+  // Keyboard shortcuts
+  window.addEventListener('keydown', (e) => {
+    if (document.activeElement === elSentenceInput) return;
+    const k = e.key.toLowerCase();
+    if (k === ' ') {
+      e.preventDefault();
+      togglePlay();
+    } else if (k === 'h') {
+      toggleZen();
+    } else if (k === 'm') {
+      setCausalMask(!state.causalMask);
+    } else if (k === 's') {
+      triggerSampleNext();
+    } else if (k === 'r') {
+      loadPreset(state.presetKey, true);
+    } else if (k >= '1' && k <= '5') {
+      selectHead(Number(k) - 1);
+    } else if (k === 'arrowleft') {
+      state.selectedQuery = (state.selectedQuery - 1 + state.tokens.length) % state.tokens.length;
+      state.selectedKey = -1;
+      syncHUD();
+    } else if (k === 'arrowright') {
+      state.selectedQuery = (state.selectedQuery + 1) % state.tokens.length;
+      state.selectedKey = -1;
+      syncHUD();
+    }
+  });
+
+  window.addEventListener('resize', resize);
+
+  // =========================================================================
+  // 13. BOOTSTRAP
+  // =========================================================================
+  initParticles();
+  resize();
+  loadPreset('tired', false);
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

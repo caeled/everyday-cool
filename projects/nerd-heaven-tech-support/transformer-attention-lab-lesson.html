@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Transformer Attention Lab — The Lesson · Nerd Heaven</title>
+<style>
+  :root{
+    --bg:#050914; --panel:#0b1226; --panel2:#0e1730; --border:#22335c;
+    --text:#dbe7ff; --muted:#8ea1bd; --accent:#7dd3fc; --good:#4ade80;
+    --bad:#f87171; --warn:#fbbf24;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:radial-gradient(circle at 50% -10%,rgba(56,120,246,.16),transparent 55%),var(--bg);
+    color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,sans-serif;line-height:1.55}
+  .wrap{max-width:860px;margin:0 auto;padding:22px 18px 44px}
+  .eyebrow{color:var(--accent);font-size:11.5px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;margin:0 0 6px}
+  h1{font-size:27px;margin:0 0 8px;font-weight:800;letter-spacing:-.3px}
+  h1 span{color:var(--accent)}
+  h2{font-size:19px;margin:30px 0 8px;font-weight:750;border-top:1px solid var(--border);padding-top:20px}
+  h2:first-of-type{border-top:none;padding-top:0}
+  h3{font-size:15.5px;margin:18px 0 5px;color:#fff}
+  p{color:#c3d3f2;font-size:14.5px;margin:8px 0}
+  .lead{font-size:15.5px;color:#e7f2ff}
+  a{color:var(--accent)}
+  .play{display:inline-block;background:#155e86;border:1px solid #2b7fb3;color:#fff;text-decoration:none;
+    border-radius:9px;padding:8px 15px;font-size:14px;font-weight:600;margin:10px 0 2px}
+  .play:hover{background:#1a6f9e}
+  .formula{background:var(--panel);border:1px solid var(--border);border-left:3px solid var(--accent);
+    border-radius:10px;padding:11px 16px;margin:12px 0;font-size:15.5px;color:#fff;
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;overflow-x:auto;white-space:nowrap}
+  .formula small{display:block;color:var(--muted);font-family:inherit;font-size:12.5px;margin-top:4px;white-space:normal}
+  .honest{background:var(--panel2);border:1px dashed var(--border);border-radius:10px;padding:10px 15px;margin:12px 0}
+  .honest p{margin:2px 0;font-size:13.5px}
+  .honest b{color:var(--warn)}
+  table{border-collapse:collapse;margin:12px 0;width:100%;font-size:14px}
+  th,td{border:1px solid var(--border);padding:7px 11px;text-align:left}
+  th{background:var(--panel2);color:#fff}
+  td{color:#c3d3f2;font-variant-numeric:tabular-nums}
+  ol,ul{color:#c3d3f2;font-size:14.5px;padding-left:22px}
+  li{margin:5px 0}
+  code{background:var(--panel2);border:1px solid var(--border);border-radius:5px;padding:0 5px;
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px;color:#e7f2ff}
+  .receipt{color:var(--good);font-weight:600}
+  .trap{color:var(--bad);font-weight:600}
+  .keepgoing{display:grid;gap:9px;margin:14px 0}
+  .keepgoing a{display:block;background:var(--panel);border:1px solid var(--border);border-radius:11px;
+    padding:11px 15px;text-decoration:none;color:var(--text)}
+  .keepgoing a:hover{border-color:var(--accent)}
+  .keepgoing b{color:#fff;display:block;font-size:14.5px}
+  .keepgoing span{color:var(--muted);font-size:13px}
+  footer{color:var(--muted);font-size:12px;margin-top:26px;text-align:center}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <p class="eyebrow">Nerd Heaven · The back door to Transformer Attention Lab</p>
+  <h1>Transformer Attention Lab <span>— the lesson</span></h1>
+  <p class="lead">A transformer reads a sentence by letting every word look at every other word and
+  decide how much each one matters. That looking is <em>attention</em>: each token asks a question
+  (its query), advertises what it offers (its key), and passes along what it means (its value).
+  Match the questions to the keys, turn the matches into weights that sum to one, and blend the
+  values by those weights — that is the whole mechanism, and this lab lets you watch it resolve a
+  pronoun in the classic Winograd pair: "The animal didn't cross the street because it was too
+  tired" versus "…too wide." This page is the other half of the lab: the concept and the math,
+  and the audit that recomputed the shipped attention matrices independently — and found the
+  arithmetic exact, and one of the page's labels false.</p>
+  <p><strong>Verdict:</strong> The attention arithmetic is exact — within 2.2×10⁻¹⁶ of an independent NumPy recomputation, and the Winograd demos are genuine ("tired" sends it → animal at 40.4%) — but the "Concat" head is FALSE: it is an elementwise mean with no concatenation and no W_O, and its displayed scores do not softmax to its displayed weights.</p>
+  <p style="color:var(--muted);font-size:13px">Transformer Attention Lab was built by Google Antigravity (Gemini)
+  at Steven Powell's direction; this lesson and its audit were written by Muse, from reading the
+  shipped code and driving it headlessly.</p>
+  <a class="play" href="transformer-attention-lab.html">Play Transformer Attention Lab →</a>
+
+  <h2>The concept</h2>
+
+  <h3>Queries, keys, values</h3>
+  <p>Each token is first turned into a vector — its embedding, with a positional encoding added so
+  the model knows where in the sequence it sits. From that vector come three roles. The
+  <strong>query</strong> (Q) is what this token is looking for. The <strong>key</strong> (K) is
+  what each token advertises. The <strong>value</strong> (V) is the content a token hands over if
+  it is attended to. A pronoun like "it" carries a query that, in a well-trained model, matches
+  the key of its antecedent — "animal" in one sentence, "street" in the other, with only one word
+  changed. That flip is the Winograd test, and the lab's presets drive it live.</p>
+
+  <h3>Weights that sum to one</h3>
+  <p>Score every query against every key, scale the scores down so the softmax that follows stays
+  well-behaved, and softmax each row: the result is a set of attention weights, one distribution
+  per token, each summing to exactly 1. Multiply those weights by the values and each token walks
+  away with a context vector — a blend of the whole sentence, weighted by relevance. A
+  <strong>causal mask</strong> zeroes the upper triangle before the softmax, so a token in a
+  GPT-style model can only look backwards; remove it and, BERT-style, every token sees the full
+  sequence. Run several heads in parallel and a real transformer concatenates their outputs and
+  mixes them through an output projection, W<sub>O</sub>. Hold that sentence — the audit comes
+  back to it.</p>
+
+  <h3>Sampling: what comes next</h3>
+  <p>The lab's second studio turns a distribution over next tokens into a choice.
+  <strong>Temperature</strong> reshapes the distribution before sampling: low temperature sharpens
+  it toward the single most likely token, high temperature flattens it. <strong>Top-k</strong>
+  keeps only the k most likely candidates; <strong>top-p</strong> (nucleus sampling) keeps the
+  smallest set whose probabilities add up to p. The order those two filters are applied in
+  matters — another sentence the audit comes back to.</p>
+
+  <h2>The concept/math</h2>
+
+  <h3>Scaled dot-product attention</h3>
+  <div class="formula">Attention(Q, K, V) = softmax( QKᵀ / √d<sub>k</sub> ) · V
+    <small>Each row of the softmax is one token's attention distribution. In the lab d<sub>k</sub> = 8,
+    so scores are divided by √8. The audit recomputed this formula independently in NumPy from the
+    shipped Q, K and V — see the receipts below for how close the two computations land.</small>
+  </div>
+
+  <h3>Positional encoding — the standard, and the lab's variant</h3>
+  <div class="formula">PE(pos, 2i) = sin( pos / 10000<sup>2i/d</sup> ) &nbsp;·&nbsp; PE(pos, 2i+1) = cos( pos / 10000<sup>2i/d</sup> )
+    <small>That is the Vaswani et al. formula. The lab's encoding is genuinely multi-frequency
+    sin/cos and does inject order, but it is a variant: it uses base 100 instead of 10000 and
+    multiplies every angle by an extra 1.35. Measured PE(1) in the lab is
+    [0.976, 0.219, 0.414, 0.910, 0.135, 0.991, 0.043, 0.999] against the standard's
+    [0.841, 0.540, 0.0998, 0.995, 0.0100, 1.000, 0.001, 1.000]. The encoding is also attenuated
+    ×0.12 and added to only 6 of the 8 embedding dims; dims 7–8 carry separate cos/sin(pos·0.55)
+    position features.</small>
+  </div>
+
+  <h3>Entropy: how spread out is a row?</h3>
+  <div class="formula">H = − Σ p · log₂ p &nbsp;(bits)
+    <small>A row attending to one token only has H = 0; a row spread evenly has high entropy. The
+    lab's entropy HUD is honest: the "it" row reads 2.56 bits, and the audit recomputed
+    2.5555 bits. Drag the sharpness slider and the entropy moves exactly as the label promises —
+    at 2.40× on head 1, it → animal rises to 69.8% and the row entropy falls to 1.05 bits; at
+    0.35×, it → animal falls to 17.7% and entropy rises to 3.36 bits.</small>
+  </div>
+
+  <h2>The audit — what was driven and measured</h2>
+  <p>The audit loaded the shipped page headlessly and exercised every control — head buttons 1–5,
+  the mask toggle and M key, the sharpness, temperature, top-k and top-p sliders, Sample,
+  Auto-Gen, Reset, candidate-bar force-append, custom-text Apply, all six presets, keyboard head
+  select, the six visual-subsystem toggles, play/pause — with no dead controls and no errors. It
+  then extracted the page's pure core verbatim, ran it in Node, and recomputed
+  softmax(QKᵀ/√d<sub>k</sub>)V independently in NumPy from the shipped Q, K and V, across all
+  6 presets × causal mask on/off × 4 heads. Every number below is measured, not quoted from the
+  page.</p>
+
+  <h3>What holds — PASS</h3>
+  <table>
+    <tr><th>Check</th><th>Measured</th></tr>
+    <tr><td>Raw Q·K dots, independent NumPy vs shipped</td><td class="receipt">max difference 0.0</td></tr>
+    <tr><td>Scaled scores</td><td class="receipt">max difference 0.0</td></tr>
+    <tr><td>Softmax weights</td><td class="receipt">max difference ≤ 2.2×10⁻¹⁶</td></tr>
+    <tr><td>Context vectors (weights · V)</td><td class="receipt">max difference ≤ 8.9×10⁻¹⁶</td></tr>
+    <tr><td>Every attention row sums to 1</td><td class="receipt">max error 4.4×10⁻¹⁶</td></tr>
+    <tr><td>Causal mask</td><td class="receipt">upper-triangular weights exactly 0 in every row of every preset; turning the mask on renormalizes correctly (it → animal 40.4% → 21.6%)</td></tr>
+    <tr><td>Attention entropy HUD, "it" row</td><td class="receipt">page 2.56 bits; recomputed 2.5555 bits</td></tr>
+    <tr><td>Sharpness slider, head 1</td><td class="receipt">2.40× → it → animal 69.8%, entropy 1.05 bits; 0.35× → 17.7%, 3.36 bits — both match the extracted core exactly</td></tr>
+  </table>
+
+  <h3>The headline demonstrations are real</h3>
+  <table>
+    <tr><th>Preset, driven through the page's own buttons</th><th>Measured</th></tr>
+    <tr><td>Winograd "tired" — head 1 sends "it" to</td><td class="receipt">"animal" at 40.4%, its top key</td></tr>
+    <tr><td>Winograd "wide" — the same head flips "it" to</td><td class="receipt">"street" at 39.3% — the flip is real in the shipped state</td></tr>
+    <tr><td>Polysemy preset — "bank" attends to</td><td class="receipt">"river" at 40.5% (the river-bank reading)</td></tr>
+    <tr><td>Quantum Coref preset — "her" attends to</td><td class="receipt">"Alice" at 48.3%</td></tr>
+    <tr><td>Code preset — "a" attends to</td><td class="receipt">the first "a" at 66.0%</td></tr>
+  </table>
+  <p>The sampling studio's math holds too. Temperature softmax, top-k and entropy were recomputed
+  independently at six (T, k, p) settings: base probabilities match to ≤ 1.1×10⁻¹⁶, sample
+  probabilities sum to 1, and entropies match to all printed digits (at the T = 0.85 default,
+  H = 1.7307 bits, nucleus 4). The page's own note that low temperature sharpens onto the greedy
+  argmax is literally true in the code: at T = 0.1 the top candidate takes probability 1.0 and
+  the nucleus collapses to 1 token; at T = 2.5 the top probability flattens to 0.283 and the
+  nucleus grows 4 → 5. Driven end-to-end, Sample appends a drawn token, Auto-Gen appends exactly
+  4, a candidate-bar click force-appends, and the 18-token cap refuses with a banner — the
+  tokenizer caps sequences at 18 tokens, matching the cap.</p>
+
+  <h3><span class="trap">FALSE — the "Concat" head is not a concatenation</span></h3>
+  <div class="honest">
+    <p><b>The fifth head is tagged "Concat." It does not concatenate anything.</b> Verified exactly
+    (difference 0.0): the blended head's weights are the <b>elementwise mean</b> of the four heads'
+    weight matrices, and its context vector is the <b>mean of the four context vectors</b>. There
+    is no concatenation and no output projection W<sub>O</sub> anywhere in the file.</p>
+    <p><b>Worse, the blend disagrees with itself.</b> The blended head's displayed scaled scores —
+    mean raw dots / √8 × sharpness — do <b>not</b> softmax to its displayed weights: the maximum
+    discrepancy is <b>0.0775</b> across presets. In "All Heads" mode, the Live Scaled Dot-Product
+    Trace shows numbers whose softmax is not the α the page displays beside them.</p>
+    <p><b>The W<sub>1</sub>…W<sub>4</sub> framing overclaims the mechanism.</b> The heads are tagged
+    W<sub>1</sub>…W<sub>4</sub> and the notes say each token "projects into" Q, K and V. For Q and
+    K that is not what the code does. They are <b>hand-written rule tables keyed on the token's
+    identity</b>: head 1's query for "it" is a constant vector selected by whether the sentence
+    contains "tired" or "wide"; pronoun keys are suppressed by hard-coded factors (×0.15, ×−0.35);
+    code tokens get literal constants (2.1 / −0.4). Only V is a genuine linear map of the
+    embedding, and it is diagonal. There are no learned weights. The attention arithmetic
+    downstream of those tables is exact — but the tables are rules, not projections, and the page
+    does not say so.</p>
+  </div>
+
+  <h3>What bends</h3>
+  <div class="honest">
+    <p><b>Top-p is computed after top-k, on the renormalized survivors:</b> standard nucleus
+    sampling takes p-mass from the full distribution; here the cumulation runs over the top-k
+    renormalized probabilities, so with the default k = 6 the "0.88 nucleus" is 88% of six
+    candidates, never of all ten. Internally consistent, nonstandard order.</p>
+    <p><b>The sampler's logits do not come from the attention model:</b> next-token logits are a
+    hand-written table of 14 regex continuation rules plus fallbacks. The attention state and the
+    "Autoregressive Decoding" studio are two separate machines sharing a page; nothing in the
+    transformer computation feeds the sampler.</p>
+    <p><b>Full-width heads:</b> each of the four heads runs at full width d<sub>k</sub> = 8. In a
+    real 4-head model with d<sub>model</sub> = 8, each head would have d<sub>k</sub> = 2 and the
+    four outputs would be concatenated. The page's d<sub>k</sub> = 8 label is self-consistent,
+    but the architecture drawn is four parallel full-width attentions averaged — not multi-head
+    attention as the term is used.</p>
+    <p><b>Positional encoding is a variant:</b> base 100 instead of 10000, every angle multiplied
+    by an extra 1.35, attenuated ×0.12 and added to only 6 of 8 dims — measured numbers in the
+    formula box above. Embeddings themselves are a hand lexicon for known words plus a
+    deterministic hash (FNV + sin) for unknown words.</p>
+    <p><b>Stale first-paint placeholders:</b> the static HTML states "Q:'it' → K:'animal' (68%)"
+    where the solver says 40.4%, "Attn Entropy 1.62 bits" where the solver says 2.56, and a
+    sampling "H = 1.94b" where the solver says 1.73b. All three are replaced the moment the script
+    runs — but a no-JS render states three wrong numbers.</p>
+  </div>
+  <p>One clean negative, for the record: the page makes no parameter-count and no complexity
+  (O(n²)) claims — grep-verified. There was nothing there to check, and nothing was invented to
+  check it against.</p>
+
+  <h2>Learn more</h2>
+  <div class="keepgoing">
+    <a href="https://arxiv.org/abs/1706.03762" target="_blank" rel="noopener"><b>Attention Is All You Need — Vaswani et al. (2017) ↗</b><span>The paper the exhibit's whole core comes from: scaled dot-product attention softmax(QKᵀ/√d_k)V, multi-head attention, and the sinusoidal positional encodings whose phase waves the exhibit draws.</span></a>
+    <a href="https://arxiv.org/abs/1810.04805" target="_blank" rel="noopener"><b>BERT: Pre-training of Deep Bidirectional Transformers — Devlin et al. (2018) ↗</b><span>The bidirectional (BERT) vs causal-mask (GPT) toggle: masked self-attention over the full sequence versus the −∞ upper-triangular mask the exhibit applies before softmax.</span></a>
+    <a href="https://arxiv.org/abs/1904.09751" target="_blank" rel="noopener"><b>The Curious Case of Neural Text Degeneration — Holtzman et al. (2019) ↗</b><span>The decoding studio's nucleus (top-p) sampling, and the temperature / top-k behaviour the exhibit's sliders demonstrate against it.</span></a>
+    <a href="https://en.wikipedia.org/wiki/Transformer_(machine_learning_model)" target="_blank" rel="noopener"><b>Transformer (machine learning model) — Wikipedia ↗</b><span>Survey-level backing for the exhibit's architecture notes: Q/K/V projections, attention entropy, coreference-style attention patterns (the Winograd presets), and autoregressive decoding.</span></a>
+  </div>
+
+  <h2>Keep going</h2>
+  <div class="keepgoing">
+    <a href="neural-backprop-lab-lesson.html"><b>Neural Backprop Lab — the lesson →</b><span>The sibling lab: where the weights a real network uses come from in the first place. Its gradients check out exact against finite differences, across 295 parameters.</span></a>
+    <a href="../a-library/a-library.html#ai-machine-learning"><b>AI &amp; Machine Learning — A Library →</b><span>The shelf this pair lives on in the Library: the reading behind attention, backpropagation, and the rest of the wave.</span></a>
+  </div>
+
+  <footer>Transformer Attention Lab · Nerd Heaven · Everyday Cool — built by Google Antigravity (Gemini) at Steven Powell's direction; lesson and audit by Muse.</footer>
+
+</div>
+</body>
+</html>

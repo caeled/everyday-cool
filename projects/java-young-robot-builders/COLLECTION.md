@@ -47,3 +47,7 @@ Electronics Wave II back doors, 23 November 2026: `index.html` gained back doors
 Back doors 118–125 — Mechanical Engineering, Robotics & Control wave · 24 November 2026
 
 `index.html` gained eight back doors (118–125) for the Antigravity wave in Everyday Physics: Kinematics — Robotic Arm IK (118), Stabilizer — PID Inverted Pendulum (119), Clockwork — Gears & Linkages (120), Topology — FEA Optimizer (121), SLAM — Lidar Robot (122), Carnot — Heat Engines P–V (123), Harmonics — Acoustics FFT Synth (124) and Mach — Supersonic Lab (125). The section heading rose from "One hundred seventeen games" to "One hundred twenty-five games", verified sequential 1–125 on the page. The full measurements live in the lessons, in their home room.
+
+Back doors 126–133 — Computer Science & AI wave · 24 November 2026
+
+`index.html` gained eight back doors (126–133) for the Antigravity wave in Nerd Heaven: Attention — Transformer Attention Lab (126), Perceptron — Neural Backprop Lab (127), Cipher — Cryptography ECC Lab (128), Pipeline — Pipelined CPU Sim (129), Consensus — Raft Consensus Sim (130), RayTrace — Raytracer Pipeline Lab (131), Entropy — Compression Huffman DCT (132) and AlgoArena — Sorting Trees Race (133). The section heading rose from "One hundred twenty-five games" to "One hundred thirty-three games", verified sequential 1–133 on the page. The full measurements live in the lessons, in their home room.

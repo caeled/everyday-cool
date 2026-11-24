@@ -1,0 +1,3718 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Cipher — Elliptic Curves (ECC), Diffie–Hellman, RSA &amp; SHA-256 Avalanche</title>
+<style>
+  :root {
+    --bg-deep: #040711;
+    --panel-bg: rgba(9, 13, 24, 0.80);
+    --panel-bg-strong: rgba(8, 12, 22, 0.94);
+    --panel-border: rgba(148, 179, 255, 0.16);
+    --panel-border-hi: rgba(148, 179, 255, 0.36);
+    --text-main: #eef3ff;
+    --text-dim: #9aa9cc;
+    --text-muted: #68789c;
+    --accent-amber: #ffbe5c;
+    --accent-cyan: #58dcff;
+    --accent-mint: #4af2b2;
+    --accent-rose: #ff6083;
+    --accent-violet: #a78bfa;
+    --radius-lg: 14px;
+    --radius-md: 10px;
+    --radius-sm: 7px;
+    --mono: ui-monospace, "Cascadia Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Inter, Helvetica, Arial, sans-serif;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg-deep);
+    color: var(--text-main);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    touch-action: none;
+  }
+
+  #sim-canvas {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    cursor: default;
+  }
+  #sim-canvas.grab { cursor: grab; }
+  #sim-canvas.grabbing { cursor: grabbing; }
+  #sim-canvas.pointer { cursor: pointer; }
+
+  /* HUD Layer */
+  .hud {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 10;
+  }
+  body.zen-mode .hud > :not(.zen-restore) {
+    opacity: 0;
+    pointer-events: none !important;
+  }
+
+  .panel {
+    pointer-events: auto;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-lg);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    transition: opacity 0.25s ease, transform 0.25s ease;
+  }
+
+  /* Top-Left Telemetry Card */
+  .top-left {
+    position: fixed;
+    top: 14px;
+    left: 14px;
+    width: min(440px, calc(100vw - 368px));
+    min-width: 290px;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .brand-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .brand-title-wrap {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .brand-title {
+    font-size: 16px;
+    font-weight: 800;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    background: linear-gradient(120deg, #fff5dc 0%, #58dcff 48%, #a78bfa 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .mode-badge {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    padding: 2px 8px;
+    border-radius: 999px;
+    border: 1px solid rgba(88, 220, 255, 0.42);
+    background: rgba(88, 220, 255, 0.12);
+    color: var(--accent-cyan);
+  }
+  .mode-badge.amber {
+    border-color: rgba(255, 190, 92, 0.42);
+    background: rgba(255, 190, 92, 0.12);
+    color: var(--accent-amber);
+  }
+  .mode-badge.violet {
+    border-color: rgba(167, 139, 250, 0.45);
+    background: rgba(167, 139, 250, 0.14);
+    color: var(--accent-violet);
+  }
+  .mode-badge.mint {
+    border-color: rgba(74, 242, 178, 0.42);
+    background: rgba(74, 242, 178, 0.12);
+    color: var(--accent-mint);
+  }
+
+  .status-pill {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: rgba(74, 242, 178, 0.14);
+    color: var(--accent-mint);
+    border: 1px solid rgba(74, 242, 178, 0.35);
+    white-space: nowrap;
+  }
+  .status-pill.warn {
+    background: rgba(255, 190, 92, 0.16);
+    color: var(--accent-amber);
+    border-color: rgba(255, 190, 92, 0.42);
+  }
+  .status-pill.danger {
+    background: rgba(255, 96, 131, 0.18);
+    color: var(--accent-rose);
+    border-color: rgba(255, 96, 131, 0.45);
+  }
+  .status-pill.cyan {
+    background: rgba(88, 220, 255, 0.16);
+    color: var(--accent-cyan);
+    border-color: rgba(88, 220, 255, 0.42);
+  }
+
+  .telemetry-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+  }
+
+  .tele-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(148, 179, 255, 0.10);
+    border-radius: var(--radius-sm);
+    padding: 6px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .tele-label {
+    font-size: 9px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .tele-val {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--text-main);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .tele-val.amber { color: var(--accent-amber); }
+  .tele-val.cyan { color: var(--accent-cyan); }
+  .tele-val.mint { color: var(--accent-mint); }
+  .tele-val.rose { color: var(--accent-rose); }
+  .tele-val.violet { color: var(--accent-violet); }
+
+  .formula-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding-top: 5px;
+    border-top: 1px solid rgba(148, 179, 255, 0.1);
+    font-size: 11px;
+    color: var(--text-dim);
+    font-family: var(--mono);
+  }
+  .formula-row span {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .formula-row strong {
+    color: var(--text-main);
+    font-weight: 600;
+  }
+
+  /* Right Collapsible Drawer (330px) */
+  .drawer {
+    position: fixed;
+    top: 14px;
+    right: 14px;
+    bottom: 14px;
+    width: 330px;
+    max-width: calc(100vw - 28px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: transform 0.25s ease, opacity 0.25s ease;
+  }
+  .drawer.collapsed {
+    transform: translateX(calc(100% + 24px));
+    pointer-events: none;
+  }
+
+  .drawer-tabs {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 4px;
+    padding: 8px 8px 6px;
+    border-bottom: 1px solid var(--panel-border);
+    background: rgba(4, 7, 15, 0.45);
+  }
+
+  .tab-btn {
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    padding: 7px 4px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-align: center;
+  }
+  .tab-btn:hover {
+    color: var(--text-main);
+    background: rgba(255, 255, 255, 0.05);
+  }
+  .tab-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.18);
+    border-color: rgba(88, 220, 255, 0.48);
+    box-shadow: 0 0 12px rgba(88, 220, 255, 0.18);
+  }
+
+  .drawer-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 11px 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .drawer-body::-webkit-scrollbar { width: 5px; }
+  .drawer-body::-webkit-scrollbar-thumb {
+    background: rgba(148, 179, 255, 0.22);
+    border-radius: 999px;
+  }
+
+  .tab-pane {
+    display: none;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .tab-pane.active { display: flex; }
+
+  .section {
+    background: rgba(255, 255, 255, 0.026);
+    border: 1px solid rgba(148, 179, 255, 0.11);
+    border-radius: var(--radius-md);
+    padding: 10px 11px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .section-title {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .section-title .tag {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--accent-cyan);
+    letter-spacing: 0.02em;
+    text-transform: none;
+  }
+
+  .preset-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .preset-btn {
+    text-align: left;
+    padding: 6px 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(148, 179, 255, 0.14);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-main);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .preset-btn:hover {
+    border-color: rgba(88, 220, 255, 0.45);
+    background: rgba(88, 220, 255, 0.08);
+  }
+  .preset-btn.active {
+    border-color: var(--accent-cyan);
+    background: rgba(88, 220, 255, 0.15);
+  }
+  .preset-name { font-size: 11px; font-weight: 700; }
+  .preset-sub { font-family: var(--mono); font-size: 9.5px; color: var(--text-muted); }
+
+  /* Controls */
+  .control-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .control-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11.5px;
+    color: var(--text-dim);
+  }
+  .control-head .val {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--text-main);
+    font-weight: 600;
+  }
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 5px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.18);
+    outline: none;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent-cyan);
+    border: 2px solid #08101f;
+    box-shadow: 0 0 10px rgba(88, 220, 255, 0.65);
+    cursor: pointer;
+  }
+  input[type="range"].amber::-webkit-slider-thumb {
+    background: var(--accent-amber);
+    box-shadow: 0 0 10px rgba(255, 190, 92, 0.65);
+  }
+  input[type="range"].violet::-webkit-slider-thumb {
+    background: var(--accent-violet);
+    box-shadow: 0 0 10px rgba(167, 139, 250, 0.65);
+  }
+
+  /* Text Inputs & Selects */
+  .text-input, .select-input {
+    width: 100%;
+    background: rgba(4, 8, 18, 0.85);
+    border: 1px solid rgba(148, 179, 255, 0.24);
+    border-radius: var(--radius-sm);
+    color: var(--text-main);
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 7px 9px;
+    outline: none;
+    user-select: text;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+  .text-input:focus, .select-input:focus {
+    border-color: var(--accent-cyan);
+    box-shadow: 0 0 0 2px rgba(88, 220, 255, 0.18);
+  }
+  .select-input option {
+    background: #0a1020;
+    color: #eef3ff;
+  }
+
+  .select-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 7px;
+  }
+
+  /* Segmented Pills */
+  .seg-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(54px, 1fr));
+    gap: 4px;
+  }
+  .seg-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-dim);
+    font-size: 11px;
+    font-weight: 650;
+    padding: 6px 5px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-align: center;
+  }
+  .seg-btn:hover { color: #fff; border-color: rgba(148, 179, 255, 0.38); }
+  .seg-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.20);
+    border-color: var(--accent-cyan);
+  }
+  .seg-btn.active.amber {
+    background: rgba(255, 190, 92, 0.20);
+    border-color: var(--accent-amber);
+    color: #ffdfaa;
+  }
+  .seg-btn.active.violet {
+    background: rgba(167, 139, 250, 0.22);
+    border-color: var(--accent-violet);
+    color: #e9ddff;
+  }
+
+  /* Action Buttons */
+  .btn-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .btn {
+    border: 1px solid rgba(148, 179, 255, 0.22);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-main);
+    font-size: 11.5px;
+    font-weight: 700;
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+  }
+  .btn:hover {
+    background: rgba(255, 255, 255, 0.10);
+    border-color: rgba(148, 179, 255, 0.45);
+  }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary {
+    background: linear-gradient(135deg, rgba(88, 220, 255, 0.28), rgba(56, 140, 255, 0.24));
+    border-color: rgba(88, 220, 255, 0.58);
+    color: #e6f9ff;
+  }
+  .btn.primary:hover {
+    background: linear-gradient(135deg, rgba(88, 220, 255, 0.40), rgba(56, 140, 255, 0.34));
+  }
+  .btn.amber {
+    background: linear-gradient(135deg, rgba(255, 190, 92, 0.26), rgba(255, 120, 60, 0.22));
+    border-color: rgba(255, 190, 92, 0.58);
+    color: #fff3db;
+  }
+  .btn.amber:hover {
+    background: linear-gradient(135deg, rgba(255, 190, 92, 0.38), rgba(255, 120, 60, 0.32));
+  }
+  .btn.mint {
+    background: linear-gradient(135deg, rgba(74, 242, 178, 0.24), rgba(34, 197, 148, 0.20));
+    border-color: rgba(74, 242, 178, 0.55);
+    color: #d9fff0;
+  }
+  .btn.danger {
+    background: rgba(255, 96, 131, 0.16);
+    border-color: rgba(255, 96, 131, 0.48);
+    color: #ffd0db;
+  }
+  .btn.full { width: 100%; }
+
+  /* Key Readout Box */
+  .mono-box {
+    background: rgba(3, 6, 14, 0.72);
+    border: 1px solid rgba(148, 179, 255, 0.14);
+    border-radius: var(--radius-sm);
+    padding: 7px 9px;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    line-height: 1.5;
+    color: var(--text-dim);
+    word-break: break-all;
+  }
+  .mono-box .hi-cyan { color: var(--accent-cyan); font-weight: 700; }
+  .mono-box .hi-amber { color: var(--accent-amber); font-weight: 700; }
+  .mono-box .hi-mint { color: var(--accent-mint); font-weight: 700; }
+  .mono-box .hi-violet { color: var(--accent-violet); font-weight: 700; }
+  .mono-box .hi-rose { color: var(--accent-rose); font-weight: 700; }
+
+  .note-small {
+    font-size: 10.5px;
+    color: var(--text-muted);
+    line-height: 1.38;
+  }
+
+  /* Bottom-Center Transport Bar */
+  .bottom-bar {
+    position: fixed;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 7px 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: nowrap;
+  }
+
+  .bar-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-main);
+    font-size: 11.5px;
+    font-weight: 650;
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    white-space: nowrap;
+  }
+  .bar-btn:hover {
+    background: rgba(255, 255, 255, 0.10);
+    border-color: rgba(148, 179, 255, 0.42);
+  }
+  .bar-btn.active {
+    background: rgba(88, 220, 255, 0.20);
+    border-color: var(--accent-cyan);
+    color: #fff;
+  }
+
+  .bar-divider {
+    width: 1px;
+    height: 20px;
+    background: rgba(148, 179, 255, 0.16);
+    margin: 0 2px;
+  }
+
+  /* Bottom-Left Interaction Hint */
+  .hint-pill {
+    position: fixed;
+    bottom: 14px;
+    left: 14px;
+    padding: 7px 11px;
+    font-size: 11px;
+    color: var(--text-dim);
+    max-width: 315px;
+    line-height: 1.4;
+  }
+  .hint-pill kbd {
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.10);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #fff;
+  }
+
+  .zen-restore {
+    position: fixed;
+    bottom: 14px;
+    right: 14px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+  }
+  body.zen-mode .zen-restore {
+    opacity: 0.90;
+    pointer-events: auto;
+  }
+
+  @media (max-width: 960px) {
+    .top-left {
+      width: calc(100vw - 28px);
+      max-width: none;
+    }
+    .drawer {
+      top: auto;
+      bottom: 62px;
+      height: 48vh;
+      width: calc(100vw - 28px);
+    }
+    .hint-pill { display: none; }
+  }
+</style>
+</head>
+<body>
+<canvas id="sim-canvas"></canvas>
+
+<div class="hud">
+  <!-- Top-Left Telemetry Card -->
+  <div class="panel top-left">
+    <div class="brand-row">
+      <div class="brand-title-wrap">
+        <div class="brand-title">Cipher</div>
+        <span id="lab-badge" class="mode-badge">ECC · Real ℝ</span>
+      </div>
+      <span id="status-pill" class="status-pill">Curve Active</span>
+    </div>
+
+    <div class="telemetry-grid">
+      <div class="tele-card">
+        <span id="tel-l1" class="tele-label">Curve</span>
+        <span id="tel-v1" class="tele-val cyan">y²=x³-2x+2</span>
+      </div>
+      <div class="tele-card">
+        <span id="tel-l2" class="tele-label">Operation</span>
+        <span id="tel-v2" class="tele-val amber">P + Q = R</span>
+      </div>
+      <div class="tele-card">
+        <span id="tel-l3" class="tele-label">Result / Metric</span>
+        <span id="tel-v3" class="tele-val mint">(0.00, 0.00)</span>
+      </div>
+    </div>
+
+    <div class="formula-row">
+      <span id="formula-left"><strong>λ</strong> = (y_Q − y_P) / (x_Q − x_P)</span>
+      <span id="formula-right">Field: <strong>ℝ</strong></span>
+    </div>
+  </div>
+
+  <!-- Right Control Drawer (330px) -->
+  <div id="drawer" class="panel drawer">
+    <div class="drawer-tabs">
+      <button class="tab-btn active" data-lab="ecc" id="tab-ecc">1 · ECC</button>
+      <button class="tab-btn" data-lab="dh" id="tab-dh">2 · DH</button>
+      <button class="tab-btn" data-lab="rsa" id="tab-rsa">3 · RSA</button>
+      <button class="tab-btn" data-lab="sha" id="tab-sha">4 · SHA</button>
+    </div>
+
+    <div class="drawer-body">
+      <!-- ==================== LAB 1: ECC ==================== -->
+      <div id="pane-ecc" class="tab-pane active">
+        <div class="section">
+          <div class="section-title">Field Domain <span class="tag">y² = x³ + ax + b</span></div>
+          <div class="seg-row">
+            <button id="ecc-field-real" class="seg-btn active">Real ℝ Curve</button>
+            <button id="ecc-field-fp" class="seg-btn amber">Finite Field 𝔽_p</button>
+          </div>
+          <div id="ecc-fp-prime-wrap" style="display:none; flex-direction:column; gap:6px; margin-top:2px;">
+            <div class="control-head"><span>Prime Modulus p</span><span id="ecc-p-val" class="val">p = 67</span></div>
+            <div class="seg-row">
+              <button class="seg-btn ecc-p-btn" data-p="23">23</button>
+              <button class="seg-btn ecc-p-btn" data-p="37">37</button>
+              <button class="seg-btn ecc-p-btn active amber" data-p="67">67</button>
+              <button class="seg-btn ecc-p-btn" data-p="97">97</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">Operation Mode</div>
+          <div class="seg-row">
+            <button id="ecc-op-add" class="seg-btn active">Chord P + Q</button>
+            <button id="ecc-op-scalar" class="seg-btn violet">Scalar k · G</button>
+          </div>
+
+          <div id="ecc-add-controls" style="display:flex; flex-direction:column; gap:6px;">
+            <div class="btn-row">
+              <button id="ecc-btn-double" class="btn primary">Set Q = P (2P)</button>
+              <button id="ecc-btn-invert" class="btn">P + (−P) = 𝒪</button>
+            </div>
+            <div class="note-small">Drag glowing points <strong>P</strong> &amp; <strong>Q</strong> directly on the curve to inspect the secant/tangent chord, 3rd root <strong>−R</strong>, and reflection to <strong>R = P + Q</strong>.</div>
+          </div>
+
+          <div id="ecc-scalar-controls" style="display:none; flex-direction:column; gap:8px;">
+            <div class="control-row">
+              <div class="control-head"><span>Private Key Scalar k</span><span id="ecc-k-val" class="val">k = 7</span></div>
+              <input id="ecc-k-slider" class="amber" type="range" min="1" max="32" step="1" value="7" />
+            </div>
+            <div class="btn-row">
+              <button id="ecc-btn-hop" class="btn amber">▶ Animate k·G Hop</button>
+              <button id="ecc-btn-randk" class="btn">🎲 Random k</button>
+            </div>
+            <div id="ecc-binary-box" class="mono-box">k = 7 = (111)₂ → Double-and-Add</div>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">Curve Parameters <span id="ecc-disc-tag" class="tag">Δ ≠ 0</span></div>
+          <div class="control-row">
+            <div class="control-head"><span>Coefficient a</span><span id="ecc-a-val" class="val">-2</span></div>
+            <input id="ecc-a-slider" type="range" min="-4" max="3" step="0.5" value="-2" />
+          </div>
+          <div class="control-row">
+            <div class="control-head"><span>Coefficient b</span><span id="ecc-b-val" class="val">2</span></div>
+            <input id="ecc-b-slider" type="range" min="-3" max="7" step="0.5" value="2" />
+          </div>
+          <div class="preset-grid">
+            <button class="preset-btn active" data-ecc-preset="classic">
+              <span class="preset-name">Classic Wave</span>
+              <span class="preset-sub">a = −2, b = 2</span>
+            </button>
+            <button class="preset-btn" data-ecc-preset="secp">
+              <span class="preset-name">secp256k1 Form</span>
+              <span class="preset-sub">a = 0, b = 7</span>
+            </button>
+            <button class="preset-btn" data-ecc-preset="island">
+              <span class="preset-name">Two-Component</span>
+              <span class="preset-sub">a = −3, b = 1</span>
+            </button>
+            <button class="preset-btn" data-ecc-preset="gentle">
+              <span class="preset-name">Weierstrass</span>
+              <span class="preset-sub">a = −1, b = 3</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">Live Coordinates</div>
+          <div id="ecc-coord-box" class="mono-box">P = (-1.10, 1.70)</div>
+        </div>
+      </div>
+
+      <!-- ==================== LAB 2: DIFFIE-HELLMAN ==================== -->
+      <div id="pane-dh" class="tab-pane">
+        <div class="section">
+          <div class="section-title">Public Group Parameters <span class="tag">ℤ_p*</span></div>
+          <div class="seg-row">
+            <button class="seg-btn dh-p-btn active" data-p="23" data-g="5">p=23, g=5</button>
+            <button class="seg-btn dh-p-btn" data-p="47" data-g="5">p=47, g=5</button>
+            <button class="seg-btn dh-p-btn" data-p="97" data-g="5">p=97, g=5</button>
+          </div>
+          <div class="seg-row">
+            <button class="seg-btn dh-p-btn" data-p="257" data-g="3">p=257, g=3</button>
+            <button class="seg-btn dh-p-btn" data-p="7919" data-g="7">p=7919, g=7</button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">Private Secrets (Never Sent!)</div>
+          <div class="control-row">
+            <div class="control-head"><span style="color:var(--accent-cyan);">Alice Secret a</span><span id="dh-a-val" class="val">6</span></div>
+            <input id="dh-a-slider" type="range" min="2" max="22" step="1" value="6" />
+          </div>
+          <div class="control-row">
+            <div class="control-head"><span style="color:var(--accent-violet);">Bob Secret b</span><span id="dh-b-val" class="val">15</span></div>
+            <input id="dh-b-slider" class="violet" type="range" min="2" max="22" step="1" value="15" />
+          </div>
+          <div class="btn-row">
+            <button id="dh-btn-replay" class="btn primary">▶ Replay Exchange</button>
+            <button id="dh-btn-rand" class="btn amber">🎲 Randomize a, b</button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">Protocol Transcript</div>
+          <div id="dh-math-box" class="mono-box">
+            Public: p = 23, g = 5
+          </div>
+          <div class="note-small">Eve sees <strong>p, g, A, B</strong> in transit. Without solving the Discrete Log <strong>a = log_g(A) mod p</strong>, she cannot unmix the public paint or compute <strong>g^(ab) mod p</strong>.</div>
+        </div>
+      </div>
+
+      <!-- ==================== LAB 3: RSA ==================== -->
+      <div id="pane-rsa" class="tab-pane">
+        <div class="section">
+          <div class="section-title">Prime Generation <span class="tag">n = p · q</span></div>
+          <div class="select-grid">
+            <div class="control-row">
+              <div class="control-head"><span>Prime p</span></div>
+              <select id="rsa-p-select" class="select-input"></select>
+            </div>
+            <div class="control-row">
+              <div class="control-head"><span>Prime q</span></div>
+              <select id="rsa-q-select" class="select-input"></select>
+            </div>
+          </div>
+          <div class="control-row">
+            <div class="control-head"><span>Public Exponent e</span><span id="rsa-e-hint" class="val">gcd(e, φ)=1</span></div>
+            <select id="rsa-e-select" class="select-input"></select>
+          </div>
+          <button id="rsa-btn-rand" class="btn full">🎲 Generate New Prime Pair</button>
+        </div>
+
+        <div class="section">
+          <div class="section-title">Message Pipeline <span class="tag">ASCII → c → m</span></div>
+          <input id="rsa-msg-input" class="text-input" type="text" maxlength="16" value="HELLO CIPHER" placeholder="Type message (max 16 chars)..." />
+          <div class="btn-row">
+            <button id="rsa-btn-send" class="btn primary">▶ Encrypt &amp; Send</button>
+            <button id="rsa-btn-sample" class="btn">Cycle Sample</button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">Keypair &amp; Extended Euclid</div>
+          <div id="rsa-key-box" class="mono-box">n = 3233, φ(n) = 3120</div>
+          <div class="note-small">Hover or click any packet on the canvas to inspect its exact modular exponentiation <strong>c = m^e mod n</strong> and recovery <strong>m = c^d mod n</strong>.</div>
+        </div>
+      </div>
+
+      <!-- ==================== LAB 4: SHA-256 ==================== -->
+      <div id="pane-sha" class="tab-pane">
+        <div class="section">
+          <div class="section-title">Avalanche Comparison <span class="tag">FIPS 180-4</span></div>
+          <div class="control-row">
+            <div class="control-head"><span style="color:var(--accent-cyan);">Message A</span><span id="sha-len-a" class="val">15 B</span></div>
+            <input id="sha-input-a" class="text-input" type="text" value="Crypto Lab 2026" placeholder="Message A..." />
+          </div>
+          <div class="control-row">
+            <div class="control-head"><span style="color:var(--accent-amber);">Message B</span><span id="sha-len-b" class="val">15 B</span></div>
+            <input id="sha-input-b" class="text-input" type="text" value="Crypto Lab 2027" placeholder="Message B..." />
+          </div>
+          <div class="btn-row">
+            <button id="sha-btn-flip" class="btn amber">⚡ Flip 1 Single Bit</button>
+            <button id="sha-btn-sync" class="btn">Sync B = A (0%)</button>
+          </div>
+          <div id="sha-flip-note" class="note-small">1 bit difference between Message A and B flips ~50% of all 256 digest bits!</div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">Proof-of-Work Nonce Miner <span id="pow-diff-tag" class="tag">000...</span></div>
+          <div class="seg-row">
+            <button class="seg-btn pow-diff-btn" data-zeros="1">1 Zero</button>
+            <button class="seg-btn pow-diff-btn" data-zeros="2">2 Zeros</button>
+            <button class="seg-btn pow-diff-btn active amber" data-zeros="3">3 Zeros</button>
+            <button class="seg-btn pow-diff-btn" data-zeros="4">4 Zeros</button>
+          </div>
+          <div class="btn-row">
+            <button id="sha-btn-mine" class="btn mint">⛏ Start PoW Miner</button>
+            <button id="sha-btn-reset-mine" class="btn">Reset Nonce</button>
+          </div>
+          <div id="sha-pow-box" class="mono-box">Idle · Target prefix: 000</div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">256-Bit Hex Digests</div>
+          <div id="sha-digest-box" class="mono-box">A: ...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom-Center Transport Bar -->
+  <div class="panel bottom-bar">
+    <button id="btn-play" class="bar-btn active">⏸ Pause</button>
+    <button id="btn-reset" class="bar-btn">↺ Reset</button>
+    <div class="bar-divider"></div>
+    <button id="btn-audio" class="bar-btn">🔇 Audio: Off</button>
+    <button id="btn-drawer" class="bar-btn active">☰ Controls</button>
+    <button id="btn-cinema" class="bar-btn">✦ Cinema [H]</button>
+  </div>
+
+  <!-- Bottom-Left Interaction Hints -->
+  <div id="hint-pill" class="panel hint-pill">
+    Drag <strong>P</strong> &amp; <strong>Q</strong> on curve · Scroll zoom · <kbd>1</kbd>–<kbd>4</kbd> switch lab · <kbd>H</kbd> cinema
+  </div>
+
+  <!-- Cinema Mode Restore Button -->
+  <button id="btn-zen-restore" class="panel bar-btn zen-restore">✦ Exit Cinema [H]</button>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // =========================================================================
+  // 1. PURE-JS FIPS 180-4 SHA-256 IMPLEMENTATION
+  // =========================================================================
+  const SHA256_K = new Uint32Array([
+    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+    0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+    0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+    0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+    0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+    0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+    0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+    0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
+  ]);
+
+  const SHA256_W = new Uint32Array(64);
+  const textEncoder = typeof TextEncoder !== 'undefined' ? new TextEncoder() : null;
+
+  function utf8ToBytes(str) {
+    if (textEncoder) return textEncoder.encode(str);
+    const out = [];
+    for (let i = 0; i < str.length; i++) {
+      let c = str.charCodeAt(i);
+      if (c < 0x80) out.push(c);
+      else if (c < 0x800) { out.push(0xc0 | (c >> 6), 0x80 | (c & 0x3f)); }
+      else if (c < 0xd800 || c >= 0xe000) {
+        out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 0x3f), 0x80 | (c & 0x3f));
+      } else {
+        i++;
+        c = 0x10000 + (((c & 0x3ff) << 10) | (str.charCodeAt(i) & 0x3ff));
+        out.push(
+          0xf0 | (c >> 18),
+          0x80 | ((c >> 12) & 0x3f),
+          0x80 | ((c >> 6) & 0x3f),
+          0x80 | (c & 0x3f)
+        );
+      }
+    }
+    return new Uint8Array(out);
+  }
+
+  function sha256Words(input) {
+    const bytes = input instanceof Uint8Array ? input : utf8ToBytes(String(input));
+    const len = bytes.length;
+    const bitLenHi = Math.floor((len * 8) / 0x100000000);
+    const bitLenLo = (len * 8) >>> 0;
+    const totalLen = ((len + 9 + 63) & ~63);
+    const buf = new Uint8Array(totalLen);
+    buf.set(bytes);
+    buf[len] = 0x80;
+    const view = new DataView(buf.buffer);
+    view.setUint32(totalLen - 8, bitLenHi, false);
+    view.setUint32(totalLen - 4, bitLenLo, false);
+
+    let h0 = 0x6a09e667, h1 = 0xbb67ae85, h2 = 0x3c6ef372, h3 = 0xa54ff53a;
+    let h4 = 0x510e527f, h5 = 0x9b05688c, h6 = 0x1f83d9ab, h7 = 0x5be0cd19;
+
+    for (let offset = 0; offset < totalLen; offset += 64) {
+      for (let i = 0; i < 16; i++) {
+        SHA256_W[i] = view.getUint32(offset + i * 4, false);
+      }
+      for (let i = 16; i < 64; i++) {
+        const w15 = SHA256_W[i - 15];
+        const w2 = SHA256_W[i - 2];
+        const s0 = ((w15 >>> 7) | (w15 << 25)) ^ ((w15 >>> 18) | (w15 << 14)) ^ (w15 >>> 3);
+        const s1 = ((w2 >>> 17) | (w2 << 15)) ^ ((w2 >>> 19) | (w2 << 13)) ^ (w2 >>> 10);
+        SHA256_W[i] = (SHA256_W[i - 16] + s0 + SHA256_W[i - 7] + s1) >>> 0;
+      }
+
+      let a = h0, b = h1, c = h2, d = h3, e = h4, f = h5, g = h6, h = h7;
+      for (let i = 0; i < 64; i++) {
+        const S1 = ((e >>> 6) | (e << 26)) ^ ((e >>> 11) | (e << 21)) ^ ((e >>> 25) | (e << 7));
+        const ch = (e & f) ^ ((~e) & g);
+        const temp1 = (h + S1 + ch + SHA256_K[i] + SHA256_W[i]) >>> 0;
+        const S0 = ((a >>> 2) | (a << 30)) ^ ((a >>> 13) | (a << 19)) ^ ((a >>> 22) | (a << 10));
+        const maj = (a & b) ^ (a & c) ^ (b & c);
+        const temp2 = (S0 + maj) >>> 0;
+
+        h = g; g = f; f = e;
+        e = (d + temp1) >>> 0;
+        d = c; c = b; b = a;
+        a = (temp1 + temp2) >>> 0;
+      }
+
+      h0 = (h0 + a) >>> 0; h1 = (h1 + b) >>> 0; h2 = (h2 + c) >>> 0; h3 = (h3 + d) >>> 0;
+      h4 = (h4 + e) >>> 0; h5 = (h5 + f) >>> 0; h6 = (h6 + g) >>> 0; h7 = (h7 + h) >>> 0;
+    }
+
+    return [h0, h1, h2, h3, h4, h5, h6, h7];
+  }
+
+  function wordsToHex(words) {
+    let hex = '';
+    for (let i = 0; i < 8; i++) {
+      hex += words[i].toString(16).padStart(8, '0');
+    }
+    return hex;
+  }
+
+  function sha256(input) {
+    return wordsToHex(sha256Words(input));
+  }
+
+  function wordsToBits(words) {
+    const bits = new Uint8Array(256);
+    for (let w = 0; w < 8; w++) {
+      const val = words[w];
+      for (let b = 0; b < 32; b++) {
+        bits[w * 32 + b] = (val >>> (31 - b)) & 1;
+      }
+    }
+    return bits;
+  }
+
+  // Expose pure sha256 for optional external verification
+  if (typeof window !== 'undefined') window.__cipherSHA256 = sha256;
+
+  // =========================================================================
+  // 2. NUMBER THEORY & MODULAR ARITHMETIC HELPERS
+  // =========================================================================
+  function mod(a, m) {
+    return ((a % m) + m) % m;
+  }
+
+  function gcdNum(a, b) {
+    a = Math.abs(a); b = Math.abs(b);
+    while (b !== 0) { const t = a % b; a = b; b = t; }
+    return a;
+  }
+
+  function egcdNum(a, b) {
+    let oldR = a, r = b;
+    let oldS = 1, s = 0;
+    let oldT = 0, t = 1;
+    while (r !== 0) {
+      const q = Math.floor(oldR / r);
+      [oldR, r] = [r, oldR - q * r];
+      [oldS, s] = [s, oldS - q * s];
+      [oldT, t] = [t, oldT - q * t];
+    }
+    return { g: oldR, x: oldS, y: oldT };
+  }
+
+  function modInvNum(a, m) {
+    const res = egcdNum(mod(a, m), m);
+    if (res.g !== 1) return null;
+    return mod(res.x, m);
+  }
+
+  function modPowBig(base, exp, modulus) {
+    let b = BigInt(base) % BigInt(modulus);
+    let e = BigInt(exp);
+    const m = BigInt(modulus);
+    if (m === 1n) return 0n;
+    let result = 1n;
+    while (e > 0n) {
+      if (e & 1n) result = (result * b) % m;
+      e >>= 1n;
+      b = (b * b) % m;
+    }
+    return result;
+  }
+
+  // =========================================================================
+  // 3. WEB AUDIO SYNTHESIZER (MUTED BY DEFAULT)
+  // =========================================================================
+  class CipherAudio {
+    constructor() {
+      this.ctx = null;
+      this.muted = true;
+    }
+    ensure() {
+      if (this.muted) return null;
+      if (!this.ctx) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) return null;
+        this.ctx = new AC();
+      }
+      if (this.ctx.state === 'suspended') this.ctx.resume();
+      return this.ctx;
+    }
+    toggle() {
+      this.muted = !this.muted;
+      if (!this.muted) {
+        this.ensure();
+        this.click(660, 0.05);
+      }
+      return !this.muted;
+    }
+    click(freq = 880, dur = 0.035, gainPeak = 0.055) {
+      const ctx = this.ensure();
+      if (!ctx) return;
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(freq, now);
+      osc.frequency.exponentialRampToValueAtTime(freq * 1.35, now + dur);
+      g.gain.setValueAtTime(0.0001, now);
+      g.gain.linearRampToValueAtTime(gainPeak, now + 0.005);
+      g.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+      osc.connect(g).connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + dur + 0.01);
+    }
+    hop(step) {
+      const pent = [330, 392, 440, 523.25, 587.33, 659.25, 783.99, 880, 1046.5];
+      const f = pent[step % pent.length];
+      this.click(f, 0.075, 0.065);
+    }
+    packet(freqStart = 420, freqEnd = 740) {
+      const ctx = this.ensure();
+      if (!ctx) return;
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freqStart, now);
+      osc.frequency.exponentialRampToValueAtTime(freqEnd, now + 0.14);
+      g.gain.setValueAtTime(0.0001, now);
+      g.gain.linearRampToValueAtTime(0.05, now + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, now + 0.15);
+      osc.connect(g).connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.16);
+    }
+    success() {
+      const ctx = this.ensure();
+      if (!ctx) return;
+      const notes = [523.25, 659.25, 783.99, 1046.5];
+      notes.forEach((f, idx) => {
+        const now = ctx.currentTime + idx * 0.055;
+        const osc = ctx.createOscillator();
+        const g = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(f, now);
+        g.gain.setValueAtTime(0.0001, now);
+        g.gain.linearRampToValueAtTime(0.055, now + 0.012);
+        g.gain.exponentialRampToValueAtTime(0.0001, now + 0.28);
+        osc.connect(g).connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.30);
+      });
+    }
+  }
+  const audio = new CipherAudio();
+
+  // =========================================================================
+  // 4. GLOBAL APP STATE & CANVAS SETUP
+  // =========================================================================
+  const canvas = document.getElementById('sim-canvas');
+  const ctx = canvas.getContext('2d');
+  let W = window.innerWidth;
+  let H = window.innerHeight;
+  let DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+  const app = {
+    lab: 'ecc', // 'ecc' | 'dh' | 'rsa' | 'sha'
+    paused: false,
+    drawerOpen: true,
+    zenMode: false,
+    time: 0,
+    mouseX: -999,
+    mouseY: -999,
+    stars: []
+  };
+
+  for (let i = 0; i < 90; i++) {
+    app.stars.push({
+      x: Math.random(),
+      y: Math.random(),
+      r: 0.5 + Math.random() * 1.2,
+      a: 0.08 + Math.random() * 0.22,
+      phase: Math.random() * Math.PI * 2
+    });
+  }
+
+  function resize() {
+    W = window.innerWidth;
+    H = window.innerHeight;
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.floor(W * DPR);
+    canvas.height = Math.floor(H * DPR);
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  function getSafeRect() {
+    const rightMargin = (!app.zenMode && app.drawerOpen && W > 960) ? 356 : 20;
+    const topMargin = app.zenMode ? 24 : 158;
+    const bottomMargin = app.zenMode ? 24 : 74;
+    const leftMargin = 20;
+    return {
+      x: leftMargin,
+      y: topMargin,
+      w: Math.max(260, W - leftMargin - rightMargin),
+      h: Math.max(220, H - topMargin - bottomMargin)
+    };
+  }
+
+  // =========================================================================
+  // 5. LAB 1: ELLIPTIC CURVE CRYPTOGRAPHY (REAL & FINITE FIELD F_p)
+  // =========================================================================
+  const ecc = {
+    field: 'real', // 'real' | 'fp'
+    op: 'add',     // 'add' | 'scalar'
+    a: -2,
+    b: 2,
+    p: 67,
+    // Real coordinates (stored as x & branch sign)
+    Px: -1.15, Ps: 1,
+    Qx: 0.45, Qs: 1,
+    Gx: -1.05, Gs: 1,
+    // F_p state
+    fpPoints: [],
+    fpPIdx: 4,
+    fpQIdx: 11,
+    fpGIdx: 3,
+    // Scalar multiplication
+    k: 7,
+    hopAnimating: false,
+    hopStep: 7,
+    hopTimer: 0,
+    hopTrail: [], // sequence of points [1G, 2G, ...]
+    // Camera for real mode
+    camX: 0.4,
+    camY: 0,
+    scale: 88, // px per unit
+    // Interaction
+    dragging: null, // 'P' | 'Q' | 'G' | 'pan'
+    dragStartX: 0,
+    dragStartY: 0,
+    camStartX: 0,
+    camStartY: 0,
+    // Layout rect cache for F_p lattice
+    fpRect: { x: 0, y: 0, size: 400 },
+    // Animation pulse
+    beamProgress: 1
+  };
+
+  function eccEvalY2(x, a = ecc.a, b = ecc.b) {
+    return x * x * x + a * x + b;
+  }
+
+  function eccFindValidX(targetX, a = ecc.a, b = ecc.b) {
+    if (eccEvalY2(targetX, a, b) >= 0) return targetX;
+    // Search outward to find nearest valid x where x^3 + ax + b >= 0
+    for (let dx = 0.02; dx <= 8; dx += 0.02) {
+      if (eccEvalY2(targetX + dx, a, b) >= 0) return targetX + dx;
+      if (eccEvalY2(targetX - dx, a, b) >= 0) return targetX - dx;
+    }
+    return 1.5;
+  }
+
+  function eccPointFromX(x, s) {
+    const vx = eccFindValidX(x);
+    const y2 = Math.max(0, eccEvalY2(vx));
+    return { x: vx, y: s * Math.sqrt(y2), s };
+  }
+
+  function eccRealAdd(P, Q) {
+    if (!P || P.inf) return Q;
+    if (!Q || Q.inf) return P;
+    const dx = Q.x - P.x;
+    const dy = Q.y - P.y;
+    let lambda, isTangent = false;
+    if (Math.abs(dx) < 1e-4) {
+      if (Math.abs(P.y + Q.y) < 1e-3 || Math.abs(P.y) < 1e-4) {
+        return { inf: true, verticalX: P.x };
+      }
+      isTangent = true;
+      lambda = (3 * P.x * P.x + ecc.a) / (2 * P.y);
+    } else {
+      lambda = dy / dx;
+    }
+    const xR = lambda * lambda - P.x - Q.x;
+    const yNegR = P.y + lambda * (xR - P.x);
+    const yR = -yNegR;
+    return {
+      x: xR,
+      y: yR,
+      negR: { x: xR, y: yNegR },
+      lambda,
+      isTangent,
+      inf: false
+    };
+  }
+
+  function eccComputeFpPoints() {
+    const p = ecc.p;
+    const a = mod(Math.round(ecc.a), p);
+    const b = mod(Math.round(ecc.b), p);
+    const pts = [];
+    // Precompute quadratic residues
+    const sqMap = new Map();
+    for (let y = 0; y < p; y++) {
+      const y2 = (y * y) % p;
+      if (!sqMap.has(y2)) sqMap.set(y2, []);
+      sqMap.get(y2).push(y);
+    }
+    for (let x = 0; x < p; x++) {
+      const rhs = mod(x * x * x + a * x + b, p);
+      const ys = sqMap.get(rhs);
+      if (ys) {
+        for (const y of ys) pts.push({ x, y });
+      }
+    }
+    ecc.fpPoints = pts;
+    if (pts.length > 0) {
+      ecc.fpPIdx = Math.min(ecc.fpPIdx, pts.length - 1);
+      ecc.fpQIdx = Math.min(ecc.fpQIdx, pts.length - 1);
+      if (ecc.fpPIdx === ecc.fpQIdx && pts.length > 1) ecc.fpQIdx = (ecc.fpPIdx + 3) % pts.length;
+      ecc.fpGIdx = Math.min(ecc.fpGIdx, pts.length - 1);
+    }
+    eccRebuildTrail();
+  }
+
+  function eccFpAdd(P, Q) {
+    if (!P || P.inf) return Q || { inf: true };
+    if (!Q || Q.inf) return P;
+    const p = ecc.p;
+    const a = mod(Math.round(ecc.a), p);
+    let lambda, isTangent = false;
+    if (P.x === Q.x) {
+      if (mod(P.y + Q.y, p) === 0 || P.y === 0) {
+        return { inf: true, verticalX: P.x };
+      }
+      isTangent = true;
+      const inv = modInvNum(mod(2 * P.y, p), p);
+      if (inv === null) return { inf: true, verticalX: P.x };
+      lambda = mod((3 * P.x * P.x + a) * inv, p);
+    } else {
+      const inv = modInvNum(mod(Q.x - P.x, p), p);
+      if (inv === null) return { inf: true, verticalX: P.x };
+      lambda = mod((Q.y - P.y) * inv, p);
+    }
+    const xR = mod(lambda * lambda - P.x - Q.x, p);
+    const yNegR = mod(P.y + lambda * (xR - P.x), p);
+    const yR = mod(p - yNegR, p);
+    return {
+      x: xR,
+      y: yR,
+      negR: { x: xR, y: yNegR },
+      lambda,
+      isTangent,
+      inf: false
+    };
+  }
+
+  function eccRebuildTrail() {
+    ecc.hopTrail = [];
+    if (ecc.field === 'real') {
+      const G = eccPointFromX(ecc.Gx, ecc.Gs);
+      ecc.Gx = G.x;
+      let curr = G;
+      ecc.hopTrail.push({ k: 1, pt: curr, prev: null, stepRes: null });
+      for (let i = 2; i <= 32; i++) {
+        const res = eccRealAdd(curr, G);
+        ecc.hopTrail.push({ k: i, pt: res, prev: curr, stepRes: res });
+        if (res.inf) {
+          curr = { inf: true };
+        } else {
+          curr = { x: res.x, y: res.y, inf: false };
+        }
+      }
+    } else {
+      if (ecc.fpPoints.length === 0) return;
+      const G = ecc.fpPoints[ecc.fpGIdx];
+      let curr = G;
+      ecc.hopTrail.push({ k: 1, pt: curr, prev: null, stepRes: null });
+      for (let i = 2; i <= 32; i++) {
+        const res = eccFpAdd(curr, G);
+        ecc.hopTrail.push({ k: i, pt: res, prev: curr, stepRes: res });
+        curr = res.inf ? { inf: true } : { x: res.x, y: res.y, inf: false };
+      }
+    }
+  }
+
+  function eccWorldToScreen(wx, wy) {
+    const safe = getSafeRect();
+    const cx = safe.x + safe.w * 0.5;
+    const cy = safe.y + safe.h * 0.5 + 10;
+    return {
+      sx: cx + (wx - ecc.camX) * ecc.scale,
+      sy: cy - (wy - ecc.camY) * ecc.scale
+    };
+  }
+
+  function eccScreenToWorld(sx, sy) {
+    const safe = getSafeRect();
+    const cx = safe.x + safe.w * 0.5;
+    const cy = safe.y + safe.h * 0.5 + 10;
+    return {
+      wx: (sx - cx) / ecc.scale + ecc.camX,
+      wy: -(sy - cy) / ecc.scale + ecc.camY
+    };
+  }
+
+  function eccFpToScreen(x, y) {
+    const r = ecc.fpRect;
+    const step = r.size / ecc.p;
+    return {
+      sx: r.x + (x + 0.5) * step,
+      sy: r.y + r.size - (y + 0.5) * step
+    };
+  }
+
+  function eccTriggerHop() {
+    ecc.op = 'scalar';
+    ecc.hopAnimating = true;
+    ecc.hopStep = 1;
+    ecc.hopTimer = 0;
+    eccRebuildTrail();
+    syncEccUI();
+    audio.hop(0);
+  }
+
+  // =========================================================================
+  // 6. LAB 2: VISUAL DIFFIE-HELLMAN KEY EXCHANGE (ALICE <-> EVE <-> BOB)
+  // =========================================================================
+  const dh = {
+    p: 23,
+    g: 5,
+    a: 6,
+    b: 15,
+    // Protocol animation clock (0 -> 1 over ~6.5s)
+    animT: 1.0,
+    playingAnim: false,
+    eveTryIdx: 1,
+    eveTimer: 0
+  };
+
+  function dhCompute() {
+    const p = BigInt(dh.p);
+    const g = BigInt(dh.g);
+    const a = BigInt(dh.a);
+    const b = BigInt(dh.b);
+    const A = Number(modPowBig(g, a, p));
+    const B = Number(modPowBig(g, b, p));
+    const SA = Number(modPowBig(B, a, p));
+    const SB = Number(modPowBig(A, b, p));
+    return { p: dh.p, g: dh.g, a: dh.a, b: dh.b, A, B, SA, SB };
+  }
+
+  function hslToRgb(h, s, l) {
+    h = ((h % 360) + 360) % 360 / 360;
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    const p = 2 * l - q;
+    const hue2rgb = (t) => {
+      if (t < 0) t += 1;
+      if (t > 1) t -= 1;
+      if (t < 1 / 6) return p + (q - p) * 6 * t;
+      if (t < 1 / 2) return q;
+      if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+      return p;
+    };
+    return [
+      Math.round(hue2rgb(h + 1 / 3) * 255),
+      Math.round(hue2rgb(h) * 255),
+      Math.round(hue2rgb(h - 1 / 3) * 255)
+    ];
+  }
+
+  function rgbStr(rgb, alpha = 1) {
+    return `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${alpha})`;
+  }
+
+  function mixRgb(colors) {
+    const n = colors.length;
+    let r = 0, g = 0, b = 0;
+    for (const c of colors) { r += c[0]; g += c[1]; b += c[2]; }
+    return [Math.round(r / n), Math.round(g / n), Math.round(b / n)];
+  }
+
+  function dhGetColors() {
+    const pub = [255, 206, 86]; // Golden public paint
+    const aliceHue = (180 + (dh.a * 19) % 70);
+    const bobHue = (285 + (dh.b * 23) % 75);
+    const alicePriv = hslToRgb(aliceHue, 0.85, 0.56);
+    const bobPriv = hslToRgb(bobHue, 0.82, 0.58);
+    const pubA = mixRgb([pub, alicePriv]);
+    const pubB = mixRgb([pub, bobPriv]);
+    // Commutative 3-part blend: Pub + Alice + Bob === Pub + Bob + Alice!
+    const shared = mixRgb([pub, alicePriv, bobPriv]);
+    // Eve only has Pub, pubA, pubB -> mixing pubA + pubB double-counts Pub (different murky blend)
+    const eveMix = mixRgb([pub, pubA, pubB, [70, 52, 68]]);
+    return { pub, alicePriv, bobPriv, pubA, pubB, shared, eveMix };
+  }
+
+  function dhReplay() {
+    dh.animT = 0;
+    dh.playingAnim = true;
+    audio.packet(380, 680);
+  }
+
+  // =========================================================================
+  // 7. LAB 3: RSA PUBLIC-KEY ENCRYPTION & DECRYPTION
+  // =========================================================================
+  const RSA_PRIMES = [17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97, 101];
+  const RSA_SAMPLES = ['HELLO CIPHER', 'PRIME MAGIC', 'EULER TOTIENT', 'MODULAR MATH', 'ZERO TRUST!'];
+
+  const rsa = {
+    p: 61,
+    q: 53,
+    e: 17,
+    d: 2753,
+    n: 3233,
+    phi: 3120,
+    message: 'HELLO CIPHER',
+    sampleIdx: 0,
+    packets: [],
+    animT: 1.0,
+    animating: false,
+    hoverIdx: -1,
+    selectedIdx: 0,
+    packetRects: []
+  };
+
+  function rsaValidEs(phi) {
+    const candidates = [3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 65537];
+    const valid = candidates.filter(e => e < phi && gcdNum(e, phi) === 1);
+    if (valid.length === 0) {
+      for (let e = 3; e < phi; e += 2) {
+        if (gcdNum(e, phi) === 1) { valid.push(e); if (valid.length >= 6) break; }
+      }
+    }
+    return valid;
+  }
+
+  function rsaRecompute(triggerAnim = false) {
+    if (rsa.p === rsa.q) {
+      const idx = RSA_PRIMES.indexOf(rsa.q);
+      rsa.q = RSA_PRIMES[(idx + 1) % RSA_PRIMES.length];
+    }
+    rsa.n = rsa.p * rsa.q;
+    rsa.phi = (rsa.p - 1) * (rsa.q - 1);
+    const es = rsaValidEs(rsa.phi);
+    if (!es.includes(rsa.e)) {
+      rsa.e = es.includes(17) ? 17 : es[0];
+    }
+    rsa.d = modInvNum(rsa.e, rsa.phi);
+
+    // Populate e select
+    const eSel = document.getElementById('rsa-e-select');
+    eSel.innerHTML = '';
+    for (const val of es) {
+      const opt = document.createElement('option');
+      opt.value = String(val);
+      opt.textContent = `e = ${val}`;
+      if (val === rsa.e) opt.selected = true;
+      eSel.appendChild(opt);
+    }
+
+    // Encrypt & decrypt every character
+    const msg = rsa.message || 'HI';
+    rsa.packets = [];
+    for (let i = 0; i < msg.length; i++) {
+      const ch = msg[i];
+      const m = msg.charCodeAt(i);
+      const c = Number(modPowBig(m, rsa.e, rsa.n));
+      const dec = Number(modPowBig(c, rsa.d, rsa.n));
+      rsa.packets.push({
+        idx: i,
+        ch,
+        m,
+        c,
+        dec,
+        decCh: String.fromCharCode(dec),
+        ok: dec === m
+      });
+    }
+    if (rsa.selectedIdx >= rsa.packets.length) rsa.selectedIdx = Math.max(0, rsa.packets.length - 1);
+    if (triggerAnim) {
+      rsa.animT = 0;
+      rsa.animating = true;
+      audio.packet(460, 820);
+    }
+    syncRsaUI();
+  }
+
+  // =========================================================================
+  // 8. LAB 4: SHA-256 HASH & AVALANCHE EFFECT + POW MINER
+  // =========================================================================
+  const sha = {
+    msgA: 'Crypto Lab 2026',
+    msgB: 'Crypto Lab 2027',
+    wordsA: null,
+    wordsB: null,
+    hexA: '',
+    hexB: '',
+    bitsA: new Uint8Array(256),
+    bitsB: new Uint8Array(256),
+    diffCount: 0,
+    diffPct: 0,
+    lastFlipInfo: 'Diff: byte 14 bit 0 (6 → 7)',
+    hoverBit: -1,
+    matrixRect: { x: 0, y: 0, w: 0, h: 0, cellW: 0, cellH: 0 },
+    flashTimer: 0,
+    // Proof of Work miner
+    mining: false,
+    difficulty: 3,
+    nonce: 0,
+    powHash: '',
+    powFound: false,
+    powStartTime: 0,
+    hashRate: 0,
+    hashesInWindow: 0,
+    rateWindowStart: 0
+  };
+
+  function shaRecompute(withFlash = false) {
+    sha.wordsA = sha256Words(sha.msgA);
+    sha.wordsB = sha256Words(sha.msgB);
+    sha.hexA = wordsToHex(sha.wordsA);
+    sha.hexB = wordsToHex(sha.wordsB);
+    sha.bitsA = wordsToBits(sha.wordsA);
+    sha.bitsB = wordsToBits(sha.wordsB);
+    let diff = 0;
+    for (let i = 0; i < 256; i++) {
+      if (sha.bitsA[i] !== sha.bitsB[i]) diff++;
+    }
+    sha.diffCount = diff;
+    sha.diffPct = (diff / 256) * 100;
+    if (withFlash) sha.flashTimer = 1.0;
+    syncShaUI();
+  }
+
+  function shaFlipOneBit() {
+    const base = sha.msgA.length > 0 ? sha.msgA : 'A';
+    // Choose a random printable ASCII character index and flip 1 single bit (keep printable ASCII 32..126)
+    const idx = Math.floor(Math.random() * base.length);
+    const code = base.charCodeAt(idx);
+    const validBits = [];
+    for (let b = 0; b < 7; b++) {
+      const cand = code ^ (1 << b);
+      if (cand >= 33 && cand <= 126) validBits.push(b);
+    }
+    const bit = validBits.length > 0 ? validBits[Math.floor(Math.random() * validBits.length)] : 0;
+    const flippedCode = code ^ (1 << bit);
+    sha.msgB = base.slice(0, idx) + String.fromCharCode(flippedCode) + base.slice(idx + 1);
+    document.getElementById('sha-input-b').value = sha.msgB;
+    sha.lastFlipInfo = `Flipped 1 bit: char[${idx}] '${base[idx]}' → '${String.fromCharCode(flippedCode)}' (bit ${bit})`;
+    shaRecompute(true);
+    audio.click(940, 0.055, 0.065);
+  }
+
+  function shaStepMiner() {
+    if (!sha.mining || sha.powFound) return;
+    const prefix = '0'.repeat(sha.difficulty);
+    const batchSize = sha.difficulty >= 4 ? 2200 : 1200;
+    const basePrefix = sha.msgA + ':';
+    for (let i = 0; i < batchSize; i++) {
+      const h = sha256(basePrefix + sha.nonce);
+      sha.hashesInWindow++;
+      if (h.startsWith(prefix)) {
+        sha.powHash = h;
+        sha.powFound = true;
+        sha.mining = false;
+        audio.success();
+        syncShaUI();
+        return;
+      }
+      sha.powHash = h;
+      sha.nonce++;
+    }
+    const now = performance.now();
+    const dt = (now - sha.rateWindowStart) / 1000;
+    if (dt >= 0.25) {
+      sha.hashRate = Math.round(sha.hashesInWindow / dt);
+      sha.hashesInWindow = 0;
+      sha.rateWindowStart = now;
+      syncShaUI();
+    }
+  }
+
+  // =========================================================================
+  // 9. UI SYNC & TELEMETRY UPDATERS
+  // =========================================================================
+  const elBadge = document.getElementById('lab-badge');
+  const elStatus = document.getElementById('status-pill');
+  const elL1 = document.getElementById('tel-l1'), elV1 = document.getElementById('tel-v1');
+  const elL2 = document.getElementById('tel-l2'), elV2 = document.getElementById('tel-v2');
+  const elL3 = document.getElementById('tel-l3'), elV3 = document.getElementById('tel-v3');
+  const elFLeft = document.getElementById('formula-left');
+  const elFRight = document.getElementById('formula-right');
+  const elHint = document.getElementById('hint-pill');
+
+  function formatSignTerm(val, suffix) {
+    if (val === 0) return '';
+    const abs = Math.abs(val);
+    const numStr = Number.isInteger(abs) ? String(abs) : abs.toFixed(1);
+    const sign = val < 0 ? ' − ' : ' + ';
+    if (suffix && abs === 1) return sign + suffix;
+    return sign + numStr + suffix;
+  }
+
+  function eccEquationStr() {
+    const a = ecc.field === 'fp' ? Math.round(ecc.a) : ecc.a;
+    const b = ecc.field === 'fp' ? Math.round(ecc.b) : ecc.b;
+    return 'y² = x³' + formatSignTerm(a, 'x') + formatSignTerm(b, '');
+  }
+
+  function syncEccUI() {
+    const isFp = ecc.field === 'fp';
+    document.getElementById('ecc-field-real').classList.toggle('active', !isFp);
+    document.getElementById('ecc-field-fp').classList.toggle('active', isFp);
+    document.getElementById('ecc-fp-prime-wrap').style.display = isFp ? 'flex' : 'none';
+    document.getElementById('ecc-p-val').textContent = `p = ${ecc.p}`;
+    document.querySelectorAll('.ecc-p-btn').forEach(btn => {
+      const match = Number(btn.dataset.p) === ecc.p;
+      btn.classList.toggle('active', match);
+      btn.classList.toggle('amber', match);
+    });
+
+    const isScalar = ecc.op === 'scalar';
+    document.getElementById('ecc-op-add').classList.toggle('active', !isScalar);
+    document.getElementById('ecc-op-scalar').classList.toggle('active', isScalar);
+    document.getElementById('ecc-add-controls').style.display = isScalar ? 'none' : 'flex';
+    document.getElementById('ecc-scalar-controls').style.display = isScalar ? 'flex' : 'none';
+
+    const aDisp = isFp ? Math.round(ecc.a) : ecc.a;
+    const bDisp = isFp ? Math.round(ecc.b) : ecc.b;
+    document.getElementById('ecc-a-val').textContent = String(aDisp);
+    document.getElementById('ecc-b-val').textContent = String(bDisp);
+    document.getElementById('ecc-a-slider').value = String(ecc.a);
+    document.getElementById('ecc-b-slider').value = String(ecc.b);
+    document.getElementById('ecc-k-val').textContent = `k = ${ecc.k}`;
+    document.getElementById('ecc-k-slider').value = String(ecc.k);
+
+    const disc = isFp
+      ? mod(4 * aDisp * aDisp * aDisp + 27 * bDisp * bDisp, ecc.p)
+      : (4 * ecc.a * ecc.a * ecc.a + 27 * ecc.b * ecc.b);
+    const singular = Math.abs(disc) < 1e-4;
+    const discTag = document.getElementById('ecc-disc-tag');
+    discTag.textContent = singular ? 'SINGULAR Δ=0' : (isFp ? `#E=${ecc.fpPoints.length + 1}` : `Δ=${disc.toFixed(1)}`);
+    discTag.style.color = singular ? 'var(--accent-rose)' : 'var(--accent-cyan)';
+
+    // Binary decomposition of k
+    const kNow = ecc.hopAnimating ? ecc.hopStep : ecc.k;
+    const bin = kNow.toString(2);
+    const terms = [];
+    for (let i = 0; i < bin.length; i++) {
+      if (bin[i] === '1') {
+        const pow = 1 << (bin.length - 1 - i);
+        terms.push(pow === 1 ? 'G' : `${pow}G`);
+      }
+    }
+    document.getElementById('ecc-binary-box').innerHTML =
+      `<span class="hi-amber">k = ${kNow}</span> = (<span class="hi-cyan">${bin}</span>)₂ = ${terms.join(' + ')}`;
+
+    // Live coordinates box
+    const box = document.getElementById('ecc-coord-box');
+    if (ecc.field === 'real') {
+      if (!isScalar) {
+        const P = eccPointFromX(ecc.Px, ecc.Ps);
+        const Q = eccPointFromX(ecc.Qx, ecc.Qs);
+        const R = eccRealAdd(P, Q);
+        const rStr = R.inf ? '𝒪 (Point at Infinity)' : `(${R.x.toFixed(2)}, ${R.y.toFixed(2)})`;
+        box.innerHTML =
+          `<span class="hi-cyan">P</span> = (${P.x.toFixed(2)}, ${P.y.toFixed(2)})<br>` +
+          `<span class="hi-violet">Q</span> = (${Q.x.toFixed(2)}, ${Q.y.toFixed(2)})<br>` +
+          `<span class="hi-amber">R = P+Q</span> = ${rStr}`;
+      } else {
+        const idx = Math.min(Math.max(1, kNow), ecc.hopTrail.length) - 1;
+        const entry = ecc.hopTrail[idx];
+        const G = ecc.hopTrail[0]?.pt;
+        const K = entry?.pt;
+        const kStr = !K || K.inf ? '𝒪 (Infinity)' : `(${K.x.toFixed(2)}, ${K.y.toFixed(2)})`;
+        box.innerHTML =
+          `<span class="hi-cyan">G</span> = (${G.x.toFixed(2)}, ${G.y.toFixed(2)})<br>` +
+          `<span class="hi-amber">${kNow}·G</span> = ${kStr}`;
+      }
+    } else {
+      if (ecc.fpPoints.length === 0) {
+        box.innerHTML = '<span class="hi-rose">No affine points on this curve mod p.</span>';
+      } else if (!isScalar) {
+        const P = ecc.fpPoints[ecc.fpPIdx];
+        const Q = ecc.fpPoints[ecc.fpQIdx];
+        const R = eccFpAdd(P, Q);
+        const rStr = R.inf ? '𝒪 (Point at Infinity)' : `(${R.x}, ${R.y}) mod ${ecc.p}`;
+        box.innerHTML =
+          `<span class="hi-cyan">P</span> = (${P.x}, ${P.y})  <span class="hi-violet">Q</span> = (${Q.x}, ${Q.y})<br>` +
+          `<span class="hi-amber">R = P+Q</span> = ${rStr}` +
+          (R.inf ? '' : `<br>Slope λ ≡ <span class="hi-mint">${R.lambda}</span> (mod ${ecc.p})`);
+      } else {
+        const idx = Math.min(Math.max(1, kNow), ecc.hopTrail.length) - 1;
+        const G = ecc.fpPoints[ecc.fpGIdx];
+        const K = ecc.hopTrail[idx]?.pt;
+        const kStr = !K || K.inf ? '𝒪 (Identity)' : `(${K.x}, ${K.y}) mod ${ecc.p}`;
+        box.innerHTML =
+          `<span class="hi-cyan">G</span> = (${G.x}, ${G.y}) · Order #E = ${ecc.fpPoints.length + 1}<br>` +
+          `<span class="hi-amber">${kNow}·G</span> = ${kStr}`;
+      }
+    }
+  }
+
+  function syncDhUI() {
+    const d = dhCompute();
+    const aSlider = document.getElementById('dh-a-slider');
+    const bSlider = document.getElementById('dh-b-slider');
+    const maxSec = Math.min(d.p - 2, 120);
+    aSlider.max = String(maxSec);
+    bSlider.max = String(maxSec);
+    if (dh.a > maxSec) dh.a = maxSec;
+    if (dh.b > maxSec) dh.b = maxSec;
+    aSlider.value = String(dh.a);
+    bSlider.value = String(dh.b);
+    document.getElementById('dh-a-val').textContent = String(dh.a);
+    document.getElementById('dh-b-val').textContent = String(dh.b);
+
+    document.querySelectorAll('.dh-p-btn').forEach(btn => {
+      btn.classList.toggle('active', Number(btn.dataset.p) === dh.p);
+    });
+
+    document.getElementById('dh-math-box').innerHTML =
+      `Public: p = <span class="hi-amber">${d.p}</span>, g = <span class="hi-amber">${d.g}</span><br>` +
+      `<span class="hi-cyan">Alice</span>: A = ${d.g}^${d.a} mod ${d.p} = <span class="hi-cyan">${d.A}</span><br>` +
+      `<span class="hi-violet">Bob</span>:   B = ${d.g}^${d.b} mod ${d.p} = <span class="hi-violet">${d.B}</span><br>` +
+      `<span class="hi-mint">Shared</span>: B^a ≡ A^b ≡ <span class="hi-mint">${d.SA}</span> (mod ${d.p})<br>` +
+      `<span class="hi-rose">Eve</span> sees (${d.p}, ${d.g}, ${d.A}, ${d.B}) — Stuck on DLP!`;
+  }
+
+  function syncRsaUI() {
+    document.getElementById('rsa-p-select').value = String(rsa.p);
+    document.getElementById('rsa-q-select').value = String(rsa.q);
+    document.getElementById('rsa-e-hint').textContent = `gcd(${rsa.e},${rsa.phi})=1`;
+    const check = (BigInt(rsa.e) * BigInt(rsa.d)) % BigInt(rsa.phi);
+    document.getElementById('rsa-key-box').innerHTML =
+      `Modulus: <span class="hi-cyan">n = ${rsa.p} × ${rsa.q} = ${rsa.n}</span><br>` +
+      `Totient: <span class="hi-violet">φ(n) = ${rsa.p - 1} × ${rsa.q - 1} = ${rsa.phi}</span><br>` +
+      `Public Key:  <span class="hi-amber">(e=${rsa.e}, n=${rsa.n})</span><br>` +
+      `Private Key: <span class="hi-mint">(d=${rsa.d}, n=${rsa.n})</span><br>` +
+      `Verify: e·d mod φ(n) = <span class="hi-mint">${check}</span>`;
+  }
+
+  function syncShaUI() {
+    document.getElementById('sha-len-a').textContent = `${utf8ToBytes(sha.msgA).length} B`;
+    document.getElementById('sha-len-b').textContent = `${utf8ToBytes(sha.msgB).length} B`;
+    document.getElementById('sha-flip-note').textContent = sha.lastFlipInfo;
+    document.getElementById('pow-diff-tag').textContent = '0'.repeat(sha.difficulty) + '...';
+
+    document.querySelectorAll('.pow-diff-btn').forEach(btn => {
+      const m = Number(btn.dataset.zeros) === sha.difficulty;
+      btn.classList.toggle('active', m);
+      btn.classList.toggle('amber', m);
+    });
+
+    const mineBtn = document.getElementById('sha-btn-mine');
+    if (sha.mining) {
+      mineBtn.textContent = '⏹ Stop Miner';
+      mineBtn.className = 'btn danger';
+    } else {
+      mineBtn.textContent = '⛏ Start PoW Miner';
+      mineBtn.className = 'btn mint';
+    }
+
+    const powBox = document.getElementById('sha-pow-box');
+    const prefix = '0'.repeat(sha.difficulty);
+    if (sha.powFound) {
+      powBox.innerHTML =
+        `<span class="hi-mint">✓ BLOCK MINED!</span> Nonce = <span class="hi-amber">${sha.nonce.toLocaleString()}</span><br>` +
+        `Hash: <span class="hi-mint">${sha.powHash.slice(0, sha.difficulty)}</span>${sha.powHash.slice(sha.difficulty, 32)}…`;
+    } else if (sha.mining) {
+      powBox.innerHTML =
+        `<span class="hi-amber">⛏ Mining…</span> Nonce = ${sha.nonce.toLocaleString()} · <span class="hi-cyan">${(sha.hashRate / 1000).toFixed(1)} kH/s</span><br>` +
+        `Try: ${sha.powHash.slice(0, 32)}…`;
+    } else {
+      powBox.innerHTML = `Idle · Target: <span class="hi-amber">${prefix}</span>… · Nonce: ${sha.nonce.toLocaleString()}`;
+    }
+
+    document.getElementById('sha-digest-box').innerHTML =
+      `<span class="hi-cyan">A:</span> ${sha.hexA.slice(0, 32)}<br>&nbsp;&nbsp;&nbsp;${sha.hexA.slice(32)}<br>` +
+      `<span class="hi-amber">B:</span> ${sha.hexB.slice(0, 32)}<br>&nbsp;&nbsp;&nbsp;${sha.hexB.slice(32)}`;
+  }
+
+  function updateTelemetry() {
+    if (app.lab === 'ecc') {
+      const isFp = ecc.field === 'fp';
+      elBadge.textContent = isFp ? `ECC · 𝔽_${ecc.p}` : 'ECC · Real ℝ';
+      elBadge.className = isFp ? 'mode-badge amber' : 'mode-badge';
+
+      const aDisp = isFp ? Math.round(ecc.a) : ecc.a;
+      const bDisp = isFp ? Math.round(ecc.b) : ecc.b;
+      const disc = isFp
+        ? mod(4 * aDisp * aDisp * aDisp + 27 * bDisp * bDisp, ecc.p)
+        : (4 * ecc.a * ecc.a * ecc.a + 27 * ecc.b * ecc.b);
+      const singular = Math.abs(disc) < 1e-4;
+
+      elStatus.textContent = singular ? 'Singular Δ=0' : (ecc.op === 'scalar' ? (ecc.hopAnimating ? 'Hopping k·G' : 'Scalar Mult') : 'Chord Rule');
+      elStatus.className = singular ? 'status-pill danger' : (ecc.op === 'scalar' ? 'status-pill warn' : 'status-pill');
+
+      elL1.textContent = 'Elliptic Curve';
+      elV1.textContent = eccEquationStr();
+      elV1.className = 'tele-val cyan';
+
+      const kNow = ecc.hopAnimating ? ecc.hopStep : ecc.k;
+      if (ecc.op === 'add') {
+        elL2.textContent = isFp ? 'Field Order' : 'Slope λ';
+        if (isFp && ecc.fpPoints.length > 0) {
+          const P = ecc.fpPoints[ecc.fpPIdx], Q = ecc.fpPoints[ecc.fpQIdx];
+          const R = eccFpAdd(P, Q);
+          elV2.textContent = `#E = ${ecc.fpPoints.length + 1}`;
+          elL3.textContent = 'R = P + Q';
+          elV3.textContent = R.inf ? '𝒪 (Infinity)' : `(${R.x}, ${R.y})`;
+          elFLeft.innerHTML = R.inf ? '<strong>P + (−P) = 𝒪</strong> (Identity)' : `<strong>λ</strong> ≡ ${R.lambda} (mod ${ecc.p})`;
+          elFRight.innerHTML = `Prime: <strong>p = ${ecc.p}</strong>`;
+        } else {
+          const P = eccPointFromX(ecc.Px, ecc.Ps), Q = eccPointFromX(ecc.Qx, ecc.Qs);
+          const R = eccRealAdd(P, Q);
+          elV2.textContent = R.inf ? '∞ (Vertical)' : R.lambda.toFixed(3);
+          elL3.textContent = 'R = P + Q';
+          elV3.textContent = R.inf ? '𝒪 (Infinity)' : `(${R.x.toFixed(2)}, ${R.y.toFixed(2)})`;
+          elFLeft.innerHTML = R.isTangent ? '<strong>Tangent:</strong> λ = (3x² + a) / 2y' : '<strong>Secant:</strong> λ = (y_Q − y_P)/(x_Q − x_P)';
+          elFRight.innerHTML = 'Domain: <strong>ℝ²</strong>';
+        }
+        elV2.className = 'tele-val amber';
+        elV3.className = 'tele-val mint';
+      } else {
+        elL2.textContent = 'Private Key k';
+        elV2.textContent = `k = ${kNow} (${kNow.toString(2)}₂)`;
+        elV2.className = 'tele-val amber';
+        elL3.textContent = 'Public Key k·G';
+        const entry = ecc.hopTrail[Math.min(Math.max(1, kNow), ecc.hopTrail.length) - 1];
+        const pt = entry?.pt;
+        elV3.textContent = !pt || pt.inf ? '𝒪 (Identity)' : (isFp ? `(${pt.x}, ${pt.y})` : `(${pt.x.toFixed(2)}, ${pt.y.toFixed(2)})`);
+        elV3.className = 'tele-val mint';
+        elFLeft.innerHTML = isFp ? '<strong>ECDLP:</strong> Q = k·G easy · finding k intractable' : '<strong>Double-and-Add:</strong> O(log k) curve hops';
+        elFRight.innerHTML = isFp ? `Points: <strong>#E=${ecc.fpPoints.length + 1}</strong>` : 'Domain: <strong>ℝ²</strong>';
+      }
+
+      elHint.innerHTML = isFp
+        ? 'Click lattice dots to pick <strong>P, Q</strong> · Toggle <strong>k·G</strong> for ECDLP pinball · <kbd>1</kbd>–<kbd>4</kbd> labs · <kbd>H</kbd> cinema'
+        : 'Drag <strong>P, Q</strong> (or <strong>G</strong>) on curve · Scroll zoom · Drag pan · <kbd>1</kbd>–<kbd>4</kbd> labs · <kbd>H</kbd> cinema';
+    } else if (app.lab === 'dh') {
+      const d = dhCompute();
+      elBadge.textContent = 'Diffie–Hellman';
+      elBadge.className = 'mode-badge violet';
+      elStatus.textContent = dh.animT >= 0.85 ? 'Secret Agreed' : 'In Transit';
+      elStatus.className = dh.animT >= 0.85 ? 'status-pill' : 'status-pill cyan';
+
+      elL1.textContent = 'Public (p, g)';
+      elV1.textContent = `p=${d.p}, g=${d.g}`;
+      elV1.className = 'tele-val amber';
+
+      elL2.textContent = 'Public Keys A, B';
+      elV2.textContent = `A=${d.A} · B=${d.B}`;
+      elV2.className = 'tele-val cyan';
+
+      elL3.textContent = 'Shared Secret S';
+      elV3.textContent = dh.animT >= 0.82 ? `S = ${d.SA}` : 'Computing…';
+      elV3.className = 'tele-val mint';
+
+      elFLeft.innerHTML = `<strong>S</strong> = g^(a·b) mod p = ${d.g}^(${d.a}·${d.b}) mod ${d.p} = <strong>${d.SA}</strong>`;
+      elFRight.innerHTML = 'Eve: <strong>Blocked (DLP)</strong>';
+      elHint.innerHTML = 'Adjust secrets <strong>a, b</strong> or click <strong>Replay Exchange</strong> · <kbd>1</kbd>–<kbd>4</kbd> labs · <kbd>H</kbd> cinema';
+    } else if (app.lab === 'rsa') {
+      elBadge.textContent = 'RSA Public-Key';
+      elBadge.className = 'mode-badge amber';
+      const allOk = rsa.packets.every(p => p.ok);
+      elStatus.textContent = rsa.animating ? 'Encrypting…' : (allOk ? 'Verified 100%' : 'n Too Small');
+      elStatus.className = allOk ? 'status-pill' : 'status-pill danger';
+
+      elL1.textContent = 'Modulus n = p·q';
+      elV1.textContent = `${rsa.n} (${Math.ceil(Math.log2(rsa.n + 1))}-bit)`;
+      elV1.className = 'tele-val cyan';
+
+      elL2.textContent = 'Public / Private';
+      elV2.textContent = `e=${rsa.e} · d=${rsa.d}`;
+      elV2.className = 'tele-val amber';
+
+      elL3.textContent = 'Totient φ(n)';
+      elV3.textContent = String(rsa.phi);
+      elV3.className = 'tele-val violet';
+
+      const sel = rsa.packets[rsa.selectedIdx] || rsa.packets[0];
+      elFLeft.innerHTML = sel
+        ? `<strong>'${sel.ch}'</strong> (${sel.m}) → c=<strong>${sel.c}</strong> → m'=<strong>${sel.dec}</strong> ('${sel.decCh}')`
+        : 'c = m^e mod n · m = c^d mod n';
+      elFRight.innerHTML = `e·d ≡ <strong>1</strong> (mod φ)`;
+      elHint.innerHTML = 'Hover/click any packet to inspect <strong>m^e mod n</strong> · Edit message in drawer · <kbd>H</kbd> cinema';
+    } else {
+      elBadge.textContent = 'SHA-256 · FIPS 180-4';
+      elBadge.className = 'mode-badge mint';
+      if (sha.mining) {
+        elStatus.textContent = 'Mining PoW…';
+        elStatus.className = 'status-pill warn';
+      } else if (sha.powFound) {
+        elStatus.textContent = 'Block Mined!';
+        elStatus.className = 'status-pill';
+      } else {
+        elStatus.textContent = sha.diffCount === 0 ? 'Identical (0%)' : `Avalanche ${sha.diffPct.toFixed(1)}%`;
+        elStatus.className = sha.diffCount === 0 ? 'status-pill cyan' : 'status-pill warn';
+      }
+
+      elL1.textContent = 'Flipped Bits';
+      elV1.textContent = `${sha.diffCount} / 256`;
+      elV1.className = 'tele-val amber';
+
+      elL2.textContent = 'Avalanche Effect';
+      elV2.textContent = `${sha.diffPct.toFixed(2)}%`;
+      elV2.className = sha.diffPct >= 40 && sha.diffPct <= 60 ? 'tele-val mint' : 'tele-val cyan';
+
+      elL3.textContent = sha.mining || sha.powFound ? 'Miner Rate / Nonce' : 'Digest Width';
+      elV3.textContent = sha.mining
+        ? `${(sha.hashRate / 1000).toFixed(1)} kH/s`
+        : (sha.powFound ? `#${sha.nonce.toLocaleString()}` : '256-bit (64 hex)');
+      elV3.className = 'tele-val violet';
+
+      elFLeft.innerHTML = `<strong>Hamming(H_A, H_B)</strong> = ${sha.diffCount} bits (ideal ≈ 128 · 50.0%)`;
+      elFRight.innerHTML = `Target: <strong>${'0'.repeat(sha.difficulty)}…</strong>`;
+      elHint.innerHTML = 'Hover any LED bit to inspect · Click <strong>⚡ Flip 1 Single Bit</strong> for ~50% avalanche · <kbd>H</kbd> cinema';
+    }
+  }
+
+  // =========================================================================
+  // 10. SHARED CANVAS DRAWING HELPERS
+  // =========================================================================
+  function roundRect(x, y, w, h, r) {
+    r = Math.min(r, w / 2, h / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  function drawGlassCard(x, y, w, h, borderColor = 'rgba(148,179,255,0.2)', fill = 'rgba(9,14,28,0.78)', radius = 14) {
+    roundRect(x, y, w, h, radius);
+    ctx.fillStyle = fill;
+    ctx.fill();
+    ctx.lineWidth = 1.2;
+    ctx.strokeStyle = borderColor;
+    ctx.stroke();
+  }
+
+  function drawBackdrop() {
+    ctx.fillStyle = '#040711';
+    ctx.fillRect(0, 0, W, H);
+
+    // Soft atmospheric radial glow
+    const safe = getSafeRect();
+    const cx = safe.x + safe.w * 0.5;
+    const cy = safe.y + safe.h * 0.5;
+    const rad = Math.max(W, H) * 0.65;
+    const grad = ctx.createRadialGradient(cx, cy, 20, cx, cy, rad);
+    if (app.lab === 'ecc') {
+      grad.addColorStop(0, 'rgba(32, 68, 128, 0.16)');
+      grad.addColorStop(0.55, 'rgba(14, 24, 52, 0.08)');
+      grad.addColorStop(1, 'rgba(4, 7, 17, 0)');
+    } else if (app.lab === 'dh') {
+      grad.addColorStop(0, 'rgba(96, 62, 168, 0.14)');
+      grad.addColorStop(0.6, 'rgba(16, 36, 66, 0.07)');
+      grad.addColorStop(1, 'rgba(4, 7, 17, 0)');
+    } else if (app.lab === 'rsa') {
+      grad.addColorStop(0, 'rgba(168, 110, 38, 0.12)');
+      grad.addColorStop(0.6, 'rgba(18, 30, 62, 0.08)');
+      grad.addColorStop(1, 'rgba(4, 7, 17, 0)');
+    } else {
+      grad.addColorStop(0, 'rgba(24, 124, 112, 0.14)');
+      grad.addColorStop(0.6, 'rgba(18, 28, 56, 0.08)');
+      grad.addColorStop(1, 'rgba(4, 7, 17, 0)');
+    }
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+
+    // Subtle twinkling cryptographic stardust
+    for (const s of app.stars) {
+      const a = s.a * (0.65 + 0.35 * Math.sin(app.time * 1.1 + s.phase));
+      ctx.fillStyle = `rgba(170, 205, 255, ${a.toFixed(3)})`;
+      ctx.beginPath();
+      ctx.arc(s.x * W, s.y * H, s.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  function drawGlowOrb(sx, sy, radius, color, label, sublabel = '') {
+    ctx.save();
+    // Outer halo
+    const halo = ctx.createRadialGradient(sx, sy, 0, sx, sy, radius * 3.1);
+    halo.addColorStop(0, color);
+    halo.addColorStop(0.35, color.replace('1)', '0.35)').replace('rgb(', 'rgba('));
+    halo.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = halo;
+    ctx.beginPath();
+    ctx.arc(sx, sy, radius * 3.1, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Core
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(sx, sy, radius * 0.55, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = color;
+    ctx.beginPath();
+    ctx.arc(sx, sy, radius, 0, Math.PI * 2);
+    ctx.stroke();
+
+    if (label) {
+      ctx.font = '700 12px ui-monospace, Menlo, Consolas, monospace';
+      const tw = ctx.measureText(label).width;
+      const pillW = tw + 14;
+      const px = sx + radius + 8;
+      const py = sy - 11;
+      roundRect(px, py, pillW, 20, 6);
+      ctx.fillStyle = 'rgba(6, 10, 22, 0.86)';
+      ctx.fill();
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = color;
+      ctx.stroke();
+      ctx.fillStyle = '#eef4ff';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(label, px + 7, py + 10);
+      if (sublabel) {
+        ctx.font = '600 10px ui-monospace, Menlo, Consolas, monospace';
+        ctx.fillStyle = '#9aa9cc';
+        ctx.fillText(sublabel, px + 2, py + 29);
+      }
+    }
+    ctx.restore();
+  }
+
+  // =========================================================================
+  // 11. RENDERER — LAB 1: ELLIPTIC CURVE CRYPTOGRAPHY
+  // =========================================================================
+  function renderEccReal() {
+    const safe = getSafeRect();
+    const minW = eccScreenToWorld(0, H);
+    const maxW = eccScreenToWorld(W, 0);
+
+    // Coordinate grid
+    ctx.save();
+    const step = ecc.scale > 120 ? 0.5 : (ecc.scale < 45 ? 2 : 1);
+    const xStart = Math.floor(minW.wx / step) * step;
+    const yStart = Math.floor(minW.wy / step) * step;
+
+    ctx.lineWidth = 1;
+    for (let x = xStart; x <= maxW.wx; x += step) {
+      const p = eccWorldToScreen(x, 0);
+      const isMajor = Math.abs(x - Math.round(x)) < 1e-6;
+      ctx.strokeStyle = Math.abs(x) < 1e-6
+        ? 'rgba(148, 179, 255, 0.34)'
+        : (isMajor ? 'rgba(148, 179, 255, 0.085)' : 'rgba(148, 179, 255, 0.035)');
+      ctx.beginPath();
+      ctx.moveTo(p.sx, 0);
+      ctx.lineTo(p.sx, H);
+      ctx.stroke();
+    }
+    for (let y = yStart; y <= maxW.wy; y += step) {
+      const p = eccWorldToScreen(0, y);
+      const isMajor = Math.abs(y - Math.round(y)) < 1e-6;
+      ctx.strokeStyle = Math.abs(y) < 1e-6
+        ? 'rgba(148, 179, 255, 0.38)'
+        : (isMajor ? 'rgba(148, 179, 255, 0.085)' : 'rgba(148, 179, 255, 0.035)');
+      ctx.beginPath();
+      ctx.moveTo(0, p.sy);
+      ctx.lineTo(W, p.sy);
+      ctx.stroke();
+    }
+
+    // Axis ticks
+    const origin = eccWorldToScreen(0, 0);
+    ctx.font = '600 10px ui-monospace, Menlo, Consolas, monospace';
+    ctx.fillStyle = 'rgba(154, 169, 204, 0.55)';
+    ctx.textAlign = 'center';
+    for (let x = Math.ceil(minW.wx); x <= Math.floor(maxW.wx); x++) {
+      if (x === 0) continue;
+      const p = eccWorldToScreen(x, 0);
+      if (origin.sy > 20 && origin.sy < H - 20) ctx.fillText(String(x), p.sx, origin.sy + 13);
+    }
+    ctx.textAlign = 'right';
+    for (let y = Math.ceil(minW.wy); y <= Math.floor(maxW.wy); y++) {
+      if (y === 0) continue;
+      const p = eccWorldToScreen(0, y);
+      if (origin.sx > 30 && origin.sx < W - 20) ctx.fillText(String(y), origin.sx - 8, p.sy + 3);
+    }
+
+    // Symmetry axis hint
+    if (origin.sy > safe.y && origin.sy < safe.y + safe.h) {
+      ctx.fillStyle = 'rgba(148, 179, 255, 0.32)';
+      ctx.textAlign = 'left';
+      ctx.fillText('x-axis (Reflection Symmetry)', safe.x + 12, origin.sy - 8);
+    }
+
+    // Build continuous curve segments (handling both 1-component and 2-component curves!)
+    const samples = 900;
+    const xLo = Math.max(-14, minW.wx - 0.5);
+    const xHi = Math.min(14, maxW.wx + 0.5);
+    const dx = (xHi - xLo) / samples;
+    const upperPaths = [];
+    const lowerPaths = [];
+    let curUp = null, curLo = null;
+
+    for (let i = 0; i <= samples; i++) {
+      const x = xLo + i * dx;
+      const y2 = eccEvalY2(x);
+      if (y2 >= 0) {
+        const y = Math.sqrt(y2);
+        const su = eccWorldToScreen(x, y);
+        const sl = eccWorldToScreen(x, -y);
+        if (!curUp) {
+          // Refine exact root crossing on left edge for smooth closed loop / nose
+          if (i > 0) {
+            let a = x - dx, b = x;
+            for (let it = 0; it < 14; it++) {
+              const m = 0.5 * (a + b);
+              if (eccEvalY2(m) >= 0) b = m; else a = m;
+            }
+            const rootPt = eccWorldToScreen(b, 0);
+            curUp = [rootPt];
+            curLo = [rootPt];
+          } else {
+            curUp = [];
+            curLo = [];
+          }
+          upperPaths.push(curUp);
+          lowerPaths.push(curLo);
+        }
+        curUp.push(su);
+        curLo.push(sl);
+      } else if (curUp) {
+        // Refine exact root crossing on right edge (closed oval)
+        let a = x - dx, b = x;
+        for (let it = 0; it < 14; it++) {
+          const m = 0.5 * (a + b);
+          if (eccEvalY2(m) >= 0) a = m; else b = m;
+        }
+        const rootPt = eccWorldToScreen(a, 0);
+        curUp.push(rootPt);
+        curLo.push(rootPt);
+        curUp = null;
+        curLo = null;
+      }
+    }
+
+    // Multi-pass luminous curve stroke
+    const drawCurvePass = (width, strokeStyle, shadowBlur = 0, shadowColor = '') => {
+      ctx.lineWidth = width;
+      ctx.strokeStyle = strokeStyle;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.shadowBlur = shadowBlur;
+      ctx.shadowColor = shadowColor;
+      for (const path of [...upperPaths, ...lowerPaths]) {
+        if (path.length < 2) continue;
+        ctx.beginPath();
+        ctx.moveTo(path[0].sx, path[0].sy);
+        for (let i = 1; i < path.length; i++) ctx.lineTo(path[i].sx, path[i].sy);
+        ctx.stroke();
+      }
+      ctx.shadowBlur = 0;
+    };
+
+    drawCurvePass(9, 'rgba(88, 220, 255, 0.12)');
+    drawCurvePass(4.5, 'rgba(110, 185, 255, 0.34)');
+    drawCurvePass(2.2, '#8ef0ff', 10, 'rgba(88, 220, 255, 0.65)');
+
+    if (ecc.op === 'add') {
+      // Chord-and-Tangent Addition Rule
+      const P = eccPointFromX(ecc.Px, ecc.Ps);
+      const Q = eccPointFromX(ecc.Qx, ecc.Qs);
+      ecc.Px = P.x;
+      ecc.Qx = Q.x;
+      const R = eccRealAdd(P, Q);
+      const sP = eccWorldToScreen(P.x, P.y);
+      const sQ = eccWorldToScreen(Q.x, Q.y);
+
+      if (R.inf) {
+        // Vertical line to Point at Infinity
+        ctx.save();
+        ctx.strokeStyle = 'rgba(255, 190, 92, 0.85)';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([7, 5]);
+        ctx.beginPath();
+        ctx.moveTo(sP.sx, 0);
+        ctx.lineTo(sP.sx, H);
+        ctx.stroke();
+        ctx.restore();
+
+        // Infinity banner
+        drawGlassCard(sP.sx - 86, safe.y + 8, 172, 30, 'rgba(255, 190, 92, 0.65)');
+        ctx.fillStyle = '#ffbe5c';
+        ctx.font = '700 12px ui-monospace, Menlo, Consolas, monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('P + Q = 𝒪 (Infinity)', sP.sx, safe.y + 23);
+      } else {
+        const sNegR = eccWorldToScreen(R.negR.x, R.negR.y);
+        const sR = eccWorldToScreen(R.x, R.y);
+
+        // Extended secant/tangent line
+        const xA = Math.min(P.x, Q.x, R.x) - 3.5;
+        const xB = Math.max(P.x, Q.x, R.x) + 3.5;
+        const yA = P.y + R.lambda * (xA - P.x);
+        const yB = P.y + R.lambda * (xB - P.x);
+        const sA = eccWorldToScreen(xA, yA);
+        const sB = eccWorldToScreen(xB, yB);
+
+        // Luminous secant/tangent beam
+        ctx.save();
+        ctx.strokeStyle = 'rgba(167, 139, 250, 0.25)';
+        ctx.lineWidth = 6;
+        ctx.beginPath();
+        ctx.moveTo(sA.sx, sA.sy);
+        ctx.lineTo(sB.sx, sB.sy);
+        ctx.stroke();
+
+        ctx.strokeStyle = R.isTangent ? '#ffbe5c' : '#c4b5fd';
+        ctx.lineWidth = 1.9;
+        ctx.beginPath();
+        ctx.moveTo(sA.sx, sA.sy);
+        ctx.lineTo(sB.sx, sB.sy);
+        ctx.stroke();
+
+        // Animated vertical reflection beam from -R across x-axis to R
+        ctx.strokeStyle = 'rgba(255, 190, 92, 0.9)';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([5, 4]);
+        ctx.lineDashOffset = -app.time * 28;
+        ctx.beginPath();
+        ctx.moveTo(sNegR.sx, sNegR.sy);
+        ctx.lineTo(sR.sx, sR.sy);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Reflection arrow head near R
+        const dir = sR.sy > sNegR.sy ? 1 : -1;
+        ctx.fillStyle = '#ffbe5c';
+        ctx.beginPath();
+        ctx.moveTo(sR.sx, sR.sy - dir * 11);
+        ctx.lineTo(sR.sx - 5, sR.sy - dir * 19);
+        ctx.lineTo(sR.sx + 5, sR.sy - dir * 19);
+        ctx.closePath();
+        ctx.fill();
+
+        // -R hollow diamond marker
+        ctx.strokeStyle = '#ff6083';
+        ctx.fillStyle = 'rgba(255, 96, 131, 0.22)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(sNegR.sx, sNegR.sy - 8);
+        ctx.lineTo(sNegR.sx + 8, sNegR.sy);
+        ctx.lineTo(sNegR.sx, sNegR.sy + 8);
+        ctx.lineTo(sNegR.sx - 8, sNegR.sy);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.font = '700 11px ui-monospace, Menlo, Consolas, monospace';
+        ctx.fillStyle = '#ff9bb2';
+        ctx.textAlign = 'left';
+        ctx.fillText('−R (3rd root)', sNegR.sx + 12, sNegR.sy + 4);
+        ctx.restore();
+
+        // Result R = P + Q
+        drawGlowOrb(sR.sx, sR.sy, 8.5, 'rgba(255, 190, 92, 1)', R.isTangent ? '2P' : 'R = P+Q', `(${R.x.toFixed(2)}, ${R.y.toFixed(2)})`);
+      }
+
+      // Draw draggable Q and P
+      if (!(Math.abs(P.x - Q.x) < 0.02 && Math.abs(P.y - Q.y) < 0.02)) {
+        drawGlowOrb(sQ.sx, sQ.sy, 8, 'rgba(167, 139, 250, 1)', 'Q');
+      }
+      drawGlowOrb(sP.sx, sP.sy, 8.5, 'rgba(88, 220, 255, 1)', 'P');
+    } else {
+      // Scalar Multiplication k·G Trail
+      const maxK = ecc.hopAnimating ? ecc.hopStep : ecc.k;
+      const limit = Math.min(maxK, ecc.hopTrail.length);
+
+      // Draw glowing hop trajectory arcs
+      for (let i = 1; i < limit; i++) {
+        const prev = ecc.hopTrail[i - 1].pt;
+        const curr = ecc.hopTrail[i].pt;
+        if (!prev || prev.inf || !curr || curr.inf) continue;
+        const s0 = eccWorldToScreen(prev.x, prev.y);
+        const s1 = eccWorldToScreen(curr.x, curr.y);
+        const alpha = 0.14 + 0.65 * (i / Math.max(1, limit - 1));
+        ctx.strokeStyle = `rgba(255, 190, 92, ${alpha.toFixed(3)})`;
+        ctx.lineWidth = i === limit - 1 ? 2.4 : 1.3;
+        ctx.beginPath();
+        ctx.moveTo(s0.sx, s0.sy);
+        ctx.lineTo(s1.sx, s1.sy);
+        ctx.stroke();
+
+        // Small intermediate dot
+        if (i < limit - 1) {
+          ctx.fillStyle = `rgba(167, 139, 250, ${(alpha * 0.9).toFixed(3)})`;
+          ctx.beginPath();
+          ctx.arc(s1.sx, s1.sy, 3.6, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      // Draw exact chord + reflection for the latest hop step!
+      if (limit >= 2) {
+        const last = ecc.hopTrail[limit - 1];
+        const res = last.stepRes;
+        if (res && !res.inf && res.negR) {
+          const sNegR = eccWorldToScreen(res.negR.x, res.negR.y);
+          const sR = eccWorldToScreen(res.x, res.y);
+          ctx.save();
+          ctx.strokeStyle = 'rgba(74, 242, 178, 0.65)';
+          ctx.lineWidth = 1.6;
+          ctx.setLineDash([4, 4]);
+          ctx.beginPath();
+          ctx.moveTo(sNegR.sx, sNegR.sy);
+          ctx.lineTo(sR.sx, sR.sy);
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
+
+      // Generator G and Target k·G
+      if (ecc.hopTrail.length > 0) {
+        const G = ecc.hopTrail[0].pt;
+        const sG = eccWorldToScreen(G.x, G.y);
+        drawGlowOrb(sG.sx, sG.sy, 8.5, 'rgba(88, 220, 255, 1)', 'G (Generator)');
+
+        const K = ecc.hopTrail[limit - 1]?.pt;
+        if (K && !K.inf && limit > 1) {
+          const sK = eccWorldToScreen(K.x, K.y);
+          drawGlowOrb(sK.sx, sK.sy, 9.5, 'rgba(255, 190, 92, 1)', `${limit}·G (Public Key)`, `(${K.x.toFixed(2)}, ${K.y.toFixed(2)})`);
+        }
+      }
+    }
+    ctx.restore();
+  }
+
+  function renderEccFp() {
+    const safe = getSafeRect();
+    const size = Math.min(safe.w - 36, safe.h - 36, 620);
+    const rx = safe.x + (safe.w - size) * 0.5;
+    const ry = safe.y + (safe.h - size) * 0.5 + 4;
+    ecc.fpRect = { x: rx, y: ry, size };
+
+    const p = ecc.p;
+    const step = size / p;
+
+    // Lattice Frame
+    drawGlassCard(rx - 12, ry - 12, size + 24, size + 24, 'rgba(88, 220, 255, 0.28)', 'rgba(6, 10, 22, 0.84)', 16);
+
+    // Subtle internal grid lines
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(rx, ry, size, size);
+    ctx.clip();
+
+    const gridEvery = p <= 23 ? 1 : (p <= 47 ? 2 : 5);
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= p; i += gridEvery) {
+      const gx = rx + i * step;
+      const gy = ry + size - i * step;
+      ctx.strokeStyle = 'rgba(148, 179, 255, 0.075)';
+      ctx.beginPath(); ctx.moveTo(gx, ry); ctx.lineTo(gx, ry + size); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(rx, gy); ctx.lineTo(rx + size, gy); ctx.stroke();
+    }
+
+    // Horizontal symmetry line y = p / 2
+    const midY = ry + size * 0.5;
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.28)';
+    ctx.setLineDash([6, 5]);
+    ctx.beginPath();
+    ctx.moveTo(rx, midY);
+    ctx.lineTo(rx + size, midY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Draw modular wrap-around chord lines if in Add mode
+    if (ecc.op === 'add' && ecc.fpPoints.length > 0) {
+      const P = ecc.fpPoints[ecc.fpPIdx];
+      const Q = ecc.fpPoints[ecc.fpQIdx];
+      const R = eccFpAdd(P, Q);
+
+      if (!R.inf) {
+        // Draw modular wrap-around line y ≡ y_P + λ(x - x_P) (mod p)
+        // Represent slope as signed smallest magnitude m in (-p/2, p/2] for crisp visual wrapping
+        const m = R.lambda > p / 2 ? R.lambda - p : R.lambda;
+        ctx.strokeStyle = 'rgba(167, 139, 250, 0.42)';
+        ctx.lineWidth = 1.6;
+        // Trace integer x steps or continuous wrap lines
+        const kRange = Math.min(Math.abs(m) + 2, 18);
+        for (let wrap = -kRange; wrap <= kRange; wrap++) {
+          const y0 = P.y + m * (0 - P.x) + wrap * p;
+          const y1 = P.y + m * (p - P.x) + wrap * p;
+          const p0 = eccFpToScreen(-0.5, y0 - 0.5 * m);
+          const p1 = eccFpToScreen(p - 0.5, y1 - 0.5 * m);
+          ctx.beginPath();
+          ctx.moveTo(p0.sx, p0.sy);
+          ctx.lineTo(p1.sx, p1.sy);
+          ctx.stroke();
+        }
+
+        // Reflection beam from -R to R
+        const sNegR = eccFpToScreen(R.negR.x, R.negR.y);
+        const sR = eccFpToScreen(R.x, R.y);
+        ctx.strokeStyle = 'rgba(255, 190, 92, 0.9)';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([5, 4]);
+        ctx.lineDashOffset = -app.time * 24;
+        ctx.beginPath();
+        ctx.moveTo(sNegR.sx, sNegR.sy);
+        ctx.lineTo(sR.sx, sR.sy);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      } else {
+        const sP = eccFpToScreen(P.x, P.y);
+        ctx.strokeStyle = 'rgba(255, 190, 92, 0.8)';
+        ctx.setLineDash([6, 4]);
+        ctx.beginPath();
+        ctx.moveTo(sP.sx, ry);
+        ctx.lineTo(sP.sx, ry + size);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    } else if (ecc.op === 'scalar' && ecc.hopTrail.length > 0) {
+      // ECDLP Chaotic Pinball Hop Chords!
+      const maxK = ecc.hopAnimating ? ecc.hopStep : ecc.k;
+      const limit = Math.min(maxK, ecc.hopTrail.length);
+      for (let i = 1; i < limit; i++) {
+        const prev = ecc.hopTrail[i - 1].pt;
+        const curr = ecc.hopTrail[i].pt;
+        if (!prev || prev.inf || !curr || curr.inf) continue;
+        const s0 = eccFpToScreen(prev.x, prev.y);
+        const s1 = eccFpToScreen(curr.x, curr.y);
+        const alpha = 0.16 + 0.72 * (i / Math.max(1, limit - 1));
+        ctx.strokeStyle = i === limit - 1
+          ? 'rgba(255, 190, 92, 0.95)'
+          : `rgba(167, 139, 250, ${alpha.toFixed(3)})`;
+        ctx.lineWidth = i === limit - 1 ? 2.4 : 1.25;
+        ctx.beginPath();
+        ctx.moveTo(s0.sx, s0.sy);
+        ctx.lineTo(s1.sx, s1.sy);
+        ctx.stroke();
+      }
+    }
+
+    // Draw all curve lattice points in E(F_p)
+    const dotR = Math.max(2.6, Math.min(5.5, step * 0.34));
+    for (let i = 0; i < ecc.fpPoints.length; i++) {
+      const pt = ecc.fpPoints[i];
+      const sp = eccFpToScreen(pt.x, pt.y);
+      ctx.fillStyle = 'rgba(110, 225, 255, 0.72)';
+      ctx.beginPath();
+      ctx.arc(sp.sx, sp.sy, dotR, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+
+    // Axis labels outside clip
+    ctx.font = '600 10px ui-monospace, Menlo, Consolas, monospace';
+    ctx.fillStyle = 'rgba(154, 169, 204, 0.72)';
+    ctx.textAlign = 'left';
+    ctx.fillText(`𝔽_${p} Lattice (${ecc.fpPoints.length} affine pts + 𝒪)`, rx, ry - 18);
+    ctx.textAlign = 'right';
+    ctx.fillText(`Symmetry y = ${p}/2`, rx + size, ry - 18);
+
+    // Highlight active points outside clip so labels never crop
+    if (ecc.fpPoints.length > 0) {
+      if (ecc.op === 'add') {
+        const P = ecc.fpPoints[ecc.fpPIdx];
+        const Q = ecc.fpPoints[ecc.fpQIdx];
+        const R = eccFpAdd(P, Q);
+        if (!R.inf) {
+          const sNegR = eccFpToScreen(R.negR.x, R.negR.y);
+          const sR = eccFpToScreen(R.x, R.y);
+          ctx.strokeStyle = '#ff6083';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(sNegR.sx, sNegR.sy, 7, 0, Math.PI * 2);
+          ctx.stroke();
+          drawGlowOrb(sR.sx, sR.sy, 8, 'rgba(255, 190, 92, 1)', `R(${R.x},${R.y})`);
+        }
+        const sP = eccFpToScreen(P.x, P.y);
+        const sQ = eccFpToScreen(Q.x, Q.y);
+        if (ecc.fpPIdx !== ecc.fpQIdx) {
+          drawGlowOrb(sQ.sx, sQ.sy, 7.5, 'rgba(167, 139, 250, 1)', `Q(${Q.x},${Q.y})`);
+        }
+        drawGlowOrb(sP.sx, sP.sy, 8, 'rgba(88, 220, 255, 1)', `P(${P.x},${P.y})`);
+      } else {
+        const maxK = ecc.hopAnimating ? ecc.hopStep : ecc.k;
+        const limit = Math.min(maxK, ecc.hopTrail.length);
+        const G = ecc.fpPoints[ecc.fpGIdx];
+        const sG = eccFpToScreen(G.x, G.y);
+        drawGlowOrb(sG.sx, sG.sy, 8, 'rgba(88, 220, 255, 1)', `G(${G.x},${G.y})`);
+        const K = ecc.hopTrail[limit - 1]?.pt;
+        if (K && !K.inf && limit > 1) {
+          const sK = eccFpToScreen(K.x, K.y);
+          drawGlowOrb(sK.sx, sK.sy, 9, 'rgba(255, 190, 92, 1)', `${limit}·G(${K.x},${K.y})`);
+        }
+      }
+    }
+  }
+
+  // =========================================================================
+  // 12. RENDERER — LAB 2: VISUAL DIFFIE-HELLMAN KEY EXCHANGE
+  // =========================================================================
+  function drawPaintFlask(cx, cy, r, rgb, label, sub = '') {
+    ctx.save();
+    // Glow
+    const glow = ctx.createRadialGradient(cx, cy, r * 0.1, cx, cy, r * 1.9);
+    glow.addColorStop(0, rgbStr(rgb, 0.55));
+    glow.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r * 1.9, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Paint circle with specular highlight
+    const body = ctx.createRadialGradient(cx - r * 0.3, cy - r * 0.35, r * 0.1, cx, cy, r);
+    body.addColorStop(0, '#ffffff');
+    body.addColorStop(0.28, rgbStr(rgb, 1));
+    body.addColorStop(1, rgbStr(rgb.map(c => Math.round(c * 0.55)), 1));
+    ctx.fillStyle = body;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.lineWidth = 1.8;
+    ctx.strokeStyle = 'rgba(255,255,255,0.45)';
+    ctx.stroke();
+
+    if (label) {
+      ctx.font = '700 11px ui-monospace, Menlo, Consolas, monospace';
+      ctx.fillStyle = '#eef3ff';
+      ctx.textAlign = 'center';
+      ctx.fillText(label, cx, cy + r + 15);
+    }
+    if (sub) {
+      ctx.font = '600 10px ui-monospace, Menlo, Consolas, monospace';
+      ctx.fillStyle = '#9aa9cc';
+      ctx.fillText(sub, cx, cy + r + 29);
+    }
+    ctx.restore();
+  }
+
+  function renderDiffieHellman() {
+    const safe = getSafeRect();
+    const d = dhCompute();
+    const col = dhGetColors();
+    const t = dh.animT;
+
+    const padX = Math.max(12, safe.w * 0.03);
+    const colW = Math.min(240, (safe.w - padX * 4) / 3);
+    const leftX = safe.x + padX;
+    const midX = safe.x + safe.w * 0.5 - colW * 0.5;
+    const rightX = safe.x + safe.w - padX - colW;
+    const topY = safe.y + 8;
+    const panelH = Math.min(440, safe.h - 20);
+
+    // 3 Main Protocol Columns: Alice | Public Channel & Eve | Bob
+    drawGlassCard(leftX, topY, colW, panelH, 'rgba(88, 220, 255, 0.38)', 'rgba(8, 16, 32, 0.80)');
+    drawGlassCard(midX, topY, colW, panelH, 'rgba(255, 96, 131, 0.36)', 'rgba(20, 10, 20, 0.78)');
+    drawGlassCard(rightX, topY, colW, panelH, 'rgba(167, 139, 250, 0.38)', 'rgba(14, 12, 32, 0.80)');
+
+    const aCx = leftX + colW * 0.5;
+    const eCx = midX + colW * 0.5;
+    const bCx = rightX + colW * 0.5;
+
+    // Headers
+    ctx.textAlign = 'center';
+    ctx.font = '800 14px system-ui, sans-serif';
+    ctx.fillStyle = '#58dcff';
+    ctx.fillText('ALICE (PRIVATE)', aCx, topY + 26);
+    ctx.fillStyle = '#ff6083';
+    ctx.fillText('INSECURE WIRE · EVE', eCx, topY + 26);
+    ctx.fillStyle = '#a78bfa';
+    ctx.fillText('BOB (PRIVATE)', bCx, topY + 26);
+
+    const row1Y = topY + panelH * 0.21;
+    const row2Y = topY + panelH * 0.50;
+    const row3Y = topY + panelH * 0.80;
+    const flaskR = Math.max(17, Math.min(24, panelH * 0.056));
+
+    // Row 1: Public Base (Center) & Private Secrets (Left/Right)
+    drawPaintFlask(eCx, row1Y, flaskR, col.pub, `Public Paint`, `p=${d.p}, g=${d.g}`);
+    drawPaintFlask(aCx, row1Y, flaskR, col.alicePriv, `Secret a = ${d.a}`, `Kept hidden!`);
+    drawPaintFlask(bCx, row1Y, flaskR, col.bobPriv, `Secret b = ${d.b}`, `Kept hidden!`);
+
+    // Row 2: Mixed Public Keys A and B
+    const mixAlpha = Math.min(1, Math.max(0, (t - 0.15) / 0.22));
+    if (mixAlpha > 0) {
+      ctx.save();
+      ctx.globalAlpha = mixAlpha;
+      drawPaintFlask(aCx, row2Y, flaskR, col.pubA, `A = g^a mod p`, `A = ${d.A}`);
+      drawPaintFlask(bCx, row2Y, flaskR, col.pubB, `B = g^b mod p`, `B = ${d.B}`);
+      ctx.restore();
+    }
+
+    // Animated Fiber Conduits Across Eve (Row 2)
+    const wireY1 = row2Y - 14;
+    const wireY2 = row2Y + 14;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(88, 220, 255, 0.28)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 6]);
+    ctx.lineDashOffset = -app.time * 32;
+    ctx.beginPath(); ctx.moveTo(aCx + flaskR + 8, wireY1); ctx.lineTo(bCx - flaskR - 8, wireY1); ctx.stroke();
+
+    ctx.strokeStyle = 'rgba(167, 139, 250, 0.28)';
+    ctx.lineDashOffset = app.time * 32;
+    ctx.beginPath(); ctx.moveTo(bCx - flaskR - 8, wireY2); ctx.lineTo(aCx + flaskR + 8, wireY2); ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Moving Packet A (Alice -> Bob) & Packet B (Bob -> Alice)
+    const flyP = Math.min(1, Math.max(0, (t - 0.35) / 0.42));
+    if (flyP > 0) {
+      const startX = aCx + flaskR + 10;
+      const endX = bCx - flaskR - 10;
+      const pxA = startX + (endX - startX) * flyP;
+      const pxB = endX - (endX - startX) * flyP;
+
+      if (flyP < 1) {
+        drawPaintFlask(pxA, wireY1, 11, col.pubA, '', '');
+        ctx.font = '700 10px ui-monospace, monospace';
+        ctx.fillStyle = '#58dcff';
+        ctx.fillText(`A=${d.A} →`, pxA, wireY1 - 16);
+
+        drawPaintFlask(pxB, wireY2, 11, col.pubB, '', '');
+        ctx.fillStyle = '#a78bfa';
+        ctx.fillText(`← B=${d.B}`, pxB, wireY2 + 24);
+      }
+    }
+    ctx.restore();
+
+    // Eve Intercepting in Middle Column (Row 2 & Row 3)
+    const eveSeen = flyP > 0.48;
+    ctx.save();
+    ctx.font = '700 10.5px ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    if (eveSeen) {
+      ctx.fillStyle = '#ff9bb2';
+      ctx.fillText(`Intercepted: A=${d.A}, B=${d.B}`, eCx, row2Y + 42);
+      drawPaintFlask(eCx, row3Y, flaskR, col.eveMix, `Eve's Failed Mix`, `A·B ≠ g^(ab) mod p`);
+
+      // Live brute-force DLP struggle readout
+      ctx.font = '600 9.5px ui-monospace, monospace';
+      ctx.fillStyle = 'rgba(255, 130, 155, 0.85)';
+      ctx.fillText(`Brute DLP: ${d.g}^${dh.eveTryIdx} ≡ ${Number(modPowBig(d.g, dh.eveTryIdx, d.p))} ≠ ${d.A}`, eCx, row3Y + flaskR + 43);
+    } else {
+      ctx.fillStyle = 'rgba(255, 130, 155, 0.55)';
+      ctx.fillText('Listening on wire…', eCx, row2Y + 42);
+    }
+    ctx.restore();
+
+    // Row 3: Shared Secret Vaults (Alice & Bob converge to IDENTICAL Color & Number!)
+    const secAlpha = Math.min(1, Math.max(0, (t - 0.78) / 0.20));
+    if (secAlpha > 0) {
+      ctx.save();
+      ctx.globalAlpha = secAlpha;
+      drawPaintFlask(aCx, row3Y, flaskR + 2, col.shared, `S = B^a mod p = ${d.SA}`, `✓ Exact Match!`);
+      drawPaintFlask(bCx, row3Y, flaskR + 2, col.shared, `S = A^b mod p = ${d.SB}`, `✓ Exact Match!`);
+
+      // Glowing emerald verification arc beneath Eve connecting Alice & Bob
+      const arcY = topY + panelH - 12;
+      ctx.strokeStyle = 'rgba(74, 242, 178, 0.75)';
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.moveTo(aCx, row3Y + flaskR + 36);
+      ctx.quadraticCurveTo(eCx, arcY + 18, bCx, row3Y + flaskR + 36);
+      ctx.stroke();
+
+      drawGlassCard(eCx - 96, arcY - 12, 192, 24, 'rgba(74, 242, 178, 0.65)', 'rgba(8, 28, 22, 0.92)', 999);
+      ctx.fillStyle = '#4af2b2';
+      ctx.font = '700 10.5px ui-monospace, monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`SHARED SECRET S = ${d.SA} VERIFIED`, eCx, arcY);
+      ctx.restore();
+    }
+  }
+
+  // =========================================================================
+  // 13. RENDERER — LAB 3: RSA PUBLIC-KEY ENCRYPTION & DECRYPTION
+  // =========================================================================
+  function renderRsa() {
+    const safe = getSafeRect();
+    const pad = 12;
+    const topBarH = 66;
+    const pipeY = safe.y + topBarH + 16;
+    const pipeH = Math.max(180, safe.h - topBarH - 96);
+    const inspY = pipeY + pipeH + 14;
+    const inspH = 64;
+
+    // 1. Keygen Header Strip
+    drawGlassCard(safe.x, safe.y, safe.w, topBarH, 'rgba(255, 190, 92, 0.34)', 'rgba(10, 14, 28, 0.84)');
+    ctx.textBaseline = 'middle';
+    const segW = safe.w / 4;
+    const headers = [
+      { title: 'SECRET PRIMES', val: `p = ${rsa.p},  q = ${rsa.q}`, col: '#a78bfa' },
+      { title: 'MODULUS & TOTIENT', val: `n = ${rsa.n} · φ = ${rsa.phi}`, col: '#58dcff' },
+      { title: 'PUBLIC LOCK (e, n)', val: `(${rsa.e}, ${rsa.n})`, col: '#ffbe5c' },
+      { title: 'PRIVATE KEY (d, n)', val: `(${rsa.d}, ${rsa.n})`, col: '#4af2b2' }
+    ];
+    headers.forEach((h, i) => {
+      const cx = safe.x + segW * (i + 0.5);
+      if (i > 0) {
+        ctx.strokeStyle = 'rgba(148, 179, 255, 0.14)';
+        ctx.beginPath();
+        ctx.moveTo(safe.x + segW * i, safe.y + 12);
+        ctx.lineTo(safe.x + segW * i, safe.y + topBarH - 12);
+        ctx.stroke();
+      }
+      ctx.textAlign = 'center';
+      ctx.font = '700 9.5px system-ui, sans-serif';
+      ctx.fillStyle = '#8b9cc2';
+      ctx.fillText(h.title, cx, safe.y + 21);
+      ctx.font = '700 13px ui-monospace, Menlo, Consolas, monospace';
+      ctx.fillStyle = h.col;
+      ctx.fillText(h.val, cx, safe.y + 44);
+    });
+
+    // 2. Three-Stage Encryption Pipeline Canvas
+    drawGlassCard(safe.x, pipeY, safe.w, pipeH, 'rgba(148, 179, 255, 0.22)', 'rgba(7, 11, 22, 0.82)');
+
+    const yPlain = pipeY + pipeH * 0.20;
+    const yCipher = pipeY + pipeH * 0.52;
+    const yDec = pipeY + pipeH * 0.84;
+
+    // Stage Labels on left
+    const labelW = Math.min(138, safe.w * 0.22);
+    ctx.textAlign = 'left';
+    ctx.font = '700 10.5px ui-monospace, monospace';
+    ctx.fillStyle = '#58dcff';
+    ctx.fillText('PLAINTEXT (m)', safe.x + 14, yPlain);
+    ctx.fillStyle = '#ffbe5c';
+    ctx.fillText('CIPHERTEXT (m^e)', safe.x + 14, yCipher);
+    ctx.fillStyle = '#4af2b2';
+    ctx.fillText('DECRYPTED (c^d)', safe.x + 14, yDec);
+
+    // Subtle horizontal stage lanes
+    const laneLeft = safe.x + labelW;
+    const laneW = safe.w - labelW - 18;
+    const pkts = rsa.packets;
+    const count = Math.max(1, pkts.length);
+    const tileGap = Math.max(4, Math.min(10, laneW * 0.015));
+    const tileW = Math.min(58, (laneW - tileGap * (count - 1)) / count);
+    const totalW = count * tileW + (count - 1) * tileGap;
+    const startX = laneLeft + (laneW - totalW) * 0.5;
+    const tileH = Math.min(44, pipeH * 0.23);
+
+    rsa.packetRects = [];
+
+    for (let i = 0; i < pkts.length; i++) {
+      const p = pkts[i];
+      const tx = startX + i * (tileW + tileGap);
+      const tcx = tx + tileW * 0.5;
+      const isActive = (rsa.hoverIdx === i) || (rsa.hoverIdx === -1 && rsa.selectedIdx === i);
+
+      // Animation stagger per character
+      const charDelay = i * (0.35 / Math.max(1, count));
+      const progEnc = Math.min(1, Math.max(0, (rsa.animT - charDelay) / 0.26));
+      const progDec = Math.min(1, Math.max(0, (rsa.animT - charDelay - 0.34) / 0.26));
+
+      // Store clickable/hoverable hit box covering column
+      rsa.packetRects.push({ x: tx, y: pipeY + 8, w: tileW, h: pipeH - 16, idx: i });
+
+      // Vertical flow wires
+      ctx.strokeStyle = isActive ? 'rgba(255, 190, 92, 0.7)' : 'rgba(148, 179, 255, 0.16)';
+      ctx.lineWidth = isActive ? 2 : 1.1;
+      ctx.beginPath();
+      ctx.moveTo(tcx, yPlain + tileH * 0.5);
+      ctx.lineTo(tcx, yCipher - tileH * 0.5);
+      ctx.moveTo(tcx, yCipher + tileH * 0.5);
+      ctx.lineTo(tcx, yDec - tileH * 0.5);
+      ctx.stroke();
+
+      // Animated traveling light bead during encrypt/decrypt
+      if (progEnc > 0 && progEnc < 1) {
+        const by = (yPlain + tileH * 0.5) + (yCipher - yPlain - tileH) * progEnc;
+        ctx.fillStyle = '#ffbe5c';
+        ctx.beginPath(); ctx.arc(tcx, by, 4, 0, Math.PI * 2); ctx.fill();
+      }
+      if (progDec > 0 && progDec < 1) {
+        const by = (yCipher + tileH * 0.5) + (yDec - yCipher - tileH) * progDec;
+        ctx.fillStyle = '#4af2b2';
+        ctx.beginPath(); ctx.arc(tcx, by, 4, 0, Math.PI * 2); ctx.fill();
+      }
+
+      // 1) Plaintext Tile
+      drawGlassCard(tx, yPlain - tileH * 0.5, tileW, tileH,
+        isActive ? '#58dcff' : 'rgba(88, 220, 255, 0.35)',
+        isActive ? 'rgba(88, 220, 255, 0.20)' : 'rgba(88, 220, 255, 0.08)', 8);
+      ctx.textAlign = 'center';
+      ctx.font = '700 13px ui-monospace, monospace';
+      ctx.fillStyle = '#eef7ff';
+      ctx.fillText(p.ch === ' ' ? '␣' : p.ch, tcx, yPlain - 5);
+      ctx.font = '600 9px ui-monospace, monospace';
+      ctx.fillStyle = '#8fdfff';
+      ctx.fillText(String(p.m), tcx, yPlain + 11);
+
+      // 2) Ciphertext Tile
+      if (progEnc > 0.15) {
+        ctx.save();
+        ctx.globalAlpha = Math.min(1, progEnc * 1.25);
+        drawGlassCard(tx, yCipher - tileH * 0.5, tileW, tileH,
+          isActive ? '#ffbe5c' : 'rgba(255, 190, 92, 0.38)',
+          isActive ? 'rgba(255, 190, 92, 0.22)' : 'rgba(255, 190, 92, 0.09)', 8);
+        ctx.font = `700 ${tileW < 36 ? 9 : 11}px ui-monospace, monospace`;
+        ctx.fillStyle = '#ffdfaa';
+        ctx.fillText(String(p.c), tcx, yCipher);
+        ctx.restore();
+      }
+
+      // 3) Decrypted Tile
+      if (progDec > 0.15) {
+        ctx.save();
+        ctx.globalAlpha = Math.min(1, progDec * 1.25);
+        const okCol = p.ok ? '#4af2b2' : '#ff6083';
+        drawGlassCard(tx, yDec - tileH * 0.5, tileW, tileH,
+          isActive ? okCol : (p.ok ? 'rgba(74, 242, 178, 0.38)' : 'rgba(255, 96, 131, 0.5)'),
+          isActive ? 'rgba(74, 242, 178, 0.20)' : 'rgba(74, 242, 178, 0.08)', 8);
+        ctx.font = '700 13px ui-monospace, monospace';
+        ctx.fillStyle = p.ok ? '#dcfff2' : '#ffd0db';
+        ctx.fillText(p.decCh === ' ' ? '␣' : p.decCh, tcx, yDec - 5);
+        ctx.font = '600 9px ui-monospace, monospace';
+        ctx.fillStyle = okCol;
+        ctx.fillText(String(p.dec), tcx, yDec + 11);
+        ctx.restore();
+      }
+    }
+
+    // 3. Bottom Equation Inspector for Focused Character
+    drawGlassCard(safe.x, inspY, safe.w, inspH, 'rgba(88, 220, 255, 0.34)', 'rgba(8, 13, 26, 0.88)');
+    const focusIdx = rsa.hoverIdx >= 0 ? rsa.hoverIdx : rsa.selectedIdx;
+    const fp = pkts[focusIdx] || pkts[0];
+    if (fp) {
+      ctx.textAlign = 'center';
+      ctx.font = '700 12px ui-monospace, Menlo, Consolas, monospace';
+      ctx.fillStyle = '#58dcff';
+      ctx.fillText(
+        `ENCRYPT:  '${fp.ch}' (m = ${fp.m})  →  c = ${fp.m}^${rsa.e} mod ${rsa.n} = ${fp.c}`,
+        safe.x + safe.w * 0.5, inspY + 21
+      );
+      ctx.fillStyle = fp.ok ? '#4af2b2' : '#ff6083';
+      ctx.fillText(
+        `DECRYPT:  c = ${fp.c}  →  m' = ${fp.c}^${rsa.d} mod ${rsa.n} = ${fp.dec} ('${fp.decCh}')  ${fp.ok ? '✓ LOSSLESS' : '✗ OVERFLOW'}`,
+        safe.x + safe.w * 0.5, inspY + 44
+      );
+    }
+  }
+
+  // =========================================================================
+  // 14. RENDERER — LAB 4: TRUE SHA-256 & 256-BIT AVALANCHE LED MATRIX
+  // =========================================================================
+  function renderSha256() {
+    const safe = getSafeRect();
+    const topH = 66;
+    const botH = 74;
+    const matY = safe.y + topH + 12;
+    const matH = Math.max(170, safe.h - topH - botH - 24);
+    const botY = matY + matH + 12;
+
+    // 1. Top Avalanche Meter & Message Diff Strip
+    drawGlassCard(safe.x, safe.y, safe.w, topH, 'rgba(255, 190, 92, 0.34)', 'rgba(9, 13, 26, 0.86)');
+
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'left';
+    ctx.font = '700 11px ui-monospace, monospace';
+    ctx.fillStyle = '#58dcff';
+    ctx.fillText(`MSG A: "${sha.msgA.slice(0, 26)}"`, safe.x + 14, safe.y + 19);
+    ctx.fillStyle = '#ffbe5c';
+    ctx.fillText(`MSG B: "${sha.msgB.slice(0, 26)}"`, safe.x + safe.w * 0.5, safe.y + 19);
+
+    // Avalanche Percentage Bar (Target 50%)
+    const barX = safe.x + 14;
+    const barY = safe.y + 39;
+    const barW = safe.w - 28;
+    const barH = 14;
+    roundRect(barX, barY, barW, barH, 999);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
+    ctx.fill();
+
+    const fillW = Math.max(0, Math.min(barW, barW * (sha.diffPct / 100)));
+    if (fillW > 2) {
+      const grad = ctx.createLinearGradient(barX, 0, barX + barW, 0);
+      grad.addColorStop(0, '#58dcff');
+      grad.addColorStop(0.5, '#ffbe5c');
+      grad.addColorStop(1, '#ff6083');
+      roundRect(barX, barY, fillW, barH, 999);
+      ctx.fillStyle = grad;
+      ctx.fill();
+    }
+
+    // Ideal 50% marker tick
+    const midBar = barX + barW * 0.5;
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(midBar, barY - 3);
+    ctx.lineTo(midBar, barY + barH + 3);
+    ctx.stroke();
+
+    ctx.font = '700 10px ui-monospace, monospace';
+    ctx.fillStyle = '#eef3ff';
+    ctx.textAlign = 'center';
+    ctx.fillText(`${sha.diffCount} / 256 BITS FLIPPED (${sha.diffPct.toFixed(2)}% · Ideal 50%)`, midBar, barY + barH * 0.5);
+
+    // 2. Main 256-Bit LED Matrix (32 Columns x 8 Rows = 256 bits)
+    drawGlassCard(safe.x, matY, safe.w, matH, 'rgba(88, 220, 255, 0.28)', 'rgba(5, 9, 20, 0.88)');
+
+    const cols = 32;
+    const rows = 8;
+    const headerOff = 28;
+    const footerOff = 24;
+    const padX = 18;
+    const gridW = safe.w - padX * 2;
+    const gridH = matH - headerOff - footerOff;
+    const cellW = gridW / cols;
+    const cellH = gridH / rows;
+    const gx0 = safe.x + padX;
+    const gy0 = matY + headerOff;
+
+    sha.matrixRect = { x: gx0, y: gy0, w: gridW, h: gridH, cellW, cellH };
+
+    ctx.textAlign = 'left';
+    ctx.font = '700 10.5px ui-monospace, monospace';
+    ctx.fillStyle = '#9aa9cc';
+    ctx.fillText('256-BIT SHA-256 AVALANCHE LED MATRIX (32×8)  ·  ', gx0, matY + 15);
+    ctx.fillStyle = '#ffbe5c';
+    ctx.fillText('■ FLIPPED BIT (A ≠ B)', gx0 + 305, matY + 15);
+    if (safe.w > 590) {
+      ctx.fillStyle = '#4d7a9c';
+      ctx.fillText('■ SAME BIT (A = B)', gx0 + 455, matY + 15);
+    }
+
+    const flashBoost = sha.flashTimer * 0.45;
+
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const idx = r * cols + c;
+        const bA = sha.bitsA[idx];
+        const bB = sha.bitsB[idx];
+        const flipped = bA !== bB;
+        const isHover = sha.hoverBit === idx;
+
+        const cx = gx0 + c * cellW;
+        const cy = gy0 + r * cellH;
+        const padCell = Math.max(1.5, Math.min(3.5, Math.min(cellW, cellH) * 0.14));
+        const bw = cellW - padCell * 2;
+        const bh = cellH - padCell * 2;
+
+        if (flipped) {
+          // Incandescent amber LED for every flipped bit!
+          const pulse = 0.85 + 0.15 * Math.sin(app.time * 4.5 + idx * 0.27);
+          roundRect(cx + padCell, cy + padCell, bw, bh, 4);
+          ctx.fillStyle = `rgba(255, ${Math.round(162 + flashBoost * 75)}, 56, ${(0.72 * pulse + flashBoost).toFixed(3)})`;
+          ctx.fill();
+          ctx.strokeStyle = isHover ? '#ffffff' : 'rgba(255, 224, 150, 0.85)';
+          ctx.lineWidth = isHover ? 2 : 1;
+          ctx.stroke();
+        } else {
+          // Cool slate/cyan LED for unchanged bit (brighter if 1, dimmer if 0)
+          roundRect(cx + padCell, cy + padCell, bw, bh, 4);
+          ctx.fillStyle = bA === 1 ? 'rgba(62, 165, 220, 0.28)' : 'rgba(255, 255, 255, 0.045)';
+          ctx.fill();
+          ctx.strokeStyle = isHover ? '#58dcff' : (bA === 1 ? 'rgba(88, 220, 255, 0.34)' : 'rgba(148, 179, 255, 0.10)');
+          ctx.lineWidth = isHover ? 2 : 0.8;
+          ctx.stroke();
+        }
+
+        // Draw bit value inside cell if cells are large enough
+        if (bw >= 13 && bh >= 13) {
+          ctx.font = `700 ${Math.min(11, Math.floor(bh * 0.55))}px ui-monospace, monospace`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillStyle = flipped ? '#1d0d02' : (bA === 1 ? '#8ce4ff' : 'rgba(130, 150, 190, 0.45)');
+          ctx.fillText(String(bB), cx + cellW * 0.5, cy + cellH * 0.5 + 0.5);
+        }
+      }
+    }
+
+    // Hover Bit Inspector Strip inside bottom of Matrix card
+    ctx.textAlign = 'center';
+    ctx.font = '600 10.5px ui-monospace, monospace';
+    if (sha.hoverBit >= 0 && sha.hoverBit < 256) {
+      const idx = sha.hoverBit;
+      const byteIdx = Math.floor(idx / 8);
+      const bA = sha.bitsA[idx], bB = sha.bitsB[idx];
+      ctx.fillStyle = bA !== bB ? '#ffbe5c' : '#58dcff';
+      ctx.fillText(
+        `Bit #${idx} (Byte ${byteIdx}) · Hash A bit = ${bA} · Hash B bit = ${bB} · ${bA !== bB ? '⚡ FLIPPED BY AVALANCHE' : 'UNCHANGED'}`,
+        safe.x + safe.w * 0.5, matY + matH - 12
+      );
+    } else {
+      ctx.fillStyle = '#7e90b8';
+      ctx.fillText('Hover any of the 256 LED cells to inspect bit-by-bit Hash A vs Hash B diffusion', safe.x + safe.w * 0.5, matY + matH - 12);
+    }
+
+    // 3. Bottom Proof-of-Work Nonce Miner Visualizer
+    const powBorder = sha.powFound ? 'rgba(74, 242, 178, 0.65)' : (sha.mining ? 'rgba(255, 190, 92, 0.55)' : 'rgba(148, 179, 255, 0.22)');
+    drawGlassCard(safe.x, botY, safe.w, botH, powBorder, 'rgba(8, 13, 25, 0.88)');
+
+    const prefix = '0'.repeat(sha.difficulty);
+    const liveHash = sha.powHash || sha.hexA;
+    ctx.textAlign = 'left';
+    ctx.font = '700 11px ui-monospace, monospace';
+    ctx.fillStyle = sha.powFound ? '#4af2b2' : (sha.mining ? '#ffbe5c' : '#9aa9cc');
+    const stateLabel = sha.powFound
+      ? `✓ PROOF-OF-WORK BLOCK MINED!  Nonce = ${sha.nonce.toLocaleString()}`
+      : (sha.mining
+        ? `⛏ MINING SHA-256("${sha.msgA.slice(0, 14)}:" + ${sha.nonce.toLocaleString()}) · ${(sha.hashRate / 1000).toFixed(1)} kH/s`
+        : `PROOF-OF-WORK MINER  ·  Target prefix: "${prefix}…"  (Click ⛏ Start PoW Miner in Controls)`);
+    ctx.fillText(stateLabel, safe.x + 14, botY + 23);
+
+    // Highlight leading zeros in emerald if matching
+    const hashStr = liveHash;
+    let leadZeros = 0;
+    while (leadZeros < hashStr.length && hashStr[leadZeros] === '0') leadZeros++;
+    const showZeros = hashStr.slice(0, leadZeros);
+    const showRest = hashStr.slice(leadZeros);
+
+    ctx.font = `700 ${safe.w < 580 ? 10 : 12.5}px ui-monospace, Menlo, Consolas, monospace`;
+    const hx = safe.x + 14;
+    const hy = botY + 49;
+    ctx.fillStyle = '#4af2b2';
+    ctx.fillText(showZeros, hx, hy);
+    const zw = ctx.measureText(showZeros).width;
+    ctx.fillStyle = sha.powFound ? '#d2ffed' : (sha.mining ? '#ffdba6' : '#8aa0c8');
+    ctx.fillText(showRest, hx + zw, hy);
+  }
+
+  // =========================================================================
+  // 15. CANVAS POINTER & WHEEL INTERACTIONS
+  // =========================================================================
+  function getCanvasPos(e) {
+    const rect = canvas.getBoundingClientRect();
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  }
+
+  canvas.addEventListener('pointerdown', (e) => {
+    const pos = getCanvasPos(e);
+    app.mouseX = pos.x;
+    app.mouseY = pos.y;
+
+    if (app.lab === 'ecc') {
+      if (ecc.field === 'real') {
+        const hitR = 24;
+        if (ecc.op === 'add') {
+          const P = eccPointFromX(ecc.Px, ecc.Ps);
+          const Q = eccPointFromX(ecc.Qx, ecc.Qs);
+          const sP = eccWorldToScreen(P.x, P.y);
+          const sQ = eccWorldToScreen(Q.x, Q.y);
+          if (Math.hypot(pos.x - sP.sx, pos.y - sP.sy) < hitR) {
+            ecc.dragging = 'P';
+          } else if (Math.hypot(pos.x - sQ.sx, pos.y - sQ.sy) < hitR) {
+            ecc.dragging = 'Q';
+          } else {
+            ecc.dragging = 'pan';
+            ecc.dragStartX = pos.x;
+            ecc.dragStartY = pos.y;
+            ecc.camStartX = ecc.camX;
+            ecc.camStartY = ecc.camY;
+          }
+        } else {
+          const G = eccPointFromX(ecc.Gx, ecc.Gs);
+          const sG = eccWorldToScreen(G.x, G.y);
+          if (Math.hypot(pos.x - sG.sx, pos.y - sG.sy) < hitR) {
+            ecc.dragging = 'G';
+          } else {
+            ecc.dragging = 'pan';
+            ecc.dragStartX = pos.x;
+            ecc.dragStartY = pos.y;
+            ecc.camStartX = ecc.camX;
+            ecc.camStartY = ecc.camY;
+          }
+        }
+        canvas.setPointerCapture(e.pointerId);
+        canvas.className = 'grabbing';
+      } else if (ecc.fpPoints.length > 0) {
+        // Snap click to nearest F_p curve point
+        let bestIdx = -1, bestDist = 26;
+        for (let i = 0; i < ecc.fpPoints.length; i++) {
+          const sp = eccFpToScreen(ecc.fpPoints[i].x, ecc.fpPoints[i].y);
+          const d = Math.hypot(pos.x - sp.sx, pos.y - sp.sy);
+          if (d < bestDist) { bestDist = d; bestIdx = i; }
+        }
+        if (bestIdx >= 0) {
+          if (ecc.op === 'add') {
+            // Drag/pick closest of P or Q, or alternate
+            const sP = eccFpToScreen(ecc.fpPoints[ecc.fpPIdx].x, ecc.fpPoints[ecc.fpPIdx].y);
+            const sQ = eccFpToScreen(ecc.fpPoints[ecc.fpQIdx].x, ecc.fpPoints[ecc.fpQIdx].y);
+            const dP = Math.hypot(pos.x - sP.sx, pos.y - sP.sy);
+            const dQ = Math.hypot(pos.x - sQ.sx, pos.y - sQ.sy);
+            if (dP < 20) {
+              ecc.dragging = 'fpP';
+            } else if (dQ < 20) {
+              ecc.dragging = 'fpQ';
+            } else if (dP <= dQ) {
+              ecc.fpPIdx = bestIdx;
+              ecc.dragging = 'fpP';
+            } else {
+              ecc.fpQIdx = bestIdx;
+              ecc.dragging = 'fpQ';
+            }
+          } else {
+            ecc.fpGIdx = bestIdx;
+            ecc.dragging = 'fpG';
+            eccRebuildTrail();
+          }
+          audio.click(720, 0.03);
+          syncEccUI();
+          canvas.setPointerCapture(e.pointerId);
+        }
+      }
+    } else if (app.lab === 'rsa') {
+      for (const r of rsa.packetRects) {
+        if (pos.x >= r.x && pos.x <= r.x + r.w && pos.y >= r.y && pos.y <= r.y + r.h) {
+          rsa.selectedIdx = r.idx;
+          audio.click(640 + r.idx * 25, 0.03);
+          break;
+        }
+      }
+    }
+  });
+
+  canvas.addEventListener('pointermove', (e) => {
+    const pos = getCanvasPos(e);
+    app.mouseX = pos.x;
+    app.mouseY = pos.y;
+
+    if (app.lab === 'ecc') {
+      if (ecc.dragging === 'pan') {
+        ecc.camX = ecc.camStartX - (pos.x - ecc.dragStartX) / ecc.scale;
+        ecc.camY = ecc.camStartY + (pos.y - ecc.dragStartY) / ecc.scale;
+      } else if (ecc.dragging === 'P' || ecc.dragging === 'Q' || ecc.dragging === 'G') {
+        const w = eccScreenToWorld(pos.x, pos.y);
+        const vx = eccFindValidX(Math.max(-6, Math.min(6, w.wx)));
+        const sign = w.wy >= 0 ? 1 : -1;
+        if (ecc.dragging === 'P') { ecc.Px = vx; ecc.Ps = sign; }
+        else if (ecc.dragging === 'Q') { ecc.Qx = vx; ecc.Qs = sign; }
+        else { ecc.Gx = vx; ecc.Gs = sign; eccRebuildTrail(); }
+        syncEccUI();
+      } else if (ecc.dragging === 'fpP' || ecc.dragging === 'fpQ' || ecc.dragging === 'fpG') {
+        let bestIdx = -1, bestDist = 45;
+        for (let i = 0; i < ecc.fpPoints.length; i++) {
+          const sp = eccFpToScreen(ecc.fpPoints[i].x, ecc.fpPoints[i].y);
+          const d = Math.hypot(pos.x - sp.sx, pos.y - sp.sy);
+          if (d < bestDist) { bestDist = d; bestIdx = i; }
+        }
+        if (bestIdx >= 0) {
+          if (ecc.dragging === 'fpP' && ecc.fpPIdx !== bestIdx) { ecc.fpPIdx = bestIdx; audio.click(680, 0.02, 0.03); }
+          else if (ecc.dragging === 'fpQ' && ecc.fpQIdx !== bestIdx) { ecc.fpQIdx = bestIdx; audio.click(760, 0.02, 0.03); }
+          else if (ecc.dragging === 'fpG' && ecc.fpGIdx !== bestIdx) { ecc.fpGIdx = bestIdx; eccRebuildTrail(); audio.click(820, 0.02, 0.03); }
+          syncEccUI();
+        }
+      } else {
+        // Hover cursor hint
+        if (ecc.field === 'real') {
+          let near = false;
+          if (ecc.op === 'add') {
+            const sP = eccWorldToScreen(ecc.Px, eccPointFromX(ecc.Px, ecc.Ps).y);
+            const sQ = eccWorldToScreen(ecc.Qx, eccPointFromX(ecc.Qx, ecc.Qs).y);
+            near = Math.hypot(pos.x - sP.sx, pos.y - sP.sy) < 22 || Math.hypot(pos.x - sQ.sx, pos.y - sQ.sy) < 22;
+          } else {
+            const sG = eccWorldToScreen(ecc.Gx, eccPointFromX(ecc.Gx, ecc.Gs).y);
+            near = Math.hypot(pos.x - sG.sx, pos.y - sG.sy) < 22;
+          }
+          canvas.className = near ? 'grab' : '';
+        } else {
+          canvas.className = 'pointer';
+        }
+      }
+    } else if (app.lab === 'rsa') {
+      rsa.hoverIdx = -1;
+      for (const r of rsa.packetRects) {
+        if (pos.x >= r.x && pos.x <= r.x + r.w && pos.y >= r.y && pos.y <= r.y + r.h) {
+          rsa.hoverIdx = r.idx;
+          break;
+        }
+      }
+      canvas.className = rsa.hoverIdx >= 0 ? 'pointer' : '';
+    } else if (app.lab === 'sha') {
+      const m = sha.matrixRect;
+      if (pos.x >= m.x && pos.x < m.x + m.w && pos.y >= m.y && pos.y < m.y + m.h && m.cellW > 0) {
+        const c = Math.floor((pos.x - m.x) / m.cellW);
+        const r = Math.floor((pos.y - m.y) / m.cellH);
+        const idx = r * 32 + c;
+        sha.hoverBit = (idx >= 0 && idx < 256) ? idx : -1;
+        canvas.className = 'pointer';
+      } else {
+        sha.hoverBit = -1;
+        canvas.className = '';
+      }
+    } else {
+      canvas.className = '';
+    }
+  });
+
+  canvas.addEventListener('pointerup', () => {
+    ecc.dragging = null;
+    canvas.className = '';
+  });
+
+  canvas.addEventListener('wheel', (e) => {
+    if (app.lab === 'ecc' && ecc.field === 'real') {
+      e.preventDefault();
+      const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
+      ecc.scale = Math.max(26, Math.min(260, ecc.scale * factor));
+    }
+  }, { passive: false });
+
+  // =========================================================================
+  // 16. UI EVENT WIRING & KEYBOARD SHORTCUTS
+  // =========================================================================
+  function switchLab(lab) {
+    app.lab = lab;
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.lab === lab));
+    document.querySelectorAll('.tab-pane').forEach(p => p.classList.toggle('active', p.id === `pane-${lab}`));
+    audio.click(540, 0.04);
+    if (lab === 'dh') dhReplay();
+    if (lab === 'rsa') { rsa.animT = 0; rsa.animating = true; }
+    if (lab === 'sha') shaRecompute(false);
+    updateTelemetry();
+  }
+
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => switchLab(btn.dataset.lab));
+  });
+
+  // ECC Controls
+  document.getElementById('ecc-field-real').addEventListener('click', () => {
+    ecc.field = 'real';
+    eccRebuildTrail();
+    syncEccUI();
+    audio.click(620);
+  });
+  document.getElementById('ecc-field-fp').addEventListener('click', () => {
+    ecc.field = 'fp';
+    ecc.a = Math.round(ecc.a);
+    ecc.b = Math.round(ecc.b);
+    eccComputeFpPoints();
+    syncEccUI();
+    audio.click(740);
+  });
+  document.querySelectorAll('.ecc-p-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      ecc.p = Number(btn.dataset.p);
+      eccComputeFpPoints();
+      syncEccUI();
+      audio.click(680);
+    });
+  });
+
+  document.getElementById('ecc-op-add').addEventListener('click', () => {
+    ecc.op = 'add';
+    ecc.hopAnimating = false;
+    syncEccUI();
+    audio.click(600);
+  });
+  document.getElementById('ecc-op-scalar').addEventListener('click', () => {
+    ecc.op = 'scalar';
+    eccRebuildTrail();
+    syncEccUI();
+    audio.click(700);
+  });
+
+  document.getElementById('ecc-btn-double').addEventListener('click', () => {
+    ecc.op = 'add';
+    if (ecc.field === 'real') {
+      ecc.Qx = ecc.Px; ecc.Qs = ecc.Ps;
+    } else {
+      ecc.fpQIdx = ecc.fpPIdx;
+    }
+    syncEccUI();
+    audio.click(820);
+  });
+  document.getElementById('ecc-btn-invert').addEventListener('click', () => {
+    ecc.op = 'add';
+    if (ecc.field === 'real') {
+      ecc.Qx = ecc.Px; ecc.Qs = -ecc.Ps;
+    } else if (ecc.fpPoints.length > 0) {
+      const P = ecc.fpPoints[ecc.fpPIdx];
+      const invY = mod(ecc.p - P.y, ecc.p);
+      const found = ecc.fpPoints.findIndex(pt => pt.x === P.x && pt.y === invY);
+      if (found >= 0) ecc.fpQIdx = found;
+    }
+    syncEccUI();
+    audio.click(480);
+  });
+
+  document.getElementById('ecc-k-slider').addEventListener('input', (e) => {
+    ecc.op = 'scalar';
+    ecc.hopAnimating = false;
+    ecc.k = Number(e.target.value);
+    ecc.hopStep = ecc.k;
+    syncEccUI();
+    audio.hop(ecc.k);
+  });
+  document.getElementById('ecc-btn-hop').addEventListener('click', eccTriggerHop);
+  document.getElementById('ecc-btn-randk').addEventListener('click', () => {
+    ecc.k = 2 + Math.floor(Math.random() * 31);
+    eccTriggerHop();
+  });
+
+  document.getElementById('ecc-a-slider').addEventListener('input', (e) => {
+    ecc.a = Number(e.target.value);
+    if (ecc.field === 'fp') eccComputeFpPoints(); else eccRebuildTrail();
+    syncEccUI();
+  });
+  document.getElementById('ecc-b-slider').addEventListener('input', (e) => {
+    ecc.b = Number(e.target.value);
+    if (ecc.field === 'fp') eccComputeFpPoints(); else eccRebuildTrail();
+    syncEccUI();
+  });
+
+  const ECC_PRESETS = {
+    classic: { a: -2, b: 2 },
+    secp:    { a: 0,  b: 7 },
+    island:  { a: -3, b: 1 },
+    gentle:  { a: -1, b: 3 }
+  };
+  document.querySelectorAll('[data-ecc-preset]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const pr = ECC_PRESETS[btn.dataset.eccPreset];
+      if (!pr) return;
+      ecc.a = pr.a;
+      ecc.b = pr.b;
+      document.querySelectorAll('[data-ecc-preset]').forEach(b => b.classList.toggle('active', b === btn));
+      if (ecc.field === 'fp') eccComputeFpPoints(); else eccRebuildTrail();
+      syncEccUI();
+      audio.click(720);
+    });
+  });
+
+  // Diffie-Hellman Controls
+  document.querySelectorAll('.dh-p-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      dh.p = Number(btn.dataset.p);
+      dh.g = Number(btn.dataset.g);
+      syncDhUI();
+      dhReplay();
+    });
+  });
+  document.getElementById('dh-a-slider').addEventListener('input', (e) => {
+    dh.a = Number(e.target.value);
+    dh.animT = 1.0;
+    syncDhUI();
+  });
+  document.getElementById('dh-b-slider').addEventListener('input', (e) => {
+    dh.b = Number(e.target.value);
+    dh.animT = 1.0;
+    syncDhUI();
+  });
+  document.getElementById('dh-btn-replay').addEventListener('click', dhReplay);
+  document.getElementById('dh-btn-rand').addEventListener('click', () => {
+    const maxSec = Math.min(dh.p - 2, 120);
+    dh.a = 2 + Math.floor(Math.random() * (maxSec - 2));
+    dh.b = 2 + Math.floor(Math.random() * (maxSec - 2));
+    syncDhUI();
+    dhReplay();
+  });
+
+  // RSA Controls
+  const rsaPSel = document.getElementById('rsa-p-select');
+  const rsaQSel = document.getElementById('rsa-q-select');
+  RSA_PRIMES.forEach(pr => {
+    const o1 = document.createElement('option'); o1.value = String(pr); o1.textContent = `p = ${pr}`; rsaPSel.appendChild(o1);
+    const o2 = document.createElement('option'); o2.value = String(pr); o2.textContent = `q = ${pr}`; rsaQSel.appendChild(o2);
+  });
+  rsaPSel.addEventListener('change', (e) => { rsa.p = Number(e.target.value); rsaRecompute(true); });
+  rsaQSel.addEventListener('change', (e) => { rsa.q = Number(e.target.value); rsaRecompute(true); });
+  document.getElementById('rsa-e-select').addEventListener('change', (e) => { rsa.e = Number(e.target.value); rsaRecompute(true); });
+  document.getElementById('rsa-btn-rand').addEventListener('click', () => {
+    // Pick primes whose product n > 140 for clean ASCII encoding
+    let p = 61, q = 53;
+    for (let tries = 0; tries < 30; tries++) {
+      p = RSA_PRIMES[Math.floor(Math.random() * RSA_PRIMES.length)];
+      q = RSA_PRIMES[Math.floor(Math.random() * RSA_PRIMES.length)];
+      if (p !== q && p * q > 255) break;
+    }
+    rsa.p = p; rsa.q = q;
+    rsaRecompute(true);
+  });
+  document.getElementById('rsa-msg-input').addEventListener('input', (e) => {
+    rsa.message = e.target.value || ' ';
+    rsaRecompute(false);
+    rsa.animT = 1.0;
+  });
+  document.getElementById('rsa-btn-send').addEventListener('click', () => rsaRecompute(true));
+  document.getElementById('rsa-btn-sample').addEventListener('click', () => {
+    rsa.sampleIdx = (rsa.sampleIdx + 1) % RSA_SAMPLES.length;
+    rsa.message = RSA_SAMPLES[rsa.sampleIdx];
+    document.getElementById('rsa-msg-input').value = rsa.message;
+    rsaRecompute(true);
+  });
+
+  // SHA-256 Controls
+  document.getElementById('sha-input-a').addEventListener('input', (e) => {
+    sha.msgA = e.target.value;
+    sha.powFound = false;
+    sha.lastFlipInfo = 'Live digest comparison active';
+    shaRecompute(true);
+  });
+  document.getElementById('sha-input-b').addEventListener('input', (e) => {
+    sha.msgB = e.target.value;
+    sha.lastFlipInfo = 'Live digest comparison active';
+    shaRecompute(true);
+  });
+  document.getElementById('sha-btn-flip').addEventListener('click', shaFlipOneBit);
+  document.getElementById('sha-btn-sync').addEventListener('click', () => {
+    sha.msgB = sha.msgA;
+    document.getElementById('sha-input-b').value = sha.msgB;
+    sha.lastFlipInfo = 'Messages identical — 0 / 256 bits differ (0.00%)';
+    shaRecompute(true);
+    audio.click(520);
+  });
+  document.querySelectorAll('.pow-diff-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      sha.difficulty = Number(btn.dataset.zeros);
+      sha.powFound = false;
+      sha.nonce = 0;
+      syncShaUI();
+      audio.click(660);
+    });
+  });
+  document.getElementById('sha-btn-mine').addEventListener('click', () => {
+    if (sha.mining) {
+      sha.mining = false;
+    } else {
+      if (sha.powFound) { sha.nonce = 0; sha.powFound = false; }
+      sha.mining = true;
+      sha.hashesInWindow = 0;
+      sha.rateWindowStart = performance.now();
+    }
+    syncShaUI();
+    audio.click(760);
+  });
+  document.getElementById('sha-btn-reset-mine').addEventListener('click', () => {
+    sha.mining = false;
+    sha.powFound = false;
+    sha.nonce = 0;
+    sha.powHash = '';
+    sha.hashRate = 0;
+    syncShaUI();
+    audio.click(500);
+  });
+
+  // Transport Bar Controls
+  const btnPlay = document.getElementById('btn-play');
+  const btnAudio = document.getElementById('btn-audio');
+  const btnDrawer = document.getElementById('btn-drawer');
+  const drawerEl = document.getElementById('drawer');
+
+  function togglePlay() {
+    app.paused = !app.paused;
+    btnPlay.textContent = app.paused ? '▶ Play' : '⏸ Pause';
+    btnPlay.classList.toggle('active', !app.paused);
+  }
+  function resetCurrentLab() {
+    if (app.lab === 'ecc') {
+      ecc.a = -2; ecc.b = 2; ecc.Px = -1.15; ecc.Ps = 1; ecc.Qx = 0.45; ecc.Qs = 1;
+      ecc.Gx = -1.05; ecc.Gs = 1; ecc.camX = 0.4; ecc.camY = 0; ecc.scale = 88;
+      ecc.k = 7; ecc.hopAnimating = false;
+      eccComputeFpPoints();
+      syncEccUI();
+    } else if (app.lab === 'dh') {
+      dh.p = 23; dh.g = 5; dh.a = 6; dh.b = 15;
+      syncDhUI();
+      dhReplay();
+    } else if (app.lab === 'rsa') {
+      rsa.p = 61; rsa.q = 53; rsa.e = 17; rsa.message = 'HELLO CIPHER';
+      document.getElementById('rsa-msg-input').value = rsa.message;
+      rsaRecompute(true);
+    } else {
+      sha.msgA = 'Crypto Lab 2026'; sha.msgB = 'Crypto Lab 2027';
+      document.getElementById('sha-input-a').value = sha.msgA;
+      document.getElementById('sha-input-b').value = sha.msgB;
+      sha.mining = false; sha.powFound = false; sha.nonce = 0; sha.powHash = '';
+      sha.lastFlipInfo = 'Reset to 1-bit difference ("6" vs "7")';
+      shaRecompute(true);
+    }
+    audio.click(580);
+  }
+  function toggleDrawer() {
+    app.drawerOpen = !app.drawerOpen;
+    drawerEl.classList.toggle('collapsed', !app.drawerOpen);
+    btnDrawer.classList.toggle('active', app.drawerOpen);
+  }
+  function toggleCinema() {
+    app.zenMode = !app.zenMode;
+    document.body.classList.toggle('zen-mode', app.zenMode);
+  }
+
+  btnPlay.addEventListener('click', togglePlay);
+  document.getElementById('btn-reset').addEventListener('click', resetCurrentLab);
+  btnAudio.addEventListener('click', () => {
+    const on = audio.toggle();
+    btnAudio.textContent = on ? '🔊 Audio: On' : '🔇 Audio: Off';
+    btnAudio.classList.toggle('active', on);
+  });
+  btnDrawer.addEventListener('click', toggleDrawer);
+  document.getElementById('btn-cinema').addEventListener('click', toggleCinema);
+  document.getElementById('btn-zen-restore').addEventListener('click', toggleCinema);
+
+  window.addEventListener('keydown', (e) => {
+    const tag = document.activeElement?.tagName;
+    if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') {
+      if (e.key === 'Escape') document.activeElement.blur();
+      return;
+    }
+    if (e.key === 'h' || e.key === 'H') toggleCinema();
+    else if (e.key === 'c' || e.key === 'C') toggleDrawer();
+    else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+    else if (e.key === 'r' || e.key === 'R') resetCurrentLab();
+    else if (e.key === '1') switchLab('ecc');
+    else if (e.key === '2') switchLab('dh');
+    else if (e.key === '3') switchLab('rsa');
+    else if (e.key === '4') switchLab('sha');
+  });
+
+  // =========================================================================
+  // 17. MAIN ANIMATION LOOP
+  // =========================================================================
+  eccComputeFpPoints();
+  syncEccUI();
+  syncDhUI();
+  rsaRecompute(false);
+  shaRecompute(false);
+  updateTelemetry();
+
+  let lastTs = performance.now();
+  function frame(ts) {
+    const dt = Math.min(0.05, (ts - lastTs) / 1000);
+    lastTs = ts;
+
+    if (!app.paused) {
+      app.time += dt;
+
+      // ECC k·G Hop animation
+      if (app.lab === 'ecc' && ecc.hopAnimating) {
+        ecc.hopTimer += dt;
+        if (ecc.hopTimer >= 0.36) {
+          ecc.hopTimer = 0;
+          if (ecc.hopStep < ecc.k) {
+            ecc.hopStep++;
+            audio.hop(ecc.hopStep);
+            syncEccUI();
+          } else {
+            ecc.hopAnimating = false;
+            audio.success();
+            syncEccUI();
+          }
+        }
+      }
+
+      // Diffie-Hellman packet flight + Eve brute-force ticker
+      if (app.lab === 'dh') {
+        if (dh.playingAnim) {
+          const prevT = dh.animT;
+          dh.animT = Math.min(1, dh.animT + dt * 0.28);
+          if (prevT < 0.85 && dh.animT >= 0.85) audio.success();
+          if (dh.animT >= 1) dh.playingAnim = false;
+        }
+        dh.eveTimer += dt;
+        if (dh.eveTimer > 0.22) {
+          dh.eveTimer = 0;
+          dh.eveTryIdx = (dh.eveTryIdx % (dh.p - 1)) + 1;
+          if (dh.eveTryIdx === dh.a) dh.eveTryIdx = (dh.eveTryIdx % (dh.p - 1)) + 1;
+        }
+      }
+
+      // RSA encryption pipeline sweep
+      if (app.lab === 'rsa' && rsa.animating) {
+        rsa.animT = Math.min(1, rsa.animT + dt * 0.55);
+        if (rsa.animT >= 1) {
+          rsa.animating = false;
+          audio.success();
+        }
+      }
+
+      // SHA-256 avalanche flash decay + PoW Miner
+      if (sha.flashTimer > 0) sha.flashTimer = Math.max(0, sha.flashTimer - dt * 2.2);
+      if (app.lab === 'sha' && sha.mining) shaStepMiner();
+    }
+
+    drawBackdrop();
+    if (app.lab === 'ecc') {
+      if (ecc.field === 'real') renderEccReal(); else renderEccFp();
+    } else if (app.lab === 'dh') {
+      renderDiffieHellman();
+    } else if (app.lab === 'rsa') {
+      renderRsa();
+    } else {
+      renderSha256();
+    }
+
+    updateTelemetry();
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

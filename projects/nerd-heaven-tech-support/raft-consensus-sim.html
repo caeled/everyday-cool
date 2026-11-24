@@ -1,0 +1,3669 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Consensus — Distributed Raft Protocol, Leader Election &amp; Partitions</title>
+<style>
+  :root {
+    --bg-deep: #040711;
+    --panel-bg: rgba(9, 13, 24, 0.78);
+    --panel-bg-strong: rgba(8, 12, 22, 0.92);
+    --panel-border: rgba(148, 179, 255, 0.16);
+    --panel-border-hi: rgba(148, 179, 255, 0.36);
+    --text-main: #eef3ff;
+    --text-dim: #9aa9cc;
+    --text-muted: #68789c;
+    --accent-gold: #ffd166;
+    --accent-amber: #ffbe5c;
+    --accent-cyan: #58dcff;
+    --accent-mint: #4af2b2;
+    --accent-rose: #ff6083;
+    --accent-violet: #a78bfa;
+    --radius-lg: 14px;
+    --radius-md: 10px;
+    --radius-sm: 7px;
+    --mono: ui-monospace, "Cascadia Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Inter, Helvetica, Arial, sans-serif;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg-deep);
+    color: var(--text-main);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    touch-action: none;
+  }
+
+  #sim-canvas {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    cursor: crosshair;
+  }
+  #sim-canvas.pointer {
+    cursor: pointer;
+  }
+  #sim-canvas.grabbing {
+    cursor: grabbing;
+  }
+
+  /* HUD Layer */
+  .hud {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 10;
+  }
+  body.zen-mode .hud > :not(.zen-restore) {
+    opacity: 0;
+    pointer-events: none !important;
+  }
+
+  .panel {
+    pointer-events: auto;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-lg);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    transition: opacity 0.25s ease, transform 0.25s ease;
+  }
+
+  /* Top-Left Telemetry Card */
+  .top-left {
+    position: fixed;
+    top: 14px;
+    left: 14px;
+    width: min(416px, calc(100vw - 360px));
+    min-width: 288px;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .brand-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .brand-title-wrap {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .brand-title {
+    font-size: 16px;
+    font-weight: 800;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+    background: linear-gradient(120deg, #fff5dc 0%, #ffbe5c 45%, #58dcff 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .mode-badge {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 999px;
+    border: 1px solid rgba(88, 220, 255, 0.4);
+    background: rgba(88, 220, 255, 0.12);
+    color: var(--accent-cyan);
+  }
+
+  .status-pill {
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding: 3px 9px;
+    border-radius: 999px;
+    background: rgba(74, 242, 178, 0.14);
+    color: var(--accent-mint);
+    border: 1px solid rgba(74, 242, 178, 0.35);
+    white-space: nowrap;
+  }
+  .status-pill.warn {
+    background: rgba(255, 190, 92, 0.16);
+    color: var(--accent-amber);
+    border-color: rgba(255, 190, 92, 0.42);
+  }
+  .status-pill.partition {
+    background: rgba(167, 139, 250, 0.18);
+    color: #d6c8ff;
+    border-color: rgba(167, 139, 250, 0.48);
+  }
+  .status-pill.danger {
+    background: rgba(255, 96, 131, 0.18);
+    color: var(--accent-rose);
+    border-color: rgba(255, 96, 131, 0.45);
+  }
+
+  .telemetry-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+  }
+
+  .tele-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(148, 179, 255, 0.1);
+    border-radius: var(--radius-sm);
+    padding: 6px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .tele-label {
+    font-size: 9.5px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .tele-val {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-main);
+  }
+  .tele-val.gold { color: var(--accent-gold); }
+  .tele-val.amber { color: var(--accent-amber); }
+  .tele-val.cyan { color: var(--accent-cyan); }
+  .tele-val.mint { color: var(--accent-mint); }
+  .tele-val.rose { color: var(--accent-rose); }
+
+  .quorum-bar-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 10.5px;
+    color: var(--text-dim);
+  }
+  .quorum-track {
+    flex: 1;
+    height: 6px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+    overflow: hidden;
+    position: relative;
+  }
+  .quorum-fill {
+    height: 100%;
+    width: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #58dcff, #4af2b2);
+    transition: width 0.2s ease, background 0.25s ease;
+  }
+  .quorum-fill.warn {
+    background: linear-gradient(90deg, #ffbe5c, #ffd166);
+  }
+  .quorum-fill.danger {
+    background: linear-gradient(90deg, #ff4770, #ff7a98);
+  }
+
+  .clock-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding-top: 5px;
+    border-top: 1px solid rgba(148, 179, 255, 0.1);
+    font-size: 10.5px;
+    color: var(--text-dim);
+    font-family: var(--mono);
+  }
+  .clock-row .ticker {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+    color: var(--text-main);
+  }
+
+  /* Right Control Drawer (330px) */
+  .drawer {
+    position: fixed;
+    top: 14px;
+    right: 14px;
+    bottom: 14px;
+    width: 330px;
+    max-width: calc(100vw - 28px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: transform 0.25s ease, opacity 0.25s ease;
+  }
+  .drawer.collapsed {
+    transform: translateX(calc(100% + 24px));
+    pointer-events: none;
+  }
+
+  .drawer-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+    padding: 8px 8px 6px;
+    border-bottom: 1px solid var(--panel-border);
+    background: rgba(4, 7, 15, 0.45);
+  }
+
+  .tab-btn {
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    padding: 7px 4px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .tab-btn:hover {
+    color: var(--text-main);
+    background: rgba(255, 255, 255, 0.04);
+  }
+  .tab-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.16);
+    border-color: rgba(88, 220, 255, 0.4);
+  }
+
+  .drawer-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 13px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .drawer-body::-webkit-scrollbar {
+    width: 5px;
+  }
+  .drawer-body::-webkit-scrollbar-thumb {
+    background: rgba(148, 179, 255, 0.22);
+    border-radius: 999px;
+  }
+
+  .tab-pane {
+    display: none;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .tab-pane.active {
+    display: flex;
+  }
+
+  .section {
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(148, 179, 255, 0.11);
+    border-radius: var(--radius-md);
+    padding: 10px 11px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .section-title {
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  /* Presets grid */
+  .preset-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .preset-btn {
+    text-align: left;
+    padding: 7px 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(148, 179, 255, 0.14);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-main);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .preset-btn:hover {
+    border-color: rgba(255, 190, 92, 0.45);
+    background: rgba(255, 190, 92, 0.08);
+  }
+  .preset-btn.active {
+    border-color: var(--accent-amber);
+    background: rgba(255, 190, 92, 0.14);
+  }
+  .preset-name {
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.25;
+  }
+  .preset-sub {
+    font-size: 9.5px;
+    color: var(--text-muted);
+    line-height: 1.25;
+  }
+
+  /* Sliders */
+  .control-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .control-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11.5px;
+    color: var(--text-dim);
+  }
+  .control-head .val {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--text-main);
+    font-weight: 600;
+  }
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 5px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.18);
+    outline: none;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent-cyan);
+    border: 2px solid #08101f;
+    box-shadow: 0 0 10px rgba(88, 220, 255, 0.65);
+    cursor: pointer;
+  }
+  input[type="range"].amber::-webkit-slider-thumb {
+    background: var(--accent-amber);
+    box-shadow: 0 0 10px rgba(255, 190, 92, 0.65);
+  }
+  input[type="range"].rose::-webkit-slider-thumb {
+    background: var(--accent-rose);
+    box-shadow: 0 0 10px rgba(255, 96, 131, 0.65);
+  }
+
+  /* Segmented pills */
+  .seg-row {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 5px;
+  }
+  .seg-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-dim);
+    font-size: 11px;
+    font-weight: 650;
+    padding: 6px 5px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-align: center;
+  }
+  .seg-btn:hover {
+    color: #fff;
+    border-color: rgba(148, 179, 255, 0.35);
+  }
+  .seg-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.18);
+    border-color: var(--accent-cyan);
+  }
+
+  /* Buttons */
+  .btn-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .btn {
+    border: 1px solid rgba(148, 179, 255, 0.22);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-main);
+    font-size: 11.5px;
+    font-weight: 700;
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: 100%;
+  }
+  .btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 179, 255, 0.45);
+  }
+  .btn:active {
+    transform: scale(0.98);
+  }
+  .btn:disabled {
+    opacity: 0.42;
+    cursor: not-allowed;
+    transform: none;
+  }
+  .btn.primary {
+    background: linear-gradient(135deg, rgba(88, 220, 255, 0.28), rgba(56, 140, 255, 0.24));
+    border-color: rgba(88, 220, 255, 0.55);
+    color: #e6f9ff;
+  }
+  .btn.primary:hover {
+    background: linear-gradient(135deg, rgba(88, 220, 255, 0.4), rgba(56, 140, 255, 0.35));
+  }
+  .btn.mint {
+    background: linear-gradient(135deg, rgba(74, 242, 178, 0.24), rgba(34, 197, 134, 0.2));
+    border-color: rgba(74, 242, 178, 0.52);
+    color: #e2fff3;
+  }
+  .btn.mint:hover {
+    background: linear-gradient(135deg, rgba(74, 242, 178, 0.36), rgba(34, 197, 134, 0.3));
+  }
+  .btn.amber {
+    background: linear-gradient(135deg, rgba(255, 190, 92, 0.26), rgba(255, 120, 60, 0.22));
+    border-color: rgba(255, 190, 92, 0.55);
+    color: #fff3db;
+  }
+  .btn.danger {
+    background: rgba(255, 96, 131, 0.16);
+    border-color: rgba(255, 96, 131, 0.46);
+    color: #ffc8d5;
+  }
+  .btn.danger:hover {
+    background: rgba(255, 96, 131, 0.28);
+  }
+
+  /* Toggle switches */
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11.5px;
+    color: var(--text-dim);
+    cursor: pointer;
+  }
+  .toggle-row input {
+    display: none;
+  }
+  .switch {
+    width: 34px;
+    height: 18px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.2);
+    border: 1px solid rgba(148, 179, 255, 0.25);
+    position: relative;
+    transition: all 0.18s ease;
+    flex-shrink: 0;
+  }
+  .switch::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #c8d7f5;
+    transition: transform 0.18s ease, background 0.18s ease;
+  }
+  .toggle-row input:checked + .switch {
+    background: rgba(88, 220, 255, 0.32);
+    border-color: var(--accent-cyan);
+  }
+  .toggle-row input:checked + .switch::after {
+    transform: translateX(16px);
+    background: #fff;
+  }
+
+  /* Legend Grid */
+  .legend-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 5px;
+    font-size: 10.5px;
+    color: var(--text-dim);
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .swatch {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  /* State Machine KV pills */
+  .kv-wrap {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+  }
+  .kv-pill {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    padding: 3px 7px;
+    border-radius: 5px;
+    background: rgba(74, 242, 178, 0.12);
+    border: 1px solid rgba(74, 242, 178, 0.35);
+    color: #c8ffea;
+  }
+
+  /* Protocol Event Log */
+  .event-log {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 230px;
+    overflow-y: auto;
+    font-family: var(--mono);
+    font-size: 10px;
+  }
+  .event-log::-webkit-scrollbar {
+    width: 4px;
+  }
+  .event-log::-webkit-scrollbar-thumb {
+    background: rgba(148, 179, 255, 0.25);
+    border-radius: 999px;
+  }
+  .log-line {
+    padding: 4px 6px;
+    border-radius: 5px;
+    background: rgba(255, 255, 255, 0.025);
+    border-left: 2px solid var(--accent-cyan);
+    color: var(--text-dim);
+    line-height: 1.3;
+  }
+  .log-line.gold { border-left-color: var(--accent-gold); color: #ffe8b3; }
+  .log-line.mint { border-left-color: var(--accent-mint); color: #c7ffea; }
+  .log-line.rose { border-left-color: var(--accent-rose); color: #ffc6d3; }
+  .log-line.violet { border-left-color: var(--accent-violet); color: #dfd4ff; }
+  .log-time {
+    color: var(--text-muted);
+    margin-right: 5px;
+  }
+
+  /* Bottom Transport Bar */
+  .bottom-bar {
+    position: fixed;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 7px 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: nowrap;
+  }
+
+  .bar-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-main);
+    font-size: 11.5px;
+    font-weight: 650;
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    white-space: nowrap;
+  }
+  .bar-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 179, 255, 0.4);
+  }
+  .bar-btn.active {
+    background: rgba(88, 220, 255, 0.2);
+    border-color: var(--accent-cyan);
+    color: #fff;
+  }
+
+  .bar-divider {
+    width: 1px;
+    height: 20px;
+    background: rgba(148, 179, 255, 0.16);
+    margin: 0 2px;
+  }
+
+  /* Bottom-left interaction hint */
+  .hint-pill {
+    position: fixed;
+    bottom: 14px;
+    left: 14px;
+    padding: 7px 11px;
+    font-size: 11px;
+    color: var(--text-dim);
+    max-width: 318px;
+    line-height: 1.42;
+  }
+  .hint-pill kbd {
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #fff;
+  }
+
+  /* Event Banner */
+  .event-banner {
+    position: fixed;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%) translateY(-12px);
+    padding: 9px 15px;
+    border-radius: var(--radius-md);
+    background: rgba(12, 17, 31, 0.9);
+    border: 1px solid rgba(88, 220, 255, 0.48);
+    color: #dff6ff;
+    font-size: 12px;
+    font-weight: 650;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease, transform 0.25s ease;
+    z-index: 20;
+    backdrop-filter: blur(12px);
+    max-width: min(520px, calc(100vw - 40px));
+    text-align: center;
+  }
+  .event-banner.visible {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateX(-50%) translateY(0);
+  }
+  .event-banner.warn {
+    background: rgba(26, 17, 7, 0.92);
+    border-color: rgba(255, 190, 92, 0.55);
+    color: #ffe8c2;
+  }
+  .event-banner.danger {
+    background: rgba(24, 9, 15, 0.92);
+    border-color: rgba(255, 96, 131, 0.55);
+    color: #ffdbe3;
+  }
+  .event-banner.mint {
+    background: rgba(7, 22, 18, 0.92);
+    border-color: rgba(74, 242, 178, 0.55);
+    color: #d4ffee;
+  }
+
+  .zen-restore {
+    position: fixed;
+    bottom: 14px;
+    right: 14px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+  }
+  body.zen-mode .zen-restore {
+    opacity: 0.9;
+    pointer-events: auto;
+  }
+
+  .note-small {
+    font-size: 10.5px;
+    color: var(--text-muted);
+    line-height: 1.38;
+  }
+
+  @media (max-width: 960px) {
+    .top-left {
+      width: calc(100vw - 28px);
+      max-width: none;
+    }
+    .drawer {
+      top: auto;
+      bottom: 62px;
+      height: 50vh;
+      width: calc(100vw - 28px);
+    }
+    .hint-pill {
+      display: none;
+    }
+    .event-banner {
+      top: auto;
+      bottom: 66px;
+    }
+  }
+</style>
+</head>
+<body>
+<canvas id="sim-canvas"></canvas>
+
+<div class="hud">
+  <!-- Top-Left Telemetry -->
+  <div class="panel top-left">
+    <div class="brand-row">
+      <div class="brand-title-wrap">
+        <div class="brand-title">Consensus</div>
+        <span id="proto-badge" class="mode-badge">Raft Protocol</span>
+      </div>
+      <span id="safety-badge" class="status-pill">Consensus Healthy</span>
+    </div>
+
+    <div class="telemetry-grid">
+      <div class="tele-card">
+        <span class="tele-label">Current Term</span>
+        <span id="tel-term" class="tele-val amber">T1</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Leader ID</span>
+        <span id="tel-leader" class="tele-val gold">S1</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Quorum Needed</span>
+        <span id="tel-quorum" class="tele-val cyan">3 / 5</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Alive Nodes</span>
+        <span id="tel-alive" class="tele-val mint">5 / 5</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Committed Idx</span>
+        <span id="tel-commit" class="tele-val mint">#0</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">In-Flight RPCs</span>
+        <span id="tel-rpcs" class="tele-val cyan">0</span>
+      </div>
+    </div>
+
+    <div class="quorum-bar-wrap">
+      <span>Quorum Health</span>
+      <div class="quorum-track"><div id="quorum-fill" class="quorum-fill"></div></div>
+      <span id="tel-quorum-pct" style="font-family: var(--mono); color: var(--text-main);">100%</span>
+    </div>
+
+    <div class="clock-row">
+      <span id="tel-ticker" class="ticker">S1 crowned Leader for Term T1</span>
+      <span id="tel-clock" style="color:var(--text-muted);">t=0.0s</span>
+    </div>
+  </div>
+
+  <!-- Right Control Drawer (330px) -->
+  <aside id="drawer" class="panel drawer">
+    <div class="drawer-tabs">
+      <button class="tab-btn active" data-tab="cluster">Cluster</button>
+      <button class="tab-btn" data-tab="chaos">Chaos &amp; Net</button>
+      <button class="tab-btn" data-tab="logs">State &amp; Log</button>
+    </div>
+
+    <div class="drawer-body">
+      <!-- TAB 1: CLUSTER & PRESETS -->
+      <div id="tab-cluster" class="tab-pane active">
+        <div class="section">
+          <div class="section-title"><span>Scenarios</span></div>
+          <div class="preset-grid">
+            <button class="preset-btn active" data-preset="healthy">
+              <span class="preset-name">Healthy 5-Node</span>
+              <span class="preset-sub">Stable leader &amp; quorum commits</span>
+            </button>
+            <button class="preset-btn" data-preset="leader-crash">
+              <span class="preset-name">Leader Crash</span>
+              <span class="preset-sub">Kill leader &amp; watch re-election</span>
+            </button>
+            <button class="preset-btn" data-preset="split-brain">
+              <span class="preset-name">Split-Brain (3v2)</span>
+              <span class="preset-sub">Minority divergence &amp; rollback</span>
+            </button>
+            <button class="preset-btn" data-preset="flaky">
+              <span class="preset-name">Flaky Network</span>
+              <span class="preset-sub">25% packet loss &amp; retries</span>
+            </button>
+            <button class="preset-btn" data-preset="seven-node">
+              <span class="preset-name">7-Node HA Ring</span>
+              <span class="preset-sub">Quorum 4/7 high availability</span>
+            </button>
+            <button class="preset-btn" data-preset="split-vote">
+              <span class="preset-name">Split-Vote Tie</span>
+              <span class="preset-sub">Simultaneous candidates tie</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">
+            <span>Client Writes</span>
+            <span id="next-cmd-badge" style="color:var(--accent-cyan); font-family:var(--mono);">SET x=42</span>
+          </div>
+
+          <button id="btn-client-write" class="btn primary">📝 Send Client Write (SET x=42)</button>
+
+          <button id="btn-minority-write" class="btn amber" style="display:none;">⚠️ Write to Isolated Leader</button>
+
+          <label class="toggle-row">
+            <span>Auto-Write Client Stream</span>
+            <input id="chk-auto-write" type="checkbox" />
+            <span class="switch"></span>
+          </label>
+
+          <div class="btn-row">
+            <button id="btn-split-quick" class="btn danger">✂️ Split (3 vs 2)</button>
+            <button id="btn-heal-quick" class="btn mint" disabled>🔗 Heal Partition</button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Cluster Topology</span></div>
+          <div class="seg-row" id="node-count-row">
+            <button class="seg-btn active" data-nodes="5">5 Nodes (Q=3)</button>
+            <button class="seg-btn" data-nodes="7">7 Nodes (Q=4)</button>
+          </div>
+
+          <div class="legend-grid">
+            <div class="legend-item"><span class="swatch" style="background:#ffd166;box-shadow:0 0 6px #ffd166;"></span>Leader</div>
+            <div class="legend-item"><span class="swatch" style="background:#58dcff;"></span>Follower</div>
+            <div class="legend-item"><span class="swatch" style="background:#ff9f43;"></span>Candidate</div>
+            <div class="legend-item"><span class="swatch" style="background:#ff4d6d;"></span>Crashed</div>
+            <div class="legend-item"><span class="swatch" style="background:#4af2b2;"></span>Committed / Ack</div>
+            <div class="legend-item"><span class="swatch" style="background:#a78bfa;"></span>Client Write</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 2: CHAOS & NETWORK -->
+      <div id="tab-chaos" class="tab-pane">
+        <div class="section">
+          <div class="section-title">
+            <span>Network Partition Wall</span>
+            <span id="part-status-txt" style="font-family:var(--mono); color:var(--accent-mint);">CONNECTED</span>
+          </div>
+
+          <button id="btn-split-brain" class="btn danger">✂️ Split-Brain Partition (3 vs 2)</button>
+          <button id="btn-heal-part" class="btn mint" disabled>🔗 Heal Partition</button>
+
+          <p class="note-small">
+            <strong>Drag across empty canvas space</strong> to slice the cluster with a custom Crimson Partition Wall, or drag its glowing handles to move it.
+          </p>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Fault Injection &amp; Timing</span></div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Packet Loss</span>
+              <span id="val-loss" class="val">0%</span>
+            </div>
+            <input id="sl-loss" class="rose" type="range" min="0" max="60" step="1" value="0" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Network Latency</span>
+              <span id="val-latency" class="val">0.85 s</span>
+            </div>
+            <input id="sl-latency" type="range" min="0.35" max="2.4" step="0.05" value="0.85" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Election Timeout Base</span>
+              <span id="val-timeout" class="val">4.6 s</span>
+            </div>
+            <input id="sl-timeout" class="amber" type="range" min="2.4" max="8.0" step="0.2" value="4.6" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Heartbeat Interval</span>
+              <span id="val-hb" class="val">1.35 s</span>
+            </div>
+            <input id="sl-hb" type="range" min="0.6" max="2.4" step="0.05" value="1.35" />
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Node Faults</span></div>
+          <div class="btn-row">
+            <button id="btn-kill-leader" class="btn danger">💀 Kill Leader</button>
+            <button id="btn-revive-all" class="btn mint">♻️ Restart All</button>
+          </div>
+          <p class="note-small">
+            <strong>Click any server</strong> to kill or restart it. <strong>Click any flying RPC packet</strong> to drop it mid-air.
+          </p>
+        </div>
+      </div>
+
+      <!-- TAB 3: STATE MACHINE & PROTOCOL LOG -->
+      <div id="tab-logs" class="tab-pane">
+        <div class="section">
+          <div class="section-title">
+            <span>Committed State Machine</span>
+            <span id="kv-count" style="font-family:var(--mono); color:var(--accent-mint);">0 keys</span>
+          </div>
+          <div id="kv-wrap" class="kv-wrap">
+            <span class="note-small">No committed writes yet — send a Client Write to replicate across quorum.</span>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">
+            <span>Protocol Event Log</span>
+            <button id="btn-clear-log" class="btn" style="width:auto; padding:2px 7px; font-size:10px;">Clear</button>
+          </div>
+          <div id="event-log" class="event-log"></div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Visual Overlays</span></div>
+          <label class="toggle-row">
+            <span>Mesh Links</span>
+            <input id="chk-links" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>RPC Packet Labels</span>
+            <input id="chk-labels" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Election Timeout Rings</span>
+            <input id="chk-rings" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Node Replicated Log Strips</span>
+            <input id="chk-logs" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Event Notification Banner -->
+  <div id="event-banner" class="event-banner">
+    <span id="event-text">Cluster initialized.</span>
+  </div>
+
+  <!-- Bottom-Left Hint -->
+  <div class="panel hint-pill">
+    <div><strong>Click node</strong> Kill/Restart · <strong>Click packet</strong> Drop</div>
+    <div><strong>Drag canvas</strong> Partition Wall · <kbd>W</kbd> Write · <kbd>Space</kbd> Pause · <kbd>H</kbd> Cinema</div>
+  </div>
+
+  <!-- Bottom Transport Bar -->
+  <div class="panel bottom-bar">
+    <button id="btn-play" class="bar-btn active">⏸ Pause</button>
+    <button id="btn-reset" class="bar-btn">↺ Reset</button>
+    <div class="bar-divider"></div>
+    <button class="bar-btn speed-btn" data-speed="0.25">0.25×</button>
+    <button class="bar-btn speed-btn" data-speed="0.5">0.5×</button>
+    <button class="bar-btn speed-btn active" data-speed="1">1×</button>
+    <button class="bar-btn speed-btn" data-speed="2">2×</button>
+    <div class="bar-divider"></div>
+    <button id="btn-sound" class="bar-btn">🔇 Audio</button>
+    <button id="btn-toggle-drawer" class="bar-btn active">Controls</button>
+    <button id="btn-zen" class="bar-btn" title="Hide HUD (H)">Cinema</button>
+  </div>
+
+  <button id="btn-zen-restore" class="panel bar-btn zen-restore">Show HUD (H)</button>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // =========================================================================
+  // CANVAS & VIEWPORT STATE
+  // =========================================================================
+  const canvas = document.getElementById('sim-canvas');
+  const ctx = canvas.getContext('2d');
+
+  let viewW = window.innerWidth;
+  let viewH = window.innerHeight;
+  let dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+  // Smoothly animated cluster layout geometry
+  const layout = {
+    cx: viewW * 0.5,
+    cy: viewH * 0.5,
+    R: 210,
+    targetCx: viewW * 0.5,
+    targetCy: viewH * 0.5,
+    targetR: 210,
+    nodeR: 34,
+  };
+
+  function computeTargetLayout() {
+    const drawerEl = document.getElementById('drawer');
+    const drawerOpen = !drawerEl.classList.contains('collapsed') && !document.body.classList.contains('zen-mode') && viewW > 960;
+    const rightMargin = drawerOpen ? 344 : 16;
+    const leftMargin = 16;
+    const topSafe = document.body.classList.contains('zen-mode') ? 30 : 120;
+    const botSafe = document.body.classList.contains('zen-mode') ? 30 : 78;
+
+    const availW = Math.max(320, viewW - rightMargin - leftMargin);
+    const availH = Math.max(280, viewH - topSafe - botSafe);
+
+    layout.targetCx = leftMargin + availW * 0.50;
+    layout.targetCy = topSafe + availH * 0.51;
+    const maxR = sim.nodeCount === 7 ? 248 : 228;
+    layout.targetR = Math.max(115, Math.min(availW * 0.34, availH * 0.36, maxR));
+    layout.nodeR = sim.nodeCount === 7 ? Math.max(25, Math.min(32, layout.targetR * 0.145)) : Math.max(28, Math.min(36, layout.targetR * 0.165));
+  }
+
+  function resize() {
+    viewW = window.innerWidth;
+    viewH = window.innerHeight;
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.floor(viewW * dpr);
+    canvas.height = Math.floor(viewH * dpr);
+    canvas.style.width = viewW + 'px';
+    canvas.style.height = viewH + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    computeTargetLayout();
+    layout.cx = layout.targetCx;
+    layout.cy = layout.targetCy;
+    layout.R = layout.targetR;
+  }
+
+  // =========================================================================
+  // OPTIONAL WEB AUDIO SYNTHESIZER (MUTED BY DEFAULT)
+  // =========================================================================
+  const sound = {
+    enabled: false,
+    ctx: null,
+    lastHbTime: 0,
+    lastVoteTime: 0,
+    ensure() {
+      if (!this.ctx) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (AC) this.ctx = new AC();
+      }
+      if (this.ctx && this.ctx.state === 'suspended') {
+        this.ctx.resume().catch(() => {});
+      }
+      return this.ctx;
+    },
+    tone(freq, dur, type = 'sine', gainPeak = 0.05, slideTo = null, delay = 0) {
+      if (!this.enabled) return;
+      const ac = this.ensure();
+      if (!ac) return;
+      const t0 = ac.currentTime + delay;
+      const osc = ac.createOscillator();
+      const g = ac.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, t0);
+      if (slideTo) {
+        osc.frequency.exponentialRampToValueAtTime(Math.max(40, slideTo), t0 + dur);
+      }
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(gainPeak, t0 + 0.015);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      osc.connect(g);
+      g.connect(ac.destination);
+      osc.start(t0);
+      osc.stop(t0 + dur + 0.02);
+    },
+    heartbeat() {
+      const now = performance.now();
+      if (now - this.lastHbTime < 220) return;
+      this.lastHbTime = now;
+      this.tone(330, 0.09, 'sine', 0.018, 392);
+    },
+    vote() {
+      const now = performance.now();
+      if (now - this.lastVoteTime < 85) return;
+      this.lastVoteTime = now;
+      this.tone(587.3, 0.11, 'triangle', 0.032, 740);
+    },
+    leader() {
+      this.tone(523.25, 0.18, 'triangle', 0.05, null, 0.0);
+      this.tone(659.25, 0.2, 'triangle', 0.05, null, 0.075);
+      this.tone(783.99, 0.32, 'sine', 0.06, null, 0.15);
+    },
+    commit() {
+      this.tone(440, 0.14, 'sine', 0.045, null, 0.0);
+      this.tone(659.25, 0.22, 'sine', 0.05, null, 0.065);
+    },
+    clientWrite() {
+      this.tone(493.88, 0.11, 'sine', 0.035, 587.3);
+    },
+    crash() {
+      this.tone(150, 0.28, 'sawtooth', 0.065, 44);
+    },
+    revive() {
+      this.tone(240, 0.16, 'sine', 0.04, 480);
+    },
+    drop() {
+      this.tone(260, 0.07, 'square', 0.022, 130);
+    },
+    partition() {
+      this.tone(190, 0.22, 'sawtooth', 0.045, 95);
+    },
+    heal() {
+      this.tone(392, 0.16, 'sine', 0.04, 587.3);
+      this.tone(587.3, 0.22, 'sine', 0.04, 784, 0.08);
+    },
+    rollback() {
+      this.tone(420, 0.24, 'triangle', 0.045, 185);
+    }
+  };
+
+  // =========================================================================
+  // SIMULATION STATE & CONFIGURATION
+  // =========================================================================
+  const CMD_POOL = [
+    'SET x=42', 'SET y=17', 'SET k=99', 'SET z=8',
+    'SET a=64', 'SET m=12', 'SET p=77', 'SET v=31',
+    'SET q=55', 'SET r=24', 'SET n=88', 'SET b=5'
+  ];
+
+  const sim = {
+    running: true,
+    speed: 1.0,
+    time: 0,
+    preset: 'healthy',
+    nodeCount: 5,
+    nodes: [],
+    packets: [],
+    particles: [],
+    ripples: [],
+    floatingTexts: [],
+    logs: [],
+    nextPacketId: 1,
+    cmdCursor: 0,
+    autoWrite: false,
+    autoWriteTimer: 2.2,
+    scheduledActions: [],
+
+    // Network & Timing Params
+    packetLoss: 0.0,       // 0..0.60
+    latency: 0.85,         // seconds flight time
+    electionBase: 4.6,     // base timeout seconds
+    heartbeatInterval: 1.35,
+
+    // Partition Wall (stored in normalized cluster coordinates relative to cx,cy,R)
+    partition: {
+      active: false,
+      nx1: 0, ny1: -1.4,
+      nx2: 0, ny2: 1.4,
+      pulse: 0
+    },
+
+    // Visual overlays
+    showLinks: true,
+    showLabels: true,
+    showRings: true,
+    showLogs: true,
+
+    // Banner timer
+    bannerTimer: 0,
+    lastTicker: 'Cluster booting...'
+  };
+
+  function quorumSize() {
+    return Math.floor(sim.nodeCount / 2) + 1;
+  }
+
+  function randomElectionTimeout(node) {
+    // Spread timeouts nicely so elections feel snappy yet deterministic enough to follow
+    const spread = sim.electionBase * 0.72;
+    return sim.electionBase + Math.random() * spread;
+  }
+
+  function nextCommandLabel() {
+    if (sim.cmdCursor < CMD_POOL.length) {
+      return CMD_POOL[sim.cmdCursor];
+    }
+    const keys = ['x', 'y', 'z', 'k', 'm', 'p', 'a', 'b'];
+    const k = keys[sim.cmdCursor % keys.length];
+    const v = 10 + ((sim.cmdCursor * 19 + 7) % 89);
+    return `SET ${k}=${v}`;
+  }
+
+  function consumeCommandLabel() {
+    const cmd = nextCommandLabel();
+    sim.cmdCursor++;
+    updateNextCmdUI();
+    return cmd;
+  }
+
+  function updateNextCmdUI() {
+    const nxt = nextCommandLabel();
+    document.getElementById('next-cmd-badge').textContent = nxt;
+    document.getElementById('btn-client-write').textContent = `📝 Send Client Write (${nxt})`;
+  }
+
+  // =========================================================================
+  // LOGGING & BANNER FEEDBACK
+  // =========================================================================
+  function addEventLog(text, tone = 'cyan') {
+    const entry = { t: sim.time, text, tone };
+    sim.logs.unshift(entry);
+    if (sim.logs.length > 40) sim.logs.pop();
+    sim.lastTicker = text;
+
+    const el = document.getElementById('event-log');
+    if (el) {
+      const div = document.createElement('div');
+      div.className = `log-line ${tone}`;
+      div.innerHTML = `<span class="log-time">[${sim.time.toFixed(1)}s]</span>${escapeHtml(text)}`;
+      el.prepend(div);
+      while (el.children.length > 35) el.removeChild(el.lastChild);
+    }
+  }
+
+  function escapeHtml(str) {
+    return str.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  function showBanner(text, tone = 'info', duration = 4.2) {
+    const el = document.getElementById('event-banner');
+    const txt = document.getElementById('event-text');
+    txt.textContent = text;
+    el.className = 'event-banner visible' + (tone !== 'info' ? ' ' + tone : '');
+    sim.bannerTimer = duration;
+  }
+
+  // =========================================================================
+  // GEOMETRY HELPERS (NODES, CURVES, PARTITION INTERSECTION)
+  // =========================================================================
+  function getNodePos(idx, count = sim.nodeCount) {
+    // Start at top (-90 deg) and arrange clockwise
+    const angle = -Math.PI / 2 + (idx / count) * Math.PI * 2;
+    return {
+      x: layout.cx + Math.cos(angle) * layout.R,
+      y: layout.cy + Math.sin(angle) * layout.R,
+      angle
+    };
+  }
+
+  function getClientPos() {
+    // Place sleek Client emitter node at top-center just outside the cluster ring
+    return {
+      x: layout.cx,
+      y: Math.max(96, layout.cy - layout.R - layout.nodeR - 46)
+    };
+  }
+
+  function getPartitionWorld() {
+    return {
+      x1: layout.cx + sim.partition.nx1 * layout.R,
+      y1: layout.cy + sim.partition.ny1 * layout.R,
+      x2: layout.cx + sim.partition.nx2 * layout.R,
+      y2: layout.cy + sim.partition.ny2 * layout.R,
+    };
+  }
+
+  function setPartitionWorld(x1, y1, x2, y2) {
+    sim.partition.nx1 = (x1 - layout.cx) / layout.R;
+    sim.partition.ny1 = (y1 - layout.cy) / layout.R;
+    sim.partition.nx2 = (x2 - layout.cx) / layout.R;
+    sim.partition.ny2 = (y2 - layout.cy) / layout.R;
+    sim.partition.active = true;
+    sim.partition.pulse = 1.0;
+    updatePartitionUI();
+  }
+
+  function segmentIntersectT(ax, ay, bx, by, cx, cy, dx, dy) {
+    const rX = bx - ax, rY = by - ay;
+    const sX = dx - cx, sY = dy - cy;
+    const denom = rX * sY - rY * sX;
+    if (Math.abs(denom) < 1e-7) return null;
+    const qpX = cx - ax, qpY = cy - ay;
+    const t = (qpX * sY - qpY * sX) / denom;
+    const u = (qpX * rY - qpY * rX) / denom;
+    if (t >= 0 && t <= 1 && u >= 0 && u <= 1) return t;
+    return null;
+  }
+
+  function areNodesPartitioned(idxA, idxB) {
+    if (!sim.partition.active) return false;
+    const a = getNodePos(idxA);
+    const b = getNodePos(idxB);
+    const w = getPartitionWorld();
+    return segmentIntersectT(a.x, a.y, b.x, b.y, w.x1, w.y1, w.x2, w.y2) !== null;
+  }
+
+  // Quadratic Bezier control point for curved peer link (curves gently outward/sideways so A->B and B->A never overlap!)
+  function getLinkCurve(ax, ay, bx, by, bowSign = 1) {
+    const mx = (ax + bx) * 0.5;
+    const my = (ay + by) * 0.5;
+    const dx = bx - ax;
+    const dy = by - ay;
+    const dist = Math.hypot(dx, dy) || 1;
+    // Perpendicular vector
+    const nx = -dy / dist;
+    const ny = dx / dist;
+    const bow = Math.min(34, dist * 0.14) * bowSign;
+    return {
+      ax, ay,
+      cpx: mx + nx * bow,
+      cpy: my + ny * bow,
+      bx, by
+    };
+  }
+
+  function evalQuad(curve, t) {
+    const mt = 1 - t;
+    return {
+      x: mt * mt * curve.ax + 2 * mt * t * curve.cpx + t * t * curve.bx,
+      y: mt * mt * curve.ay + 2 * mt * t * curve.cpy + t * t * curve.by
+    };
+  }
+
+  function findCurvePartitionHit(curve) {
+    if (!sim.partition.active) return null;
+    const w = getPartitionWorld();
+    const steps = 16;
+    let prev = evalQuad(curve, 0);
+    for (let i = 1; i <= steps; i++) {
+      const t1 = i / steps;
+      const curr = evalQuad(curve, t1);
+      const hit = segmentIntersectT(prev.x, prev.y, curr.x, curr.y, w.x1, w.y1, w.x2, w.y2);
+      if (hit !== null) {
+        const t0 = (i - 1) / steps;
+        return t0 + hit * (t1 - t0);
+      }
+      prev = curr;
+    }
+    return null;
+  }
+
+  function computePartitionsGroups() {
+    // Connected components of alive/all nodes with respect to partition wall
+    const visited = new Array(sim.nodes.length).fill(false);
+    const groups = [];
+    for (let i = 0; i < sim.nodes.length; i++) {
+      if (visited[i]) continue;
+      const comp = [];
+      const queue = [i];
+      visited[i] = true;
+      while (queue.length) {
+        const u = queue.shift();
+        comp.push(sim.nodes[u]);
+        for (let v = 0; v < sim.nodes.length; v++) {
+          if (!visited[v] && !areNodesPartitioned(u, v)) {
+            visited[v] = true;
+            queue.push(v);
+          }
+        }
+      }
+      groups.push(comp);
+    }
+    return groups;
+  }
+
+  // =========================================================================
+  // VISUAL EFFECTS (PARTICLES, RIPPLES, FLOATING TEXT)
+  // =========================================================================
+  function spawnRipple(x, y, color, maxR = 64, lineW = 2.5) {
+    sim.ripples.push({ x, y, r: layout.nodeR * 0.7, maxR, color, alpha: 0.9, lineW });
+  }
+
+  function spawnSparks(x, y, color, count = 10, speed = 85) {
+    for (let i = 0; i < count; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const s = speed * (0.35 + Math.random() * 0.85);
+      sim.particles.push({
+        x, y,
+        vx: Math.cos(a) * s,
+        vy: Math.sin(a) * s,
+        color,
+        life: 0.45 + Math.random() * 0.35,
+        maxLife: 0.8,
+        size: 1.8 + Math.random() * 2.2
+      });
+    }
+  }
+
+  function spawnFloatText(x, y, text, color = '#eef3ff') {
+    sim.floatingTexts.push({ x, y, text, color, life: 1.35, maxLife: 1.35 });
+  }
+
+  // =========================================================================
+  // RAFT PROTOCOL CORE
+  // =========================================================================
+  function createNode(idx) {
+    return {
+      idx,
+      id: `S${idx + 1}`,
+      alive: true,
+      state: 'follower', // 'follower' | 'candidate' | 'leader'
+      currentTerm: 1,
+      votedFor: null,
+      log: [], // { index, term, cmd, committed }
+      commitIndex: 0,
+      nextIndex: {},
+      matchIndex: {},
+      votesReceived: new Set(),
+      electionElapsed: 0,
+      electionTimeout: sim.electionBase + (0.6 + idx * 0.48),
+      heartbeatTimer: 0,
+      pulse: 0,
+      pulseColor: '#58dcff',
+      rollbackFlash: 0,
+      crashFlash: 0
+    };
+  }
+
+  function getNodeById(id) {
+    return sim.nodes.find(n => n.id === id) || null;
+  }
+
+  function lastLogIndex(node) {
+    return node.log.length;
+  }
+
+  function lastLogTerm(node) {
+    return node.log.length > 0 ? node.log[node.log.length - 1].term : 0;
+  }
+
+  function stepDown(node, newTerm, reason = '') {
+    const wasLeader = node.state === 'leader';
+    node.currentTerm = newTerm;
+    node.state = 'follower';
+    node.votedFor = null;
+    node.votesReceived.clear();
+    node.electionElapsed = 0;
+    node.electionTimeout = randomElectionTimeout(node);
+    node.pulse = 0.85;
+    node.pulseColor = '#58dcff';
+    if (wasLeader) {
+      const p = getNodePos(node.idx);
+      spawnRipple(p.x, p.y, '#ffbe5c', 75, 2.5);
+      spawnFloatText(p.x, p.y - layout.nodeR - 14, `STEP DOWN → T${newTerm}`, '#ffbe5c');
+      addEventLog(`${node.id} stepped down to Follower (Term T${newTerm})${reason ? ' — ' + reason : ''}`, 'gold');
+    }
+  }
+
+  function becomeCandidate(node) {
+    if (!node.alive) return;
+    node.currentTerm += 1;
+    node.state = 'candidate';
+    node.votedFor = node.id;
+    node.votesReceived = new Set([node.id]);
+    node.electionElapsed = 0;
+    node.electionTimeout = randomElectionTimeout(node);
+    node.pulse = 1.0;
+    node.pulseColor = '#ffbe5c';
+
+    const p = getNodePos(node.idx);
+    spawnRipple(p.x, p.y, '#ffbe5c', 78, 2.5);
+    spawnFloatText(p.x, p.y - layout.nodeR - 14, `CANDIDATE T${node.currentTerm}`, '#ffbe5c');
+    addEventLog(`${node.id} timed out → Candidate for Term T${node.currentTerm}`, 'gold');
+    sound.vote();
+
+    // Broadcast RequestVote RPCs to all peers
+    for (const peer of sim.nodes) {
+      if (peer.idx === node.idx) continue;
+      sendPacket({
+        type: 'RequestVote',
+        fromIdx: node.idx,
+        toIdx: peer.idx,
+        term: node.currentTerm,
+        candidateId: node.id,
+        lastLogIndex: lastLogIndex(node),
+        lastLogTerm: lastLogTerm(node),
+        label: `RV T${node.currentTerm}`
+      });
+    }
+  }
+
+  function becomeLeader(node) {
+    node.state = 'leader';
+    node.heartbeatTimer = 0.05; // send immediate initial heartbeats
+    node.nextIndex = {};
+    node.matchIndex = {};
+    for (const peer of sim.nodes) {
+      node.nextIndex[peer.id] = node.log.length + 1;
+      node.matchIndex[peer.id] = peer.id === node.id ? node.log.length : 0;
+    }
+    node.pulse = 1.0;
+    node.pulseColor = '#ffd166';
+
+    const p = getNodePos(node.idx);
+    spawnRipple(p.x, p.y, '#ffd166', 105, 3.2);
+    spawnSparks(p.x, p.y, '#ffd166', 16, 110);
+    spawnFloatText(p.x, p.y - layout.nodeR - 18, `👑 LEADER T${node.currentTerm}`, '#ffd166');
+    addEventLog(`${node.id} won majority (${node.votesReceived.size}/${sim.nodeCount}) → Leader T${node.currentTerm}`, 'gold');
+    sound.leader();
+    updateMinorityWriteButton();
+  }
+
+  function broadcastAppendEntries(leader, forceFull = false) {
+    if (!leader.alive || leader.state !== 'leader') return;
+    let sentAny = false;
+    for (const peer of sim.nodes) {
+      if (peer.idx === leader.idx) continue;
+      const nextIdx = Math.max(1, Math.min(leader.nextIndex[peer.id] || (leader.log.length + 1), leader.log.length + 1));
+      const prevLogIdx = nextIdx - 1;
+      const prevLogT = prevLogIdx > 0 && leader.log[prevLogIdx - 1] ? leader.log[prevLogIdx - 1].term : 0;
+      const entries = leader.log.slice(prevLogIdx).map(e => ({ index: e.index, term: e.term, cmd: e.cmd }));
+      const isHeartbeat = entries.length === 0;
+      if (!forceFull && !isHeartbeat && hasInFlightAppend(leader.idx, peer.idx)) {
+        // Avoid visual clutter if identical replication batch is already in flight
+        continue;
+      }
+      sendPacket({
+        type: 'AppendEntries',
+        subtype: isHeartbeat ? 'heartbeat' : 'append',
+        fromIdx: leader.idx,
+        toIdx: peer.idx,
+        term: leader.currentTerm,
+        leaderId: leader.id,
+        prevLogIndex: prevLogIdx,
+        prevLogTerm: prevLogT,
+        entries,
+        leaderCommit: leader.commitIndex,
+        label: isHeartbeat ? `HB T${leader.currentTerm}` : `AE +${entries.length}`
+      });
+      sentAny = true;
+    }
+    if (sentAny) sound.heartbeat();
+  }
+
+  function hasInFlightAppend(fromIdx, toIdx) {
+    return sim.packets.some(p => p.fromIdx === fromIdx && p.toIdx === toIdx && p.type === 'AppendEntries' && p.subtype === 'append' && !p.dead);
+  }
+
+  function sendPacket(spec) {
+    const jitter = 0.88 + Math.random() * 0.24;
+    const duration = Math.max(0.25, (spec.customDuration || sim.latency) * jitter);
+
+    // Determine if randomly dropped due to packetLoss (never drop ClientWrite packets directly so user click feels responsive)
+    const willDrop = !spec.noLoss && spec.type !== 'ClientWrite' && Math.random() < sim.packetLoss;
+    const dropAt = willDrop ? (0.30 + Math.random() * 0.42) : null;
+
+    sim.packets.push({
+      id: sim.nextPacketId++,
+      ...spec,
+      progress: 0,
+      duration,
+      dropAt,
+      dead: false,
+      x: 0,
+      y: 0
+    });
+  }
+
+  function deliverPacket(pkt) {
+    const target = sim.nodes[pkt.toIdx];
+    if (!target || !target.alive) {
+      // Crashed node silently drops incoming RPC
+      if (target) {
+        const tp = getNodePos(target.idx);
+        spawnSparks(tp.x, tp.y, '#ff6083', 5, 45);
+      }
+      return;
+    }
+
+    if (pkt.type === 'ClientWrite') {
+      handleClientWriteArrival(target, pkt);
+      return;
+    }
+
+    if (pkt.type === 'RequestVote') {
+      handleRequestVote(target, pkt);
+    } else if (pkt.type === 'VoteGranted') {
+      handleVoteGranted(target, pkt);
+    } else if (pkt.type === 'AppendEntries') {
+      handleAppendEntries(target, pkt);
+    } else if (pkt.type === 'Ack') {
+      handleAppendAck(target, pkt);
+    }
+  }
+
+  function handleClientWriteArrival(node, pkt) {
+    const p = getNodePos(node.idx);
+    if (node.state !== 'leader') {
+      spawnFloatText(p.x, p.y - layout.nodeR - 14, `REDIRECT (NOT LEADER)`, '#ff6083');
+      return;
+    }
+    const entry = {
+      index: node.log.length + 1,
+      term: node.currentTerm,
+      cmd: pkt.cmd,
+      committed: false
+    };
+    node.log.push(entry);
+    node.matchIndex[node.id] = entry.index;
+    node.pulse = 1.0;
+    node.pulseColor = '#a78bfa';
+    spawnRipple(p.x, p.y, '#a78bfa', 72, 2.5);
+    spawnFloatText(p.x, p.y - layout.nodeR - 16, `+${pkt.cmd} (#${entry.index})`, '#d6c8ff');
+    addEventLog(`Leader ${node.id} appended #${entry.index} "${pkt.cmd}" (T${node.currentTerm})`, 'violet');
+
+    // Immediately replicate to followers
+    node.heartbeatTimer = sim.heartbeatInterval;
+    broadcastAppendEntries(node, true);
+  }
+
+  function handleRequestVote(node, pkt) {
+    if (pkt.term > node.currentTerm) {
+      stepDown(node, pkt.term, `saw RequestVote T${pkt.term}`);
+    }
+
+    let granted = false;
+    if (pkt.term >= node.currentTerm) {
+      const myLastTerm = lastLogTerm(node);
+      const myLastIdx = lastLogIndex(node);
+      const logUpToDate =
+        pkt.lastLogTerm > myLastTerm ||
+        (pkt.lastLogTerm === myLastTerm && pkt.lastLogIndex >= myLastIdx);
+
+      if ((node.votedFor === null || node.votedFor === pkt.candidateId) && logUpToDate) {
+        granted = true;
+        node.votedFor = pkt.candidateId;
+        node.electionElapsed = 0; // Reset timeout when granting vote
+        node.pulse = 0.8;
+        node.pulseColor = '#4af2b2';
+      }
+    }
+
+    sendPacket({
+      type: 'VoteGranted',
+      fromIdx: node.idx,
+      toIdx: pkt.fromIdx,
+      term: node.currentTerm,
+      voteGranted: granted,
+      voterId: node.id,
+      label: granted ? `VOTE ✓` : `VOTE ✕`,
+      customDuration: sim.latency * 0.85
+    });
+  }
+
+  function handleVoteGranted(node, pkt) {
+    if (pkt.term > node.currentTerm) {
+      stepDown(node, pkt.term, `saw higher term in VoteReply`);
+      return;
+    }
+    if (node.state !== 'candidate' || pkt.term !== node.currentTerm) return;
+
+    if (pkt.voteGranted) {
+      node.votesReceived.add(pkt.voterId);
+      node.pulse = 0.75;
+      node.pulseColor = '#4af2b2';
+      sound.vote();
+
+      if (node.votesReceived.size >= quorumSize()) {
+        becomeLeader(node);
+      }
+    }
+  }
+
+  function handleAppendEntries(node, pkt) {
+    if (pkt.term < node.currentTerm) {
+      sendPacket({
+        type: 'Ack',
+        fromIdx: node.idx,
+        toIdx: pkt.fromIdx,
+        term: node.currentTerm,
+        success: false,
+        matchIndex: 0,
+        isHeartbeatAck: pkt.subtype === 'heartbeat',
+        label: `STALE T${node.currentTerm}`
+      });
+      return;
+    }
+
+    // Valid leader for current or newer term
+    const wasLeader = node.state === 'leader';
+    if (pkt.term > node.currentTerm || node.state !== 'follower') {
+      stepDown(node, pkt.term, wasLeader ? `overruled by ${pkt.leaderId} T${pkt.term}` : '');
+      if (wasLeader) {
+        showBanner(`Stale Leader ${node.id} discovered Term T${pkt.term} from ${pkt.leaderId} — stepping down!`, 'warn', 4.6);
+      }
+    }
+
+    // Reset circular election timeout ring!
+    node.electionElapsed = 0;
+    node.pulse = Math.max(node.pulse, pkt.subtype === 'append' ? 0.9 : 0.45);
+    node.pulseColor = pkt.subtype === 'append' ? '#58dcff' : '#ffd166';
+
+    // Check log consistency at prevLogIndex
+    if (pkt.prevLogIndex > 0) {
+      const prevEntry = node.log[pkt.prevLogIndex - 1];
+      if (!prevEntry || prevEntry.term !== pkt.prevLogTerm) {
+        sendPacket({
+          type: 'Ack',
+          fromIdx: node.idx,
+          toIdx: pkt.fromIdx,
+          term: node.currentTerm,
+          success: false,
+          matchIndex: Math.min(node.log.length, pkt.prevLogIndex - 1),
+          isHeartbeatAck: false,
+          label: `NACK`
+        });
+        return;
+      }
+    }
+
+    // Overwrite conflicting uncommitted entries & append new entries
+    let rolledBack = 0;
+    let appended = 0;
+    for (const incoming of pkt.entries) {
+      const idx0 = incoming.index - 1;
+      if (idx0 < node.log.length) {
+        if (node.log[idx0].term !== incoming.term) {
+          rolledBack += node.log.length - idx0;
+          node.log.length = idx0;
+          node.log.push({ ...incoming, committed: false });
+          appended++;
+        }
+      } else {
+        node.log.push({ ...incoming, committed: false });
+        appended++;
+      }
+    }
+
+    if (rolledBack > 0) {
+      node.rollbackFlash = 1.0;
+      const p = getNodePos(node.idx);
+      spawnSparks(p.x, p.y + layout.nodeR + 18, '#ff6083', 14, 95);
+      spawnRipple(p.x, p.y, '#ff6083', 82, 2.5);
+      spawnFloatText(p.x, p.y - layout.nodeR - 16, `ROLLBACK -${rolledBack}`, '#ff6083');
+      addEventLog(`${node.id} rolled back ${rolledBack} conflicting uncommitted entr${rolledBack > 1 ? 'ies' : 'y'}!`, 'rose');
+      showBanner(`${node.id} rolled back ${rolledBack} conflicting uncommitted log entr${rolledBack > 1 ? 'ies' : 'y'} & synced with majority!`, 'mint', 5.0);
+      sound.rollback();
+    }
+
+    // Advance commitIndex if leaderCommit > commitIndex
+    if (pkt.leaderCommit > node.commitIndex) {
+      const prevC = node.commitIndex;
+      node.commitIndex = Math.min(pkt.leaderCommit, node.log.length);
+      for (let i = 0; i < node.commitIndex; i++) {
+        node.log[i].committed = true;
+      }
+      if (node.commitIndex > prevC) {
+        const p = getNodePos(node.idx);
+        node.pulse = 1.0;
+        node.pulseColor = '#4af2b2';
+        spawnRipple(p.x, p.y, '#4af2b2', 64, 2.2);
+      }
+    }
+
+    const matchIdx = pkt.prevLogIndex + pkt.entries.length;
+
+    // Always ack AppendEntries with entries (or when follower needs to notify leader on higher term/sync);
+    // for pure heartbeats when already fully synced, still send lightweight ack occasionally or when partitioned to let stale leaders learn of higher term!
+    const needAck = pkt.entries.length > 0 || rolledBack > 0 || appended > 0 || pkt.subtype === 'append';
+    if (needAck) {
+      sendPacket({
+        type: 'Ack',
+        fromIdx: node.idx,
+        toIdx: pkt.fromIdx,
+        term: node.currentTerm,
+        success: true,
+        matchIndex: matchIdx,
+        isHeartbeatAck: false,
+        label: `ACK #${matchIdx}`
+      });
+    }
+  }
+
+  function handleAppendAck(leader, pkt) {
+    if (pkt.term > leader.currentTerm) {
+      stepDown(leader, pkt.term, `received higher term T${pkt.term} in Ack`);
+      showBanner(`Isolated Leader ${leader.id} saw Term T${pkt.term} — stepping down to Follower!`, 'warn', 4.6);
+      return;
+    }
+    if (leader.state !== 'leader' || pkt.term !== leader.currentTerm) return;
+
+    const peer = sim.nodes[pkt.fromIdx];
+    if (!peer) return;
+
+    if (pkt.success) {
+      leader.matchIndex[peer.id] = Math.max(leader.matchIndex[peer.id] || 0, pkt.matchIndex);
+      leader.nextIndex[peer.id] = leader.matchIndex[peer.id] + 1;
+      leader.matchIndex[leader.id] = leader.log.length;
+
+      // Check quorum commit rule (Raft §5.4.2: only commit entries from currentTerm)
+      const q = quorumSize();
+      let newCommit = leader.commitIndex;
+      for (let N = leader.log.length; N > leader.commitIndex; N--) {
+        if (leader.log[N - 1].term !== leader.currentTerm) continue;
+        let count = 0;
+        for (const n of sim.nodes) {
+          if ((leader.matchIndex[n.id] || 0) >= N) count++;
+        }
+        if (count >= q) {
+          newCommit = N;
+          break;
+        }
+      }
+
+      if (newCommit > leader.commitIndex) {
+        const newlyCommitted = [];
+        for (let i = leader.commitIndex; i < newCommit; i++) {
+          leader.log[i].committed = true;
+          newlyCommitted.push(leader.log[i]);
+        }
+        leader.commitIndex = newCommit;
+        const p = getNodePos(leader.idx);
+        leader.pulse = 1.0;
+        leader.pulseColor = '#4af2b2';
+        spawnRipple(p.x, p.y, '#4af2b2', 95, 3.0);
+        spawnSparks(p.x, p.y, '#4af2b2', 14, 95);
+        const lastCmd = newlyCommitted[newlyCommitted.length - 1];
+        spawnFloatText(p.x, p.y - layout.nodeR - 18, `COMMITTED #${newCommit} (${lastCmd.cmd})`, '#4af2b2');
+        addEventLog(`Quorum committed #${newCommit} "${lastCmd.cmd}" on Leader ${leader.id}`, 'mint');
+        sound.commit();
+        updateStateMachineUI();
+
+        // Promptly send heartbeat so followers turn emerald right away
+        leader.heartbeatTimer = Math.min(leader.heartbeatTimer, 0.22);
+      }
+    } else {
+      // Log mismatch — back up nextIndex and retry!
+      leader.nextIndex[peer.id] = Math.max(1, (leader.nextIndex[peer.id] || 2) - 1);
+      // Dispatch corrective AppendEntries shortly
+      leader.heartbeatTimer = Math.min(leader.heartbeatTimer, 0.25);
+    }
+  }
+
+  // =========================================================================
+  // CLIENT WRITE DISPATCH & CHAOS ACTIONS
+  // =========================================================================
+  function getAliveLeaders() {
+    return sim.nodes
+      .filter(n => n.alive && n.state === 'leader')
+      .sort((a, b) => b.currentTerm - a.currentTerm);
+  }
+
+  function getMajorityLeader() {
+    const leaders = getAliveLeaders();
+    if (leaders.length === 0) return null;
+    if (!sim.partition.active) return leaders[0];
+    const groups = computePartitionsGroups();
+    const q = quorumSize();
+    const majGroup = groups.find(g => g.filter(n => n.alive).length >= q);
+    if (majGroup) {
+      const majLeader = majGroup.find(n => n.alive && n.state === 'leader');
+      if (majLeader) return majLeader;
+    }
+    return leaders[0];
+  }
+
+  function getIsolatedMinorityLeader() {
+    if (!sim.partition.active) return null;
+    const groups = computePartitionsGroups();
+    const q = quorumSize();
+    for (const g of groups) {
+      if (g.filter(n => n.alive).length < q) {
+        const l = g.find(n => n.alive && n.state === 'leader');
+        if (l) return l;
+      }
+    }
+    return null;
+  }
+
+  function sendClientWrite(targetLeader = null, forcedCmd = null) {
+    const leader = targetLeader || getMajorityLeader();
+    if (!leader) {
+      showBanner('No active Leader available — Client Write rejected (cluster electing or no quorum).', 'danger', 3.2);
+      addEventLog('Client Write rejected — no Leader available', 'rose');
+      sound.drop();
+      return false;
+    }
+    const cmd = forcedCmd || consumeCommandLabel();
+    sendPacket({
+      type: 'ClientWrite',
+      fromClient: true,
+      fromIdx: -1,
+      toIdx: leader.idx,
+      term: leader.currentTerm,
+      cmd,
+      label: cmd,
+      noLoss: true,
+      customDuration: Math.min(0.75, sim.latency * 0.78)
+    });
+    sound.clientWrite();
+    return true;
+  }
+
+  function toggleNodeAlive(node) {
+    const p = getNodePos(node.idx);
+    if (node.alive) {
+      const wasLeader = node.state === 'leader';
+      node.alive = false;
+      node.state = 'follower';
+      node.votesReceived.clear();
+      node.crashFlash = 1.0;
+      spawnRipple(p.x, p.y, '#ff4d6d', 86, 3.0);
+      spawnSparks(p.x, p.y, '#ff4d6d', 16, 105);
+      spawnFloatText(p.x, p.y - layout.nodeR - 14, `CRASHED`, '#ff6083');
+      addEventLog(`${wasLeader ? 'Leader ' : ''}${node.id} crashed!`, 'rose');
+      if (wasLeader) {
+        showBanner(`Leader ${node.id} crashed! Watch follower election timeout rings drain to elect a new Leader.`, 'danger', 4.5);
+      }
+      sound.crash();
+    } else {
+      node.alive = true;
+      node.state = 'follower';
+      node.electionElapsed = 0;
+      node.electionTimeout = randomElectionTimeout(node);
+      node.pulse = 1.0;
+      node.pulseColor = '#58dcff';
+      spawnRipple(p.x, p.y, '#58dcff', 76, 2.5);
+      spawnFloatText(p.x, p.y - layout.nodeR - 14, `RESTARTED`, '#58dcff');
+      addEventLog(`${node.id} restarted as Follower (Term T${node.currentTerm})`, 'cyan');
+      sound.revive();
+    }
+    updateMinorityWriteButton();
+  }
+
+  function triggerSplitBrainPartition() {
+    // Isolate current Leader + minority neighbors on one side of a sleek bisecting crimson wall!
+    const leaders = getAliveLeaders();
+    const leaderIdx = leaders.length > 0 ? leaders[0].idx : 0;
+    const minCount = sim.nodeCount === 7 ? 3 : 2;
+
+    // Pick leaderIdx and its next (minCount - 1) clockwise neighbors as the minority arc
+    const firstIdx = leaderIdx;
+    const lastIdx = (leaderIdx + minCount - 1) % sim.nodeCount;
+
+    const a1 = -Math.PI / 2 + (firstIdx / sim.nodeCount) * Math.PI * 2;
+    const a2 = -Math.PI / 2 + ((firstIdx + minCount - 1) / sim.nodeCount) * Math.PI * 2;
+    const midAngle = (a1 + a2) * 0.5;
+
+    // Cut cleanly between firstIdx - 0.5 and lastIdx + 0.5
+    const cutA = -Math.PI / 2 + ((firstIdx - 0.5) / sim.nodeCount) * Math.PI * 2;
+    const cutB = -Math.PI / 2 + ((firstIdx + minCount - 0.5) / sim.nodeCount) * Math.PI * 2;
+
+    const p1x = Math.cos(cutA) * 1.42;
+    const p1y = Math.sin(cutA) * 1.42;
+    const p2x = Math.cos(cutB) * 1.42;
+    const p2y = Math.sin(cutB) * 1.42;
+
+    sim.partition.nx1 = p1x;
+    sim.partition.ny1 = p1y;
+    sim.partition.nx2 = p2x;
+    sim.partition.ny2 = p2y;
+    sim.partition.active = true;
+    sim.partition.pulse = 1.0;
+
+    const minorityIds = [];
+    for (let k = 0; k < minCount; k++) {
+      minorityIds.push(sim.nodes[(leaderIdx + k) % sim.nodeCount].id);
+    }
+    const majCount = sim.nodeCount - minCount;
+
+    addEventLog(`Partition Wall raised! Isolated minority [${minorityIds.join(', ')}] (${minCount} vs ${majCount})`, 'rose');
+    showBanner(`Network Partition (${majCount} vs ${minCount}): Leader ${sim.nodes[leaderIdx].id} isolated on minority side!`, 'danger', 5.2);
+    sound.partition();
+    updatePartitionUI();
+    updateMinorityWriteButton();
+  }
+
+  function healPartition() {
+    if (!sim.partition.active) return;
+    const w = getPartitionWorld();
+    const mx = (w.x1 + w.x2) * 0.5;
+    const my = (w.y1 + w.y2) * 0.5;
+    spawnSparks(mx, my, '#4af2b2', 18, 120);
+    spawnRipple(mx, my, '#4af2b2', 120, 2.5);
+
+    sim.partition.active = false;
+    addEventLog('Network Partition healed — cluster reconnecting!', 'mint');
+    showBanner('Partition Healed! Watch the higher-term Majority Leader overrule the stale Leader & repair logs.', 'mint', 5.0);
+    sound.heal();
+    updatePartitionUI();
+    updateMinorityWriteButton();
+
+    // Prompt leaders to immediately send heartbeats so healing convergence happens crisply
+    for (const n of sim.nodes) {
+      if (n.alive && n.state === 'leader') {
+        n.heartbeatTimer = Math.min(n.heartbeatTimer, 0.15);
+      }
+    }
+  }
+
+  function updatePartitionUI() {
+    const active = sim.partition.active;
+    const maj = sim.nodeCount - (sim.nodeCount === 7 ? 3 : 2);
+    const min = sim.nodeCount === 7 ? 3 : 2;
+    const splitLabel = `✂️ Split-Brain Partition (${maj} vs ${min})`;
+    const splitQuickLabel = `✂️ Split (${maj} vs ${min})`;
+
+    document.getElementById('btn-split-brain').textContent = splitLabel;
+    document.getElementById('btn-split-quick').textContent = splitQuickLabel;
+    document.getElementById('btn-heal-part').disabled = !active;
+    document.getElementById('btn-heal-quick').disabled = !active;
+    const st = document.getElementById('part-status-txt');
+    st.textContent = active ? 'PARTITIONED' : 'CONNECTED';
+    st.style.color = active ? 'var(--accent-rose)' : 'var(--accent-mint)';
+  }
+
+  function updateMinorityWriteButton() {
+    const minLeader = getIsolatedMinorityLeader();
+    const btn = document.getElementById('btn-minority-write');
+    if (minLeader) {
+      btn.style.display = 'inline-flex';
+      btn.textContent = `⚠️ Write to Isolated ${minLeader.id} (Uncommittable)`;
+    } else {
+      btn.style.display = 'none';
+    }
+  }
+
+  function updateStateMachineUI() {
+    const kvWrap = document.getElementById('kv-wrap');
+    const kvCount = document.getElementById('kv-count');
+
+    // Find highest committed log across alive nodes (guaranteed identical prefix by Raft Log Matching!)
+    let bestNode = null;
+    for (const n of sim.nodes) {
+      if (!bestNode || n.commitIndex > bestNode.commitIndex) bestNode = n;
+    }
+
+    const kv = new Map();
+    if (bestNode) {
+      for (let i = 0; i < bestNode.commitIndex; i++) {
+        const entry = bestNode.log[i];
+        if (!entry) continue;
+        const m = entry.cmd.match(/^SET\s+([a-zA-Z0-9_]+)\s*=\s*(.+)$/);
+        if (m) kv.set(m[1], m[2]);
+      }
+    }
+
+    kvCount.textContent = `${kv.size} key${kv.size === 1 ? '' : 's'}`;
+    if (kv.size === 0) {
+      kvWrap.innerHTML = '<span class="note-small">No committed writes yet — send a Client Write to replicate across quorum.</span>';
+      return;
+    }
+
+    let html = '';
+    for (const [k, v] of kv.entries()) {
+      html += `<span class="kv-pill">${escapeHtml(k)} = ${escapeHtml(v)}</span>`;
+    }
+    kvWrap.innerHTML = html;
+  }
+
+  // =========================================================================
+  // PRESET INITIALIZERS
+  // =========================================================================
+  function initCluster(nodeCount, opts = {}) {
+    sim.nodeCount = nodeCount;
+    sim.nodes = [];
+    sim.packets = [];
+    sim.particles = [];
+    sim.ripples = [];
+    sim.floatingTexts = [];
+    sim.scheduledActions = [];
+    sim.time = 0;
+    sim.cmdCursor = 0;
+    sim.partition.active = false;
+    sim.logs = [];
+    document.getElementById('event-log').innerHTML = '';
+
+    for (let i = 0; i < nodeCount; i++) {
+      sim.nodes.push(createNode(i));
+    }
+
+    computeTargetLayout();
+
+    // Sync sliders & node count buttons
+    document.querySelectorAll('#node-count-row .seg-btn').forEach(b => {
+      b.classList.toggle('active', Number(b.dataset.nodes) === nodeCount);
+    });
+
+    const seedLeader = opts.seedLeader !== false;
+    if (seedLeader) {
+      const leader = sim.nodes[0];
+      leader.state = 'leader';
+      leader.currentTerm = 1;
+      leader.votedFor = leader.id;
+      leader.heartbeatTimer = 0.25;
+      for (const n of sim.nodes) {
+        n.currentTerm = 1;
+        n.votedFor = leader.id;
+        leader.nextIndex[n.id] = 1;
+        leader.matchIndex[n.id] = 0;
+        if (n !== leader) {
+          n.electionElapsed = Math.random() * 0.6;
+          n.electionTimeout = sim.electionBase + 0.4 + n.idx * 0.55;
+        }
+      }
+
+      // Optional pre-committed seed entries
+      if (opts.seedEntries && opts.seedEntries.length > 0) {
+        for (const cmd of opts.seedEntries) {
+          const entry = { index: leader.log.length + 1, term: 1, cmd, committed: true };
+          for (const n of sim.nodes) {
+            n.log.push({ ...entry });
+            n.commitIndex = entry.index;
+          }
+        }
+        for (const n of sim.nodes) {
+          leader.nextIndex[n.id] = leader.log.length + 1;
+          leader.matchIndex[n.id] = leader.log.length;
+        }
+      }
+      addEventLog(`${leader.id} active as Leader for Term T1 (${nodeCount}-node cluster)`, 'gold');
+    }
+
+    updateNextCmdUI();
+    updatePartitionUI();
+    updateMinorityWriteButton();
+    updateStateMachineUI();
+  }
+
+  function applyPreset(name) {
+    sim.preset = name;
+    document.querySelectorAll('.preset-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.preset === name);
+    });
+
+    // Reset default network parameters first
+    setNetworkParams({ loss: 0, latency: 0.85, electionBase: 4.6, hb: 1.35, autoWrite: false });
+
+    if (name === 'healthy') {
+      initCluster(5, { seedLeader: true, seedEntries: ['SET init=1'] });
+      showBanner('Healthy 5-Node Raft Cluster — click Send Client Write or kill any node to experiment!', 'mint', 3.8);
+    } else if (name === 'leader-crash') {
+      initCluster(5, { seedLeader: true, seedEntries: ['SET init=1', 'SET cfg=9'] });
+      // Make S2 have the shortest timeout so re-election happens swiftly after S1 crashes
+      sim.nodes[1].electionTimeout = 3.2;
+      sim.nodes[2].electionTimeout = 4.6;
+      sim.nodes[3].electionTimeout = 5.4;
+      sim.nodes[4].electionTimeout = 6.1;
+      showBanner('Leader Crash Scenario — S1 will crash in 0.8s. Watch Followers time out & elect a new Leader!', 'warn', 4.5);
+      sim.scheduledActions.push({
+        at: 0.8,
+        fn: () => {
+          if (sim.nodes[0] && sim.nodes[0].alive) toggleNodeAlive(sim.nodes[0]);
+        }
+      });
+    } else if (name === 'split-brain') {
+      initCluster(5, { seedLeader: true, seedEntries: ['SET init=1'] });
+      // Give majority side S3 a quick timeout so it wins Term 2 cleanly
+      sim.nodes[2].electionTimeout = 3.0;
+      sim.nodes[3].electionTimeout = 4.4;
+      sim.nodes[4].electionTimeout = 5.2;
+      triggerSplitBrainPartition();
+      showBanner('Split-Brain (3 vs 2): S1 is isolated on minority! Watch S1 stall uncommitted while Majority elects T2 & commits.', 'danger', 6.5);
+      // Send an uncommittable write to isolated Leader S1
+      sim.scheduledActions.push({
+        at: 0.65,
+        fn: () => {
+          const minL = getIsolatedMinorityLeader();
+          if (minL) sendClientWrite(minL, 'SET stale=99');
+        }
+      });
+      // Once majority elects T2 leader, automatically send a real client write to the majority leader
+      sim.scheduledActions.push({
+        at: 5.4,
+        fn: () => {
+          const majL = getMajorityLeader();
+          if (majL && majL.id !== 'S1') {
+            sendClientWrite(majL);
+            showBanner('Divergence achieved! Majority committed while S1 is stuck amber — click "Heal Partition" to watch rollback!', 'warn', 7.0);
+          }
+        }
+      });
+    } else if (name === 'flaky') {
+      setNetworkParams({ loss: 25, latency: 1.15, electionBase: 5.2, hb: 1.25, autoWrite: true });
+      initCluster(5, { seedLeader: true, seedEntries: ['SET net=1'] });
+      showBanner('Flaky Network (25% Packet Loss) — watch Raft retry dropped RPCs and maintain quorum safety!', 'warn', 4.5);
+    } else if (name === 'seven-node') {
+      setNetworkParams({ loss: 0, latency: 0.85, electionBase: 4.8, hb: 1.4, autoWrite: true });
+      initCluster(7, { seedLeader: true, seedEntries: ['SET ha=7'] });
+      showBanner('7-Node High-Availability Cluster (Quorum 4/7) — tolerates up to 3 simultaneous server crashes!', 'mint', 4.2);
+    } else if (name === 'split-vote') {
+      setNetworkParams({ loss: 0, latency: 0.95, electionBase: 4.2, hb: 1.35, autoWrite: false });
+      initCluster(5, { seedLeader: false });
+      // Take S5 offline momentarily (or keep S5 slow/offline so 4 alive nodes split 2 vs 2 cleanly!)
+      sim.nodes[4].alive = false;
+      // Configure S1 and S3 to time out simultaneously and split the 4 alive nodes (S1+S2 vs S3+S4)
+      sim.nodes[0].electionTimeout = 0.55; // S1
+      sim.nodes[2].electionTimeout = 0.55; // S3
+      sim.nodes[1].electionTimeout = 5.4;  // S2 (closer to S1 -> votes S1)
+      sim.nodes[3].electionTimeout = 5.6;  // S4 (closer to S3 -> votes S3)
+      // Pre-set subtle proximity latency hint for first election so S1->S2 & S3->S4 arrive first
+      sim.scheduledActions.push({
+        at: 0.55,
+        fn: () => {
+          // Force simultaneous RequestVotes with clean 2-2 tie geometry
+          const s1 = sim.nodes[0];
+          const s3 = sim.nodes[2];
+          if (s1.alive && s1.state === 'follower' && s3.alive && s3.state === 'follower') {
+            s1.currentTerm = 2; s1.state = 'candidate'; s1.votedFor = 'S1'; s1.votesReceived = new Set(['S1']);
+            s1.electionElapsed = 0; s1.electionTimeout = 3.5; // wins next term!
+            s3.currentTerm = 2; s3.state = 'candidate'; s3.votedFor = 'S3'; s3.votesReceived = new Set(['S3']);
+            s3.electionElapsed = 0; s3.electionTimeout = 5.6;
+
+            for (const cand of [s1, s3]) {
+              const p = getNodePos(cand.idx);
+              spawnRipple(p.x, p.y, '#ffbe5c', 82, 2.5);
+              spawnFloatText(p.x, p.y - layout.nodeR - 14, `CANDIDATE T2`, '#ffbe5c');
+              for (const peer of sim.nodes) {
+                if (peer.idx === cand.idx) continue;
+                const fastLink = (cand.idx === 0 && peer.idx === 1) || (cand.idx === 2 && peer.idx === 3);
+                sendPacket({
+                  type: 'RequestVote',
+                  fromIdx: cand.idx,
+                  toIdx: peer.idx,
+                  term: 2,
+                  candidateId: cand.id,
+                  lastLogIndex: 0,
+                  lastLogTerm: 0,
+                  label: 'RV T2',
+                  customDuration: fastLink ? 0.55 : 1.15
+                });
+              }
+            }
+            addEventLog('Simultaneous timeout! S1 & S3 both start Term T2 elections → 2-2 split vote!', 'gold');
+            sound.vote();
+          }
+        }
+      });
+      // Bring S5 back online once Term 2 ties so Term 3 resolves cleanly
+      sim.scheduledActions.push({
+        at: 4.1,
+        fn: () => {
+          if (sim.nodes[4] && !sim.nodes[4].alive) {
+            toggleNodeAlive(sim.nodes[4]);
+          }
+        }
+      });
+      showBanner('Split-Vote Tie! S1 & S3 time out simultaneously (2 vs 2 votes). Randomized backoff breaks the tie in Term T3!', 'warn', 6.5);
+    }
+  }
+
+  function setNetworkParams({ loss, latency, electionBase, hb, autoWrite }) {
+    if (loss !== undefined) {
+      sim.packetLoss = loss / 100;
+      document.getElementById('sl-loss').value = loss;
+      document.getElementById('val-loss').textContent = `${loss}%`;
+    }
+    if (latency !== undefined) {
+      sim.latency = latency;
+      document.getElementById('sl-latency').value = latency;
+      document.getElementById('val-latency').textContent = `${latency.toFixed(2)} s`;
+    }
+    if (electionBase !== undefined) {
+      sim.electionBase = electionBase;
+      document.getElementById('sl-timeout').value = electionBase;
+      document.getElementById('val-timeout').textContent = `${electionBase.toFixed(1)} s`;
+    }
+    if (hb !== undefined) {
+      sim.heartbeatInterval = hb;
+      document.getElementById('sl-hb').value = hb;
+      document.getElementById('val-hb').textContent = `${hb.toFixed(2)} s`;
+    }
+    if (autoWrite !== undefined) {
+      sim.autoWrite = autoWrite;
+      document.getElementById('chk-auto-write').checked = autoWrite;
+    }
+  }
+
+  // =========================================================================
+  // SIMULATION STEP LOOP
+  // =========================================================================
+  function stepSim(dt) {
+    // Smooth layout interpolation even when paused
+    layout.cx += (layout.targetCx - layout.cx) * Math.min(1, dt * 8);
+    layout.cy += (layout.targetCy - layout.cy) * Math.min(1, dt * 8);
+    layout.R += (layout.targetR - layout.R) * Math.min(1, dt * 8);
+
+    // Banner fade countdown (uses wall dt)
+    if (sim.bannerTimer > 0) {
+      sim.bannerTimer -= dt;
+      if (sim.bannerTimer <= 0) {
+        document.getElementById('event-banner').classList.remove('visible');
+      }
+    }
+
+    if (!sim.running) return;
+
+    const sdt = dt * sim.speed;
+    sim.time += sdt;
+
+    // Run scheduled preset actions
+    for (let i = sim.scheduledActions.length - 1; i >= 0; i--) {
+      if (sim.time >= sim.scheduledActions[i].at) {
+        const act = sim.scheduledActions.splice(i, 1)[0];
+        act.fn();
+      }
+    }
+
+    // Auto-Write Client Stream
+    if (sim.autoWrite) {
+      sim.autoWriteTimer -= sdt;
+      if (sim.autoWriteTimer <= 0) {
+        sim.autoWriteTimer = 3.2 + Math.random() * 1.4;
+        const majL = getMajorityLeader();
+        if (majL) sendClientWrite(majL);
+      }
+    }
+
+    // Partition visual pulse decay
+    if (sim.partition.pulse > 0) {
+      sim.partition.pulse = Math.max(0, sim.partition.pulse - sdt * 1.4);
+    }
+
+    // Update Nodes
+    for (const node of sim.nodes) {
+      if (node.pulse > 0) node.pulse = Math.max(0, node.pulse - sdt * 1.6);
+      if (node.rollbackFlash > 0) node.rollbackFlash = Math.max(0, node.rollbackFlash - sdt * 1.1);
+      if (node.crashFlash > 0) node.crashFlash = Math.max(0, node.crashFlash - sdt * 1.5);
+
+      if (!node.alive) continue;
+
+      if (node.state === 'leader') {
+        node.heartbeatTimer -= sdt;
+        if (node.heartbeatTimer <= 0) {
+          node.heartbeatTimer = sim.heartbeatInterval;
+          broadcastAppendEntries(node, false);
+        }
+      } else {
+        // Follower or Candidate election timeout
+        node.electionElapsed += sdt;
+        if (node.electionElapsed >= node.electionTimeout) {
+          becomeCandidate(node);
+        }
+      }
+    }
+
+    // Update In-Flight RPC Packets
+    const cPos = getClientPos();
+    for (let i = sim.packets.length - 1; i >= 0; i--) {
+      const pkt = sim.packets[i];
+      if (pkt.dead) {
+        sim.packets.splice(i, 1);
+        continue;
+      }
+
+      const prevP = pkt.progress;
+      pkt.progress += sdt / pkt.duration;
+
+      const fromPos = pkt.fromClient ? cPos : getNodePos(pkt.fromIdx);
+      const toPos = getNodePos(pkt.toIdx);
+      const bowSign = pkt.fromClient ? 0.6 : (pkt.fromIdx < pkt.toIdx ? 1 : -1);
+      const curve = getLinkCurve(fromPos.x, fromPos.y, toPos.x, toPos.y, bowSign);
+
+      // Check Partition Wall collision for peer-to-peer packets!
+      if (!pkt.fromClient && sim.partition.active) {
+        const hitT = findCurvePartitionHit(curve);
+        if (hitT !== null && pkt.progress >= hitT) {
+          const hp = evalQuad(curve, hitT);
+          spawnSparks(hp.x, hp.y, '#ff4d6d', 9, 85);
+          spawnRipple(hp.x, hp.y, '#ff4d6d', 24, 1.8);
+          sim.partition.pulse = Math.min(1, sim.partition.pulse + 0.4);
+          pkt.dead = true;
+          sim.packets.splice(i, 1);
+          continue;
+        }
+      }
+
+      // Check simulated random Packet Loss mid-flight
+      if (pkt.dropAt !== null && prevP < pkt.dropAt && pkt.progress >= pkt.dropAt) {
+        const dp = evalQuad(curve, pkt.dropAt);
+        spawnSparks(dp.x, dp.y, '#ff6083', 8, 70);
+        spawnFloatText(dp.x, dp.y - 8, 'LOST', '#ff6083');
+        pkt.dead = true;
+        sim.packets.splice(i, 1);
+        continue;
+      }
+
+      const pos = evalQuad(curve, Math.min(1, pkt.progress));
+      pkt.x = pos.x;
+      pkt.y = pos.y;
+
+      if (pkt.progress >= 1) {
+        sim.packets.splice(i, 1);
+        deliverPacket(pkt);
+      }
+    }
+
+    // Update Particles
+    for (let i = sim.particles.length - 1; i >= 0; i--) {
+      const pt = sim.particles[i];
+      pt.x += pt.vx * sdt;
+      pt.y += pt.vy * sdt;
+      pt.vx *= Math.pow(0.18, sdt);
+      pt.vy *= Math.pow(0.18, sdt);
+      pt.life -= sdt;
+      if (pt.life <= 0) sim.particles.splice(i, 1);
+    }
+
+    // Update Ripples
+    for (let i = sim.ripples.length - 1; i >= 0; i--) {
+      const rp = sim.ripples[i];
+      rp.r += (rp.maxR - rp.r) * Math.min(1, sdt * 6.5) + sdt * 18;
+      rp.alpha -= sdt * 1.45;
+      if (rp.alpha <= 0) sim.ripples.splice(i, 1);
+    }
+
+    // Update Floating Texts
+    for (let i = sim.floatingTexts.length - 1; i >= 0; i--) {
+      const ft = sim.floatingTexts[i];
+      ft.y -= sdt * 22;
+      ft.life -= sdt;
+      if (ft.life <= 0) sim.floatingTexts.splice(i, 1);
+    }
+
+    updateMinorityWriteButton();
+  }
+
+  // =========================================================================
+  // TELEMETRY HUD UPDATE
+  // =========================================================================
+  let lastHudUpdate = 0;
+  function updateTelemetry(nowMs) {
+    if (nowMs - lastHudUpdate < 90) return;
+    lastHudUpdate = nowMs;
+
+    const q = quorumSize();
+    const aliveCount = sim.nodes.filter(n => n.alive).length;
+    const maxTerm = sim.nodes.reduce((m, n) => Math.max(m, n.currentTerm), 1);
+    const maxCommit = sim.nodes.reduce((m, n) => Math.max(m, n.commitIndex), 0);
+    const leaders = getAliveLeaders();
+    const majLeader = getMajorityLeader();
+
+    document.getElementById('tel-term').textContent = `T${maxTerm}`;
+    document.getElementById('tel-leader').textContent =
+      leaders.length > 1
+        ? leaders.map(l => l.id).join(' / ')
+        : (majLeader ? majLeader.id : '—');
+    document.getElementById('tel-quorum').textContent = `${q} / ${sim.nodeCount}`;
+
+    const aliveEl = document.getElementById('tel-alive');
+    aliveEl.textContent = `${aliveCount} / ${sim.nodeCount}`;
+    aliveEl.className = 'tele-val ' + (aliveCount >= q ? 'mint' : 'rose');
+
+    document.getElementById('tel-commit').textContent = `#${maxCommit}`;
+    document.getElementById('tel-rpcs').textContent = `${sim.packets.length}`;
+    document.getElementById('tel-clock').textContent = `t=${sim.time.toFixed(1)}s`;
+    document.getElementById('tel-ticker').textContent = sim.lastTicker;
+
+    // Quorum health bar & Safety Badge
+    const groups = computePartitionsGroups();
+    const largestAliveGroup = groups.reduce((m, g) => Math.max(m, g.filter(n => n.alive).length), 0);
+    const hasQuorum = largestAliveGroup >= q;
+    const pct = Math.round((largestAliveGroup / sim.nodeCount) * 100);
+
+    const qFill = document.getElementById('quorum-fill');
+    qFill.style.width = `${pct}%`;
+    document.getElementById('tel-quorum-pct').textContent = `${largestAliveGroup}/${sim.nodeCount}`;
+
+    const badge = document.getElementById('safety-badge');
+    if (!hasQuorum) {
+      badge.textContent = 'No Quorum!';
+      badge.className = 'status-pill danger';
+      qFill.className = 'quorum-fill danger';
+    } else if (sim.partition.active) {
+      badge.textContent = 'Partitioned (Majority OK)';
+      badge.className = 'status-pill partition';
+      qFill.className = 'quorum-fill warn';
+    } else if (!majLeader) {
+      badge.textContent = 'Electing Leader...';
+      badge.className = 'status-pill warn';
+      qFill.className = 'quorum-fill warn';
+    } else {
+      badge.textContent = 'Consensus Healthy';
+      badge.className = 'status-pill';
+      qFill.className = 'quorum-fill';
+    }
+  }
+
+  // =========================================================================
+  // CANVAS INTERACTION (CLICK NODE, CLICK PACKET, DRAG PARTITION WALL)
+  // =========================================================================
+  const pointer = {
+    x: 0,
+    y: 0,
+    hoverNode: null,
+    hoverPacket: null,
+    hoverHandle: null, // 'p1' | 'p2' | null
+    draggingWall: false,
+    dragStartX: 0,
+    dragStartY: 0,
+    dragCurrX: 0,
+    dragCurrY: 0,
+    dragHandle: null
+  };
+
+  function hitTestNode(x, y) {
+    for (const node of sim.nodes) {
+      const p = getNodePos(node.idx);
+      if (Math.hypot(x - p.x, y - p.y) <= layout.nodeR + 8) return node;
+    }
+    return null;
+  }
+
+  function hitTestPacket(x, y) {
+    let best = null;
+    let bestD = 18;
+    for (const pkt of sim.packets) {
+      if (pkt.dead) continue;
+      const d = Math.hypot(x - pkt.x, y - pkt.y);
+      if (d < bestD) {
+        bestD = d;
+        best = pkt;
+      }
+    }
+    return best;
+  }
+
+  function hitTestPartitionHandle(x, y) {
+    if (!sim.partition.active) return null;
+    const w = getPartitionWorld();
+    if (Math.hypot(x - w.x1, y - w.y1) <= 16) return 'p1';
+    if (Math.hypot(x - w.x2, y - w.y2) <= 16) return 'p2';
+    return null;
+  }
+
+  function hitTestClientNode(x, y) {
+    const c = getClientPos();
+    return Math.hypot(x - c.x, y - c.y) <= 26;
+  }
+
+  canvas.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    pointer.x = x;
+    pointer.y = y;
+
+    // 1. Check Partition Wall Handles
+    const handle = hitTestPartitionHandle(x, y);
+    if (handle) {
+      pointer.dragHandle = handle;
+      canvas.classList.add('grabbing');
+      canvas.setPointerCapture(e.pointerId);
+      return;
+    }
+
+    // 2. Check Client Node click -> quick Client Write!
+    if (hitTestClientNode(x, y)) {
+      sendClientWrite();
+      return;
+    }
+
+    // 3. Check In-Flight Packet click -> Drop Packet!
+    const pkt = hitTestPacket(x, y);
+    if (pkt) {
+      pkt.dead = true;
+      spawnSparks(pkt.x, pkt.y, '#ff6083', 12, 95);
+      spawnRipple(pkt.x, pkt.y, '#ff6083', 32, 2.0);
+      spawnFloatText(pkt.x, pkt.y - 10, `DROPPED ${pkt.label || pkt.type}`, '#ff6083');
+      addEventLog(`Manually dropped ${pkt.type} (${pkt.label})`, 'rose');
+      sound.drop();
+      return;
+    }
+
+    // 4. Check Server Node click -> Kill / Restart!
+    const node = hitTestNode(x, y);
+    if (node) {
+      toggleNodeAlive(node);
+      return;
+    }
+
+    // 5. Empty canvas drag -> Draw custom Crimson Partition Wall!
+    pointer.draggingWall = true;
+    pointer.dragStartX = x;
+    pointer.dragStartY = y;
+    pointer.dragCurrX = x;
+    pointer.dragCurrY = y;
+    canvas.classList.add('grabbing');
+    canvas.setPointerCapture(e.pointerId);
+  });
+
+  canvas.addEventListener('pointermove', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    pointer.x = x;
+    pointer.y = y;
+
+    if (pointer.dragHandle) {
+      const w = getPartitionWorld();
+      if (pointer.dragHandle === 'p1') setPartitionWorld(x, y, w.x2, w.y2);
+      else setPartitionWorld(w.x1, w.y1, x, y);
+      updateMinorityWriteButton();
+      return;
+    }
+
+    if (pointer.draggingWall) {
+      pointer.dragCurrX = x;
+      pointer.dragCurrY = y;
+      return;
+    }
+
+    pointer.hoverHandle = hitTestPartitionHandle(x, y);
+    pointer.hoverPacket = hitTestPacket(x, y);
+    pointer.hoverNode = pointer.hoverPacket ? null : hitTestNode(x, y);
+    const overClient = hitTestClientNode(x, y);
+    canvas.classList.toggle('pointer', Boolean(pointer.hoverHandle || pointer.hoverPacket || pointer.hoverNode || overClient));
+  });
+
+  canvas.addEventListener('pointerup', (e) => {
+    if (pointer.dragHandle) {
+      pointer.dragHandle = null;
+      canvas.classList.remove('grabbing');
+      return;
+    }
+    if (pointer.draggingWall) {
+      pointer.draggingWall = false;
+      canvas.classList.remove('grabbing');
+      const dist = Math.hypot(pointer.dragCurrX - pointer.dragStartX, pointer.dragCurrY - pointer.dragStartY);
+      if (dist > 40) {
+        setPartitionWorld(pointer.dragStartX, pointer.dragStartY, pointer.dragCurrX, pointer.dragCurrY);
+        const groups = computePartitionsGroups();
+        if (groups.length > 1) {
+          const sizes = groups.map(g => g.length).sort((a, b) => b - a).join(' vs ');
+          addEventLog(`Custom Partition Wall drawn (${sizes})`, 'rose');
+          showBanner(`Custom Network Partition active (${sizes}) — click Heal Partition to reconnect!`, 'danger', 4.5);
+          sound.partition();
+        } else {
+          // Wall didn't bisect any nodes — gently keep it drawn so user can adjust handles
+          addEventLog('Partition Wall placed (drag handles across links to bisect nodes)', 'rose');
+        }
+        updateMinorityWriteButton();
+      }
+    }
+  });
+
+  canvas.addEventListener('dblclick', (e) => {
+    if (!sim.partition.active) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    // If double-clicked near partition wall line, heal it
+    const w = getPartitionWorld();
+    const dx = w.x2 - w.x1, dy = w.y2 - w.y1;
+    const len2 = dx * dx + dy * dy || 1;
+    const t = Math.max(0, Math.min(1, ((x - w.x1) * dx + (y - w.y1) * dy) / len2));
+    const px = w.x1 + t * dx, py = w.y1 + t * dy;
+    if (Math.hypot(x - px, y - py) < 22) {
+      healPartition();
+    }
+  });
+
+  // =========================================================================
+  // CANVAS RENDERING ENGINE (MUSEUM-GRADE VISUALS)
+  // =========================================================================
+  function render(nowMs) {
+    const tSec = nowMs * 0.001;
+
+    // 1. Deep Space Slate-Navy Backdrop
+    ctx.fillStyle = '#040711';
+    ctx.fillRect(0, 0, viewW, viewH);
+
+    // Subtle atmospheric radial cluster glow
+    const leaders = getAliveLeaders();
+    const hasQuorum = computePartitionsGroups().some(g => g.filter(n => n.alive).length >= quorumSize());
+    const bgGlow = ctx.createRadialGradient(layout.cx, layout.cy, 20, layout.cx, layout.cy, layout.R * 2.15);
+    if (!hasQuorum) {
+      bgGlow.addColorStop(0, 'rgba(255, 77, 109, 0.11)');
+      bgGlow.addColorStop(0.55, 'rgba(30, 14, 30, 0.05)');
+    } else if (leaders.length === 0) {
+      bgGlow.addColorStop(0, 'rgba(255, 190, 92, 0.10)');
+      bgGlow.addColorStop(0.55, 'rgba(20, 22, 42, 0.05)');
+    } else {
+      bgGlow.addColorStop(0, 'rgba(56, 189, 248, 0.09)');
+      bgGlow.addColorStop(0.45, 'rgba(255, 209, 102, 0.035)');
+    }
+    bgGlow.addColorStop(1, 'rgba(4, 7, 17, 0)');
+    ctx.fillStyle = bgGlow;
+    ctx.fillRect(0, 0, viewW, viewH);
+
+    // Subtle technical dot grid
+    drawBackgroundGrid();
+
+    // Cluster orbital ring & central hub medallion
+    drawClusterRingAndHub(tSec);
+
+    // 2. Peer-to-Peer Mesh Links
+    if (sim.showLinks) {
+      drawMeshLinks(tSec);
+    }
+
+    // 3. Client Emitter Node (top of ring)
+    drawClientNode(tSec);
+
+    // 4. Crimson Network Partition Wall (or Drag Preview)
+    if (sim.partition.active) {
+      const w = getPartitionWorld();
+      drawPartitionWall(w.x1, w.y1, w.x2, w.y2, tSec, false);
+    }
+    if (pointer.draggingWall) {
+      const dist = Math.hypot(pointer.dragCurrX - pointer.dragStartX, pointer.dragCurrY - pointer.dragStartY);
+      if (dist > 14) {
+        drawPartitionWall(pointer.dragStartX, pointer.dragStartY, pointer.dragCurrX, pointer.dragCurrY, tSec, true);
+      }
+    }
+
+    // 5. Shockwave Ripples
+    for (const rp of sim.ripples) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(rp.x, rp.y, rp.r, 0, Math.PI * 2);
+      ctx.strokeStyle = rp.color;
+      ctx.globalAlpha = Math.max(0, rp.alpha);
+      ctx.lineWidth = rp.lineW;
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // 6. Animated In-Flight RPC Packets
+    drawPackets(tSec);
+
+    // 7. Server Nodes (State Halo, Timeout Ring, Term, Mini Replicated Log Strip)
+    for (const node of sim.nodes) {
+      drawServerNode(node, tSec);
+    }
+
+    // 8. Sparks & Floating Protocol Labels
+    for (const pt of sim.particles) {
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, pt.life / pt.maxLife);
+      ctx.fillStyle = pt.color;
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, pt.size, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    for (const ft of sim.floatingTexts) {
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, (ft.life / ft.maxLife) * 1.4);
+      ctx.font = '700 11px ui-monospace, Menlo, Consolas, monospace';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = ft.color;
+      ctx.shadowColor = 'rgba(0,0,0,0.85)';
+      ctx.shadowBlur = 6;
+      ctx.fillText(ft.text, ft.x, ft.y);
+      ctx.restore();
+    }
+
+    // 9. Subtle Canvas Hover Tooltip
+    drawHoverTooltip();
+  }
+
+  function drawBackgroundGrid() {
+    const spacing = 44;
+    ctx.fillStyle = 'rgba(148, 179, 255, 0.08)';
+    const offX = layout.cx % spacing;
+    const offY = layout.cy % spacing;
+    for (let x = offX; x < viewW; x += spacing) {
+      for (let y = offY; y < viewH; y += spacing) {
+        ctx.fillRect(x - 0.75, y - 0.75, 1.5, 1.5);
+      }
+    }
+  }
+
+  function drawClusterRingAndHub(tSec) {
+    ctx.save();
+
+    // Outer faint architectural ring
+    ctx.beginPath();
+    ctx.arc(layout.cx, layout.cy, layout.R, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(88, 220, 255, 0.10)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Faint inner compass ring
+    ctx.beginPath();
+    ctx.arc(layout.cx, layout.cy, layout.R * 0.44, 0, Math.PI * 2);
+    ctx.setLineDash([4, 8]);
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.10)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Rotating subtle telemetry tick ring around center
+    const hubR = Math.max(36, Math.min(54, layout.R * 0.23));
+    ctx.beginPath();
+    ctx.arc(layout.cx, layout.cy, hubR, tSec * 0.25, tSec * 0.25 + Math.PI * 1.4);
+    ctx.strokeStyle = 'rgba(88, 220, 255, 0.16)';
+    ctx.lineWidth = 1.4;
+    ctx.stroke();
+
+    // Central Hub Medallion
+    const maxTerm = sim.nodes.reduce((m, n) => Math.max(m, n.currentTerm), 1);
+    ctx.fillStyle = 'rgba(8, 13, 26, 0.65)';
+    ctx.beginPath();
+    ctx.arc(layout.cx, layout.cy, hubR - 4, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = 'rgba(154, 169, 204, 0.65)';
+    ctx.font = '700 9px system-ui, sans-serif';
+    ctx.fillText('RAFT TERM', layout.cx, layout.cy - 10);
+
+    ctx.fillStyle = '#ffd166';
+    ctx.font = '800 17px ui-monospace, Menlo, Consolas, monospace';
+    ctx.fillText(`T${maxTerm}`, layout.cx, layout.cy + 5);
+
+    ctx.fillStyle = 'rgba(104, 120, 156, 0.8)';
+    ctx.font = '600 9px ui-monospace, Menlo, Consolas, monospace';
+    ctx.fillText(`Q=${quorumSize()}/${sim.nodeCount}`, layout.cx, layout.cy + 20);
+
+    ctx.restore();
+  }
+
+  function drawMeshLinks(tSec) {
+    ctx.save();
+    for (let i = 0; i < sim.nodes.length; i++) {
+      for (let j = i + 1; j < sim.nodes.length; j++) {
+        const a = getNodePos(i);
+        const b = getNodePos(j);
+        const severed = areNodesPartitioned(i, j);
+        const bothAlive = sim.nodes[i].alive && sim.nodes[j].alive;
+
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        if (severed) {
+          ctx.setLineDash([4, 6]);
+          ctx.strokeStyle = 'rgba(255, 77, 109, 0.17)';
+          ctx.lineWidth = 1;
+        } else if (bothAlive) {
+          ctx.setLineDash([]);
+          ctx.strokeStyle = 'rgba(110, 168, 254, 0.11)';
+          ctx.lineWidth = 1.1;
+        } else {
+          ctx.setLineDash([2, 5]);
+          ctx.strokeStyle = 'rgba(148, 179, 255, 0.05)';
+          ctx.lineWidth = 0.9;
+        }
+        ctx.stroke();
+      }
+    }
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
+
+  function drawClientNode(tSec) {
+    const c = getClientPos();
+    const majL = getMajorityLeader();
+
+    ctx.save();
+
+    // Subtle link from Client to Majority Leader
+    if (majL) {
+      const lp = getNodePos(majL.idx);
+      const curve = getLinkCurve(c.x, c.y, lp.x, lp.y, 0.6);
+      ctx.beginPath();
+      ctx.moveTo(curve.ax, curve.ay);
+      ctx.quadraticCurveTo(curve.cpx, curve.cpy, curve.bx, curve.by);
+      ctx.setLineDash([4, 5]);
+      ctx.strokeStyle = 'rgba(167, 139, 250, 0.25)';
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // Client pill badge
+    const hover = hitTestClientNode(pointer.x, pointer.y);
+    const w = 96, h = 28;
+    const x = c.x - w / 2, y = c.y - h / 2;
+
+    ctx.beginPath();
+    roundRectPath(ctx, x, y, w, h, 14);
+    ctx.fillStyle = hover ? 'rgba(167, 139, 250, 0.26)' : 'rgba(14, 19, 36, 0.85)';
+    ctx.fill();
+    ctx.strokeStyle = hover ? '#c4b5fd' : 'rgba(167, 139, 250, 0.55)';
+    ctx.lineWidth = 1.4;
+    ctx.stroke();
+
+    ctx.fillStyle = '#e5dcff';
+    ctx.font = '700 10.5px ui-monospace, Menlo, Consolas, monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('⚡ CLIENT', c.x, c.y + 0.5);
+
+    ctx.restore();
+  }
+
+  function drawPartitionWall(x1, y1, x2, y2, tSec, isPreview) {
+    ctx.save();
+
+    // Outer crimson energy aura
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.strokeStyle = isPreview ? 'rgba(255, 96, 131, 0.25)' : `rgba(255, 65, 108, ${0.24 + sim.partition.pulse * 0.28})`;
+    ctx.lineWidth = 16;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+
+    // Core crackling barrier line
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.setLineDash([12, 7]);
+    ctx.lineDashOffset = -tSec * 28;
+    ctx.strokeStyle = isPreview ? '#ff8fa8' : '#ff4d6d';
+    ctx.lineWidth = 3.2;
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Solid inner filament
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.strokeStyle = 'rgba(255, 220, 228, 0.72)';
+    ctx.lineWidth = 1.1;
+    ctx.stroke();
+
+    // Glowing Endpoint Handles
+    for (const [hx, hy, hid] of [[x1, y1, 'p1'], [x2, y2, 'p2']]) {
+      const hovered = !isPreview && pointer.hoverHandle === hid;
+      ctx.beginPath();
+      ctx.arc(hx, hy, hovered ? 9 : 6.5, 0, Math.PI * 2);
+      ctx.fillStyle = hovered ? '#ff9db2' : '#ff4d6d';
+      ctx.fill();
+      ctx.strokeStyle = '#fff0f3';
+      ctx.lineWidth = 1.8;
+      ctx.stroke();
+    }
+
+    // Center Badge on Wall
+    const mx = (x1 + x2) * 0.5;
+    const my = (y1 + y2) * 0.5;
+    const label = isPreview ? 'RELEASE TO PARTITION' : '✂ NETWORK PARTITION';
+    ctx.font = '800 9.5px ui-monospace, Menlo, Consolas, monospace';
+    const tw = ctx.measureText(label).width + 14;
+    ctx.beginPath();
+    roundRectPath(ctx, mx - tw / 2, my - 10, tw, 20, 10);
+    ctx.fillStyle = 'rgba(28, 7, 14, 0.92)';
+    ctx.fill();
+    ctx.strokeStyle = '#ff4d6d';
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+    ctx.fillStyle = '#ffd6df';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, mx, my + 0.5);
+
+    ctx.restore();
+  }
+
+  function packetStyle(pkt) {
+    if (pkt.type === 'ClientWrite') return { color: '#b794f6', core: '#f3e8ff', r: 7.5 };
+    if (pkt.type === 'RequestVote') return { color: '#ff9f43', core: '#fff2d9', r: 6.5 };
+    if (pkt.type === 'VoteGranted') {
+      return pkt.voteGranted
+        ? { color: '#4af2b2', core: '#e6fff5', r: 6.5 }
+        : { color: '#ff6083', core: '#ffe0e8', r: 5.5 };
+    }
+    if (pkt.type === 'AppendEntries') {
+      return pkt.subtype === 'append'
+        ? { color: '#58dcff', core: '#e6fbff', r: 7.2 }
+        : { color: '#ffd166', core: '#fff9e6', r: 5.2 };
+    }
+    if (pkt.type === 'Ack') {
+      return pkt.success
+        ? { color: '#4af2b2', core: '#e6fff5', r: 5.8 }
+        : { color: '#ff6083', core: '#ffe0e8', r: 5.8 };
+    }
+    return { color: '#58dcff', core: '#ffffff', r: 5.5 };
+  }
+
+  function drawPackets(tSec) {
+    const cPos = getClientPos();
+    for (const pkt of sim.packets) {
+      if (pkt.dead) continue;
+      const fromPos = pkt.fromClient ? cPos : getNodePos(pkt.fromIdx);
+      const toPos = getNodePos(pkt.toIdx);
+      const bowSign = pkt.fromClient ? 0.6 : (pkt.fromIdx < pkt.toIdx ? 1 : -1);
+      const curve = getLinkCurve(fromPos.x, fromPos.y, toPos.x, toPos.y, bowSign);
+      const st = packetStyle(pkt);
+      const hovered = pointer.hoverPacket === pkt;
+
+      // Illuminated comet trail behind packet
+      ctx.save();
+      const tailLen = 0.14;
+      const tEnd = Math.min(1, pkt.progress);
+      const tStart = Math.max(0, tEnd - tailLen);
+      ctx.beginPath();
+      const segs = 8;
+      for (let s = 0; s <= segs; s++) {
+        const pt = evalQuad(curve, tStart + (tEnd - tStart) * (s / segs));
+        if (s === 0) ctx.moveTo(pt.x, pt.y);
+        else ctx.lineTo(pt.x, pt.y);
+      }
+      ctx.strokeStyle = st.color;
+      ctx.globalAlpha = 0.5;
+      ctx.lineWidth = st.r * 0.68;
+      ctx.lineCap = 'round';
+      ctx.stroke();
+
+      // Glow aura
+      const pos = evalQuad(curve, tEnd);
+      pkt.x = pos.x;
+      pkt.y = pos.y;
+
+      const glowR = hovered ? st.r * 3.1 : st.r * 2.2;
+      const gr = ctx.createRadialGradient(pos.x, pos.y, 1, pos.x, pos.y, glowR);
+      gr.addColorStop(0, st.color);
+      gr.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.globalAlpha = hovered ? 0.85 : 0.55;
+      ctx.fillStyle = gr;
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, glowR, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Core orb or diamond
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = st.color;
+      ctx.beginPath();
+      if (pkt.type === 'RequestVote') {
+        const r = hovered ? st.r * 1.35 : st.r * 1.15;
+        ctx.moveTo(pos.x, pos.y - r);
+        ctx.lineTo(pos.x + r, pos.y);
+        ctx.lineTo(pos.x, pos.y + r);
+        ctx.lineTo(pos.x - r, pos.y);
+        ctx.closePath();
+      } else {
+        ctx.arc(pos.x, pos.y, hovered ? st.r * 1.25 : st.r, 0, Math.PI * 2);
+      }
+      ctx.fill();
+
+      ctx.fillStyle = st.core;
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, st.r * 0.45, 0, Math.PI * 2);
+      ctx.fill();
+
+      if (hovered) {
+        ctx.strokeStyle = '#ff6083';
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.arc(pos.x, pos.y, st.r + 6, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+
+      // Concise Packet Micro-Label
+      if (sim.showLabels && (pkt.label || hovered)) {
+        const txt = hovered ? 'CLICK TO DROP' : pkt.label;
+        ctx.font = '700 9px ui-monospace, Menlo, Consolas, monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        ctx.fillStyle = hovered ? '#ff9db2' : st.core;
+        ctx.shadowColor = 'rgba(4,7,17,0.95)';
+        ctx.shadowBlur = 4;
+        ctx.fillText(txt, pos.x, pos.y - st.r - 4);
+      }
+
+      ctx.restore();
+    }
+  }
+
+  function drawServerNode(node, tSec) {
+    const p = getNodePos(node.idx);
+    const r = layout.nodeR;
+    const hovered = pointer.hoverNode === node;
+
+    // Role palette
+    let accent = '#58dcff';
+    let roleLabel = 'FOLLOWER';
+    if (!node.alive) {
+      accent = '#ff4d6d';
+      roleLabel = 'OFFLINE';
+    } else if (node.state === 'leader') {
+      accent = '#ffd166';
+      roleLabel = 'LEADER';
+    } else if (node.state === 'candidate') {
+      accent = '#ff9f43';
+      roleLabel = 'CANDIDATE';
+    }
+
+    ctx.save();
+
+    // 1. Ambient Role Halo Glow
+    const pulseBoost = node.state === 'leader'
+      ? 0.24 + Math.sin(tSec * 3.2) * 0.06
+      : (node.state === 'candidate' ? 0.22 + Math.sin(tSec * 7.5) * 0.1 : 0.14);
+    const haloR = r * (node.state === 'leader' ? 2.15 : 1.75) + node.pulse * 14;
+    const halo = ctx.createRadialGradient(p.x, p.y, r * 0.5, p.x, p.y, haloR);
+    if (!node.alive) {
+      halo.addColorStop(0, 'rgba(255, 77, 109, 0.22)');
+      halo.addColorStop(1, 'rgba(255, 77, 109, 0)');
+    } else if (node.state === 'leader') {
+      halo.addColorStop(0, `rgba(255, 209, 102, ${pulseBoost + node.pulse * 0.2})`);
+      halo.addColorStop(0.55, 'rgba(255, 165, 45, 0.08)');
+      halo.addColorStop(1, 'rgba(255, 165, 45, 0)');
+    } else if (node.state === 'candidate') {
+      halo.addColorStop(0, `rgba(255, 159, 67, ${pulseBoost + node.pulse * 0.2})`);
+      halo.addColorStop(1, 'rgba(255, 159, 67, 0)');
+    } else {
+      halo.addColorStop(0, `rgba(88, 220, 255, ${pulseBoost + node.pulse * 0.22})`);
+      halo.addColorStop(1, 'rgba(88, 220, 255, 0)');
+    }
+    ctx.fillStyle = halo;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, haloR, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 2. Live Circular Election Timeout Ring (depleting clockwise around Follower/Candidate)
+    if (sim.showRings && node.alive) {
+      const ringR = r + 7.5;
+      // Track
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, ringR, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(148, 179, 255, 0.14)';
+      ctx.lineWidth = 3.2;
+      ctx.stroke();
+
+      if (node.state === 'leader') {
+        // Golden heartbeat cadence arc
+        const frac = Math.max(0, Math.min(1, node.heartbeatTimer / Math.max(0.1, sim.heartbeatInterval)));
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, ringR, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * frac);
+        ctx.strokeStyle = '#ffd166';
+        ctx.lineWidth = 3.2;
+        ctx.lineCap = 'round';
+        ctx.stroke();
+      } else {
+        // Depleting clockwise election timeout: starts full (1.0) and shrinks clockwise toward 12 o'clock (0.0)
+        const fracRemaining = Math.max(0, 1 - node.electionElapsed / Math.max(0.2, node.electionTimeout));
+        const startAngle = -Math.PI / 2 + Math.PI * 2 * (1 - fracRemaining);
+        const endAngle = -Math.PI / 2 + Math.PI * 2;
+        let arcCol = '#58dcff';
+        if (node.state === 'candidate') arcCol = '#ff9f43';
+        else if (fracRemaining < 0.24) arcCol = '#ff6083';
+        else if (fracRemaining < 0.5) arcCol = '#ffbe5c';
+
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, ringR, startAngle, endAngle);
+        ctx.strokeStyle = arcCol;
+        ctx.lineWidth = 3.4;
+        ctx.lineCap = 'round';
+        ctx.stroke();
+      }
+    }
+
+    // Candidate rotating dashed election scan ring
+    if (node.alive && node.state === 'candidate') {
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(tSec * 1.8);
+      ctx.beginPath();
+      ctx.arc(0, 0, r + 13, 0, Math.PI * 2);
+      ctx.setLineDash([6, 6]);
+      ctx.strokeStyle = 'rgba(255, 190, 92, 0.72)';
+      ctx.lineWidth = 1.6;
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // 3. Node Body Circle
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+    const bodyGrad = ctx.createRadialGradient(p.x - r * 0.3, p.y - r * 0.3, 2, p.x, p.y, r);
+    if (!node.alive) {
+      bodyGrad.addColorStop(0, '#221018');
+      bodyGrad.addColorStop(1, '#11070d');
+    } else if (node.state === 'leader') {
+      bodyGrad.addColorStop(0, '#2b200d');
+      bodyGrad.addColorStop(1, '#120f17');
+    } else if (node.state === 'candidate') {
+      bodyGrad.addColorStop(0, '#24180c');
+      bodyGrad.addColorStop(1, '#100e1b');
+    } else {
+      bodyGrad.addColorStop(0, '#101d35');
+      bodyGrad.addColorStop(1, '#080e1d');
+    }
+    ctx.fillStyle = bodyGrad;
+    ctx.fill();
+
+    // Node Border (brightens on hover or pulse)
+    ctx.strokeStyle = node.rollbackFlash > 0.1
+      ? '#ff6083'
+      : (hovered ? '#ffffff' : accent);
+    ctx.lineWidth = node.state === 'leader' ? 2.8 : (hovered ? 2.5 : 2.0);
+    ctx.stroke();
+
+    // 4. Leader Blazing Golden Crown Emblem
+    if (node.alive && node.state === 'leader') {
+      drawCrown(p.x, p.y - r - 11, 10, '#ffd166');
+    }
+
+    // 5. Node Core Typography (Server ID + Role + Term Badge)
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    if (!node.alive) {
+      // Crashed Crimson X Overlay
+      const cr = r * 0.44;
+      ctx.beginPath();
+      ctx.moveTo(p.x - cr, p.y - cr);
+      ctx.lineTo(p.x + cr, p.y + cr);
+      ctx.moveTo(p.x + cr, p.y - cr);
+      ctx.lineTo(p.x - cr, p.y + cr);
+      ctx.strokeStyle = 'rgba(255, 77, 109, 0.78)';
+      ctx.lineWidth = 3.5;
+      ctx.lineCap = 'round';
+      ctx.stroke();
+
+      ctx.fillStyle = 'rgba(255, 185, 200, 0.9)';
+      ctx.font = '800 12px ui-monospace, Menlo, Consolas, monospace';
+      ctx.fillText(node.id, p.x, p.y - 1);
+      ctx.fillStyle = '#ff6083';
+      ctx.font = '700 8px system-ui, sans-serif';
+      ctx.fillText('CRASHED', p.x, p.y + 13);
+    } else {
+      ctx.fillStyle = '#f3f7ff';
+      ctx.font = '800 14px ui-monospace, Menlo, Consolas, monospace';
+      ctx.fillText(node.id, p.x, p.y - 6);
+
+      ctx.fillStyle = accent;
+      ctx.font = '700 8px system-ui, sans-serif';
+      ctx.fillText(roleLabel, p.x, p.y + 7);
+
+      // Term number inside lower arc
+      ctx.fillStyle = 'rgba(225, 236, 255, 0.85)';
+      ctx.font = '700 9.5px ui-monospace, Menlo, Consolas, monospace';
+      ctx.fillText(`T${node.currentTerm}`, p.x, p.y + 18);
+    }
+
+    // Candidate vote tally badge (e.g. 2/3)
+    if (node.alive && node.state === 'candidate') {
+      const vt = `VOTES ${node.votesReceived.size}/${quorumSize()}`;
+      ctx.font = '700 9px ui-monospace, Menlo, Consolas, monospace';
+      const tw = ctx.measureText(vt).width + 10;
+      ctx.beginPath();
+      roundRectPath(ctx, p.x - tw / 2, p.y - r - 26, tw, 15, 7);
+      ctx.fillStyle = 'rgba(30, 18, 6, 0.92)';
+      ctx.fill();
+      ctx.strokeStyle = '#ff9f43';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.fillStyle = '#ffe1b5';
+      ctx.fillText(vt, p.x, p.y - r - 18);
+    }
+
+    // 6. Mini Replicated Log Strip Directly Beneath Node
+    if (sim.showLogs) {
+      drawNodeLogStrip(node, p.x, p.y + r + 16);
+    }
+
+    ctx.restore();
+  }
+
+  function drawCrown(cx, cy, size, color) {
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.beginPath();
+    ctx.moveTo(-size, size * 0.45);
+    ctx.lineTo(-size * 0.85, -size * 0.45);
+    ctx.lineTo(-size * 0.35, size * 0.05);
+    ctx.lineTo(0, -size * 0.65);
+    ctx.lineTo(size * 0.35, size * 0.05);
+    ctx.lineTo(size * 0.85, -size * 0.45);
+    ctx.lineTo(size, size * 0.45);
+    ctx.closePath();
+    ctx.fillStyle = color;
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 10;
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawNodeLogStrip(node, cx, topY) {
+    const maxSlots = 5;
+    const slotW = 24;
+    const slotH = 16;
+    const gap = 3;
+
+    const total = node.log.length;
+    const startIdx = Math.max(0, total - maxSlots);
+    const visible = node.log.slice(startIdx);
+    const displayCount = Math.max(1, visible.length);
+    const stripW = displayCount * slotW + (displayCount - 1) * gap;
+    const x0 = cx - stripW * 0.5;
+
+    if (total === 0) {
+      ctx.beginPath();
+      roundRectPath(ctx, cx - 28, topY, 56, slotH, 4);
+      ctx.fillStyle = 'rgba(9, 14, 28, 0.72)';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(148, 179, 255, 0.16)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(104, 120, 156, 0.75)';
+      ctx.font = '600 8.5px ui-monospace, Menlo, Consolas, monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('log: []', cx, topY + slotH * 0.5 + 0.5);
+      return;
+    }
+
+    // Overflow prefix indicator (+N)
+    if (startIdx > 0) {
+      ctx.fillStyle = 'rgba(154, 169, 204, 0.7)';
+      ctx.font = '700 8.5px ui-monospace, Menlo, Consolas, monospace';
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`+${startIdx}`, x0 - 4, topY + slotH * 0.5 + 0.5);
+    }
+
+    for (let i = 0; i < visible.length; i++) {
+      const entry = visible[i];
+      const sx = x0 + i * (slotW + gap);
+      const isCommitted = entry.committed || entry.index <= node.commitIndex;
+
+      ctx.beginPath();
+      roundRectPath(ctx, sx, topY, slotW, slotH, 4);
+
+      if (isCommitted) {
+        ctx.fillStyle = node.alive ? 'rgba(74, 242, 178, 0.24)' : 'rgba(74, 242, 178, 0.09)';
+        ctx.fill();
+        ctx.setLineDash([]);
+        ctx.strokeStyle = node.alive ? '#4af2b2' : 'rgba(74, 242, 178, 0.35)';
+        ctx.lineWidth = 1.25;
+        ctx.stroke();
+      } else {
+        // Uncommitted: dashed amber!
+        ctx.fillStyle = node.alive ? 'rgba(255, 190, 92, 0.18)' : 'rgba(255, 190, 92, 0.07)';
+        ctx.fill();
+        ctx.setLineDash([3, 2]);
+        ctx.strokeStyle = node.alive ? '#ffbe5c' : 'rgba(255, 190, 92, 0.4)';
+        ctx.lineWidth = 1.25;
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+
+      // Entry compact label (e.g., "1:T1")
+      ctx.fillStyle = isCommitted ? '#d6fff0' : '#ffe6ba';
+      ctx.font = '700 8.5px ui-monospace, Menlo, Consolas, monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`${entry.index}·T${entry.term}`, sx + slotW * 0.5, topY + slotH * 0.5 + 0.5);
+    }
+  }
+
+  function drawHoverTooltip() {
+    const node = pointer.hoverNode;
+    if (!node || pointer.draggingWall || pointer.dragHandle) return;
+
+    const lines = [
+      `${node.id} · ${node.alive ? node.state.toUpperCase() : 'CRASHED'} · Term T${node.currentTerm}`,
+      `Commit Index: #${node.commitIndex} · Log Len: ${node.log.length}`,
+      node.log.length > 0
+        ? `Last Entry: #${node.log.length} ${node.log[node.log.length - 1].cmd} (${node.log[node.log.length - 1].committed ? 'Committed' : 'Uncommitted'})`
+        : 'Log: empty',
+      node.alive ? 'Click to Crash Server' : 'Click to Restart Server'
+    ];
+
+    ctx.save();
+    ctx.font = '600 11px ui-monospace, Menlo, Consolas, monospace';
+    let maxW = 0;
+    for (const l of lines) maxW = Math.max(maxW, ctx.measureText(l).width);
+    const padX = 11, padY = 8, lineH = 15;
+    const boxW = maxW + padX * 2;
+    const boxH = lines.length * lineH + padY * 2;
+
+    let bx = pointer.x + 16;
+    let by = pointer.y - boxH - 10;
+    if (bx + boxW > viewW - 16) bx = pointer.x - boxW - 16;
+    if (by < 14) by = pointer.y + 18;
+
+    ctx.beginPath();
+    roundRectPath(ctx, bx, by, boxW, boxH, 9);
+    ctx.fillStyle = 'rgba(7, 11, 22, 0.93)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.36)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    lines.forEach((l, i) => {
+      ctx.fillStyle = i === 0 ? '#eef3ff' : (i === 3 ? '#58dcff' : '#9aa9cc');
+      ctx.fillText(l, bx + padX, by + padY + i * lineH);
+    });
+    ctx.restore();
+  }
+
+  function roundRectPath(c, x, y, w, h, r) {
+    const rr = Math.min(r, w * 0.5, h * 0.5);
+    c.moveTo(x + rr, y);
+    c.arcTo(x + w, y, x + w, y + h, rr);
+    c.arcTo(x + w, y + h, x, y + h, rr);
+    c.arcTo(x, y + h, x, y, rr);
+    c.arcTo(x, y, x + w, y, rr);
+    c.closePath();
+  }
+
+  // =========================================================================
+  // UI WIRING & EVENT LISTENERS
+  // =========================================================================
+  function bindUI() {
+    // Drawer tabs
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tab = btn.dataset.tab;
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b === btn));
+        document.querySelectorAll('.tab-pane').forEach(p => p.classList.toggle('active', p.id === `tab-${tab}`));
+      });
+    });
+
+    // Presets
+    document.querySelectorAll('.preset-btn').forEach(btn => {
+      btn.addEventListener('click', () => applyPreset(btn.dataset.preset));
+    });
+
+    // Cluster node count (5 or 7)
+    document.querySelectorAll('#node-count-row .seg-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const n = Number(btn.dataset.nodes);
+        initCluster(n, { seedLeader: true, seedEntries: ['SET init=1'] });
+        showBanner(`Switched to ${n}-Node Raft Cluster (Quorum = ${quorumSize()}/${n})`, 'info', 3.2);
+      });
+    });
+
+    // Client Writes
+    document.getElementById('btn-client-write').addEventListener('click', () => sendClientWrite());
+    document.getElementById('btn-minority-write').addEventListener('click', () => {
+      const minL = getIsolatedMinorityLeader();
+      if (minL) {
+        sendClientWrite(minL);
+        showBanner(`Sent write to isolated Leader ${minL.id} — watch it stay dashed amber (cannot reach quorum)!`, 'warn', 4.5);
+      }
+    });
+    document.getElementById('chk-auto-write').addEventListener('change', (e) => {
+      sim.autoWrite = e.target.checked;
+      sim.autoWriteTimer = 0.6;
+    });
+
+    // Partition Controls
+    document.getElementById('btn-split-brain').addEventListener('click', triggerSplitBrainPartition);
+    document.getElementById('btn-split-quick').addEventListener('click', triggerSplitBrainPartition);
+    document.getElementById('btn-heal-part').addEventListener('click', healPartition);
+    document.getElementById('btn-heal-quick').addEventListener('click', healPartition);
+
+    // Sliders
+    document.getElementById('sl-loss').addEventListener('input', (e) => {
+      const v = Number(e.target.value);
+      sim.packetLoss = v / 100;
+      document.getElementById('val-loss').textContent = `${v}%`;
+    });
+    document.getElementById('sl-latency').addEventListener('input', (e) => {
+      const v = Number(e.target.value);
+      sim.latency = v;
+      document.getElementById('val-latency').textContent = `${v.toFixed(2)} s`;
+    });
+    document.getElementById('sl-timeout').addEventListener('input', (e) => {
+      const v = Number(e.target.value);
+      sim.electionBase = v;
+      document.getElementById('val-timeout').textContent = `${v.toFixed(1)} s`;
+      for (const n of sim.nodes) {
+        if (n.state !== 'leader') {
+          n.electionTimeout = Math.max(n.electionElapsed + 0.4, randomElectionTimeout(n));
+        }
+      }
+    });
+    document.getElementById('sl-hb').addEventListener('input', (e) => {
+      const v = Number(e.target.value);
+      sim.heartbeatInterval = v;
+      document.getElementById('val-hb').textContent = `${v.toFixed(2)} s`;
+    });
+
+    // Node Chaos Buttons
+    document.getElementById('btn-kill-leader').addEventListener('click', () => {
+      const l = getMajorityLeader() || getAliveLeaders()[0];
+      if (l) toggleNodeAlive(l);
+      else showBanner('No alive Leader to kill right now.', 'warn', 2.4);
+    });
+    document.getElementById('btn-revive-all').addEventListener('click', () => {
+      let revived = 0;
+      for (const n of sim.nodes) {
+        if (!n.alive) {
+          toggleNodeAlive(n);
+          revived++;
+        }
+      }
+      if (revived === 0) showBanner('All servers are already online!', 'mint', 2.2);
+    });
+
+    // Log Clear & Visual Overlay Toggles
+    document.getElementById('btn-clear-log').addEventListener('click', () => {
+      sim.logs = [];
+      document.getElementById('event-log').innerHTML = '';
+    });
+    document.getElementById('chk-links').addEventListener('change', (e) => { sim.showLinks = e.target.checked; });
+    document.getElementById('chk-labels').addEventListener('change', (e) => { sim.showLabels = e.target.checked; });
+    document.getElementById('chk-rings').addEventListener('change', (e) => { sim.showRings = e.target.checked; });
+    document.getElementById('chk-logs').addEventListener('change', (e) => { sim.showLogs = e.target.checked; });
+
+    // Bottom Transport Bar
+    const playBtn = document.getElementById('btn-play');
+    function setRunning(val) {
+      sim.running = val;
+      playBtn.textContent = val ? '⏸ Pause' : '▶ Play';
+      playBtn.classList.toggle('active', val);
+    }
+    playBtn.addEventListener('click', () => setRunning(!sim.running));
+
+    document.getElementById('btn-reset').addEventListener('click', () => {
+      applyPreset(sim.preset);
+    });
+
+    document.querySelectorAll('.speed-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        sim.speed = Number(btn.dataset.speed);
+        document.querySelectorAll('.speed-btn').forEach(b => b.classList.toggle('active', b === btn));
+      });
+    });
+
+    const soundBtn = document.getElementById('btn-sound');
+    soundBtn.addEventListener('click', () => {
+      sound.enabled = !sound.enabled;
+      if (sound.enabled) {
+        sound.ensure();
+        sound.vote();
+      }
+      soundBtn.textContent = sound.enabled ? '🔊 Audio' : '🔇 Audio';
+      soundBtn.classList.toggle('active', sound.enabled);
+    });
+
+    const drawerBtn = document.getElementById('btn-toggle-drawer');
+    const drawerEl = document.getElementById('drawer');
+    drawerBtn.addEventListener('click', () => {
+      const collapsed = drawerEl.classList.toggle('collapsed');
+      drawerBtn.classList.toggle('active', !collapsed);
+      computeTargetLayout();
+    });
+
+    function toggleZen() {
+      document.body.classList.toggle('zen-mode');
+      computeTargetLayout();
+    }
+    document.getElementById('btn-zen').addEventListener('click', toggleZen);
+    document.getElementById('btn-zen-restore').addEventListener('click', toggleZen);
+
+    // Keyboard Shortcuts
+    window.addEventListener('keydown', (e) => {
+      if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+      if (e.code === 'Space') {
+        e.preventDefault();
+        setRunning(!sim.running);
+      } else if (e.key === 'h' || e.key === 'H') {
+        toggleZen();
+      } else if (e.key === 'w' || e.key === 'W') {
+        sendClientWrite();
+      } else if (e.key === 'r' || e.key === 'R') {
+        applyPreset(sim.preset);
+      }
+    });
+  }
+
+  // =========================================================================
+  // MAIN ANIMATION LOOP
+  // =========================================================================
+  let lastFrameMs = performance.now();
+  function frame(nowMs) {
+    const dt = Math.min(0.05, Math.max(0.001, (nowMs - lastFrameMs) / 1000));
+    lastFrameMs = nowMs;
+
+    stepSim(dt);
+    render(nowMs);
+    updateTelemetry(nowMs);
+
+    requestAnimationFrame(frame);
+  }
+
+  // Boot
+  window.addEventListener('resize', resize);
+  resize();
+  bindUI();
+  applyPreset('healthy');
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

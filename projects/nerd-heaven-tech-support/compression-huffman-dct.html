@@ -1,0 +1,4191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Entropy — Huffman Coding Trees, LZW &amp; 8×8 JPEG DCT Compression</title>
+<style>
+  :root {
+    --bg-deep: #040711;
+    --panel-bg: rgba(9, 13, 24, 0.80);
+    --panel-bg-strong: rgba(8, 12, 22, 0.94);
+    --panel-border: rgba(148, 179, 255, 0.16);
+    --panel-border-hi: rgba(148, 179, 255, 0.38);
+    --text-main: #eef3ff;
+    --text-dim: #9aa9cc;
+    --text-muted: #68789c;
+    --accent-amber: #ffbe5c;
+    --accent-cyan: #58dcff;
+    --accent-mint: #4af2b2;
+    --accent-rose: #ff6083;
+    --accent-violet: #a78bfa;
+    --radius-lg: 14px;
+    --radius-md: 10px;
+    --radius-sm: 7px;
+    --mono: ui-monospace, "Cascadia Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Inter, Helvetica, Arial, sans-serif;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg-deep);
+    color: var(--text-main);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    touch-action: none;
+  }
+
+  #sim-canvas {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    cursor: default;
+  }
+  #sim-canvas.panning { cursor: grabbing; }
+  #sim-canvas.grabbable { cursor: grab; }
+  #sim-canvas.painting { cursor: crosshair; }
+  #sim-canvas.pointer { cursor: pointer; }
+
+  /* HUD Layer */
+  .hud {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 10;
+  }
+  body.zen-mode .hud > :not(.zen-restore) {
+    opacity: 0;
+    pointer-events: none !important;
+  }
+
+  .panel {
+    pointer-events: auto;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-lg);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.52), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    transition: opacity 0.25s ease, transform 0.25s ease;
+  }
+
+  /* Top-Left Telemetry */
+  .top-left {
+    position: fixed;
+    top: 14px;
+    left: 14px;
+    width: min(414px, calc(100vw - 360px));
+    min-width: 286px;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .brand-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .brand-title-wrap {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .brand-title {
+    font-size: 16px;
+    font-weight: 800;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    background: linear-gradient(120deg, #e8fbff 0%, #58dcff 48%, #ffbe5c 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .mode-badge {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 999px;
+    border: 1px solid rgba(88, 220, 255, 0.42);
+    background: rgba(88, 220, 255, 0.12);
+    color: var(--accent-cyan);
+  }
+  .mode-badge.amber {
+    border-color: rgba(255, 190, 92, 0.44);
+    background: rgba(255, 190, 92, 0.13);
+    color: var(--accent-amber);
+  }
+
+  .status-pill {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: rgba(74, 242, 178, 0.14);
+    color: var(--accent-mint);
+    border: 1px solid rgba(74, 242, 178, 0.35);
+    white-space: nowrap;
+  }
+  .status-pill.warn {
+    background: rgba(255, 190, 92, 0.16);
+    color: var(--accent-amber);
+    border-color: rgba(255, 190, 92, 0.42);
+  }
+  .status-pill.danger {
+    background: rgba(255, 96, 131, 0.18);
+    color: var(--accent-rose);
+    border-color: rgba(255, 96, 131, 0.45);
+  }
+  .status-pill.cyan {
+    background: rgba(88, 220, 255, 0.16);
+    color: var(--accent-cyan);
+    border-color: rgba(88, 220, 255, 0.42);
+  }
+
+  .telemetry-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+  }
+
+  .tele-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(148, 179, 255, 0.10);
+    border-radius: var(--radius-sm);
+    padding: 6px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .tele-label {
+    font-size: 9px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .tele-val {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--text-main);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .tele-val.amber { color: var(--accent-amber); }
+  .tele-val.cyan { color: var(--accent-cyan); }
+  .tele-val.mint { color: var(--accent-mint); }
+  .tele-val.rose { color: var(--accent-rose); }
+  .tele-val.violet { color: var(--accent-violet); }
+
+  .meter-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 10.5px;
+    color: var(--text-dim);
+  }
+  .meter-track {
+    flex: 1;
+    height: 6px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+    overflow: hidden;
+  }
+  .meter-fill {
+    height: 100%;
+    width: 50%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #58dcff, #4af2b2 50%, #ffbe5c 100%);
+    transition: width 0.18s ease;
+  }
+
+  .clock-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding-top: 4px;
+    border-top: 1px solid rgba(148, 179, 255, 0.10);
+    font-size: 10.5px;
+    color: var(--text-dim);
+    font-family: var(--mono);
+  }
+  .clock-row span strong {
+    color: var(--text-main);
+    font-weight: 600;
+  }
+
+  /* Right Control Drawer */
+  .drawer {
+    position: fixed;
+    top: 14px;
+    right: 14px;
+    bottom: 14px;
+    width: 330px;
+    max-width: calc(100vw - 28px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: transform 0.25s ease, opacity 0.25s ease;
+  }
+  .drawer.collapsed {
+    transform: translateX(calc(100% + 24px));
+    pointer-events: none;
+  }
+
+  .drawer-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+    padding: 8px 8px 6px;
+    border-bottom: 1px solid var(--panel-border);
+    background: rgba(4, 7, 15, 0.45);
+  }
+
+  .tab-btn {
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    padding: 7px 4px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .tab-btn:hover {
+    color: var(--text-main);
+    background: rgba(255, 255, 255, 0.04);
+  }
+  .tab-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.16);
+    border-color: rgba(88, 220, 255, 0.42);
+  }
+  .tab-btn.active.amber {
+    background: rgba(255, 190, 92, 0.16);
+    border-color: rgba(255, 190, 92, 0.44);
+    color: #ffebd0;
+  }
+
+  .drawer-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 11px 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .drawer-body::-webkit-scrollbar { width: 5px; }
+  .drawer-body::-webkit-scrollbar-thumb {
+    background: rgba(148, 179, 255, 0.22);
+    border-radius: 999px;
+  }
+
+  .tab-pane {
+    display: none;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .tab-pane.active {
+    display: flex;
+  }
+
+  .section {
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(148, 179, 255, 0.11);
+    border-radius: var(--radius-md);
+    padding: 10px 11px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .section-title {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .preset-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .preset-btn {
+    text-align: left;
+    padding: 7px 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(148, 179, 255, 0.14);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-main);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .preset-btn:hover {
+    border-color: rgba(88, 220, 255, 0.45);
+    background: rgba(88, 220, 255, 0.08);
+  }
+  .preset-btn.active {
+    border-color: var(--accent-cyan);
+    background: rgba(88, 220, 255, 0.14);
+  }
+  .preset-btn.amber-theme:hover {
+    border-color: rgba(255, 190, 92, 0.45);
+    background: rgba(255, 190, 92, 0.08);
+  }
+  .preset-btn.amber-theme.active {
+    border-color: var(--accent-amber);
+    background: rgba(255, 190, 92, 0.15);
+  }
+  .preset-name {
+    font-size: 11px;
+    font-weight: 700;
+  }
+  .preset-sub {
+    font-size: 9.5px;
+    color: var(--text-muted);
+    line-height: 1.25;
+  }
+
+  textarea.code-input {
+    width: 100%;
+    min-height: 76px;
+    max-height: 140px;
+    resize: vertical;
+    background: rgba(4, 7, 16, 0.85);
+    border: 1px solid rgba(148, 179, 255, 0.22);
+    border-radius: var(--radius-sm);
+    color: var(--text-main);
+    font-family: var(--mono);
+    font-size: 11.5px;
+    line-height: 1.45;
+    padding: 8px 9px;
+    outline: none;
+    user-select: text;
+    transition: border-color 0.15s ease;
+  }
+  textarea.code-input:focus {
+    border-color: var(--accent-cyan);
+    box-shadow: 0 0 0 2px rgba(88, 220, 255, 0.14);
+  }
+
+  .control-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .control-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+  .control-head .val {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-main);
+    font-weight: 700;
+  }
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 5px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.18);
+    outline: none;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent-cyan);
+    border: 2px solid #08101f;
+    box-shadow: 0 0 10px rgba(88, 220, 255, 0.65);
+    cursor: pointer;
+  }
+  input[type="range"].amber::-webkit-slider-thumb {
+    background: var(--accent-amber);
+    box-shadow: 0 0 10px rgba(255, 190, 92, 0.65);
+  }
+  input[type="range"].mint::-webkit-slider-thumb {
+    background: var(--accent-mint);
+    box-shadow: 0 0 10px rgba(74, 242, 178, 0.65);
+  }
+
+  .seg-row {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 5px;
+  }
+  .seg-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-dim);
+    font-size: 11px;
+    font-weight: 700;
+    padding: 6px 6px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-align: center;
+  }
+  .seg-btn:hover {
+    color: #fff;
+    border-color: rgba(148, 179, 255, 0.35);
+  }
+  .seg-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.18);
+    border-color: var(--accent-cyan);
+  }
+  .seg-btn.active.amber {
+    background: rgba(255, 190, 92, 0.18);
+    border-color: var(--accent-amber);
+    color: #ffdfaa;
+  }
+
+  .btn-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .btn-row-3 {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 5px;
+  }
+
+  .btn {
+    border: 1px solid rgba(148, 179, 255, 0.22);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-main);
+    font-size: 11px;
+    font-weight: 700;
+    padding: 7px 8px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    white-space: nowrap;
+  }
+  .btn:hover {
+    background: rgba(255, 255, 255, 0.11);
+    border-color: rgba(148, 179, 255, 0.45);
+  }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary {
+    background: linear-gradient(135deg, rgba(88, 220, 255, 0.28), rgba(56, 140, 255, 0.24));
+    border-color: rgba(88, 220, 255, 0.55);
+    color: #e6f9ff;
+  }
+  .btn.primary:hover {
+    background: linear-gradient(135deg, rgba(88, 220, 255, 0.40), rgba(56, 140, 255, 0.35));
+  }
+  .btn.amber {
+    background: linear-gradient(135deg, rgba(255, 190, 92, 0.26), rgba(255, 128, 60, 0.20));
+    border-color: rgba(255, 190, 92, 0.55);
+    color: #fff3db;
+  }
+  .btn.amber:hover {
+    background: linear-gradient(135deg, rgba(255, 190, 92, 0.38), rgba(255, 128, 60, 0.32));
+  }
+  .btn.danger {
+    background: rgba(255, 96, 131, 0.14);
+    border-color: rgba(255, 96, 131, 0.42);
+    color: #ffc2d0;
+  }
+
+  /* Toggle switches */
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11px;
+    color: var(--text-dim);
+    cursor: pointer;
+  }
+  .toggle-row input { display: none; }
+  .switch {
+    width: 32px;
+    height: 17px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.2);
+    border: 1px solid rgba(148, 179, 255, 0.25);
+    position: relative;
+    transition: all 0.18s ease;
+    flex-shrink: 0;
+  }
+  .switch::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    background: #c8d7f5;
+    transition: transform 0.18s ease, background 0.18s ease;
+  }
+  .toggle-row input:checked + .switch {
+    background: rgba(88, 220, 255, 0.32);
+    border-color: var(--accent-cyan);
+  }
+  .toggle-row input:checked + .switch::after {
+    transform: translateX(15px);
+    background: #fff;
+  }
+
+  /* Codebook & LZW lists */
+  .code-table {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 195px;
+    overflow-y: auto;
+    font-family: var(--mono);
+    font-size: 10.5px;
+  }
+  .code-table::-webkit-scrollbar { width: 4px; }
+  .code-table::-webkit-scrollbar-thumb {
+    background: rgba(148, 179, 255, 0.22);
+    border-radius: 999px;
+  }
+  .code-row {
+    display: grid;
+    grid-template-columns: 34px 44px 1fr auto;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 7px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(148, 179, 255, 0.08);
+    cursor: pointer;
+    transition: background 0.12s ease, border-color 0.12s ease;
+  }
+  .code-row:hover, .code-row.highlight {
+    background: rgba(88, 220, 255, 0.12);
+    border-color: rgba(88, 220, 255, 0.35);
+  }
+  .sym-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 4px;
+    padding: 1px 4px;
+    color: #fff;
+    font-weight: 700;
+  }
+  .bit0 { color: var(--accent-cyan); font-weight: 700; }
+  .bit1 { color: var(--accent-amber); font-weight: 700; }
+
+  /* Paint Swatches */
+  .swatch-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .swatch-btn {
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    border: 2px solid rgba(255, 255, 255, 0.16);
+    cursor: pointer;
+    transition: transform 0.12s ease, border-color 0.12s ease;
+  }
+  .swatch-btn:hover { transform: scale(1.1); }
+  .swatch-btn.active {
+    border-color: #fff;
+    box-shadow: 0 0 10px rgba(255, 255, 255, 0.55);
+    transform: scale(1.1);
+  }
+
+  .lzw-compare-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .lzw-stream-box {
+    background: rgba(4, 7, 16, 0.8);
+    border: 1px solid rgba(148, 179, 255, 0.14);
+    border-radius: var(--radius-sm);
+    padding: 7px 8px;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text-dim);
+    line-height: 1.5;
+    max-height: 92px;
+    overflow-y: auto;
+    word-break: break-all;
+  }
+  .lzw-code-pill {
+    display: inline-block;
+    padding: 0 3px;
+    margin: 1px;
+    border-radius: 3px;
+    background: rgba(167, 139, 250, 0.14);
+    color: #d8c7ff;
+  }
+  .lzw-code-pill.dict {
+    background: rgba(74, 242, 178, 0.18);
+    color: var(--accent-mint);
+    font-weight: 700;
+  }
+
+  /* Bottom Transport Bar */
+  .bottom-bar {
+    position: fixed;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 7px 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: nowrap;
+  }
+
+  .bar-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-main);
+    font-size: 11px;
+    font-weight: 650;
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    white-space: nowrap;
+  }
+  .bar-btn:hover {
+    background: rgba(255, 255, 255, 0.10);
+    border-color: rgba(148, 179, 255, 0.42);
+  }
+  .bar-btn.active {
+    background: rgba(88, 220, 255, 0.20);
+    border-color: var(--accent-cyan);
+    color: #fff;
+  }
+  .bar-btn.active.amber {
+    background: rgba(255, 190, 92, 0.20);
+    border-color: var(--accent-amber);
+    color: #ffebd0;
+  }
+
+  .bar-divider {
+    width: 1px;
+    height: 20px;
+    background: rgba(148, 179, 255, 0.16);
+    margin: 0 2px;
+  }
+
+  /* Bottom-left interaction hint */
+  .hint-pill {
+    position: fixed;
+    bottom: 14px;
+    left: 14px;
+    padding: 7px 11px;
+    font-size: 10.5px;
+    color: var(--text-dim);
+    max-width: 320px;
+    line-height: 1.4;
+  }
+  .hint-pill kbd {
+    font-family: var(--mono);
+    font-size: 9.5px;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.10);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #fff;
+  }
+
+  /* Toast Banner */
+  .event-banner {
+    position: fixed;
+    top: 18px;
+    left: 50%;
+    transform: translateX(-50%) translateY(-10px);
+    padding: 8px 15px;
+    border-radius: var(--radius-md);
+    background: rgba(8, 16, 28, 0.90);
+    border: 1px solid rgba(88, 220, 255, 0.48);
+    color: #d6f4ff;
+    font-size: 12px;
+    font-weight: 650;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.22s ease, transform 0.22s ease;
+    z-index: 20;
+    backdrop-filter: blur(12px);
+    white-space: nowrap;
+  }
+  .event-banner.visible {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+
+  .zen-restore {
+    position: fixed;
+    bottom: 14px;
+    right: 14px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+  }
+  body.zen-mode .zen-restore {
+    opacity: 0.9;
+    pointer-events: auto;
+  }
+
+  .note-small {
+    font-size: 10px;
+    color: var(--text-muted);
+    line-height: 1.38;
+  }
+
+  @media (max-width: 960px) {
+    .top-left {
+      width: calc(100vw - 28px);
+      max-width: none;
+    }
+    .drawer {
+      top: auto;
+      bottom: 62px;
+      height: 50vh;
+      width: calc(100vw - 28px);
+    }
+    .hint-pill { display: none; }
+  }
+</style>
+</head>
+<body>
+<canvas id="sim-canvas"></canvas>
+
+<div class="hud">
+  <!-- Top-Left Telemetry -->
+  <div class="panel top-left">
+    <div class="brand-row">
+      <div class="brand-title-wrap">
+        <div class="brand-title">Entropy</div>
+        <span id="mode-badge" class="mode-badge">Huffman &amp; Shannon</span>
+      </div>
+      <span id="status-pill" class="status-pill">Lossless Prefix</span>
+    </div>
+
+    <div class="telemetry-grid">
+      <div class="tele-card">
+        <span id="tel-lbl-1" class="tele-label">Shannon H</span>
+        <span id="tel-val-1" class="tele-val cyan">0.000 b/s</span>
+      </div>
+      <div class="tele-card">
+        <span id="tel-lbl-2" class="tele-label">Huffman Avg</span>
+        <span id="tel-val-2" class="tele-val amber">0.000 b/s</span>
+      </div>
+      <div class="tele-card">
+        <span id="tel-lbl-3" class="tele-label">Space Saved</span>
+        <span id="tel-val-3" class="tele-val mint">0.0%</span>
+      </div>
+      <div class="tele-card">
+        <span id="tel-lbl-4" class="tele-label">Raw ASCII</span>
+        <span id="tel-val-4" class="tele-val">0 b</span>
+      </div>
+      <div class="tele-card">
+        <span id="tel-lbl-5" class="tele-label">Compressed</span>
+        <span id="tel-val-5" class="tele-val cyan">0 b</span>
+      </div>
+      <div class="tele-card">
+        <span id="tel-lbl-6" class="tele-label">LZW Size</span>
+        <span id="tel-val-6" class="tele-val violet">0 b</span>
+      </div>
+    </div>
+
+    <div class="meter-wrap">
+      <span id="meter-label">Efficiency H/L</span>
+      <div class="meter-track"><div id="meter-fill" class="meter-fill"></div></div>
+      <span id="meter-val" style="font-family: var(--mono); color: var(--text-main);">100%</span>
+    </div>
+
+    <div class="clock-row">
+      <span id="foot-1">Alphabet: <strong>0</strong></span>
+      <span id="foot-2">Redundancy: <strong>0.000 b</strong></span>
+      <span id="foot-3">Round-Trip: <strong style="color:var(--accent-mint)">OK</strong></span>
+    </div>
+  </div>
+
+  <!-- Right Control Drawer -->
+  <aside id="drawer" class="panel drawer">
+    <div class="drawer-tabs">
+      <button class="tab-btn active" data-tab="huffman">Huffman Tree</button>
+      <button class="tab-btn" data-tab="dct">8×8 JPEG DCT</button>
+      <button class="tab-btn" data-tab="lzw">LZW Dict</button>
+    </div>
+
+    <div class="drawer-body">
+      <!-- TAB 1: HUFFMAN & SHANNON ENTROPY -->
+      <div id="tab-huffman" class="tab-pane active">
+        <div class="section">
+          <div class="section-title"><span>Information Source Presets</span></div>
+          <div class="preset-grid">
+            <button class="preset-btn active" data-huff-preset="prose">
+              <span class="preset-name">English Prose</span>
+              <span class="preset-sub">Natural language (~4.1 b/sym)</span>
+            </button>
+            <button class="preset-btn" data-huff-preset="dna">
+              <span class="preset-name">DNA Genome</span>
+              <span class="preset-sub">AAAACGT biased codons</span>
+            </button>
+            <button class="preset-btn" data-huff-preset="skewed">
+              <span class="preset-name">Skewed Repeats</span>
+              <span class="preset-sub">Ultra-low entropy burst</span>
+            </button>
+            <button class="preset-btn" data-huff-preset="noise">
+              <span class="preset-name">Random Noise</span>
+              <span class="preset-sub">Max entropy incompressible</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">
+            <span>Live Source Text</span>
+            <span style="font-family:var(--mono); color:var(--accent-cyan);">Type live</span>
+          </div>
+          <textarea id="huff-input" class="code-input" spellcheck="false" placeholder="Type any text to rebuild the Huffman prefix tree live..."></textarea>
+          <div class="btn-row">
+            <button id="btn-anim-encode" class="btn primary">▶ Animate Encode</button>
+            <button id="btn-anim-decode" class="btn amber">◀ Animate Decode</button>
+          </div>
+          <div class="btn-row">
+            <button id="btn-huff-step" class="btn">Step Symbol</button>
+            <button id="btn-huff-fit" class="btn">Fit Tree View</button>
+          </div>
+          <div class="control-row">
+            <div class="control-head">
+              <span>Pulse Speed</span>
+              <span id="val-anim-speed" class="val">1.0×</span>
+            </div>
+            <input id="sl-anim-speed" type="range" min="0.25" max="4.0" step="0.25" value="1.0" />
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Tree Display</span></div>
+          <label class="toggle-row">
+            <span>Show Probabilities p(x)</span>
+            <input id="chk-show-probs" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Show Prefix Codes on Leaves</span>
+            <input id="chk-show-codes" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Highlight Active Path Glow</span>
+            <input id="chk-auto-follow" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+        </div>
+
+        <div class="section">
+          <div class="section-title">
+            <span>Prefix Codebook</span>
+            <span style="color:var(--text-muted); font-size:9.5px;">Hover to highlight</span>
+          </div>
+          <div id="codebook-list" class="code-table"></div>
+        </div>
+      </div>
+
+      <!-- TAB 2: 8x8 JPEG 2D-DCT -->
+      <div id="tab-dct" class="tab-pane">
+        <div class="section">
+          <div class="section-title"><span>64×64 Test Images</span></div>
+          <div class="preset-grid">
+            <button class="preset-btn amber-theme active" data-dct-preset="portrait">
+              <span class="preset-name">Portrait Glow</span>
+              <span class="preset-sub">Smooth shading + fine eyes</span>
+            </button>
+            <button class="preset-btn amber-theme" data-dct-preset="checker">
+              <span class="preset-name">Checkerboard</span>
+              <span class="preset-sub">Sharp high-freq edges</span>
+            </button>
+            <button class="preset-btn amber-theme" data-dct-preset="sunset">
+              <span class="preset-name">Sunset Gradient</span>
+              <span class="preset-sub">Ultra-smooth DC energy</span>
+            </button>
+            <button class="preset-btn amber-theme" data-dct-preset="text">
+              <span class="preset-name">Text &amp; Lines</span>
+              <span class="preset-sub">Reveals Gibbs ringing</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Canvas Interaction</span></div>
+          <div class="seg-row">
+            <button id="btn-tool-inspect" class="seg-btn active">Inspect 8×8</button>
+            <button id="btn-tool-paint" class="seg-btn amber">Paint 64×64</button>
+          </div>
+          <div id="paint-controls" style="display:flex; flex-direction:column; gap:8px;">
+            <div class="control-row">
+              <div class="control-head">
+                <span>Brush Radius</span>
+                <span id="val-brush" class="val">2.0 px</span>
+              </div>
+              <input id="sl-brush" class="amber" type="range" min="1" max="6" step="0.5" value="2" />
+            </div>
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:6px;">
+              <div class="swatch-row">
+                <button class="swatch-btn active" data-swatch="#ffffff" style="background:#ffffff" title="White"></button>
+                <button class="swatch-btn" data-swatch="#58dcff" style="background:#58dcff" title="Cyan"></button>
+                <button class="swatch-btn" data-swatch="#ffbe5c" style="background:#ffbe5c" title="Amber"></button>
+                <button class="swatch-btn" data-swatch="#ff5578" style="background:#ff5578" title="Rose"></button>
+                <button class="swatch-btn" data-swatch="#2846a8" style="background:#2846a8" title="Indigo"></button>
+                <button class="swatch-btn" data-swatch="#090d18" style="background:#090d18" title="Black"></button>
+              </div>
+              <button id="btn-clear-canvas" class="btn" style="padding:5px 8px; font-size:10px;">Clear</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>JPEG Quantization &amp; Frequency</span></div>
+          <div class="control-row">
+            <div class="control-head">
+              <span>JPEG Quality</span>
+              <span id="val-quality" class="val">45%</span>
+            </div>
+            <input id="sl-quality" class="amber" type="range" min="1" max="100" step="1" value="45" />
+          </div>
+          <div class="control-row">
+            <div class="control-head">
+              <span>Keep Top K Zig-Zag</span>
+              <span id="val-topk" class="val">64 / 64</span>
+            </div>
+            <input id="sl-topk" type="range" min="1" max="64" step="1" value="64" />
+          </div>
+          <div class="control-row">
+            <div class="control-head">
+              <span>Error Diff Gain</span>
+              <span id="val-errgain" class="val">4.0×</span>
+            </div>
+            <input id="sl-errgain" class="mint" type="range" min="1" max="10" step="0.5" value="4" />
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Basis Grid &amp; Cell Overrides</span></div>
+          <div class="btn-row-3">
+            <button id="btn-mask-all-on" class="btn">All ON</button>
+            <button id="btn-mask-all-off" class="btn danger">All OFF</button>
+            <button id="btn-mask-reset" class="btn primary">Reset</button>
+          </div>
+          <label class="toggle-row">
+            <span>Full Color (YCbCr vs Luma Y)</span>
+            <input id="chk-color-mode" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Show Zig-Zag Scan Overlay</span>
+            <input id="chk-zigzag-path" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Apply Cell Toggles to All Blocks</span>
+            <input id="chk-global-mask" type="checkbox" />
+            <span class="switch"></span>
+          </label>
+          <div id="dct-block-info" class="note-small">
+            Click any 8×8 macroblock to lock it, then click individual (u,v) cosine basis cells to toggle waves ON/OFF.
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 3: LZW DICTIONARY COMPARISON -->
+      <div id="tab-lzw" class="tab-pane">
+        <div class="section">
+          <div class="section-title">
+            <span>Huffman vs LZW Benchmark</span>
+            <span id="lzw-best-badge" class="mode-badge">Huffman Wins</span>
+          </div>
+          <div class="lzw-compare-grid">
+            <div class="tele-card">
+              <span class="tele-label">Raw 8-bit ASCII</span>
+              <span id="lzw-raw-bits" class="tele-val">0 b</span>
+            </div>
+            <div class="tele-card">
+              <span class="tele-label">Huffman Bits</span>
+              <span id="lzw-huff-bits" class="tele-val cyan">0 b</span>
+            </div>
+            <div class="tele-card">
+              <span class="tele-label">LZW Var-Width</span>
+              <span id="lzw-lzw-bits" class="tele-val violet">0 b</span>
+            </div>
+            <div class="tele-card">
+              <span class="tele-label">Dict Phrases</span>
+              <span id="lzw-dict-size" class="tele-val mint">+0 new</span>
+            </div>
+          </div>
+          <p class="note-small">
+            Huffman exploits <strong>symbol frequency skew</strong> (memoryless optimal prefix code). LZW builds an adaptive <strong>phrase dictionary</strong> on the fly, crushing repeating substrings like DNA motifs or runs.
+          </p>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>LZW Output Code Stream</span></div>
+          <div id="lzw-code-stream" class="lzw-stream-box"></div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Learned LZW Phrases (256+)</span></div>
+          <div id="lzw-dict-list" class="code-table" style="max-height:260px;"></div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Bottom Transport Bar -->
+  <div class="panel bottom-bar">
+    <button id="btn-mode-huff" class="bar-btn active">Huffman Tree</button>
+    <button id="btn-mode-dct" class="bar-btn">8×8 JPEG DCT</button>
+    <div class="bar-divider"></div>
+    <button id="btn-play" class="bar-btn">▶ Play</button>
+    <button id="btn-reset" class="bar-btn">Reset</button>
+    <div class="bar-divider"></div>
+    <button id="btn-audio" class="bar-btn">🔇 Audio</button>
+    <button id="btn-controls" class="bar-btn active">Controls</button>
+    <button id="btn-cinema" class="bar-btn">Cinema (H)</button>
+  </div>
+
+  <!-- Bottom-Left Hint -->
+  <div id="hint-pill" class="panel hint-pill">
+    <kbd>Drag</kbd> pan tree · <kbd>Wheel</kbd> zoom · <kbd>Space</kbd> animate · <kbd>H</kbd> cinema
+  </div>
+
+  <!-- Toast Banner -->
+  <div id="event-banner" class="event-banner">
+    <span id="event-text">Ready</span>
+  </div>
+
+  <!-- Zen Restore Button -->
+  <button id="btn-zen-restore" class="panel bar-btn zen-restore">Exit Cinema (H)</button>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // =========================================================================
+  // 1. PURE INFORMATION THEORY & COMPRESSION ENGINES (HUFFMAN, LZW, 2D-DCT)
+  // =========================================================================
+
+  const HUFF_PRESETS = {
+    prose: 'Information is the resolution of uncertainty. Claude Shannon proved that entropy sets the absolute physical limit of lossless data compression.',
+    dna: 'AAAAAAAAAACGTTTTAAAAAAGCGAAAAAAAATTTTAAACGTAAAAAAAAGCGAAAAAAAACGTAAAAAATTTTAAA',
+    skewed: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABBBBBBBBBBBBCCCCCDDE',
+    noise: 'q9!mZ2#kL7$vP4%xR8^nT1&wB6*yH3(jF5)cD0_sG+uN=aE-iO~pK|zM<tV>rX?bW/eY:lC;hJ'
+  };
+
+  function displayChar(ch) {
+    if (ch === ' ') return '␣';
+    if (ch === '\n') return '↵';
+    if (ch === '\t') return '⇥';
+    return ch;
+  }
+
+  function buildHuffman(text) {
+    const symbols = Array.from(text || '');
+    const n = symbols.length;
+    const freqMap = new Map();
+    for (let i = 0; i < n; i++) {
+      const ch = symbols[i];
+      freqMap.set(ch, (freqMap.get(ch) || 0) + 1);
+    }
+
+    const entries = Array.from(freqMap.entries()).sort((a, b) => {
+      if (b[1] !== a[1]) return b[1] - a[1];
+      return a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0;
+    });
+
+    // Exact Shannon Entropy H = -sum(p * log2(p))
+    let entropy = 0;
+    if (n > 0) {
+      for (let i = 0; i < entries.length; i++) {
+        const p = entries[i][1] / n;
+        entropy -= p * Math.log2(p);
+      }
+    }
+
+    if (entries.length === 0) {
+      return {
+        text: '', symbols: [], entries: [], tree: null, codes: new Map(),
+        encodedBits: '', encodedPerChar: [], entropy: 0, avgBits: 0,
+        rawBits: 0, compressedBits: 0, savedPct: 0, ratio: 1, maxDepth: 0
+      };
+    }
+
+    let nextId = 1;
+    const queue = entries.map(([ch, freq]) => ({
+      id: nextId++,
+      key: 'L:' + ch,
+      char: ch,
+      freq,
+      prob: freq / n,
+      left: null,
+      right: null,
+      parent: null,
+      bit: '',
+      code: '',
+      depth: 0,
+      leafIndex: 0
+    }));
+
+    let root = null;
+    if (queue.length === 1) {
+      root = queue[0];
+      root.code = '0';
+      root.depth = 0;
+    } else {
+      while (queue.length > 1) {
+        queue.sort((a, b) => (a.freq - b.freq) || (a.id - b.id));
+        const left = queue.shift();
+        const right = queue.shift();
+        const parent = {
+          id: nextId++,
+          key: 'I:' + left.key + '|' + right.key,
+          char: null,
+          freq: left.freq + right.freq,
+          prob: (left.freq + right.freq) / n,
+          left,
+          right,
+          parent: null,
+          bit: '',
+          code: '',
+          depth: 0,
+          leafIndex: 0
+        };
+        left.parent = parent;
+        left.bit = '0';
+        right.parent = parent;
+        right.bit = '1';
+        queue.push(parent);
+      }
+      root = queue[0];
+    }
+
+    const codes = new Map();
+    let maxDepth = 0;
+    const assignCodes = (node, prefix, depth) => {
+      node.depth = depth;
+      if (depth > maxDepth) maxDepth = depth;
+      if (!node.left && !node.right) {
+        node.code = prefix.length > 0 ? prefix : '0';
+        codes.set(node.char, node.code);
+        return;
+      }
+      if (node.left) assignCodes(node.left, prefix + '0', depth + 1);
+      if (node.right) assignCodes(node.right, prefix + '1', depth + 1);
+    };
+    assignCodes(root, '', 0);
+
+    const encodedPerChar = new Array(n);
+    let encodedBits = '';
+    for (let i = 0; i < n; i++) {
+      const c = codes.get(symbols[i]);
+      encodedPerChar[i] = c;
+      encodedBits += c;
+    }
+
+    const rawBits = n * 8;
+    const compressedBits = encodedBits.length;
+    const avgBits = n > 0 ? compressedBits / n : 0;
+    const savedPct = rawBits > 0 ? ((rawBits - compressedBits) / rawBits) * 100 : 0;
+    const ratio = compressedBits > 0 ? rawBits / compressedBits : 1;
+
+    return {
+      text, symbols, entries, tree: root, codes,
+      encodedBits, encodedPerChar, entropy, avgBits,
+      rawBits, compressedBits, savedPct, ratio, maxDepth
+    };
+  }
+
+  function huffmanDecode(bits, tree) {
+    if (!tree || !bits) return '';
+    if (!tree.left && !tree.right) {
+      return tree.char.repeat(bits.length);
+    }
+    let out = '';
+    let node = tree;
+    for (let i = 0; i < bits.length; i++) {
+      node = bits[i] === '0' ? node.left : node.right;
+      if (!node) break;
+      if (!node.left && !node.right) {
+        out += node.char;
+        node = tree;
+      }
+    }
+    return out;
+  }
+
+  // Real LZW Encoder/Decoder over UTF-8 bytes
+  function lzwEncode(text) {
+    const bytes = new TextEncoder().encode(text || '');
+    if (bytes.length === 0) {
+      return { codes: [], learned: [], totalBits: 0, dictSize: 256 };
+    }
+    const dict = new Map();
+    for (let i = 0; i < 256; i++) dict.set(String.fromCharCode(i), i);
+
+    let nextCode = 256;
+    const MAX_DICT = 4096;
+    const codes = [];
+    const learned = [];
+    let totalBits = 0;
+    let w = String.fromCharCode(bytes[0]);
+
+    for (let i = 1; i < bytes.length; i++) {
+      const k = String.fromCharCode(bytes[i]);
+      const wk = w + k;
+      if (dict.has(wk)) {
+        w = wk;
+      } else {
+        const bitWidth = Math.max(9, Math.ceil(Math.log2(Math.max(nextCode, 257))));
+        codes.push(dict.get(w));
+        totalBits += bitWidth;
+        if (nextCode < MAX_DICT) {
+          dict.set(wk, nextCode);
+          learned.push({ code: nextCode, phrase: wk });
+          nextCode++;
+        }
+        w = k;
+      }
+    }
+    const finalWidth = Math.max(9, Math.ceil(Math.log2(Math.max(nextCode, 257))));
+    codes.push(dict.get(w));
+    totalBits += finalWidth;
+
+    return { codes, learned, totalBits, dictSize: nextCode };
+  }
+
+  function lzwDecode(codes) {
+    if (!codes || codes.length === 0) return '';
+    const dict = new Map();
+    for (let i = 0; i < 256; i++) dict.set(i, String.fromCharCode(i));
+    let nextCode = 256;
+    const MAX_DICT = 4096;
+    let w = dict.get(codes[0]);
+    let outStr = w;
+    for (let i = 1; i < codes.length; i++) {
+      const k = codes[i];
+      let entry;
+      if (dict.has(k)) {
+        entry = dict.get(k);
+      } else if (k === nextCode) {
+        entry = w + w[0];
+      } else {
+        throw new Error('Invalid LZW code: ' + k);
+      }
+      outStr += entry;
+      if (nextCode < MAX_DICT) {
+        dict.set(nextCode++, w + entry[0]);
+      }
+      w = entry;
+    }
+    const bytes = new Uint8Array(outStr.length);
+    for (let i = 0; i < outStr.length; i++) bytes[i] = outStr.charCodeAt(i);
+    return new TextDecoder().decode(bytes);
+  }
+
+  // =========================================================================
+  // 2. EXACT 8x8 2D-DCT, IDCT, ZIG-ZAG & STANDARD JPEG QUANTIZATION ENGINE
+  // =========================================================================
+
+  const COS8 = new Array(8);
+  const ALPHA8 = new Float64Array(8);
+  for (let k = 0; k < 8; k++) {
+    ALPHA8[k] = k === 0 ? Math.SQRT1_2 : 1.0;
+    COS8[k] = new Float64Array(8);
+    for (let n = 0; n < 8; n++) {
+      COS8[k][n] = Math.cos(((2 * n + 1) * k * Math.PI) / 16);
+    }
+  }
+
+  // Standard JPEG Annex K Luminance & Chrominance quantization tables (Q=50)
+  const Q50_LUMA = new Uint8Array([
+    16, 11, 10, 16, 24, 40, 51, 61,
+    12, 12, 14, 19, 26, 58, 60, 55,
+    14, 13, 16, 24, 40, 57, 69, 56,
+    14, 17, 22, 29, 51, 87, 80, 62,
+    18, 22, 37, 56, 68,109,103, 77,
+    24, 35, 55, 64, 81,104,113, 92,
+    49, 64, 78, 87,103,121,120,101,
+    72, 92, 95, 98,112,100,103, 99
+  ]);
+
+  const Q50_CHROMA = new Uint8Array([
+    17, 18, 24, 47, 99, 99, 99, 99,
+    18, 21, 26, 66, 99, 99, 99, 99,
+    24, 26, 56, 99, 99, 99, 99, 99,
+    47, 66, 99, 99, 99, 99, 99, 99,
+    99, 99, 99, 99, 99, 99, 99, 99,
+    99, 99, 99, 99, 99, 99, 99, 99,
+    99, 99, 99, 99, 99, 99, 99, 99,
+    99, 99, 99, 99, 99, 99, 99, 99
+  ]);
+
+  // Zig-zag order mapping scan index (0..63) -> cell index (v*8 + u)
+  const ZIGZAG_ORDER = new Uint8Array([
+     0,  1,  8, 16,  9,  2,  3, 10,
+    17, 24, 32, 25, 18, 11,  4,  5,
+    12, 19, 26, 33, 40, 48, 41, 34,
+    27, 20, 13,  6,  7, 14, 21, 28,
+    35, 42, 49, 56, 57, 50, 43, 36,
+    29, 22, 15, 23, 30, 37, 44, 51,
+    58, 59, 52, 45, 38, 31, 39, 46,
+    53, 60, 61, 54, 47, 55, 62, 63
+  ]);
+
+  // Inverse zig-zag mapping cell index (v*8 + u) -> scan rank (0..63)
+  const ZIGZAG_RANK = new Uint8Array(64);
+  for (let k = 0; k < 64; k++) ZIGZAG_RANK[ZIGZAG_ORDER[k]] = k;
+
+  function scaledQuantTable(base, quality) {
+    const out = new Float64Array(64);
+    const q = Math.max(1, Math.min(100, quality));
+    if (q === 100) {
+      out.fill(1);
+      return out;
+    }
+    const scale = q < 50 ? Math.floor(5000 / q) : 200 - 2 * q;
+    for (let i = 0; i < 64; i++) {
+      let v = Math.floor((base[i] * scale + 50) / 100);
+      if (v < 1) v = 1;
+      if (v > 255) v = 255;
+      out[i] = v;
+    }
+    return out;
+  }
+
+  // Exact separable orthonormal 8x8 2D-DCT (row-major: idx = y*8 + x -> v*8 + u)
+  function dct2d(block) {
+    const tmp = new Float64Array(64);
+    const out = new Float64Array(64);
+    // 1D DCT on rows
+    for (let y = 0; y < 8; y++) {
+      const rowOff = y * 8;
+      for (let u = 0; u < 8; u++) {
+        let sum = 0;
+        const cosU = COS8[u];
+        for (let x = 0; x < 8; x++) {
+          sum += block[rowOff + x] * cosU[x];
+        }
+        tmp[rowOff + u] = 0.5 * ALPHA8[u] * sum;
+      }
+    }
+    // 1D DCT on columns
+    for (let u = 0; u < 8; u++) {
+      for (let v = 0; v < 8; v++) {
+        let sum = 0;
+        const cosV = COS8[v];
+        for (let y = 0; y < 8; y++) {
+          sum += tmp[y * 8 + u] * cosV[y];
+        }
+        out[v * 8 + u] = 0.5 * ALPHA8[v] * sum;
+      }
+    }
+    return out;
+  }
+
+  // Exact separable orthonormal 8x8 2D-IDCT
+  function idct2d(coeff) {
+    const tmp = new Float64Array(64);
+    const out = new Float64Array(64);
+    // 1D IDCT on columns
+    for (let u = 0; u < 8; u++) {
+      for (let y = 0; y < 8; y++) {
+        let sum = 0;
+        for (let v = 0; v < 8; v++) {
+          sum += ALPHA8[v] * coeff[v * 8 + u] * COS8[v][y];
+        }
+        tmp[y * 8 + u] = 0.5 * sum;
+      }
+    }
+    // 1D IDCT on rows
+    for (let y = 0; y < 8; y++) {
+      const rowOff = y * 8;
+      for (let x = 0; x < 8; x++) {
+        let sum = 0;
+        for (let u = 0; u < 8; u++) {
+          sum += ALPHA8[u] * tmp[rowOff + u] * COS8[u][x];
+        }
+        out[rowOff + x] = 0.5 * sum;
+      }
+    }
+    return out;
+  }
+
+  function clamp255(v) {
+    return v < 0 ? 0 : v > 255 ? 255 : Math.round(v);
+  }
+
+  function rgbToYCbCr(r, g, b) {
+    const y  =  0.299 * r + 0.587 * g + 0.114 * b;
+    const cb = -0.168736 * r - 0.331264 * g + 0.5 * b + 128;
+    const cr =  0.5 * r - 0.418688 * g - 0.081312 * b + 128;
+    return [y, cb, cr];
+  }
+
+  function yCbCrToRgb(y, cb, cr) {
+    const c = cb - 128;
+    const d = cr - 128;
+    return [
+      clamp255(y + 1.402 * d),
+      clamp255(y - 0.344136 * c - 0.714136 * d),
+      clamp255(y + 1.772 * c)
+    ];
+  }
+
+  // =========================================================================
+  // 3. OPTIONAL SUBTLE WEB AUDIO ENGINE (MUTED BY DEFAULT)
+  // =========================================================================
+
+  const audio = {
+    enabled: false,
+    ctx: null,
+    lastTickTime: 0,
+    ensure() {
+      if (!this.enabled) return null;
+      if (!this.ctx) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) return null;
+        this.ctx = new AC();
+      }
+      if (this.ctx.state === 'suspended') this.ctx.resume();
+      return this.ctx;
+    },
+    playBit(bit) {
+      const ctx = this.ensure();
+      if (!ctx) return;
+      const now = ctx.currentTime;
+      if (now - this.lastTickTime < 0.025) return;
+      this.lastTickTime = now;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = bit === '0' ? 'sine' : 'triangle';
+      const freq = bit === '0' ? 784 : 523.25;
+      osc.frequency.setValueAtTime(freq, now);
+      osc.frequency.exponentialRampToValueAtTime(freq * (bit === '0' ? 1.08 : 0.94), now + 0.045);
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.linearRampToValueAtTime(0.045, now + 0.006);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.055);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.06);
+    },
+    playLeaf() {
+      const ctx = this.ensure();
+      if (!ctx) return;
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(1046.5, now);
+      osc.frequency.exponentialRampToValueAtTime(1318.5, now + 0.07);
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.linearRampToValueAtTime(0.04, now + 0.008);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.09);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.1);
+    },
+    playDctCell(u, v, active) {
+      const ctx = this.ensure();
+      if (!ctx) return;
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      const baseFreq = 220 + (u + v) * 78 + (u * 14);
+      osc.type = active ? 'sine' : 'triangle';
+      osc.frequency.setValueAtTime(active ? baseFreq : baseFreq * 0.72, now);
+      osc.frequency.exponentialRampToValueAtTime(active ? baseFreq * 1.06 : baseFreq * 0.55, now + 0.08);
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.linearRampToValueAtTime(0.05, now + 0.008);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.095);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.10);
+    }
+  };
+
+  // =========================================================================
+  // 4. APPLICATION STATE
+  // =========================================================================
+
+  const canvas = document.getElementById('sim-canvas');
+  const ctx = canvas.getContext('2d');
+  let W = window.innerWidth;
+  let H = window.innerHeight;
+  let DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+  const state = {
+    mode: 'huffman', // 'huffman' | 'dct'
+    activeTab: 'huffman',
+    drawerOpen: true,
+    zenMode: false,
+    time: 0,
+
+    // Mode A: Huffman & LZW
+    huffPreset: 'prose',
+    huffText: HUFF_PRESETS.prose,
+    huff: null,
+    lzw: null,
+    showProbs: true,
+    showCodes: true,
+    autoFollowGlow: true,
+    animSpeed: 1.0,
+    // Camera for tree
+    cam: { x: 0, y: 0, zoom: 1, targetX: 0, targetY: 0, targetZoom: 1 },
+    nodePos: new Map(), // nodeKey -> { x, y, tx, ty, alpha }
+    nodeScreenHit: [],  // [{ node, sx, sy, r }]
+    hoveredNode: null,
+    hoveredChar: null,
+    // Animated Encoder / Decoder
+    anim: {
+      playing: false,
+      direction: 'encode', // 'encode' | 'decode'
+      charIdx: 0,
+      bitIdx: 0,
+      progress: 0, // 0..1 along current edge
+      emittedBits: '',
+      decodedChars: '',
+      pulseNode: null,
+      pulseNext: null,
+      activePath: [],
+      particles: [],
+      flashLeafKey: null,
+      flashTimer: 0
+    },
+
+    // Mode B: 8x8 JPEG DCT
+    dctPreset: 'portrait',
+    dctTool: 'inspect', // 'inspect' | 'paint'
+    brushRadius: 2.0,
+    brushColor: '#ffffff',
+    quality: 45,
+    topK: 64,
+    errGain: 4.0,
+    colorMode: true,
+    showZigZag: true,
+    globalMask: false,
+    selBx: 3,
+    selBy: 3,
+    hoverBx: -1,
+    hoverBy: -1,
+    hoverCellU: -1,
+    hoverCellV: -1,
+    // 64x64 RGB source & reconstructed & diff buffers
+    imgOrig: new Uint8ClampedArray(64 * 64 * 4),
+    imgRecon: new Uint8ClampedArray(64 * 64 * 4),
+    imgDiff: new Uint8ClampedArray(64 * 64 * 4),
+    // Per-block DCT data (64 blocks of 64 floats)
+    blocksYRaw: Array.from({ length: 64 }, () => new Float64Array(64)),
+    blocksYQuant: Array.from({ length: 64 }, () => new Float64Array(64)),
+    blocksYActive: Array.from({ length: 64 }, () => new Float64Array(64)),
+    blocksYReconPx: Array.from({ length: 64 }, () => new Float64Array(64)),
+    blocksYOrigPx: Array.from({ length: 64 }, () => new Float64Array(64)),
+    // Manual cell override: 0 = default (Q+TopK), 1 = force ON, -1 = force OFF
+    cellOverride: new Int8Array(64),
+    // Metrics
+    dctMetrics: {
+      psnr: 0,
+      mse: 0,
+      zeroPct: 0,
+      estKB: 0,
+      rawKB: 12.0,
+      activeCellsSelected: 64
+    },
+    dctPulsePhase: 0,
+    dctAutoSweep: false,
+    dctSweepDir: -1,
+    // Offscreen canvases for crisp pixel rendering
+    origCanvas: document.createElement('canvas'),
+    reconCanvas: document.createElement('canvas'),
+    diffCanvas: document.createElement('canvas'),
+    basisCanvases: [],
+    // Computed layout rectangles for Mode B hit-testing
+    dctLayout: null,
+
+    // Pointer interaction
+    pointer: {
+      down: false,
+      button: 0,
+      x: 0,
+      y: 0,
+      lastX: 0,
+      lastY: 0,
+      draggingTree: false,
+      painting: false
+    }
+  };
+
+  state.origCanvas.width = 64; state.origCanvas.height = 64;
+  state.reconCanvas.width = 64; state.reconCanvas.height = 64;
+  state.diffCanvas.width = 64; state.diffCanvas.height = 64;
+
+  // Pre-render the 64 2D Cosine Basis Patterns (8x8 pixels each)
+  function initBasisCanvases() {
+    state.basisCanvases = new Array(64);
+    for (let v = 0; v < 8; v++) {
+      for (let u = 0; u < 8; u++) {
+        const c = document.createElement('canvas');
+        c.width = 8;
+        c.height = 8;
+        const cctx = c.getContext('2d');
+        const img = cctx.createImageData(8, 8);
+        const d = img.data;
+        for (let y = 0; y < 8; y++) {
+          for (let x = 0; x < 8; x++) {
+            const val = COS8[u][x] * COS8[v][y]; // -1 .. +1
+            const lum = Math.round((val * 0.5 + 0.5) * 255);
+            const idx = (y * 8 + x) * 4;
+            d[idx] = lum;
+            d[idx + 1] = lum;
+            d[idx + 2] = lum;
+            d[idx + 3] = 255;
+          }
+        }
+        cctx.putImageData(img, 0, 0);
+        state.basisCanvases[v * 8 + u] = c;
+      }
+    }
+  }
+  initBasisCanvases();
+
+  // =========================================================================
+  // 5. PROCEDURAL 64x64 IMAGE GENERATORS FOR MODE B
+  // =========================================================================
+
+  function generateDctPreset(name) {
+    const buf = state.imgOrig;
+    const setPx = (x, y, r, g, b) => {
+      if (x < 0 || x >= 64 || y < 0 || y >= 64) return;
+      const i = (y * 64 + x) * 4;
+      buf[i] = clamp255(r);
+      buf[i + 1] = clamp255(g);
+      buf[i + 2] = clamp255(b);
+      buf[i + 3] = 255;
+    };
+
+    if (name === 'portrait') {
+      // Stylized museum studio portrait with rim lighting, smooth skin gradients, and crisp eyes
+      for (let y = 0; y < 64; y++) {
+        for (let x = 0; x < 64; x++) {
+          const nx = (x - 32) / 32;
+          const ny = (y - 32) / 32;
+          // Deep studio indigo/teal radial background
+          const bgGlow = Math.exp(-((nx - 0.2) ** 2 + (ny + 0.25) ** 2) * 1.8);
+          let r = 14 + 34 * bgGlow;
+          let g = 22 + 64 * bgGlow;
+          let b = 46 + 88 * bgGlow;
+
+          // Shoulders / silhouette
+          const shDist = ((x - 32) / 26) ** 2 + ((y - 62) / 17) ** 2;
+          if (shDist < 1) {
+            const shade = 0.55 + 0.45 * (1 - shDist);
+            r = 28 * shade + 12;
+            g = 42 * shade + 18;
+            b = 74 * shade + 28;
+          }
+
+          // Neck
+          if (Math.abs(x - 32) < 6.5 && y >= 40 && y <= 52) {
+            const nxShade = 1 - Math.abs(x - 30) / 10;
+            r = 165 * nxShade + 30;
+            g = 115 * nxShade + 22;
+            b = 98 * nxShade + 20;
+          }
+
+          // Hair halo behind head
+          const hairDist = ((x - 32) / 18.5) ** 2 + ((y - 26) / 21) ** 2;
+          if (hairDist < 1) {
+            const wave = Math.sin(x * 0.45 + y * 0.2) * 10;
+            const rim = Math.max(0, (nx + 0.3) * 0.8);
+            r = 32 + wave * 0.4 + rim * 26;
+            g = 24 + wave * 0.3 + rim * 42;
+            b = 44 + wave * 0.6 + rim * 64;
+          }
+
+          // Face oval with 3D directional lighting (warm amber key left, cyan rim right)
+          const fx = (x - 32) / 14.2;
+          const fy = (y - 29) / 17.5;
+          const faceR2 = fx * fx + fy * fy;
+          if (faceR2 < 1) {
+            const nz = Math.sqrt(Math.max(0, 1 - faceR2));
+            const key = Math.max(0, -0.48 * fx - 0.32 * fy + 0.82 * nz);
+            const rim = Math.pow(Math.max(0, 0.78 * fx - 0.1 * fy + 0.2 * nz), 2.2);
+            const cheek = Math.exp(-((Math.abs(x - 32) - 6.5) ** 2 + (y - 33) ** 2) / 16);
+            r = 72 + 168 * key + 26 * cheek + 20 * rim;
+            g = 48 + 132 * key + 6 * cheek + 78 * rim;
+            b = 44 + 112 * key + 6 * cheek + 108 * rim;
+
+            // Eyebrows
+            if (y >= 21 && y <= 22 && ((x >= 23 && x <= 29) || (x >= 35 && x <= 41))) {
+              r *= 0.36; g *= 0.32; b *= 0.34;
+            }
+            // Eyes (sclera + iris + specular catchlight)
+            const le = ((x - 26) / 3.0) ** 2 + ((y - 26) / 1.9) ** 2;
+            const re = ((x - 38) / 3.0) ** 2 + ((y - 26) / 1.9) ** 2;
+            if (le < 1 || re < 1) {
+              r = 235; g = 238; b = 246;
+              const cx = le < 1 ? 26 : 38;
+              const pd = Math.hypot(x - cx, y - 26);
+              if (pd < 1.7) { r = 40; g = 148; b = 195; }
+              if (pd < 0.9) { r = 12; g = 16; b = 28; }
+              if (x === cx - 1 && y === 25) { r = 255; g = 255; b = 255; }
+            }
+            // Nose ridge highlight
+            if (Math.abs(x - 31.5) < 1.3 && y >= 26 && y <= 34) {
+              r = Math.min(255, r + 24);
+              g = Math.min(255, g + 18);
+              b = Math.min(255, b + 14);
+            }
+            // Lips
+            const mouth = ((x - 32) / 4.8) ** 2 + ((y - 38.2) / 1.65) ** 2;
+            if (mouth < 1) {
+              r = 188 + 30 * key;
+              g = 76 + 18 * key;
+              b = 90 + 18 * key;
+            }
+          }
+
+          // Top bangs curve
+          const bang = ((x - 31) / 15) ** 2 + ((y - 13) / 6.5) ** 2;
+          if (bang < 1 && y < 20) {
+            r = 34; g = 26; b = 48;
+          }
+
+          setPx(x, y, r, g, b);
+        }
+      }
+    } else if (name === 'checker') {
+      // Multi-scale crisp checkerboard + diagonal high-frequency grating
+      for (let y = 0; y < 64; y++) {
+        for (let x = 0; x < 64; x++) {
+          let r, g, b;
+          if (y < 32 && x < 32) {
+            // Classic 4px crisp checkerboard
+            const hi = ((x >> 2) + (y >> 2)) & 1;
+            r = hi ? 245 : 14;
+            g = hi ? 248 : 20;
+            b = hi ? 255 : 36;
+          } else if (y < 32 && x >= 32) {
+            // 2px ultra high-frequency cyan/navy grid
+            const hi = ((x >> 1) + (y >> 1)) & 1;
+            r = hi ? 88 : 10;
+            g = hi ? 226 : 18;
+            b = hi ? 255 : 38;
+          } else if (y >= 32 && x < 32) {
+            // Sharp diagonal amber stripes
+            const hi = ((x + y) >> 2) & 1;
+            r = hi ? 255 : 16;
+            g = hi ? 192 : 16;
+            b = hi ? 92 : 28;
+          } else {
+            // Concentric crisp square rings
+            const dx = Math.abs(x - 48);
+            const dy = Math.abs(y - 48);
+            const ring = Math.max(dx, dy);
+            const hi = (ring >> 1) & 1;
+            r = hi ? 255 : 18;
+            g = hi ? 96 : 22;
+            b = hi ? 140 : 40;
+          }
+          setPx(x, y, r, g, b);
+        }
+      }
+    } else if (name === 'sunset') {
+      // Silky low-frequency sunset over water with glowing sun disc
+      for (let y = 0; y < 64; y++) {
+        for (let x = 0; x < 64; x++) {
+          const u = x / 63;
+          const v = y / 63;
+          let r, g, b;
+          if (y < 42) {
+            const t = y / 41;
+            r = 14 + 230 * Math.pow(t, 1.55);
+            g = 20 + 130 * Math.pow(t, 1.9) + 35 * Math.sin(t * Math.PI);
+            b = 76 + 88 * Math.sin(t * Math.PI * 0.85) - 30 * t;
+            // Sun glow
+            const sd = Math.hypot(x - 32, y - 31);
+            const halo = Math.exp(-(sd * sd) / 140);
+            r += 110 * halo;
+            g += 105 * halo;
+            b += 55 * halo;
+            if (sd < 7.5) {
+              const core = 1 - sd / 7.5;
+              r = 255;
+              g = 228 + 27 * core;
+              b = 158 + 80 * core;
+            }
+          } else {
+            // Water reflection with gentle ripples
+            const wt = (y - 42) / 21;
+            const rip = Math.sin(y * 1.45 + Math.sin(x * 0.25) * 1.5) * 0.5 + 0.5;
+            const shimmer = Math.exp(-((x - 32) ** 2) / (28 + wt * 110)) * (0.55 + 0.45 * rip);
+            r = 24 + 45 * (1 - wt) + 215 * shimmer;
+            g = 28 + 38 * (1 - wt) + 150 * shimmer;
+            b = 64 + 34 * (1 - wt) + 75 * shimmer;
+          }
+          setPx(x, y, r, g, b);
+        }
+      }
+    } else {
+      // 'text': crisp typographic strokes & thin lines to highlight JPEG ringing / mosquito noise
+      const c = document.createElement('canvas');
+      c.width = 64; c.height = 64;
+      const g2 = c.getContext('2d');
+      g2.fillStyle = '#0b1020';
+      g2.fillRect(0, 0, 64, 64);
+
+      // Subtle border frame
+      g2.strokeStyle = '#3b82f6';
+      g2.lineWidth = 1;
+      g2.strokeRect(2.5, 2.5, 59, 59);
+
+      // Crisp horizontal & diagonal lines
+      g2.strokeStyle = '#ffbe5c';
+      g2.beginPath();
+      g2.moveTo(5, 11.5); g2.lineTo(59, 11.5);
+      g2.moveTo(5, 52.5); g2.lineTo(59, 52.5);
+      g2.stroke();
+
+      // Diagonal crosshair
+      g2.strokeStyle = '#ff6083';
+      g2.beginPath();
+      g2.moveTo(6, 58); g2.lineTo(22, 42);
+      g2.moveTo(58, 58); g2.lineTo(42, 42);
+      g2.stroke();
+
+      // Bold high-contrast letters
+      g2.fillStyle = '#ffffff';
+      g2.font = 'bold 17px monospace';
+      g2.textAlign = 'center';
+      g2.textBaseline = 'middle';
+      g2.fillText('DCT', 32, 26);
+
+      g2.fillStyle = '#58dcff';
+      g2.font = 'bold 13px monospace';
+      g2.fillText('8x8', 32, 42);
+
+      const idata = g2.getImageData(0, 0, 64, 64).data;
+      buf.set(idata);
+    }
+
+    recomputeDctPipeline();
+  }
+
+  // =========================================================================
+  // 6. FULL 64x64 JPEG 2D-DCT PIPELINE & METRICS
+  // =========================================================================
+
+  function recomputeDctPipeline() {
+    const qLuma = scaledQuantTable(Q50_LUMA, state.quality);
+    const qChroma = scaledQuantTable(Q50_CHROMA, state.quality);
+    const orig = state.imgOrig;
+    const recon = state.imgRecon;
+    const diff = state.imgDiff;
+    const topK = state.topK;
+    const colorMode = state.colorMode;
+    const globalMask = state.globalMask;
+    const gain = state.errGain;
+
+    let totalCoeffs = 0;
+    let zeroCoeffs = 0;
+    let estBits = 640; // small JFIF/quantization header overhead in bits
+    let mseSum = 0;
+    let mseCount = 0;
+    let activeCellsSelected = 0;
+
+    const yBlock = new Float64Array(64);
+    const cbBlock = new Float64Array(64);
+    const crBlock = new Float64Array(64);
+
+    for (let by = 0; by < 8; by++) {
+      for (let bx = 0; bx < 8; bx++) {
+        const bIdx = by * 8 + bx;
+        const isSelected = (bx === state.selBx && by === state.selBy);
+        const applyOverride = isSelected || globalMask;
+
+        // Extract 8x8 YCbCr block
+        for (let py = 0; py < 8; py++) {
+          for (let px = 0; px < 8; px++) {
+            const pIdx = ((by * 8 + py) * 64 + (bx * 8 + px)) * 4;
+            const [y, cb, cr] = rgbToYCbCr(orig[pIdx], orig[pIdx + 1], orig[pIdx + 2]);
+            const idx = py * 8 + px;
+            yBlock[idx] = y - 128;
+            cbBlock[idx] = cb - 128;
+            crBlock[idx] = cr - 128;
+            state.blocksYOrigPx[bIdx][idx] = y;
+          }
+        }
+
+        const yDct = dct2d(yBlock);
+        const cbDct = colorMode ? dct2d(cbBlock) : null;
+        const crDct = colorMode ? dct2d(crBlock) : null;
+
+        state.blocksYRaw[bIdx].set(yDct);
+
+        const yDequant = new Float64Array(64);
+        const cbDequant = colorMode ? new Float64Array(64) : null;
+        const crDequant = colorMode ? new Float64Array(64) : null;
+
+        let lastNonZeroY = 0;
+        let runZeros = 0;
+
+        for (let i = 0; i < 64; i++) {
+          const rank = ZIGZAG_RANK[i];
+          let qv = rank < topK ? Math.round(yDct[i] / qLuma[i]) : 0;
+          let deq = qv * qLuma[i];
+
+          if (applyOverride) {
+            const ov = state.cellOverride[i];
+            if (ov === -1) {
+              qv = 0;
+              deq = 0;
+            } else if (ov === 1) {
+              // Force cell ON: use raw coefficient if substantial, else inject clean basis wave
+              deq = Math.abs(yDct[i]) >= 2.0 ? yDct[i] : 48.0;
+              qv = Math.round(deq / qLuma[i]) || (deq >= 0 ? 1 : -1);
+            }
+          }
+
+          state.blocksYQuant[bIdx][i] = qv;
+          state.blocksYActive[bIdx][i] = deq;
+          yDequant[i] = deq;
+
+          if (isSelected && Math.abs(deq) > 1e-6) activeCellsSelected++;
+
+          totalCoeffs++;
+          if (qv === 0) zeroCoeffs++;
+
+          if (colorMode) {
+            let qcb = rank < topK ? Math.round(cbDct[i] / qChroma[i]) : 0;
+            let qcr = rank < topK ? Math.round(crDct[i] / qChroma[i]) : 0;
+            if (applyOverride && state.cellOverride[i] === -1) { qcb = 0; qcr = 0; }
+            cbDequant[i] = qcb * qChroma[i];
+            crDequant[i] = qcr * qChroma[i];
+            totalCoeffs += 2;
+            if (qcb === 0) zeroCoeffs++;
+            if (qcr === 0) zeroCoeffs++;
+          }
+        }
+
+        // Estimate entropy-coded JPEG bits in zig-zag order (DC + RLE AC)
+        for (let k = 0; k < 64; k++) {
+          const ci = ZIGZAG_ORDER[k];
+          const qv = Math.abs(state.blocksYQuant[bIdx][ci]);
+          if (k === 0) {
+            estBits += 4 + (qv > 0 ? Math.floor(Math.log2(qv)) + 1 : 0);
+          } else if (qv === 0) {
+            runZeros++;
+          } else {
+            lastNonZeroY = k;
+            estBits += 4 + Math.min(4, runZeros >> 2) * 4 + (Math.floor(Math.log2(qv)) + 1);
+            runZeros = 0;
+          }
+        }
+        if (lastNonZeroY < 63) estBits += 4; // EOB symbol
+        if (colorMode) {
+          // Chrominance contributes ~32% extra RLE bits
+          let cNonZero = 0;
+          for (let i = 0; i < 64; i++) {
+            if (cbDequant[i] !== 0) cNonZero++;
+            if (crDequant[i] !== 0) cNonZero++;
+          }
+          estBits += 8 + cNonZero * 5.2;
+        }
+
+        const yRec = idct2d(yDequant);
+        const cbRec = colorMode ? idct2d(cbDequant) : null;
+        const crRec = colorMode ? idct2d(crDequant) : null;
+
+        for (let py = 0; py < 8; py++) {
+          for (let px = 0; px < 8; px++) {
+            const idx = py * 8 + px;
+            const yVal = clamp255(yRec[idx] + 128);
+            state.blocksYReconPx[bIdx][idx] = yVal;
+
+            const pIdx = ((by * 8 + py) * 64 + (bx * 8 + px)) * 4;
+            let rr, rg, rb;
+            let or, og, ob;
+            if (colorMode) {
+              [rr, rg, rb] = yCbCrToRgb(yVal, cbRec[idx] + 128, crRec[idx] + 128);
+              or = orig[pIdx]; og = orig[pIdx + 1]; ob = orig[pIdx + 2];
+              const dr = or - rr, dg = og - rg, db = ob - rb;
+              mseSum += dr * dr + dg * dg + db * db;
+              mseCount += 3;
+            } else {
+              rr = rg = rb = yVal;
+              const oy = clamp255(state.blocksYOrigPx[bIdx][idx]);
+              or = og = ob = oy;
+              const dy = oy - yVal;
+              mseSum += dy * dy;
+              mseCount += 1;
+            }
+
+            recon[pIdx] = rr;
+            recon[pIdx + 1] = rg;
+            recon[pIdx + 2] = rb;
+            recon[pIdx + 3] = 255;
+
+            // Amplified Error Diff heatmap (deep indigo -> cyan -> amber -> rose)
+            const errMag = (Math.abs(or - rr) + Math.abs(og - rg) + Math.abs(ob - rb)) / 3;
+            const amp = Math.min(255, errMag * gain);
+            const t = amp / 255;
+            diff[pIdx]     = clamp255(10 + 245 * Math.pow(t, 0.72));
+            diff[pIdx + 1] = clamp255(14 + 195 * Math.sin(t * Math.PI * 0.85));
+            diff[pIdx + 2] = clamp255(32 + 210 * (1 - Math.abs(t - 0.35) * 1.6) * (t > 0.02 ? 1 : 0));
+            diff[pIdx + 3] = 255;
+          }
+        }
+      }
+    }
+
+    // Upload buffers to offscreen 64x64 canvases
+    const origToDraw = colorMode ? orig : buildGrayImageData(orig);
+    state.origCanvas.getContext('2d').putImageData(new ImageData(origToDraw, 64, 64), 0, 0);
+    state.reconCanvas.getContext('2d').putImageData(new ImageData(recon, 64, 64), 0, 0);
+    state.diffCanvas.getContext('2d').putImageData(new ImageData(diff, 64, 64), 0, 0);
+
+    const mse = mseCount > 0 ? mseSum / mseCount : 0;
+    const psnr = mse <= 1e-9 ? Infinity : 10 * Math.log10((255 * 255) / mse);
+    const zeroPct = totalCoeffs > 0 ? (zeroCoeffs / totalCoeffs) * 100 : 0;
+    const estKB = estBits / (8 * 1024);
+    const rawKB = colorMode ? (64 * 64 * 3) / 1024 : (64 * 64) / 1024;
+
+    state.dctMetrics = { psnr, mse, zeroPct, estKB, rawKB, activeCellsSelected };
+    updateTelemetryHUD();
+    updateDctBlockInfo();
+  }
+
+  function buildGrayImageData(rgba) {
+    const out = new Uint8ClampedArray(rgba.length);
+    for (let i = 0; i < rgba.length; i += 4) {
+      const y = clamp255(0.299 * rgba[i] + 0.587 * rgba[i + 1] + 0.114 * rgba[i + 2]);
+      out[i] = y; out[i + 1] = y; out[i + 2] = y; out[i + 3] = 255;
+    }
+    return out;
+  }
+
+  // =========================================================================
+  // 7. HUFFMAN TREE LAYOUT & ANIMATION ENGINE
+  // =========================================================================
+
+  function computeTreeTargets() {
+    const h = state.huff;
+    if (!h || !h.tree) return;
+
+    // Assign clean in-order x coordinates to leaves, and average x for internal nodes
+    let leafCounter = 0;
+    const leaves = [];
+    const collect = (node) => {
+      if (!node.left && !node.right) {
+        node.leafIndex = leafCounter++;
+        leaves.push(node);
+        return;
+      }
+      if (node.left) collect(node.left);
+      if (node.right) collect(node.right);
+    };
+    collect(h.tree);
+
+    const leafCount = Math.max(1, leaves.length);
+    const spacingX = Math.max(46, Math.min(82, 920 / leafCount));
+    const spacingY = Math.max(66, Math.min(102, 460 / Math.max(2, h.maxDepth + 1)));
+
+    const totalW = (leafCount - 1) * spacingX;
+    const layout = (node) => {
+      if (!node.left && !node.right) {
+        const tx = node.leafIndex * spacingX - totalW / 2;
+        const ty = node.depth * spacingY;
+        registerTarget(node, tx, ty);
+        return tx;
+      }
+      const lx = node.left ? layout(node.left) : 0;
+      const rx = node.right ? layout(node.right) : lx;
+      const tx = (lx + rx) * 0.5;
+      const ty = node.depth * spacingY;
+      registerTarget(node, tx, ty);
+      return tx;
+    };
+
+    const activeKeys = new Set();
+    const registerTarget = (node, tx, ty) => {
+      activeKeys.add(node.key);
+      const prev = state.nodePos.get(node.key);
+      if (prev) {
+        prev.tx = tx;
+        prev.ty = ty;
+      } else {
+        state.nodePos.set(node.key, { x: tx, y: ty - 28, tx, ty, alpha: 0 });
+      }
+    };
+    layout(h.tree);
+
+    // Prune stale keys
+    for (const k of state.nodePos.keys()) {
+      if (!activeKeys.has(k)) state.nodePos.delete(k);
+    }
+  }
+
+  function getSafeCanvasRect() {
+    const rightMargin = state.drawerOpen && W > 960 ? 356 : 18;
+    const leftMargin = 18;
+    const topMargin = 18;
+    const bottomMargin = 72;
+    return {
+      x: leftMargin,
+      y: topMargin,
+      w: Math.max(280, W - leftMargin - rightMargin),
+      h: Math.max(240, H - topMargin - bottomMargin)
+    };
+  }
+
+  function fitHuffmanTreeView(instant = false) {
+    const h = state.huff;
+    if (!h || !h.tree) return;
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (const p of state.nodePos.values()) {
+      if (p.tx < minX) minX = p.tx;
+      if (p.tx > maxX) maxX = p.tx;
+      if (p.ty < minY) minY = p.ty;
+      if (p.ty > maxY) maxY = p.ty;
+    }
+    if (!Number.isFinite(minX)) return;
+
+    const safe = getSafeCanvasRect();
+    // Leave room for the top-left telemetry card on narrow layouts & bottom bitstream ribbon
+    const treeTop = (safe.w < 760) ? 202 : 126;
+    const treeBottom = safe.y + safe.h - 118;
+    const availW = Math.max(220, safe.w - 72);
+    const availH = Math.max(160, treeBottom - treeTop);
+
+    const spanW = Math.max(120, (maxX - minX) + 120);
+    const spanH = Math.max(110, (maxY - minY) + 120);
+    const zoom = Math.max(0.32, Math.min(1.38, Math.min(availW / spanW, availH / spanH)));
+
+    const cx = (minX + maxX) * 0.5;
+    const cy = (minY + maxY) * 0.5;
+    const screenCx = safe.x + safe.w * 0.5 + (safe.w >= 760 && W > 1100 ? 60 : 0);
+    const screenCy = (treeTop + treeBottom) * 0.5;
+
+    state.cam.targetZoom = zoom;
+    state.cam.targetX = screenCx - cx * zoom;
+    state.cam.targetY = screenCy - cy * zoom;
+    if (instant) {
+      state.cam.zoom = state.cam.targetZoom;
+      state.cam.x = state.cam.targetX;
+      state.cam.y = state.cam.targetY;
+    }
+  }
+
+  function rebuildHuffmanData(autoFit = false) {
+    state.huff = buildHuffman(state.huffText);
+    state.lzw = lzwEncode(state.huffText);
+    computeTreeTargets();
+    resetHuffmanAnim(false);
+    if (autoFit) fitHuffmanTreeView(false);
+    renderCodebookList();
+    renderLzwInspector();
+    updateTelemetryHUD();
+  }
+
+  function resetHuffmanAnim(keepDirection = true) {
+    const a = state.anim;
+    a.playing = false;
+    if (!keepDirection) a.direction = 'encode';
+    a.charIdx = 0;
+    a.bitIdx = 0;
+    a.progress = 0;
+    a.emittedBits = '';
+    a.decodedChars = '';
+    a.pulseNode = state.huff ? state.huff.tree : null;
+    a.pulseNext = null;
+    a.activePath = a.pulseNode ? [a.pulseNode] : [];
+    a.particles = [];
+    a.flashLeafKey = null;
+    a.flashTimer = 0;
+    syncPlayButton();
+  }
+
+  function startHuffmanAnim(direction) {
+    if (!state.huff || !state.huff.tree || state.huff.symbols.length === 0) return;
+    resetHuffmanAnim(true);
+    state.anim.direction = direction;
+    state.anim.playing = true;
+    setupCurrentAnimEdge();
+    syncPlayButton();
+    showToast(direction === 'encode'
+      ? 'Encoding bitstream down Huffman tree...'
+      : 'Decoding bitstream back to source symbols...');
+  }
+
+  function setupCurrentAnimEdge() {
+    const a = state.anim;
+    const h = state.huff;
+    if (!h || !h.tree) { a.playing = false; return; }
+
+    if (a.direction === 'encode') {
+      if (a.charIdx >= h.symbols.length) {
+        a.playing = false;
+        a.pulseNext = null;
+        syncPlayButton();
+        showToast(`Encoded ${h.symbols.length} chars → ${h.compressedBits} bits (${h.savedPct.toFixed(1)}% saved)`);
+        return;
+      }
+      const code = h.encodedPerChar[a.charIdx];
+      if (!h.tree.left && !h.tree.right) {
+        // Single-symbol degenerate tree
+        a.pulseNode = h.tree;
+        a.pulseNext = h.tree;
+        a.progress = 0;
+        return;
+      }
+      let node = h.tree;
+      const path = [node];
+      for (let i = 0; i < a.bitIdx; i++) {
+        node = code[i] === '0' ? node.left : node.right;
+        path.push(node);
+      }
+      a.activePath = path;
+      a.pulseNode = node;
+      const bit = code[a.bitIdx];
+      a.pulseNext = bit === '0' ? node.left : node.right;
+      a.progress = 0;
+      audio.playBit(bit);
+    } else {
+      // Decode mode: walk bitIdx across h.encodedBits
+      if (a.bitIdx >= h.encodedBits.length) {
+        a.playing = false;
+        a.pulseNext = null;
+        syncPlayButton();
+        const match = a.decodedChars === h.text;
+        showToast(match
+          ? `Decoded ${a.decodedChars.length} chars — 100% lossless match!`
+          : 'Decode sweep finished');
+        return;
+      }
+      if (!h.tree.left && !h.tree.right) {
+        a.pulseNode = h.tree;
+        a.pulseNext = h.tree;
+        a.progress = 0;
+        return;
+      }
+      if (!a.pulseNode) {
+        a.pulseNode = h.tree;
+        a.activePath = [h.tree];
+      }
+      const bit = h.encodedBits[a.bitIdx];
+      a.pulseNext = bit === '0' ? a.pulseNode.left : a.pulseNode.right;
+      a.progress = 0;
+      audio.playBit(bit);
+    }
+  }
+
+  function stepOneSymbol() {
+    const a = state.anim;
+    const h = state.huff;
+    if (!h || !h.tree || h.symbols.length === 0) return;
+    if (a.direction === 'encode') {
+      if (a.charIdx >= h.symbols.length) resetHuffmanAnim(true);
+      const code = h.encodedPerChar[a.charIdx];
+      let node = h.tree;
+      const path = [node];
+      if (node.left || node.right) {
+        for (let i = 0; i < code.length; i++) {
+          node = code[i] === '0' ? node.left : node.right;
+          if (node) path.push(node);
+        }
+      }
+      a.activePath = path;
+      a.emittedBits += code;
+      a.flashLeafKey = node ? node.key : null;
+      a.flashTimer = 0.65;
+      a.charIdx++;
+      a.bitIdx = 0;
+      a.playing = false;
+      audio.playLeaf();
+    } else {
+      if (a.bitIdx >= h.encodedBits.length) resetHuffmanAnim(true);
+      let node = h.tree;
+      const path = [node];
+      if (!node.left && !node.right) {
+        a.bitIdx++;
+      } else {
+        while (node && (node.left || node.right) && a.bitIdx < h.encodedBits.length) {
+          const bit = h.encodedBits[a.bitIdx++];
+          node = bit === '0' ? node.left : node.right;
+          if (node) path.push(node);
+        }
+      }
+      if (node && node.char !== null) {
+        a.decodedChars += node.char;
+        a.flashLeafKey = node.key;
+        a.flashTimer = 0.65;
+      }
+      a.activePath = path;
+      a.pulseNode = h.tree;
+      a.playing = false;
+      audio.playLeaf();
+    }
+    syncPlayButton();
+  }
+
+  function updateHuffmanAnim(dt) {
+    const a = state.anim;
+    const h = state.huff;
+    if (a.flashTimer > 0) a.flashTimer = Math.max(0, a.flashTimer - dt);
+
+    // Update particles
+    for (let i = a.particles.length - 1; i >= 0; i--) {
+      const p = a.particles[i];
+      p.life -= dt * 1.9;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      if (p.life <= 0) a.particles.splice(i, 1);
+    }
+
+    if (!a.playing || !h || !h.tree) return;
+
+    const edgeRate = 4.6 * state.animSpeed;
+    a.progress += dt * edgeRate;
+
+    if (a.progress >= 1.0) {
+      if (a.direction === 'encode') {
+        const code = h.encodedPerChar[a.charIdx];
+        if (!code) { a.playing = false; syncPlayButton(); return; }
+        const bit = code[a.bitIdx];
+        a.emittedBits += bit;
+
+        // Spawn glow burst at destination node
+        const targetNode = a.pulseNext || h.tree;
+        spawnNodeSparks(targetNode, bit === '0' ? '#58dcff' : '#ffbe5c', 5);
+
+        a.bitIdx++;
+        if (a.bitIdx >= code.length) {
+          // Reached leaf!
+          a.activePath.push(targetNode);
+          a.flashLeafKey = targetNode.key;
+          a.flashTimer = 0.45;
+          spawnNodeSparks(targetNode, '#4af2b2', 10);
+          audio.playLeaf();
+          a.charIdx++;
+          a.bitIdx = 0;
+        }
+        setupCurrentAnimEdge();
+      } else {
+        const bit = h.encodedBits[a.bitIdx];
+        const targetNode = a.pulseNext || h.tree;
+        spawnNodeSparks(targetNode, bit === '0' ? '#58dcff' : '#ffbe5c', 5);
+        a.bitIdx++;
+        a.activePath.push(targetNode);
+        if (!targetNode.left && !targetNode.right) {
+          a.decodedChars += targetNode.char;
+          a.flashLeafKey = targetNode.key;
+          a.flashTimer = 0.45;
+          spawnNodeSparks(targetNode, '#4af2b2', 10);
+          audio.playLeaf();
+          a.pulseNode = h.tree;
+          a.activePath = [h.tree];
+        } else {
+          a.pulseNode = targetNode;
+        }
+        setupCurrentAnimEdge();
+      }
+    }
+  }
+
+  function spawnNodeSparks(node, color, count) {
+    if (!node) return;
+    const pos = state.nodePos.get(node.key);
+    if (!pos) return;
+    for (let i = 0; i < count; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 25 + Math.random() * 75;
+      state.anim.particles.push({
+        x: pos.x,
+        y: pos.y,
+        vx: Math.cos(ang) * spd,
+        vy: Math.sin(ang) * spd,
+        color,
+        life: 0.7 + Math.random() * 0.4
+      });
+    }
+  }
+
+  // =========================================================================
+  // 8. RENDERING — MODE A (HUFFMAN TREE & BITSTREAM RIBBON)
+  // =========================================================================
+
+  function renderBackground() {
+    // Deep space-navy backdrop (#040711) with subtle analytical radial glow
+    ctx.fillStyle = '#040711';
+    ctx.fillRect(0, 0, W, H);
+
+    const gx = W * 0.44;
+    const gy = H * 0.42;
+    const rad = Math.max(W, H) * 0.7;
+    const grad = ctx.createRadialGradient(gx, gy, 10, gx, gy, rad);
+    if (state.mode === 'huffman') {
+      grad.addColorStop(0, 'rgba(26, 62, 118, 0.19)');
+      grad.addColorStop(0.55, 'rgba(12, 24, 52, 0.08)');
+      grad.addColorStop(1, 'rgba(4, 7, 17, 0)');
+    } else {
+      grad.addColorStop(0, 'rgba(62, 42, 18, 0.16)');
+      grad.addColorStop(0.5, 'rgba(18, 34, 66, 0.10)');
+      grad.addColorStop(1, 'rgba(4, 7, 17, 0)');
+    }
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+
+    // Subtle scientific dot grid
+    ctx.fillStyle = 'rgba(148, 179, 255, 0.065)';
+    const step = 36;
+    for (let y = (step / 2); y < H; y += step) {
+      for (let x = (step / 2); x < W; x += step) {
+        ctx.fillRect(x, y, 1.2, 1.2);
+      }
+    }
+  }
+
+  function renderHuffmanMode(dt) {
+    // Smooth spring interpolation for node positions & camera
+    const kPos = Math.min(1, dt * 11);
+    for (const p of state.nodePos.values()) {
+      p.x += (p.tx - p.x) * kPos;
+      p.y += (p.ty - p.y) * kPos;
+      p.alpha += (1 - p.alpha) * Math.min(1, dt * 8);
+    }
+    const kCam = Math.min(1, dt * 8);
+    state.cam.x += (state.cam.targetX - state.cam.x) * kCam;
+    state.cam.y += (state.cam.targetY - state.cam.y) * kCam;
+    state.cam.zoom += (state.cam.targetZoom - state.cam.zoom) * kCam;
+
+    const h = state.huff;
+    state.nodeScreenHit = [];
+
+    if (!h || !h.tree) {
+      ctx.save();
+      ctx.fillStyle = 'rgba(154, 169, 204, 0.7)';
+      ctx.font = '600 15px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('Type text in the right drawer to construct a Huffman prefix tree', W * 0.45, H * 0.48);
+      ctx.restore();
+      return;
+    }
+
+    // Build set of highlighted nodes (from hover OR active animation path)
+    const hoverPath = new Set();
+    let targetHoverNode = state.hoveredNode;
+    if (!targetHoverNode && state.hoveredChar !== null) {
+      // Find leaf matching hoveredChar
+      const findLeaf = (nd) => {
+        if (!nd) return null;
+        if (nd.char === state.hoveredChar) return nd;
+        return findLeaf(nd.left) || findLeaf(nd.right);
+      };
+      targetHoverNode = findLeaf(h.tree);
+    }
+    if (targetHoverNode) {
+      let cur = targetHoverNode;
+      while (cur) {
+        hoverPath.add(cur.key);
+        cur = cur.parent;
+      }
+    }
+
+    const animPathSet = new Set();
+    if (state.autoFollowGlow && state.anim.activePath.length > 0) {
+      for (const nd of state.anim.activePath) {
+        if (nd) animPathSet.add(nd.key);
+      }
+    }
+
+    const toScreen = (wx, wy) => ({
+      x: state.cam.x + wx * state.cam.zoom,
+      y: state.cam.y + wy * state.cam.zoom
+    });
+
+    // Draw edges first
+    const drawEdges = (node) => {
+      if (!node) return;
+      const p0 = state.nodePos.get(node.key);
+      if (!p0) return;
+      const s0 = toScreen(p0.x, p0.y);
+
+      const children = [
+        { child: node.left, bit: '0', color: '#58dcff', glow: 'rgba(88, 220, 255, 0.45)' },
+        { child: node.right, bit: '1', color: '#ffbe5c', glow: 'rgba(255, 190, 92, 0.45)' }
+      ];
+
+      for (const { child, bit, color, glow } of children) {
+        if (!child) continue;
+        const p1 = state.nodePos.get(child.key);
+        if (!p1) continue;
+        const s1 = toScreen(p1.x, p1.y);
+
+        const isHoverEdge = hoverPath.has(node.key) && hoverPath.has(child.key);
+        const isAnimEdge = (animPathSet.has(node.key) && animPathSet.has(child.key)) ||
+                           (state.anim.playing && state.anim.pulseNode === node && state.anim.pulseNext === child);
+
+        ctx.save();
+        ctx.beginPath();
+        const midY = (s0.y + s1.y) * 0.5;
+        ctx.moveTo(s0.x, s0.y);
+        ctx.bezierCurveTo(s0.x, midY, s1.x, midY, s1.x, s1.y);
+
+        if (isHoverEdge || isAnimEdge) {
+          ctx.strokeStyle = color;
+          ctx.lineWidth = Math.max(2.2, 3.2 * state.cam.zoom);
+          ctx.shadowColor = glow;
+          ctx.shadowBlur = 14;
+          ctx.globalAlpha = 0.98;
+        } else {
+          ctx.strokeStyle = bit === '0' ? 'rgba(88, 220, 255, 0.36)' : 'rgba(255, 190, 92, 0.36)';
+          ctx.lineWidth = Math.max(1.2, 1.85 * state.cam.zoom);
+          ctx.globalAlpha = hoverPath.size > 0 ? 0.25 : 0.85;
+        }
+        ctx.stroke();
+
+        // Bit badge '0' or '1' on branch midpoint
+        if (state.cam.zoom > 0.42) {
+          const bx = 0.5 * (s0.x + s1.x) + (bit === '0' ? -8 : 8) * Math.min(1, state.cam.zoom);
+          const by = 0.5 * (s0.y + s1.y);
+          const br = Math.max(7, 8.5 * Math.min(1.1, state.cam.zoom));
+          ctx.shadowBlur = 0;
+          ctx.fillStyle = '#070c1a';
+          ctx.beginPath();
+          ctx.arc(bx, by, br, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = isHoverEdge || isAnimEdge ? color : (bit === '0' ? 'rgba(88,220,255,0.45)' : 'rgba(255,190,92,0.45)');
+          ctx.lineWidth = 1;
+          ctx.stroke();
+
+          ctx.fillStyle = color;
+          ctx.font = `700 ${Math.round(Math.max(8, 10 * Math.min(1.1, state.cam.zoom)))}px ui-monospace, monospace`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(bit, bx, by + 0.5);
+        }
+        ctx.restore();
+
+        drawEdges(child);
+      }
+    };
+    drawEdges(h.tree);
+
+    // Draw traveling bit pulse along current edge
+    const a = state.anim;
+    if (a.playing && a.pulseNode && a.pulseNext) {
+      const p0 = state.nodePos.get(a.pulseNode.key);
+      const p1 = state.nodePos.get(a.pulseNext.key);
+      if (p0 && p1) {
+        const s0 = toScreen(p0.x, p0.y);
+        const s1 = toScreen(p1.x, p1.y);
+        const t = a.progress;
+        const midY = (s0.y + s1.y) * 0.5;
+        // Cubic bezier evaluation matching branch curve
+        const mt = 1 - t;
+        const px = mt*mt*mt*s0.x + 3*mt*mt*t*s0.x + 3*mt*t*t*s1.x + t*t*t*s1.x;
+        const py = mt*mt*mt*s0.y + 3*mt*mt*t*midY + 3*mt*t*t*midY + t*t*t*s1.y;
+        const isZero = a.pulseNext === a.pulseNode.left || (!a.pulseNode.left && !a.pulseNode.right);
+        const col = isZero ? '#58dcff' : '#ffbe5c';
+
+        ctx.save();
+        const grad = ctx.createRadialGradient(px, py, 1, px, py, 18 * Math.min(1.2, state.cam.zoom));
+        grad.addColorStop(0, '#ffffff');
+        grad.addColorStop(0.32, col);
+        grad.addColorStop(1, 'rgba(88, 220, 255, 0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(px, py, 18 * Math.min(1.2, state.cam.zoom), 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+
+    // Draw spark particles
+    for (const p of a.particles) {
+      const sp = toScreen(p.x, p.y);
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, Math.min(1, p.life));
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(sp.x, sp.y, 2.4 * Math.min(1.2, state.cam.zoom), 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // Draw nodes
+    const drawNodes = (node) => {
+      if (!node) return;
+      const p = state.nodePos.get(node.key);
+      if (p) {
+        const s = toScreen(p.x, p.y);
+        const isLeaf = !node.left && !node.right;
+        const isHighlighted = hoverPath.has(node.key) || animPathSet.has(node.key);
+        const isFlashing = a.flashLeafKey === node.key && a.flashTimer > 0;
+        const r = (isLeaf ? 20 : 14) * Math.max(0.55, Math.min(1.18, state.cam.zoom));
+
+        state.nodeScreenHit.push({ node, sx: s.x, sy: s.y, r: Math.max(14, r + 4) });
+
+        ctx.save();
+        ctx.globalAlpha = (hoverPath.size > 0 && !hoverPath.has(node.key)) ? 0.35 : p.alpha;
+
+        if (isLeaf) {
+          // Glowing leaf capsule/circle
+          const glowR = r * (isFlashing ? 2.4 : isHighlighted ? 1.8 : 1.35);
+          const g = ctx.createRadialGradient(s.x, s.y, r * 0.2, s.x, s.y, glowR);
+          if (isFlashing) {
+            g.addColorStop(0, 'rgba(74, 242, 178, 0.72)');
+            g.addColorStop(1, 'rgba(74, 242, 178, 0)');
+          } else {
+            g.addColorStop(0, isHighlighted ? 'rgba(88, 220, 255, 0.42)' : 'rgba(88, 220, 255, 0.16)');
+            g.addColorStop(1, 'rgba(88, 220, 255, 0)');
+          }
+          ctx.fillStyle = g;
+          ctx.beginPath();
+          ctx.arc(s.x, s.y, glowR, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.fillStyle = isFlashing ? '#0f2b27' : '#0b1326';
+          ctx.strokeStyle = isFlashing ? '#4af2b2' : isHighlighted ? '#58dcff' : 'rgba(148, 179, 255, 0.48)';
+          ctx.lineWidth = isHighlighted || isFlashing ? 2.2 : 1.3;
+          ctx.beginPath();
+          ctx.arc(s.x, s.y, r, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+
+          // Symbol text
+          ctx.fillStyle = '#ffffff';
+          ctx.font = `800 ${Math.round(Math.max(10, 14 * Math.min(1.15, state.cam.zoom)))}px ui-monospace, monospace`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(displayChar(node.char), s.x, s.y - r * 0.16);
+
+          // Frequency / Prob sublabel inside leaf
+          ctx.fillStyle = '#9aa9cc';
+          ctx.font = `600 ${Math.round(Math.max(7.5, 9 * Math.min(1.1, state.cam.zoom)))}px ui-monospace, monospace`;
+          const subTxt = state.showProbs ? `${(node.prob * 100).toFixed(0)}%` : `${node.freq}`;
+          ctx.fillText(subTxt, s.x, s.y + r * 0.42);
+
+          // Color-coded prefix code below leaf
+          if (state.showCodes && state.cam.zoom > 0.45) {
+            const code = node.code;
+            const fontSize = Math.round(Math.max(9, 10.5 * Math.min(1.1, state.cam.zoom)));
+            ctx.font = `700 ${fontSize}px ui-monospace, monospace`;
+            const charW = fontSize * 0.64;
+            const totalCodeW = code.length * charW;
+            const startX = s.x - totalCodeW * 0.5 + charW * 0.5;
+            const codeY = s.y + r + fontSize * 0.95;
+
+            // Pill background
+            ctx.fillStyle = 'rgba(5, 10, 22, 0.85)';
+            const pw = totalCodeW + 10;
+            const ph = fontSize + 5;
+            roundRect(ctx, s.x - pw * 0.5, codeY - ph * 0.5, pw, ph, 4);
+            ctx.fill();
+            ctx.strokeStyle = isHighlighted ? 'rgba(88, 220, 255, 0.5)' : 'rgba(148, 179, 255, 0.18)';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+
+            for (let i = 0; i < code.length; i++) {
+              ctx.fillStyle = code[i] === '0' ? '#58dcff' : '#ffbe5c';
+              ctx.fillText(code[i], startX + i * charW, codeY + 0.5);
+            }
+          }
+        } else {
+          // Internal merge node
+          ctx.fillStyle = isHighlighted ? '#132242' : '#0a1122';
+          ctx.strokeStyle = isHighlighted ? '#a78bfa' : 'rgba(148, 179, 255, 0.34)';
+          ctx.lineWidth = isHighlighted ? 2 : 1.2;
+          ctx.beginPath();
+          ctx.arc(s.x, s.y, r, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+
+          ctx.fillStyle = isHighlighted ? '#fff' : '#b8c7e8';
+          ctx.font = `700 ${Math.round(Math.max(8, 10 * Math.min(1.1, state.cam.zoom)))}px ui-monospace, monospace`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(String(node.freq), s.x, s.y + 0.5);
+        }
+        ctx.restore();
+      }
+      drawNodes(node.left);
+      drawNodes(node.right);
+    };
+    drawNodes(h.tree);
+
+    // Draw Hover Tooltip if hovering a node
+    if (targetHoverNode) {
+      const p = state.nodePos.get(targetHoverNode.key);
+      if (p) {
+        const s = toScreen(p.x, p.y);
+        const selfInfo = -Math.log2(targetHoverNode.prob);
+        const title = targetHoverNode.char !== null
+          ? `Symbol '${displayChar(targetHoverNode.char)}' · Code ${targetHoverNode.code}`
+          : `Internal Node · Combined Weight ${targetHoverNode.freq}`;
+        const sub = `Freq ${targetHoverNode.freq}/${h.symbols.length} (${(targetHoverNode.prob * 100).toFixed(1)}%) · I(x) = ${selfInfo.toFixed(2)} bits`;
+        drawCanvasTooltip(s.x, s.y - 34, title, sub);
+      }
+    }
+
+    // Draw Live Bitstream Tape Ribbon at bottom of safe area
+    renderBitstreamRibbon();
+  }
+
+  function renderBitstreamRibbon() {
+    const h = state.huff;
+    if (!h || h.symbols.length === 0) return;
+
+    const safe = getSafeCanvasRect();
+    const rx = safe.x + 8;
+    const rw = safe.w - 16;
+    const rh = 86;
+    const ry = safe.y + safe.h - rh - 4;
+
+    ctx.save();
+    ctx.fillStyle = 'rgba(8, 13, 25, 0.84)';
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.18)';
+    ctx.lineWidth = 1;
+    roundRect(ctx, rx, ry, rw, rh, 12);
+    ctx.fill();
+    ctx.stroke();
+
+    // Header line
+    const a = state.anim;
+    ctx.font = '700 10px system-ui, sans-serif';
+    ctx.fillStyle = '#9aa9cc';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    const modeLabel = a.direction === 'encode'
+      ? `LIVE BITSTREAM ENCODER  ·  ${a.emittedBits.length > 0 ? a.emittedBits.length : h.compressedBits} / ${h.compressedBits} bits`
+      : `LIVE BITSTREAM DECODER  ·  ${a.decodedChars.length} / ${h.symbols.length} symbols decoded`;
+    ctx.fillText(modeLabel, rx + 12, ry + 15);
+
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#68789c';
+    ctx.font = '600 10px ui-monospace, monospace';
+    ctx.fillText('0 = LEFT (CYAN)   1 = RIGHT (AMBER)', rx + rw - 12, ry + 15);
+
+    // Row 1: Source (or Decoded) character tape
+    const tapeX = rx + 12;
+    const tapeW = rw - 24;
+    const charStep = 14;
+    const maxVisibleChars = Math.max(8, Math.floor(tapeW / charStep));
+    const activeCharIdx = a.direction === 'encode'
+      ? Math.min(h.symbols.length - 1, a.charIdx)
+      : Math.max(0, a.decodedChars.length - 1);
+    const startChar = Math.max(0, Math.min(h.symbols.length - maxVisibleChars, activeCharIdx - Math.floor(maxVisibleChars * 0.65)));
+
+    ctx.font = '700 11.5px ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    for (let i = 0; i < maxVisibleChars && (startChar + i) < h.symbols.length; i++) {
+      const idx = startChar + i;
+      const cx = tapeX + i * charStep + charStep * 0.5;
+      const cy = ry + 39;
+      const isCurrent = (a.playing || a.emittedBits.length > 0 || a.decodedChars.length > 0) &&
+                        ((a.direction === 'encode' && idx === a.charIdx) ||
+                         (a.direction === 'decode' && idx === a.decodedChars.length - 1));
+      const isDone = a.direction === 'encode'
+        ? (a.emittedBits.length > 0 && idx < a.charIdx)
+        : (idx < a.decodedChars.length);
+
+      if (isCurrent) {
+        ctx.fillStyle = 'rgba(88, 220, 255, 0.25)';
+        roundRect(ctx, cx - 6, cy - 9, 12, 18, 3);
+        ctx.fill();
+        ctx.fillStyle = '#ffffff';
+      } else if (isDone) {
+        ctx.fillStyle = '#4af2b2';
+      } else {
+        ctx.fillStyle = 'rgba(200, 215, 245, 0.55)';
+      }
+      const ch = a.direction === 'decode' && idx >= a.decodedChars.length ? '·' : displayChar(h.symbols[idx]);
+      ctx.fillText(ch, cx, cy);
+    }
+
+    // Row 2: Color-coded compressed binary stream
+    const bitsToShow = (a.direction === 'encode' && (a.playing || a.emittedBits.length > 0))
+      ? a.emittedBits
+      : h.encodedBits;
+    const bitStep = 8.4;
+    const maxVisibleBits = Math.max(16, Math.floor(tapeW / bitStep));
+    const cursorBit = a.direction === 'decode' ? a.bitIdx : bitsToShow.length;
+    const startBit = Math.max(0, Math.min(Math.max(0, bitsToShow.length - maxVisibleBits), cursorBit - Math.floor(maxVisibleBits * 0.75)));
+
+    ctx.font = '700 11px ui-monospace, monospace';
+    for (let i = 0; i < maxVisibleBits && (startBit + i) < bitsToShow.length; i++) {
+      const bi = startBit + i;
+      const b = bitsToShow[bi];
+      const bx = tapeX + i * bitStep + bitStep * 0.5;
+      const by = ry + 64;
+      const dimmed = a.direction === 'decode' && bi >= a.bitIdx;
+      ctx.fillStyle = dimmed
+        ? 'rgba(148, 179, 255, 0.22)'
+        : (b === '0' ? '#58dcff' : '#ffbe5c');
+      ctx.fillText(b, bx, by);
+    }
+
+    ctx.restore();
+  }
+
+  // =========================================================================
+  // 9. RENDERING — MODE B (8x8 JPEG 2D-DCT FREQUENCY BASIS LAB)
+  // =========================================================================
+
+  function computeDctLayout() {
+    const safe = getSafeCanvasRect();
+    // Respect top-left telemetry card (~414x186) when placing panels
+    const hudBottom = 198;
+    const hudRight = 434;
+
+    if (safe.w >= 760) {
+      // Wide layout:
+      // Left column under top-left telemetry card: 2x2 grid of (Orig, Recon, Diff, 8x8 Zoom)
+      const leftColW = Math.min(410, Math.max(300, hudRight - safe.x - 10));
+      const leftColH = Math.max(260, safe.y + safe.h - hudBottom - 8);
+      const cardGap = 12;
+      const hdrH = 22;
+      const cellSize = Math.floor(Math.min((leftColW - cardGap) / 2, (leftColH - cardGap - hdrH * 2) / 2));
+
+      const leftX = safe.x + 2;
+      const leftY = hudBottom;
+
+      const origRect  = { x: leftX, y: leftY + hdrH, w: cellSize, h: cellSize };
+      const reconRect = { x: leftX + cellSize + cardGap, y: leftY + hdrH, w: cellSize, h: cellSize };
+      const diffRect  = { x: leftX, y: leftY + hdrH + cellSize + cardGap + hdrH, w: cellSize, h: cellSize };
+      const zoomRect  = { x: leftX + cellSize + cardGap, y: leftY + hdrH + cellSize + cardGap + hdrH, w: cellSize, h: cellSize };
+
+      // Right/Center hero area: Giant 8x8 2D-DCT Frequency Basis Grid + Zig-Zag Spectrum Bar
+      const heroX = leftX + cellSize * 2 + cardGap + 24;
+      const heroW = Math.max(260, (safe.x + safe.w) - heroX - 10);
+      const heroTop = safe.y + 34;
+      const spectrumH = 74;
+      const heroAvailH = Math.max(240, (safe.y + safe.h) - heroTop - spectrumH - 22);
+      const gridSize = Math.floor(Math.min(heroW, heroAvailH));
+      const gridX = heroX + Math.floor((heroW - gridSize) * 0.5);
+      const gridY = heroTop + Math.floor((heroAvailH - gridSize) * 0.5);
+
+      const basisRect = { x: gridX, y: gridY, w: gridSize, h: gridSize };
+      const specRect  = { x: gridX, y: gridY + gridSize + 16, w: gridSize, h: spectrumH };
+
+      return { origRect, reconRect, diffRect, zoomRect, basisRect, specRect, hdrH };
+    } else {
+      // Compact / mobile layout: stack images top, basis grid below
+      const topY = hudBottom;
+      const availH = Math.max(260, safe.y + safe.h - topY - 8);
+      const imgSize = Math.floor(Math.min((safe.w - 24) / 3, availH * 0.32));
+      const hdrH = 18;
+      const gap = 8;
+      const startX = safe.x + Math.floor((safe.w - (imgSize * 3 + gap * 2)) / 2);
+
+      const origRect  = { x: startX, y: topY + hdrH, w: imgSize, h: imgSize };
+      const reconRect = { x: startX + imgSize + gap, y: topY + hdrH, w: imgSize, h: imgSize };
+      const diffRect  = { x: startX + (imgSize + gap) * 2, y: topY + hdrH, w: imgSize, h: imgSize };
+
+      const gridTop = topY + hdrH + imgSize + 28;
+      const gridAvailH = Math.max(160, safe.y + safe.h - gridTop - 10);
+      const gridSize = Math.floor(Math.min(safe.w - 24, gridAvailH));
+      const gridX = safe.x + Math.floor((safe.w - gridSize) / 2);
+
+      const basisRect = { x: gridX, y: gridTop, w: gridSize, h: gridSize };
+      const zoomRect  = { x: -999, y: -999, w: 0, h: 0 };
+      const specRect  = { x: -999, y: -999, w: 0, h: 0 };
+      return { origRect, reconRect, diffRect, zoomRect, basisRect, specRect, hdrH };
+    }
+  }
+
+  function renderDctMode(dt) {
+    state.dctPulsePhase += dt * 3.2;
+
+    // Optional Play animation in DCT mode: gently sweep Quality slider to demonstrate live artifacts
+    if (state.dctAutoSweep) {
+      const nextQ = state.quality + state.dctSweepDir * dt * 22;
+      if (nextQ <= 4) {
+        state.quality = 4;
+        state.dctSweepDir = 1;
+      } else if (nextQ >= 96) {
+        state.quality = 96;
+        state.dctSweepDir = -1;
+      } else {
+        state.quality = nextQ;
+      }
+      const qInt = Math.round(state.quality);
+      document.getElementById('sl-quality').value = qInt;
+      document.getElementById('val-quality').textContent = `${qInt}%`;
+      recomputeDctPipeline();
+    }
+
+    const L = computeDctLayout();
+    state.dctLayout = L;
+
+    // Draw the 3 main 64x64 image cards
+    drawImageCard(L.origRect, state.origCanvas,
+      state.dctTool === 'paint' ? 'ORIGINAL 64×64 · PAINT HERE' : 'ORIGINAL 64×64',
+      '#58dcff', true);
+    drawImageCard(L.reconRect, state.reconCanvas,
+      `RECONSTRUCTED JPEG · Q=${Math.round(state.quality)}%`,
+      '#ffbe5c', true);
+    drawImageCard(L.diffRect, state.diffCanvas,
+      `ERROR DIFF |Δ| ×${state.errGain.toFixed(1)}`,
+      '#ff6083', false);
+
+    // Draw Zoomed 8x8 Macroblock Inspector (Original vs Reconstructed split + hover basis preview)
+    if (L.zoomRect.w > 40) {
+      drawMacroblockZoomCard(L.zoomRect);
+    }
+
+    // Draw Giant 8x8 2D-DCT Frequency Basis Grid
+    drawDctBasisGrid(L.basisRect);
+
+    // Draw Zig-Zag Spectrum Bar
+    if (L.specRect.w > 120) {
+      drawZigZagSpectrum(L.specRect);
+    }
+  }
+
+  function drawImageCard(rect, srcCanvas, label, accent, showBlockGrid) {
+    ctx.save();
+    // Title
+    ctx.fillStyle = accent;
+    ctx.font = '700 10px system-ui, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(label, rect.x, rect.y - 5);
+
+    // Card frame
+    ctx.fillStyle = '#060a16';
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.24)';
+    ctx.lineWidth = 1.2;
+    roundRect(ctx, rect.x - 2, rect.y - 2, rect.w + 4, rect.h + 4, 7);
+    ctx.fill();
+    ctx.stroke();
+
+    // Crisp nearest-neighbor 64x64 pixels
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(srcCanvas, rect.x, rect.y, rect.w, rect.h);
+    ctx.imageSmoothingEnabled = true;
+
+    // 8x8 macroblock grid overlay
+    if (showBlockGrid) {
+      const step = rect.w / 8;
+      ctx.strokeStyle = 'rgba(148, 179, 255, 0.20)';
+      ctx.lineWidth = 0.75;
+      ctx.beginPath();
+      for (let i = 1; i < 8; i++) {
+        const p = rect.x + i * step;
+        const q = rect.y + i * step;
+        ctx.moveTo(p, rect.y); ctx.lineTo(p, rect.y + rect.h);
+        ctx.moveTo(rect.x, q); ctx.lineTo(rect.x + rect.w, q);
+      }
+      ctx.stroke();
+
+      // Hover block outline
+      if (state.hoverBx >= 0 && state.hoverBy >= 0) {
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.65)';
+        ctx.lineWidth = 1.4;
+        ctx.strokeRect(
+          rect.x + state.hoverBx * step,
+          rect.y + state.hoverBy * step,
+          step, step
+        );
+      }
+
+      // Active selected macroblock glowing box
+      const pulse = 0.78 + 0.22 * Math.sin(state.dctPulsePhase);
+      ctx.strokeStyle = accent;
+      ctx.lineWidth = 2.2;
+      ctx.shadowColor = accent;
+      ctx.shadowBlur = 10 * pulse;
+      ctx.strokeRect(
+        rect.x + state.selBx * step + 0.5,
+        rect.y + state.selBy * step + 0.5,
+        step - 1, step - 1
+      );
+      ctx.shadowBlur = 0;
+    }
+
+    ctx.restore();
+  }
+
+  function drawMacroblockZoomCard(rect) {
+    const bIdx = state.selBy * 8 + state.selBx;
+    const origPx = state.blocksYOrigPx[bIdx];
+    const reconPx = state.blocksYReconPx[bIdx];
+
+    ctx.save();
+    ctx.fillStyle = '#4af2b2';
+    ctx.font = '700 10px system-ui, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(`BLOCK (${state.selBx},${state.selBy}) · ORIG vs RECON`, rect.x, rect.y - 5);
+
+    ctx.fillStyle = 'rgba(8, 13, 25, 0.85)';
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.22)';
+    ctx.lineWidth = 1;
+    roundRect(ctx, rect.x - 2, rect.y - 2, rect.w + 4, rect.h + 4, 7);
+    ctx.fill();
+    ctx.stroke();
+
+    // Draw zoomed 8x8 pixels: top half = side-by-side Orig 8x8 & Recon 8x8
+    const pad = 7;
+    const subSize = Math.floor((rect.w - pad * 3) / 2);
+    const topY = rect.y + 18;
+
+    const drawBlock8 = (bx, by, size, srcCanvas, title, col) => {
+      ctx.fillStyle = col;
+      ctx.font = '700 9px ui-monospace, monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(title, bx + size * 0.5, by - 5);
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(
+        srcCanvas,
+        state.selBx * 8, state.selBy * 8, 8, 8,
+        bx, by, size, size
+      );
+      ctx.imageSmoothingEnabled = true;
+      ctx.strokeStyle = 'rgba(148, 179, 255, 0.35)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(bx, by, size, size);
+    };
+
+    drawBlock8(rect.x + pad, topY, subSize, state.origCanvas, 'ORIG 8×8', '#58dcff');
+    drawBlock8(rect.x + pad * 2 + subSize, topY, subSize, state.reconCanvas, 'IDCT 8×8', '#ffbe5c');
+
+    // Bottom portion of zoom card: Live Basis Contribution Info
+    const infoY = topY + subSize + 14;
+    const hu = state.hoverCellU >= 0 ? state.hoverCellU : 0;
+    const hv = state.hoverCellV >= 0 ? state.hoverCellV : 0;
+    const ci = hv * 8 + hu;
+    const rawC = state.blocksYRaw[bIdx][ci];
+    const actC = state.blocksYActive[bIdx][ci];
+    const qMat = scaledQuantTable(Q50_LUMA, state.quality);
+    const rank = ZIGZAG_RANK[ci];
+
+    // Mini basis preview square
+    const miniSize = Math.min(44, Math.max(26, rect.y + rect.h - infoY - 6));
+    if (miniSize >= 24) {
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(state.basisCanvases[ci], rect.x + pad, infoY, miniSize, miniSize);
+      ctx.imageSmoothingEnabled = true;
+      ctx.strokeStyle = Math.abs(actC) > 1e-6 ? '#58dcff' : 'rgba(255, 96, 131, 0.5)';
+      ctx.strokeRect(rect.x + pad, infoY, miniSize, miniSize);
+
+      const tx = rect.x + pad + miniSize + 8;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      ctx.font = '700 10px ui-monospace, monospace';
+      ctx.fillStyle = '#eef3ff';
+      ctx.fillText(`Basis (${hu},${hv}) · ZZ#${rank}`, tx, infoY);
+      ctx.font = '600 9.5px ui-monospace, monospace';
+      ctx.fillStyle = '#9aa9cc';
+      ctx.fillText(`Raw: ${rawC.toFixed(1)}  Q:${qMat[ci]}`, tx, infoY + 13);
+      ctx.fillStyle = Math.abs(actC) > 1e-6 ? '#4af2b2' : '#ff6083';
+      ctx.fillText(`Out: ${actC.toFixed(1)} ${Math.abs(actC) < 1e-6 ? '(ZERO)' : ''}`, tx, infoY + 26);
+    }
+
+    ctx.restore();
+  }
+
+  function drawDctBasisGrid(rect) {
+    const bIdx = state.selBy * 8 + state.selBx;
+    const rawArr = state.blocksYRaw[bIdx];
+    const actArr = state.blocksYActive[bIdx];
+    const qArr = state.blocksYQuant[bIdx];
+    const cellSize = rect.w / 8;
+
+    ctx.save();
+    // Title above giant grid
+    ctx.fillStyle = '#eef3ff';
+    ctx.font = '800 11.5px system-ui, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(`8×8 2D-DCT FREQUENCY BASIS GRID  ·  BLOCK (${state.selBx}, ${state.selBy})`, rect.x, rect.y - 10);
+
+    ctx.textAlign = 'right';
+    ctx.font = '600 10px ui-monospace, monospace';
+    ctx.fillStyle = '#9aa9cc';
+    ctx.fillText(`${state.dctMetrics.activeCellsSelected}/64 active · Click any cell to toggle wave`, rect.x + rect.w, rect.y - 10);
+
+    // Outer glowing glass container
+    ctx.fillStyle = 'rgba(7, 11, 22, 0.92)';
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.24)';
+    ctx.lineWidth = 1.2;
+    roundRect(ctx, rect.x - 5, rect.y - 5, rect.w + 10, rect.h + 10, 12);
+    ctx.fill();
+    ctx.stroke();
+
+    // Axis frequency labels u (horizontal) and v (vertical)
+    ctx.font = '700 9.5px ui-monospace, monospace';
+    ctx.fillStyle = '#68789c';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    for (let u = 0; u < 8; u++) {
+      ctx.fillText(`u${u}`, rect.x + (u + 0.5) * cellSize, rect.y - 2);
+    }
+
+    // Find max AC magnitude for nice visual normalization
+    let maxMag = 20;
+    for (let i = 1; i < 64; i++) {
+      const m = Math.abs(rawArr[i]);
+      if (m > maxMag) maxMag = m;
+    }
+
+    const pad = Math.max(2, cellSize * 0.06);
+
+    for (let v = 0; v < 8; v++) {
+      for (let u = 0; u < 8; u++) {
+        const ci = v * 8 + u;
+        const cx = rect.x + u * cellSize + pad;
+        const cy = rect.y + v * cellSize + pad;
+        const cw = cellSize - pad * 2;
+        const ch = cellSize - pad * 2;
+
+        const actVal = actArr[ci];
+        const rawVal = rawArr[ci];
+        const qVal = qArr[ci];
+        const ov = state.cellOverride[ci];
+        const isActive = Math.abs(actVal) > 1e-6;
+        const isHover = (state.hoverCellU === u && state.hoverCellV === v);
+        const normEnergy = ci === 0
+          ? Math.min(1, Math.abs(actVal) / 420 + 0.35)
+          : Math.min(1, Math.pow(Math.abs(actVal) / maxMag, 0.45));
+
+        // Base cell panel
+        ctx.fillStyle = '#060a14';
+        ctx.fillRect(cx, cy, cw, ch);
+
+        // Draw 2D Cosine Basis Wave pattern
+        ctx.save();
+        ctx.imageSmoothingEnabled = false;
+        ctx.globalAlpha = isActive ? (0.30 + 0.70 * normEnergy) : 0.14;
+        ctx.drawImage(state.basisCanvases[ci], cx, cy, cw, ch);
+        ctx.imageSmoothingEnabled = true;
+
+        // Colorize active basis cell by sign & strength (cyan positive, amber negative)
+        if (isActive) {
+          ctx.globalCompositeOperation = 'multiply';
+          ctx.globalAlpha = 1;
+          ctx.fillStyle = actVal >= 0
+            ? `rgba(88, 224, 255, ${0.42 + 0.48 * normEnergy})`
+            : `rgba(255, 186, 88, ${0.42 + 0.48 * normEnergy})`;
+          ctx.fillRect(cx, cy, cw, ch);
+
+          // Additive highlight bloom for strong coefficients
+          ctx.globalCompositeOperation = 'screen';
+          ctx.fillStyle = actVal >= 0
+            ? `rgba(88, 220, 255, ${0.14 * normEnergy})`
+            : `rgba(255, 190, 92, ${0.14 * normEnergy})`;
+          ctx.fillRect(cx, cy, cw, ch);
+        } else {
+          // Subtle diagonal slash for zeroed/disabled cells
+          ctx.strokeStyle = ov === -1 ? 'rgba(255, 96, 131, 0.55)' : 'rgba(148, 179, 255, 0.12)';
+          ctx.lineWidth = ov === -1 ? 1.4 : 0.8;
+          ctx.beginPath();
+          ctx.moveTo(cx + 3, cy + ch - 3);
+          ctx.lineTo(cx + cw - 3, cy + 3);
+          ctx.stroke();
+        }
+        ctx.restore();
+
+        // Cell border
+        ctx.strokeStyle = isHover
+          ? '#ffffff'
+          : ov === 1
+            ? '#4af2b2'
+            : ov === -1
+              ? '#ff6083'
+              : isActive
+                ? (actVal >= 0 ? 'rgba(88, 220, 255, 0.72)' : 'rgba(255, 190, 92, 0.72)')
+                : 'rgba(148, 179, 255, 0.14)';
+        ctx.lineWidth = isHover ? 2.2 : (isActive || ov !== 0) ? 1.3 : 0.8;
+        ctx.strokeRect(cx, cy, cw, ch);
+
+        // Numeric coefficient overlay when cells are large enough
+        if (cw >= 34) {
+          const valStr = isActive ? (actVal >= 0 ? `+${Math.round(actVal)}` : `${Math.round(actVal)}`) : '0';
+          ctx.fillStyle = 'rgba(4, 7, 17, 0.72)';
+          ctx.fillRect(cx + 1, cy + ch - 13, cw - 2, 12);
+          ctx.font = `700 ${cw >= 52 ? 9.5 : 8.5}px ui-monospace, monospace`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillStyle = isActive ? (actVal >= 0 ? '#aef0ff' : '#ffe1aa') : 'rgba(154, 169, 204, 0.38)';
+          ctx.fillText(valStr, cx + cw * 0.5, cy + ch - 6.5);
+
+          // Tiny DC / override badge top-left
+          if (ci === 0) {
+            ctx.fillStyle = 'rgba(4, 7, 17, 0.78)';
+            ctx.fillRect(cx + 1, cy + 1, 18, 11);
+            ctx.fillStyle = '#4af2b2';
+            ctx.font = '800 8px ui-monospace, monospace';
+            ctx.fillText('DC', cx + 10, cy + 6.5);
+          } else if (ov === 1) {
+            ctx.fillStyle = '#4af2b2';
+            ctx.font = '800 8px ui-monospace, monospace';
+            ctx.textAlign = 'left';
+            ctx.fillText('ON', cx + 3, cy + 6);
+          } else if (ov === -1) {
+            ctx.fillStyle = '#ff6083';
+            ctx.font = '800 8px ui-monospace, monospace';
+            ctx.textAlign = 'left';
+            ctx.fillText('OFF', cx + 3, cy + 6);
+          } else if (Math.abs(rawVal) >= 1 && qVal === 0 && cw >= 54) {
+            ctx.fillStyle = 'rgba(255, 96, 131, 0.55)';
+            ctx.font = '700 7.5px ui-monospace, monospace';
+            ctx.textAlign = 'right';
+            ctx.fillText('cut', cx + cw - 3, cy + 6);
+          }
+        }
+      }
+    }
+
+    // Optional Zig-Zag Scan Path Overlay
+    if (state.showZigZag) {
+      ctx.save();
+      ctx.beginPath();
+      const maxK = Math.min(64, state.topK);
+      for (let k = 0; k < maxK; k++) {
+        const ci = ZIGZAG_ORDER[k];
+        const u = ci & 7;
+        const v = ci >> 3;
+        const px = rect.x + (u + 0.5) * cellSize;
+        const py = rect.y + (v + 0.5) * cellSize;
+        if (k === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.strokeStyle = 'rgba(167, 139, 250, 0.36)';
+      ctx.lineWidth = 1.6;
+      ctx.lineJoin = 'round';
+      ctx.stroke();
+
+      // Highlight the Top-K cutoff endpoint dot
+      if (state.topK < 64) {
+        const ci = ZIGZAG_ORDER[state.topK - 1];
+        const u = ci & 7, v = ci >> 3;
+        const px = rect.x + (u + 0.5) * cellSize;
+        const py = rect.y + (v + 0.5) * cellSize;
+        ctx.fillStyle = '#ff6083';
+        ctx.beginPath();
+        ctx.arc(px, py, 4.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    ctx.restore();
+  }
+
+  function drawZigZagSpectrum(rect) {
+    const bIdx = state.selBy * 8 + state.selBx;
+    const rawArr = state.blocksYRaw[bIdx];
+    const actArr = state.blocksYActive[bIdx];
+
+    ctx.save();
+    ctx.fillStyle = 'rgba(7, 11, 22, 0.86)';
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.18)';
+    ctx.lineWidth = 1;
+    roundRect(ctx, rect.x - 5, rect.y, rect.w + 10, rect.h, 10);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = '#9aa9cc';
+    ctx.font = '700 9.5px ui-monospace, monospace';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText('ZIG-ZAG SPECTRUM (DC k=0 → HIGH FREQ k=63)', rect.x + 6, rect.y + 6);
+
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#a78bfa';
+    ctx.fillText(`Top-K Cutoff: ${state.topK}/64`, rect.x + rect.w - 6, rect.y + 6);
+
+    const plotX = rect.x + 6;
+    const plotY = rect.y + 22;
+    const plotW = rect.w - 12;
+    const plotH = rect.h - 28;
+    const barW = plotW / 64;
+
+    let maxLog = 1;
+    for (let k = 0; k < 64; k++) {
+      const m = Math.log1p(Math.abs(rawArr[ZIGZAG_ORDER[k]]));
+      if (m > maxLog) maxLog = m;
+    }
+
+    for (let k = 0; k < 64; k++) {
+      const ci = ZIGZAG_ORDER[k];
+      const rawH = (Math.log1p(Math.abs(rawArr[ci])) / maxLog) * plotH;
+      const actH = (Math.log1p(Math.abs(actArr[ci])) / maxLog) * plotH;
+      const bx = plotX + k * barW;
+
+      // Raw ghost bar
+      ctx.fillStyle = 'rgba(148, 179, 255, 0.18)';
+      ctx.fillRect(bx + 0.5, plotY + plotH - rawH, Math.max(1, barW - 1.5), rawH);
+
+      // Active quantized bar
+      if (actH > 0.2) {
+        ctx.fillStyle = actArr[ci] >= 0 ? '#58dcff' : '#ffbe5c';
+        ctx.fillRect(bx + 0.5, plotY + plotH - actH, Math.max(1, barW - 1.5), actH);
+      }
+    }
+
+    // Top-K vertical cutoff line
+    if (state.topK < 64) {
+      const cutX = plotX + state.topK * barW;
+      ctx.strokeStyle = '#ff6083';
+      ctx.lineWidth = 1.6;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      ctx.moveTo(cutX, plotY);
+      ctx.lineTo(cutX, plotY + plotH);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    ctx.restore();
+  }
+
+  function drawCanvasTooltip(x, y, line1, line2) {
+    ctx.save();
+    ctx.font = '700 11px ui-monospace, monospace';
+    const w1 = ctx.measureText(line1).width;
+    ctx.font = '500 10px ui-monospace, monospace';
+    const w2 = ctx.measureText(line2).width;
+    const bw = Math.max(w1, w2) + 20;
+    const bh = 40;
+    const bx = Math.max(12, Math.min(W - bw - 12, x - bw * 0.5));
+    const by = Math.max(12, y - bh);
+
+    ctx.fillStyle = 'rgba(7, 12, 24, 0.94)';
+    ctx.strokeStyle = 'rgba(88, 220, 255, 0.5)';
+    ctx.lineWidth = 1;
+    roundRect(ctx, bx, by, bw, bh, 8);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = '#eef3ff';
+    ctx.font = '700 11px ui-monospace, monospace';
+    ctx.fillText(line1, bx + 10, by + 7);
+    ctx.fillStyle = '#9aa9cc';
+    ctx.font = '500 10px ui-monospace, monospace';
+    ctx.fillText(line2, bx + 10, by + 22);
+    ctx.restore();
+  }
+
+  function roundRect(c, x, y, w, h, r) {
+    c.beginPath();
+    c.moveTo(x + r, y);
+    c.arcTo(x + w, y, x + w, y + h, r);
+    c.arcTo(x + w, y + h, x, y + h, r);
+    c.arcTo(x, y + h, x, y, r);
+    c.arcTo(x, y, x + w, y, r);
+    c.closePath();
+  }
+
+  // =========================================================================
+  // 10. HUD & DRAWER SYNCHRONIZATION
+  // =========================================================================
+
+  function updateTelemetryHUD() {
+    const badge = document.getElementById('mode-badge');
+    const pill = document.getElementById('status-pill');
+
+    if (state.mode === 'huffman') {
+      const h = state.huff;
+      const l = state.lzw;
+      badge.textContent = 'Huffman & Shannon';
+      badge.className = 'mode-badge';
+
+      if (!h || h.symbols.length === 0) {
+        pill.textContent = 'Empty Input';
+        pill.className = 'status-pill warn';
+      } else if (h.entropy > 5.5) {
+        pill.textContent = 'High Entropy';
+        pill.className = 'status-pill danger';
+      } else if (h.savedPct >= 50) {
+        pill.textContent = 'High Compression';
+        pill.className = 'status-pill';
+      } else {
+        pill.textContent = 'Lossless Prefix';
+        pill.className = 'status-pill cyan';
+      }
+
+      const Hval = h ? h.entropy : 0;
+      const Lval = h ? h.avgBits : 0;
+      const saved = h ? h.savedPct : 0;
+      const rawB = h ? h.rawBits : 0;
+      const cmpB = h ? h.compressedBits : 0;
+      const lzwB = l ? l.totalBits : 0;
+
+      document.getElementById('tel-lbl-1').textContent = 'Shannon H';
+      document.getElementById('tel-val-1').textContent = `${Hval.toFixed(3)} b/s`;
+      document.getElementById('tel-val-1').className = 'tele-val cyan';
+
+      document.getElementById('tel-lbl-2').textContent = 'Huffman Avg';
+      document.getElementById('tel-val-2').textContent = `${Lval.toFixed(3)} b/s`;
+      document.getElementById('tel-val-2').className = 'tele-val amber';
+
+      document.getElementById('tel-lbl-3').textContent = 'Space Saved';
+      document.getElementById('tel-val-3').textContent = `${saved >= 0 ? '+' : ''}${saved.toFixed(1)}%`;
+      document.getElementById('tel-val-3').className = saved >= 35 ? 'tele-val mint' : saved >= 10 ? 'tele-val amber' : 'tele-val rose';
+
+      document.getElementById('tel-lbl-4').textContent = 'Raw ASCII';
+      document.getElementById('tel-val-4').textContent = `${rawB} b (${(rawB / 8).toFixed(0)}B)`;
+      document.getElementById('tel-val-4').className = 'tele-val';
+
+      document.getElementById('tel-lbl-5').textContent = 'Huffman Size';
+      document.getElementById('tel-val-5').textContent = `${cmpB} b (${Math.ceil(cmpB / 8)}B)`;
+      document.getElementById('tel-val-5').className = 'tele-val cyan';
+
+      document.getElementById('tel-lbl-6').textContent = 'LZW Size';
+      document.getElementById('tel-val-6').textContent = `${lzwB} b (${Math.ceil(lzwB / 8)}B)`;
+      document.getElementById('tel-val-6').className = 'tele-val violet';
+
+      const eff = Lval > 0 ? Math.min(100, (Hval / Lval) * 100) : 100;
+      document.getElementById('meter-label').textContent = 'Coding Eff H/L';
+      document.getElementById('meter-fill').style.width = `${eff.toFixed(1)}%`;
+      document.getElementById('meter-val').textContent = `${eff.toFixed(1)}%`;
+
+      const red = Math.max(0, Lval - Hval);
+      const roundOk = h && h.tree ? (huffmanDecode(h.encodedBits, h.tree) === h.text) : true;
+      document.getElementById('foot-1').innerHTML = `Alphabet: <strong>${h ? h.entries.length : 0}</strong>`;
+      document.getElementById('foot-2').innerHTML = `Redundancy: <strong>${red.toFixed(3)} b</strong>`;
+      document.getElementById('foot-3').innerHTML = `Lossless: <strong style="color:${roundOk ? 'var(--accent-mint)' : 'var(--accent-rose)'}">${roundOk ? 'VERIFIED' : 'ERR'}</strong>`;
+    } else {
+      const m = state.dctMetrics;
+      badge.textContent = '8×8 JPEG 2D-DCT';
+      badge.className = 'mode-badge amber';
+
+      if (m.psnr === Infinity || m.psnr >= 42) {
+        pill.textContent = 'Near Lossless';
+        pill.className = 'status-pill';
+      } else if (m.psnr >= 28) {
+        pill.textContent = 'Balanced Lossy';
+        pill.className = 'status-pill cyan';
+      } else if (m.psnr >= 20) {
+        pill.textContent = 'Blocking Artifacts';
+        pill.className = 'status-pill warn';
+      } else {
+        pill.textContent = 'Heavy Quantization';
+        pill.className = 'status-pill danger';
+      }
+
+      document.getElementById('tel-lbl-1').textContent = 'PSNR Quality';
+      document.getElementById('tel-val-1').textContent = Number.isFinite(m.psnr) ? `${m.psnr.toFixed(2)} dB` : '∞ dB';
+      document.getElementById('tel-val-1').className = m.psnr >= 32 ? 'tele-val mint' : m.psnr >= 22 ? 'tele-val amber' : 'tele-val rose';
+
+      document.getElementById('tel-lbl-2').textContent = 'Zeroed Coeffs';
+      document.getElementById('tel-val-2').textContent = `${m.zeroPct.toFixed(1)}%`;
+      document.getElementById('tel-val-2').className = 'tele-val cyan';
+
+      document.getElementById('tel-lbl-3').textContent = 'Est. JPEG Size';
+      document.getElementById('tel-val-3').textContent = `${m.estKB.toFixed(2)} KB`;
+      document.getElementById('tel-val-3').className = 'tele-val amber';
+
+      document.getElementById('tel-lbl-4').textContent = 'Raw 64×64';
+      document.getElementById('tel-val-4').textContent = `${m.rawKB.toFixed(2)} KB`;
+      document.getElementById('tel-val-4').className = 'tele-val';
+
+      document.getElementById('tel-lbl-5').textContent = 'Ratio';
+      const ratio = m.estKB > 0 ? m.rawKB / m.estKB : 1;
+      document.getElementById('tel-val-5').textContent = `${ratio.toFixed(1)}×`;
+      document.getElementById('tel-val-5').className = 'tele-val mint';
+
+      document.getElementById('tel-lbl-6').textContent = 'Block Active';
+      document.getElementById('tel-val-6').textContent = `${m.activeCellsSelected} / 64`;
+      document.getElementById('tel-val-6').className = 'tele-val violet';
+
+      document.getElementById('meter-label').textContent = 'Sparsity (Zeros)';
+      document.getElementById('meter-fill').style.width = `${m.zeroPct.toFixed(1)}%`;
+      document.getElementById('meter-val').textContent = `${m.zeroPct.toFixed(0)}%`;
+
+      document.getElementById('foot-1').innerHTML = `Block: <strong>(${state.selBx},${state.selBy})</strong>`;
+      document.getElementById('foot-2').innerHTML = `Top-K: <strong>${state.topK}/64</strong>`;
+      document.getElementById('foot-3').innerHTML = `MSE: <strong style="color:var(--accent-amber)">${m.mse.toFixed(1)}</strong>`;
+    }
+  }
+
+  function renderCodebookList() {
+    const el = document.getElementById('codebook-list');
+    const h = state.huff;
+    if (!h || h.entries.length === 0) {
+      el.innerHTML = '<div class="note-small">Enter text above to generate prefix codes.</div>';
+      return;
+    }
+    const total = h.symbols.length;
+    el.innerHTML = h.entries.map(([ch, freq]) => {
+      const code = h.codes.get(ch) || '';
+      const coloredCode = code.split('').map(b => `<span class="${b === '0' ? 'bit0' : 'bit1'}">${b}</span>`).join('');
+      const pct = ((freq / total) * 100).toFixed(1);
+      const escAttr = ch.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+      return `<div class="code-row" data-sym="${escAttr}">
+        <span class="sym-badge">${escapeHtml(displayChar(ch))}</span>
+        <span style="color:var(--text-muted)">${freq} (${pct}%)</span>
+        <span>${coloredCode}</span>
+        <span style="color:var(--text-dim)">${code.length}b</span>
+      </div>`;
+    }).join('');
+
+    el.querySelectorAll('.code-row').forEach(row => {
+      row.addEventListener('mouseenter', () => {
+        state.hoveredChar = row.getAttribute('data-sym');
+      });
+      row.addEventListener('mouseleave', () => {
+        state.hoveredChar = null;
+      });
+    });
+  }
+
+  function renderLzwInspector() {
+    const h = state.huff;
+    const l = state.lzw;
+    if (!h || !l) return;
+
+    document.getElementById('lzw-raw-bits').textContent = `${h.rawBits} b`;
+    document.getElementById('lzw-huff-bits').textContent = `${h.compressedBits} b`;
+    document.getElementById('lzw-lzw-bits').textContent = `${l.totalBits} b`;
+    document.getElementById('lzw-dict-size').textContent = `+${l.learned.length} new`;
+
+    const badge = document.getElementById('lzw-best-badge');
+    if (l.totalBits < h.compressedBits) {
+      badge.textContent = 'LZW Wins';
+      badge.className = 'mode-badge amber';
+    } else if (h.compressedBits < l.totalBits) {
+      badge.textContent = 'Huffman Wins';
+      badge.className = 'mode-badge';
+    } else {
+      badge.textContent = 'Tie';
+      badge.className = 'mode-badge';
+    }
+
+    const streamEl = document.getElementById('lzw-code-stream');
+    const maxShow = 120;
+    streamEl.innerHTML = l.codes.slice(0, maxShow).map(c =>
+      `<span class="lzw-code-pill ${c >= 256 ? 'dict' : ''}">${c}</span>`
+    ).join('') + (l.codes.length > maxShow ? ` <span style="color:var(--text-muted)">+${l.codes.length - maxShow} more</span>` : '');
+
+    const listEl = document.getElementById('lzw-dict-list');
+    if (l.learned.length === 0) {
+      listEl.innerHTML = '<div class="note-small">No multi-character phrases learned yet.</div>';
+      return;
+    }
+    listEl.innerHTML = l.learned.slice(0, 80).map(item => {
+      const pretty = Array.from(item.phrase).map(displayChar).join('');
+      return `<div class="code-row" style="grid-template-columns: 48px 1fr auto; cursor:default;">
+        <span style="color:var(--accent-mint); font-weight:700;">#${item.code}</span>
+        <span style="color:#fff; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">"${escapeHtml(pretty)}"</span>
+        <span style="color:var(--text-muted);">${item.phrase.length}B</span>
+      </div>`;
+    }).join('');
+  }
+
+  function updateDctBlockInfo() {
+    const el = document.getElementById('dct-block-info');
+    let forcedOn = 0, forcedOff = 0;
+    for (let i = 0; i < 64; i++) {
+      if (state.cellOverride[i] === 1) forcedOn++;
+      else if (state.cellOverride[i] === -1) forcedOff++;
+    }
+    el.innerHTML = `Locked Macroblock <strong style="color:var(--accent-cyan)">(${state.selBx}, ${state.selBy})</strong> · Active basis cells: <strong style="color:var(--accent-mint)">${state.dctMetrics.activeCellsSelected}/64</strong>` +
+      (forcedOn || forcedOff ? ` · Overrides: <strong style="color:var(--accent-amber)">+${forcedOn} / -${forcedOff}</strong>` : '');
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  let toastTimer = null;
+  function showToast(msg) {
+    const b = document.getElementById('event-banner');
+    document.getElementById('event-text').textContent = msg;
+    b.classList.add('visible');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => b.classList.remove('visible'), 2500);
+  }
+
+  function syncPlayButton() {
+    const btn = document.getElementById('btn-play');
+    if (state.mode === 'huffman') {
+      btn.textContent = state.anim.playing ? '⏸ Pause' : '▶ Play';
+      btn.classList.toggle('active', state.anim.playing);
+    } else {
+      btn.textContent = state.dctAutoSweep ? '⏸ Sweep' : '▶ Sweep Q';
+      btn.classList.toggle('active', state.dctAutoSweep);
+    }
+  }
+
+  function switchMode(newMode, syncTab = true) {
+    state.mode = newMode;
+    document.getElementById('btn-mode-huff').classList.toggle('active', newMode === 'huffman');
+    document.getElementById('btn-mode-dct').classList.toggle('active', newMode === 'dct');
+    document.getElementById('btn-mode-dct').classList.toggle('amber', newMode === 'dct');
+
+    if (syncTab) {
+      activateTab(newMode === 'huffman' ? 'huffman' : 'dct', false);
+    }
+
+    const hint = document.getElementById('hint-pill');
+    if (newMode === 'huffman') {
+      hint.innerHTML = '<kbd>Drag</kbd> pan tree · <kbd>Wheel</kbd> zoom · <kbd>Space</kbd> animate · <kbd>H</kbd> cinema';
+      fitHuffmanTreeView(false);
+    } else {
+      hint.innerHTML = '<kbd>Hover/Click</kbd> 8×8 block · <kbd>Click</kbd> DCT cell to toggle wave · <kbd>[</kbd><kbd>]</kbd> quality · <kbd>H</kbd> cinema';
+      recomputeDctPipeline();
+    }
+    syncPlayButton();
+    updateTelemetryHUD();
+  }
+
+  function activateTab(tabName, maySwitchMode = true) {
+    state.activeTab = tabName;
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      const isAct = btn.getAttribute('data-tab') === tabName;
+      btn.classList.toggle('active', isAct);
+      btn.classList.toggle('amber', isAct && tabName === 'dct');
+    });
+    document.querySelectorAll('.tab-pane').forEach(p => {
+      p.classList.toggle('active', p.id === 'tab-' + tabName);
+    });
+    if (maySwitchMode) {
+      if (tabName === 'dct' && state.mode !== 'dct') switchMode('dct', false);
+      if ((tabName === 'huffman' || tabName === 'lzw') && state.mode !== 'huffman') switchMode('huffman', false);
+    }
+  }
+
+  // =========================================================================
+  // 11. POINTER INTERACTION (TREE PAN/ZOOM, BLOCK INSPECT, PAINT, DCT TOGGLE)
+  // =========================================================================
+
+  function hitRect(x, y, r) {
+    return r && x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
+  }
+
+  function paintOnOrigCanvas(sx, sy) {
+    const L = state.dctLayout;
+    if (!L || !hitRect(sx, sy, L.origRect)) return;
+    const fx = ((sx - L.origRect.x) / L.origRect.w) * 64;
+    const fy = ((sy - L.origRect.y) / L.origRect.h) * 64;
+    const r = state.brushRadius;
+    const hex = state.brushColor;
+    const cr = parseInt(hex.slice(1, 3), 16);
+    const cg = parseInt(hex.slice(3, 5), 16);
+    const cb = parseInt(hex.slice(5, 7), 16);
+
+    const minX = Math.max(0, Math.floor(fx - r));
+    const maxX = Math.min(63, Math.ceil(fx + r));
+    const minY = Math.max(0, Math.floor(fy - r));
+    const maxY = Math.min(63, Math.ceil(fy + r));
+
+    const buf = state.imgOrig;
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
+        const d = Math.hypot(x + 0.5 - fx, y + 0.5 - fy);
+        if (d <= r) {
+          const alpha = r <= 1.2 ? 1.0 : Math.max(0.25, 1 - (d / r) * 0.45);
+          const idx = (y * 64 + x) * 4;
+          buf[idx]     = clamp255(buf[idx] * (1 - alpha) + cr * alpha);
+          buf[idx + 1] = clamp255(buf[idx + 1] * (1 - alpha) + cg * alpha);
+          buf[idx + 2] = clamp255(buf[idx + 2] * (1 - alpha) + cb * alpha);
+          buf[idx + 3] = 255;
+        }
+      }
+    }
+
+    // Live-inspect the macroblock currently being painted!
+    state.selBx = Math.max(0, Math.min(7, Math.floor(fx / 8)));
+    state.selBy = Math.max(0, Math.min(7, Math.floor(fy / 8)));
+    recomputeDctPipeline();
+  }
+
+  canvas.addEventListener('pointerdown', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    state.pointer.down = true;
+    state.pointer.button = e.button;
+    state.pointer.x = x;
+    state.pointer.y = y;
+    state.pointer.lastX = x;
+    state.pointer.lastY = y;
+
+    if (state.mode === 'huffman') {
+      state.pointer.draggingTree = true;
+      canvas.classList.add('panning');
+      canvas.setPointerCapture(e.pointerId);
+    } else if (state.mode === 'dct' && state.dctLayout) {
+      const L = state.dctLayout;
+
+      // 1. Original 64x64 image: Paint or Select Block
+      if (hitRect(x, y, L.origRect)) {
+        if (state.dctTool === 'paint') {
+          state.pointer.painting = true;
+          canvas.setPointerCapture(e.pointerId);
+          paintOnOrigCanvas(x, y);
+        } else {
+          state.selBx = Math.max(0, Math.min(7, Math.floor(((x - L.origRect.x) / L.origRect.w) * 8)));
+          state.selBy = Math.max(0, Math.min(7, Math.floor(((y - L.origRect.y) / L.origRect.h) * 8)));
+          recomputeDctPipeline();
+          audio.playDctCell(state.selBx, state.selBy, true);
+        }
+        return;
+      }
+
+      // 2. Reconstructed or Diff image: Select Block
+      const imgHit = hitRect(x, y, L.reconRect) ? L.reconRect : (hitRect(x, y, L.diffRect) ? L.diffRect : null);
+      if (imgHit) {
+        state.selBx = Math.max(0, Math.min(7, Math.floor(((x - imgHit.x) / imgHit.w) * 8)));
+        state.selBy = Math.max(0, Math.min(7, Math.floor(((y - imgHit.y) / imgHit.h) * 8)));
+        recomputeDctPipeline();
+        audio.playDctCell(state.selBx, state.selBy, true);
+        return;
+      }
+
+      // 3. Giant 8x8 DCT Frequency Basis Grid: Click individual cell to toggle ON/OFF
+      if (hitRect(x, y, L.basisRect)) {
+        const u = Math.max(0, Math.min(7, Math.floor(((x - L.basisRect.x) / L.basisRect.w) * 8)));
+        const v = Math.max(0, Math.min(7, Math.floor(((y - L.basisRect.y) / L.basisRect.h) * 8)));
+        const ci = v * 8 + u;
+        const bIdx = state.selBy * 8 + state.selBx;
+        const currentlyActive = Math.abs(state.blocksYActive[bIdx][ci]) > 1e-6;
+
+        if (e.altKey || e.shiftKey) {
+          // Solo this single cosine wave!
+          state.cellOverride.fill(-1);
+          state.cellOverride[ci] = 1;
+          showToast(`Soloed 2D cosine basis (${u}, ${v})!`);
+          audio.playDctCell(u, v, true);
+        } else {
+          state.cellOverride[ci] = currentlyActive ? -1 : 1;
+          audio.playDctCell(u, v, !currentlyActive);
+        }
+        recomputeDctPipeline();
+        return;
+      }
+    }
+  });
+
+  canvas.addEventListener('pointermove', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const dx = x - state.pointer.lastX;
+    const dy = y - state.pointer.lastY;
+    state.pointer.x = x;
+    state.pointer.y = y;
+    state.pointer.lastX = x;
+    state.pointer.lastY = y;
+
+    if (state.mode === 'huffman') {
+      if (state.pointer.draggingTree) {
+        state.cam.targetX += dx;
+        state.cam.targetY += dy;
+        state.cam.x += dx;
+        state.cam.y += dy;
+        return;
+      }
+      // Hit-test tree nodes
+      let found = null;
+      for (let i = state.nodeScreenHit.length - 1; i >= 0; i--) {
+        const h = state.nodeScreenHit[i];
+        if (Math.hypot(x - h.sx, y - h.sy) <= h.r) {
+          found = h.node;
+          break;
+        }
+      }
+      state.hoveredNode = found;
+      canvas.className = found ? 'pointer' : 'grabbable';
+    } else if (state.mode === 'dct' && state.dctLayout) {
+      const L = state.dctLayout;
+      if (state.pointer.painting) {
+        paintOnOrigCanvas(x, y);
+        return;
+      }
+
+      state.hoverBx = -1; state.hoverBy = -1;
+      state.hoverCellU = -1; state.hoverCellV = -1;
+
+      if (hitRect(x, y, L.origRect)) {
+        state.hoverBx = Math.max(0, Math.min(7, Math.floor(((x - L.origRect.x) / L.origRect.w) * 8)));
+        state.hoverBy = Math.max(0, Math.min(7, Math.floor(((y - L.origRect.y) / L.origRect.h) * 8)));
+        canvas.className = state.dctTool === 'paint' ? 'painting' : 'pointer';
+        // Smooth live hover-inspect when in Inspect tool (unless locked? Let's make hover live-preview cleanly!)
+        if (state.dctTool === 'inspect' && (state.selBx !== state.hoverBx || state.selBy !== state.hoverBy)) {
+          state.selBx = state.hoverBx;
+          state.selBy = state.hoverBy;
+          recomputeDctPipeline();
+        }
+      } else if (hitRect(x, y, L.reconRect)) {
+        state.hoverBx = Math.max(0, Math.min(7, Math.floor(((x - L.reconRect.x) / L.reconRect.w) * 8)));
+        state.hoverBy = Math.max(0, Math.min(7, Math.floor(((y - L.reconRect.y) / L.reconRect.h) * 8)));
+        canvas.className = 'pointer';
+      } else if (hitRect(x, y, L.basisRect)) {
+        state.hoverCellU = Math.max(0, Math.min(7, Math.floor(((x - L.basisRect.x) / L.basisRect.w) * 8)));
+        state.hoverCellV = Math.max(0, Math.min(7, Math.floor(((y - L.basisRect.y) / L.basisRect.h) * 8)));
+        canvas.className = 'pointer';
+      } else {
+        canvas.className = '';
+      }
+    }
+  });
+
+  window.addEventListener('pointerup', () => {
+    state.pointer.down = false;
+    state.pointer.draggingTree = false;
+    state.pointer.painting = false;
+    canvas.classList.remove('panning');
+  });
+
+  canvas.addEventListener('wheel', (e) => {
+    if (state.mode !== 'huffman') return;
+    e.preventDefault();
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
+    const newZoom = Math.max(0.24, Math.min(2.6, state.cam.targetZoom * factor));
+    const ratio = newZoom / state.cam.targetZoom;
+    state.cam.targetX = mx - (mx - state.cam.targetX) * ratio;
+    state.cam.targetY = my - (my - state.cam.targetY) * ratio;
+    state.cam.targetZoom = newZoom;
+  }, { passive: false });
+
+  canvas.addEventListener('dblclick', () => {
+    if (state.mode === 'huffman') fitHuffmanTreeView(false);
+  });
+
+  // =========================================================================
+  // 12. UI EVENT WIRING
+  // =========================================================================
+
+  // Drawer tabs
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => activateTab(btn.getAttribute('data-tab'), true));
+  });
+
+  // Huffman presets
+  document.querySelectorAll('[data-huff-preset]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const key = btn.getAttribute('data-huff-preset');
+      state.huffPreset = key;
+      state.huffText = HUFF_PRESETS[key];
+      document.getElementById('huff-input').value = state.huffText;
+      document.querySelectorAll('[data-huff-preset]').forEach(b => b.classList.toggle('active', b === btn));
+      rebuildHuffmanData(true);
+      showToast(`Loaded "${btn.querySelector('.preset-name').textContent}" source`);
+    });
+  });
+
+  document.getElementById('huff-input').addEventListener('input', (e) => {
+    state.huffText = e.target.value;
+    document.querySelectorAll('[data-huff-preset]').forEach(b => b.classList.remove('active'));
+    rebuildHuffmanData(true);
+  });
+
+  document.getElementById('btn-anim-encode').addEventListener('click', () => startHuffmanAnim('encode'));
+  document.getElementById('btn-anim-decode').addEventListener('click', () => startHuffmanAnim('decode'));
+  document.getElementById('btn-huff-step').addEventListener('click', () => stepOneSymbol());
+  document.getElementById('btn-huff-fit').addEventListener('click', () => fitHuffmanTreeView(false));
+
+  document.getElementById('sl-anim-speed').addEventListener('input', (e) => {
+    state.animSpeed = parseFloat(e.target.value);
+    document.getElementById('val-anim-speed').textContent = `${state.animSpeed.toFixed(2)}×`;
+  });
+
+  document.getElementById('chk-show-probs').addEventListener('change', (e) => { state.showProbs = e.target.checked; });
+  document.getElementById('chk-show-codes').addEventListener('change', (e) => { state.showCodes = e.target.checked; });
+  document.getElementById('chk-auto-follow').addEventListener('change', (e) => { state.autoFollowGlow = e.target.checked; });
+
+  // DCT presets
+  document.querySelectorAll('[data-dct-preset]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const key = btn.getAttribute('data-dct-preset');
+      state.dctPreset = key;
+      document.querySelectorAll('[data-dct-preset]').forEach(b => b.classList.toggle('active', b === btn));
+      state.cellOverride.fill(0);
+      generateDctPreset(key);
+      showToast(`Loaded "${btn.querySelector('.preset-name').textContent}" 64×64 test image`);
+    });
+  });
+
+  // DCT tools
+  const setDctTool = (tool) => {
+    state.dctTool = tool;
+    document.getElementById('btn-tool-inspect').classList.toggle('active', tool === 'inspect');
+    document.getElementById('btn-tool-paint').classList.toggle('active', tool === 'paint');
+    document.getElementById('paint-controls').style.opacity = tool === 'paint' ? '1' : '0.55';
+  };
+  document.getElementById('btn-tool-inspect').addEventListener('click', () => setDctTool('inspect'));
+  document.getElementById('btn-tool-paint').addEventListener('click', () => {
+    setDctTool('paint');
+    showToast('Paint directly on the Original 64×64 image!');
+  });
+  setDctTool('inspect');
+
+  document.getElementById('sl-brush').addEventListener('input', (e) => {
+    state.brushRadius = parseFloat(e.target.value);
+    document.getElementById('val-brush').textContent = `${state.brushRadius.toFixed(1)} px`;
+  });
+
+  document.querySelectorAll('[data-swatch]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.brushColor = btn.getAttribute('data-swatch');
+      document.querySelectorAll('[data-swatch]').forEach(b => b.classList.toggle('active', b === btn));
+      setDctTool('paint');
+    });
+  });
+
+  document.getElementById('btn-clear-canvas').addEventListener('click', () => {
+    for (let i = 0; i < state.imgOrig.length; i += 4) {
+      state.imgOrig[i] = 10; state.imgOrig[i + 1] = 14; state.imgOrig[i + 2] = 28; state.imgOrig[i + 3] = 255;
+    }
+    setDctTool('paint');
+    recomputeDctPipeline();
+    showToast('Cleared 64×64 canvas — paint to inspect its 2D-DCT frequencies');
+  });
+
+  document.getElementById('sl-quality').addEventListener('input', (e) => {
+    state.dctAutoSweep = false;
+    state.quality = parseInt(e.target.value, 10);
+    document.getElementById('val-quality').textContent = `${state.quality}%`;
+    syncPlayButton();
+    recomputeDctPipeline();
+  });
+
+  document.getElementById('sl-topk').addEventListener('input', (e) => {
+    state.topK = parseInt(e.target.value, 10);
+    document.getElementById('val-topk').textContent = `${state.topK} / 64`;
+    recomputeDctPipeline();
+  });
+
+  document.getElementById('sl-errgain').addEventListener('input', (e) => {
+    state.errGain = parseFloat(e.target.value);
+    document.getElementById('val-errgain').textContent = `${state.errGain.toFixed(1)}×`;
+    recomputeDctPipeline();
+  });
+
+  document.getElementById('chk-color-mode').addEventListener('change', (e) => {
+    state.colorMode = e.target.checked;
+    recomputeDctPipeline();
+  });
+  document.getElementById('chk-zigzag-path').addEventListener('change', (e) => {
+    state.showZigZag = e.target.checked;
+  });
+  document.getElementById('chk-global-mask').addEventListener('change', (e) => {
+    state.globalMask = e.target.checked;
+    recomputeDctPipeline();
+  });
+
+  document.getElementById('btn-mask-all-on').addEventListener('click', () => {
+    state.cellOverride.fill(1);
+    recomputeDctPipeline();
+    showToast('Forced all 64 DCT basis cells ON');
+  });
+  document.getElementById('btn-mask-all-off').addEventListener('click', () => {
+    state.cellOverride.fill(-1);
+    recomputeDctPipeline();
+    showToast('Muted all 64 cells — click any single cell to see its cosine wave!');
+  });
+  document.getElementById('btn-mask-reset').addEventListener('click', () => {
+    state.cellOverride.fill(0);
+    recomputeDctPipeline();
+    showToast('Cleared manual basis cell overrides');
+  });
+
+  // Bottom Transport Bar
+  document.getElementById('btn-mode-huff').addEventListener('click', () => switchMode('huffman', true));
+  document.getElementById('btn-mode-dct').addEventListener('click', () => switchMode('dct', true));
+
+  document.getElementById('btn-play').addEventListener('click', () => {
+    if (state.mode === 'huffman') {
+      if (state.anim.playing) {
+        state.anim.playing = false;
+      } else {
+        if ((state.anim.direction === 'encode' && state.anim.charIdx >= state.huff.symbols.length) ||
+            (state.anim.direction === 'decode' && state.anim.bitIdx >= state.huff.encodedBits.length)) {
+          resetHuffmanAnim(true);
+        }
+        state.anim.playing = true;
+        if (!state.anim.pulseNext) setupCurrentAnimEdge();
+      }
+      syncPlayButton();
+    } else {
+      state.dctAutoSweep = !state.dctAutoSweep;
+      syncPlayButton();
+    }
+  });
+
+  document.getElementById('btn-reset').addEventListener('click', () => {
+    if (state.mode === 'huffman') {
+      resetHuffmanAnim(false);
+      fitHuffmanTreeView(false);
+      showToast('Reset Huffman animation & view');
+    } else {
+      state.dctAutoSweep = false;
+      state.quality = 45;
+      state.topK = 64;
+      state.cellOverride.fill(0);
+      document.getElementById('sl-quality').value = 45;
+      document.getElementById('val-quality').textContent = '45%';
+      document.getElementById('sl-topk').value = 64;
+      document.getElementById('val-topk').textContent = '64 / 64';
+      generateDctPreset(state.dctPreset);
+      syncPlayButton();
+      showToast('Reset 8×8 JPEG DCT parameters & image');
+    }
+  });
+
+  document.getElementById('btn-audio').addEventListener('click', (e) => {
+    audio.enabled = !audio.enabled;
+    e.currentTarget.textContent = audio.enabled ? '🔊 Audio' : '🔇 Audio';
+    e.currentTarget.classList.toggle('active', audio.enabled);
+    if (audio.enabled) audio.playBit('0');
+  });
+
+  document.getElementById('btn-controls').addEventListener('click', (e) => {
+    state.drawerOpen = !state.drawerOpen;
+    document.getElementById('drawer').classList.toggle('collapsed', !state.drawerOpen);
+    e.currentTarget.classList.toggle('active', state.drawerOpen);
+    if (state.mode === 'huffman') fitHuffmanTreeView(false);
+  });
+
+  const toggleCinema = () => {
+    state.zenMode = !state.zenMode;
+    document.body.classList.toggle('zen-mode', state.zenMode);
+    document.getElementById('btn-cinema').classList.toggle('active', state.zenMode);
+  };
+  document.getElementById('btn-cinema').addEventListener('click', toggleCinema);
+  document.getElementById('btn-zen-restore').addEventListener('click', toggleCinema);
+
+  // Keyboard shortcuts (ignore while typing in textarea)
+  window.addEventListener('keydown', (e) => {
+    if (document.activeElement && (document.activeElement.tagName === 'TEXTAREA' || document.activeElement.tagName === 'INPUT')) {
+      return;
+    }
+    if (e.code === 'Space') {
+      e.preventDefault();
+      document.getElementById('btn-play').click();
+    } else if (e.key === 'h' || e.key === 'H') {
+      toggleCinema();
+    } else if (e.key === 'r' || e.key === 'R') {
+      document.getElementById('btn-reset').click();
+    } else if (e.key === '1') {
+      switchMode('huffman', true);
+    } else if (e.key === '2') {
+      switchMode('dct', true);
+    } else if (state.mode === 'dct' && (e.key === '[' || e.key === ']')) {
+      state.dctAutoSweep = false;
+      state.quality = Math.max(1, Math.min(100, Math.round(state.quality) + (e.key === ']' ? 5 : -5)));
+      document.getElementById('sl-quality').value = state.quality;
+      document.getElementById('val-quality').textContent = `${state.quality}%`;
+      recomputeDctPipeline();
+    }
+  });
+
+  // =========================================================================
+  // 13. RESIZE & MAIN RENDER LOOP
+  // =========================================================================
+
+  function resize() {
+    W = window.innerWidth;
+    H = window.innerHeight;
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.floor(W * DPR);
+    canvas.height = Math.floor(H * DPR);
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    if (state.mode === 'huffman') fitHuffmanTreeView(true);
+  }
+  window.addEventListener('resize', resize);
+
+  // Boot initialization
+  document.getElementById('huff-input').value = state.huffText;
+  resize();
+  rebuildHuffmanData(true);
+  fitHuffmanTreeView(true);
+  generateDctPreset('portrait');
+  updateTelemetryHUD();
+
+  let lastTs = performance.now();
+  function frame(ts) {
+    const dt = Math.min(0.05, Math.max(0.001, (ts - lastTs) / 1000));
+    lastTs = ts;
+    state.time += dt;
+
+    renderBackground();
+    if (state.mode === 'huffman') {
+      updateHuffmanAnim(dt);
+      renderHuffmanMode(dt);
+    } else {
+      renderDctMode(dt);
+    }
+
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
