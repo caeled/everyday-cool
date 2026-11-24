@@ -1,0 +1,3480 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Kinematics — Robotic Arm Inverse Kinematics (FABRIK &amp; Jacobian)</title>
+<style>
+  :root {
+    --bg-deep: #040711;
+    --panel-bg: rgba(9, 13, 24, 0.78);
+    --panel-bg-strong: rgba(8, 12, 22, 0.92);
+    --panel-border: rgba(148, 179, 255, 0.16);
+    --panel-border-hi: rgba(148, 179, 255, 0.36);
+    --text-main: #eef3ff;
+    --text-dim: #9aa9cc;
+    --text-muted: #68789c;
+    --accent-amber: #ffbe5c;
+    --accent-cyan: #58dcff;
+    --accent-mint: #4af2b2;
+    --accent-rose: #ff6083;
+    --accent-violet: #a78bfa;
+    --radius-lg: 14px;
+    --radius-md: 10px;
+    --radius-sm: 7px;
+    --mono: ui-monospace, "Cascadia Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Inter, Helvetica, Arial, sans-serif;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg-deep);
+    color: var(--text-main);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    touch-action: none;
+  }
+
+  #sim-canvas {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    cursor: crosshair;
+  }
+  #sim-canvas.grab { cursor: grab; }
+  #sim-canvas.grabbing { cursor: grabbing; }
+  #sim-canvas.obstacle-mode { cursor: cell; }
+
+  /* HUD Layer */
+  .hud {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 10;
+  }
+  body.zen-mode .hud > :not(.zen-restore) {
+    opacity: 0;
+    pointer-events: none !important;
+  }
+
+  .panel {
+    pointer-events: auto;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-lg);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.52), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    transition: opacity 0.25s ease, transform 0.25s ease;
+  }
+
+  /* Top-Left Telemetry Card */
+  .top-left {
+    position: fixed;
+    top: 14px;
+    left: 14px;
+    width: min(416px, calc(100vw - 364px));
+    min-width: 290px;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .brand-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .brand-title-wrap {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .brand-title {
+    font-size: 16px;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    background: linear-gradient(120deg, #f2fbff 0%, #58dcff 48%, #a78bfa 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .mode-badge {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 999px;
+    border: 1px solid rgba(88, 220, 255, 0.42);
+    background: rgba(88, 220, 255, 0.13);
+    color: var(--accent-cyan);
+  }
+  .mode-badge.dls {
+    border-color: rgba(167, 139, 250, 0.45);
+    background: rgba(167, 139, 250, 0.15);
+    color: var(--accent-violet);
+  }
+  .mode-badge.ccd {
+    border-color: rgba(255, 190, 92, 0.45);
+    background: rgba(255, 190, 92, 0.14);
+    color: var(--accent-amber);
+  }
+  .mode-badge.fk {
+    border-color: rgba(74, 242, 178, 0.45);
+    background: rgba(74, 242, 178, 0.14);
+    color: var(--accent-mint);
+  }
+
+  .status-pill {
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: rgba(74, 242, 178, 0.14);
+    color: var(--accent-mint);
+    border: 1px solid rgba(74, 242, 178, 0.36);
+    white-space: nowrap;
+  }
+  .status-pill.warn {
+    background: rgba(255, 190, 92, 0.16);
+    color: var(--accent-amber);
+    border-color: rgba(255, 190, 92, 0.42);
+  }
+  .status-pill.danger {
+    background: rgba(255, 96, 131, 0.18);
+    color: var(--accent-rose);
+    border-color: rgba(255, 96, 131, 0.48);
+  }
+  .status-pill.info {
+    background: rgba(88, 220, 255, 0.16);
+    color: var(--accent-cyan);
+    border-color: rgba(88, 220, 255, 0.42);
+  }
+
+  .telemetry-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+  }
+
+  .tele-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(148, 179, 255, 0.1);
+    border-radius: var(--radius-sm);
+    padding: 6px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .tele-label {
+    font-size: 9.5px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .tele-val {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-main);
+  }
+  .tele-val.amber { color: var(--accent-amber); }
+  .tele-val.cyan { color: var(--accent-cyan); }
+  .tele-val.mint { color: var(--accent-mint); }
+  .tele-val.rose { color: var(--accent-rose); }
+  .tele-val.violet { color: var(--accent-violet); }
+
+  .manip-bar-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 10.5px;
+    color: var(--text-dim);
+  }
+  .manip-track {
+    flex: 1;
+    height: 6px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+    overflow: hidden;
+  }
+  .manip-fill {
+    height: 100%;
+    width: 65%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #ff6083 0%, #ffbe5c 32%, #4af2b2 72%, #58dcff 100%);
+    transition: width 0.08s linear;
+  }
+
+  .angles-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    flex-wrap: wrap;
+    padding-top: 5px;
+    border-top: 1px solid rgba(148, 179, 255, 0.1);
+    font-size: 10.8px;
+    color: var(--text-dim);
+    font-family: var(--mono);
+  }
+  .angles-row span strong {
+    color: var(--text-main);
+    font-weight: 600;
+  }
+
+  /* Right Control Drawer (330px) */
+  .drawer {
+    position: fixed;
+    top: 14px;
+    right: 14px;
+    bottom: 14px;
+    width: 330px;
+    max-width: calc(100vw - 28px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: transform 0.25s ease, opacity 0.25s ease;
+  }
+  .drawer.collapsed {
+    transform: translateX(calc(100% + 24px));
+    pointer-events: none;
+  }
+
+  .drawer-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+    padding: 8px 8px 6px;
+    border-bottom: 1px solid var(--panel-border);
+    background: rgba(4, 7, 15, 0.45);
+  }
+
+  .tab-btn {
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    padding: 7px 4px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .tab-btn:hover {
+    color: var(--text-main);
+    background: rgba(255, 255, 255, 0.04);
+  }
+  .tab-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.16);
+    border-color: rgba(88, 220, 255, 0.42);
+  }
+
+  .drawer-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 11px 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .drawer-body::-webkit-scrollbar { width: 5px; }
+  .drawer-body::-webkit-scrollbar-thumb {
+    background: rgba(148, 179, 255, 0.22);
+    border-radius: 999px;
+  }
+
+  .tab-pane {
+    display: none;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .tab-pane.active { display: flex; }
+
+  .section {
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(148, 179, 255, 0.11);
+    border-radius: var(--radius-md);
+    padding: 10px 11px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .section-title {
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  /* Presets grid */
+  .preset-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .preset-btn {
+    text-align: left;
+    padding: 7px 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(148, 179, 255, 0.14);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-main);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .preset-btn:hover {
+    border-color: rgba(88, 220, 255, 0.45);
+    background: rgba(88, 220, 255, 0.08);
+  }
+  .preset-btn.active {
+    border-color: var(--accent-cyan);
+    background: rgba(88, 220, 255, 0.15);
+  }
+  .preset-name {
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.25;
+  }
+  .preset-sub {
+    font-size: 9.5px;
+    color: var(--text-muted);
+    line-height: 1.25;
+  }
+
+  /* Sliders */
+  .control-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .control-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11.5px;
+    color: var(--text-dim);
+  }
+  .control-head .val {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--text-main);
+    font-weight: 600;
+  }
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 5px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.18);
+    outline: none;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent-cyan);
+    border: 2px solid #08101f;
+    box-shadow: 0 0 10px rgba(88, 220, 255, 0.65);
+    cursor: pointer;
+  }
+  input[type="range"].amber::-webkit-slider-thumb {
+    background: var(--accent-amber);
+    box-shadow: 0 0 10px rgba(255, 190, 92, 0.65);
+  }
+  input[type="range"].violet::-webkit-slider-thumb {
+    background: var(--accent-violet);
+    box-shadow: 0 0 10px rgba(167, 139, 250, 0.65);
+  }
+  input[type="range"].mint::-webkit-slider-thumb {
+    background: var(--accent-mint);
+    box-shadow: 0 0 10px rgba(74, 242, 178, 0.65);
+  }
+
+  /* Segmented controls */
+  .seg-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(60px, 1fr));
+    gap: 4px;
+  }
+  .seg-row.cols-2 { grid-template-columns: repeat(2, 1fr); }
+  .seg-row.cols-3 { grid-template-columns: repeat(3, 1fr); }
+  .seg-row.cols-4 { grid-template-columns: repeat(4, 1fr); }
+
+  .seg-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-dim);
+    font-size: 10.8px;
+    font-weight: 650;
+    padding: 6px 4px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-align: center;
+  }
+  .seg-btn:hover {
+    color: #fff;
+    border-color: rgba(148, 179, 255, 0.35);
+  }
+  .seg-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.18);
+    border-color: var(--accent-cyan);
+  }
+  .seg-btn.active.amber {
+    background: rgba(255, 190, 92, 0.18);
+    border-color: var(--accent-amber);
+    color: #ffdfaa;
+  }
+  .seg-btn.active.violet {
+    background: rgba(167, 139, 250, 0.2);
+    border-color: var(--accent-violet);
+    color: #ede6ff;
+  }
+
+  /* Buttons */
+  .btn-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .btn {
+    border: 1px solid rgba(148, 179, 255, 0.22);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-main);
+    font-size: 11.2px;
+    font-weight: 700;
+    padding: 7px 9px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+  }
+  .btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 179, 255, 0.45);
+  }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary {
+    background: linear-gradient(135deg, rgba(88, 220, 255, 0.28), rgba(56, 140, 255, 0.22));
+    border-color: rgba(88, 220, 255, 0.55);
+    color: #e6f9ff;
+  }
+  .btn.amber {
+    background: linear-gradient(135deg, rgba(255, 190, 92, 0.25), rgba(255, 120, 60, 0.2));
+    border-color: rgba(255, 190, 92, 0.55);
+    color: #fff3db;
+  }
+  .btn.danger {
+    background: rgba(255, 96, 131, 0.14);
+    border-color: rgba(255, 96, 131, 0.4);
+    color: #ffc2d0;
+  }
+  .btn.active-mode {
+    background: linear-gradient(135deg, rgba(255, 96, 131, 0.32), rgba(255, 160, 72, 0.25));
+    border-color: var(--accent-rose);
+    color: #fff;
+    box-shadow: 0 0 14px rgba(255, 96, 131, 0.28);
+  }
+
+  /* Toggle switches */
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11.5px;
+    color: var(--text-dim);
+    cursor: pointer;
+    gap: 8px;
+  }
+  .toggle-row input { display: none; }
+  .switch {
+    width: 34px;
+    height: 18px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.2);
+    border: 1px solid rgba(148, 179, 255, 0.25);
+    position: relative;
+    transition: all 0.18s ease;
+    flex-shrink: 0;
+  }
+  .switch::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #c8d7f5;
+    transition: transform 0.18s ease, background 0.18s ease;
+  }
+  .toggle-row input:checked + .switch {
+    background: rgba(88, 220, 255, 0.34);
+    border-color: var(--accent-cyan);
+  }
+  .toggle-row input:checked + .switch::after {
+    transform: translateX(16px);
+    background: #fff;
+  }
+
+  /* Joint sliders container */
+  .joint-sliders {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  /* Obstacles list */
+  .obj-list {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    max-height: 145px;
+    overflow-y: auto;
+  }
+  .obj-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    padding: 5px 8px;
+    border-radius: var(--radius-sm);
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(148, 179, 255, 0.1);
+    font-size: 11px;
+  }
+  .obj-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    background: var(--accent-rose);
+    box-shadow: 0 0 8px rgba(255, 96, 131, 0.7);
+  }
+  .obj-meta {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .obj-name {
+    font-weight: 650;
+    color: var(--text-main);
+  }
+  .obj-dist {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text-muted);
+  }
+  .icon-x {
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 15px;
+    cursor: pointer;
+    padding: 0 4px;
+    line-height: 1;
+  }
+  .icon-x:hover { color: var(--accent-rose); }
+
+  /* Bottom Transport Bar */
+  .bottom-bar {
+    position: fixed;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 7px 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: nowrap;
+  }
+
+  .bar-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-main);
+    font-size: 11.5px;
+    font-weight: 650;
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    white-space: nowrap;
+  }
+  .bar-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 179, 255, 0.4);
+  }
+  .bar-btn.active {
+    background: rgba(88, 220, 255, 0.2);
+    border-color: var(--accent-cyan);
+    color: #fff;
+  }
+
+  .bar-divider {
+    width: 1px;
+    height: 20px;
+    background: rgba(148, 179, 255, 0.16);
+    margin: 0 2px;
+  }
+
+  /* Bottom-left hints */
+  .hint-pill {
+    position: fixed;
+    bottom: 14px;
+    left: 14px;
+    padding: 7px 11px;
+    font-size: 11px;
+    color: var(--text-dim);
+    max-width: 325px;
+    line-height: 1.45;
+  }
+  .hint-pill kbd {
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #fff;
+  }
+
+  .zen-restore {
+    position: fixed;
+    bottom: 14px;
+    right: 14px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+  }
+  body.zen-mode .zen-restore {
+    opacity: 0.9;
+    pointer-events: auto;
+  }
+
+  .note-small {
+    font-size: 10.5px;
+    color: var(--text-muted);
+    line-height: 1.38;
+  }
+
+  @media (max-width: 920px) {
+    .top-left {
+      width: calc(100vw - 28px);
+      max-width: none;
+    }
+    .drawer {
+      top: auto;
+      bottom: 62px;
+      height: 50vh;
+      width: calc(100vw - 28px);
+    }
+    .hint-pill { display: none; }
+  }
+</style>
+</head>
+<body>
+<canvas id="sim-canvas"></canvas>
+
+<div class="hud">
+  <!-- Top-Left Telemetry Card -->
+  <div class="panel top-left">
+    <div class="brand-row">
+      <div class="brand-title-wrap">
+        <div class="brand-title">Kinematics</div>
+        <span id="solver-badge" class="mode-badge">FABRIK</span>
+      </div>
+      <span id="reach-status" class="status-pill">Reached</span>
+    </div>
+
+    <div class="telemetry-grid">
+      <div class="tele-card">
+        <span class="tele-label">Target Error</span>
+        <span id="tel-err" class="tele-val cyan">0.0 mm</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Iterations</span>
+        <span id="tel-iter" class="tele-val">0 / 24</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Manipulability w</span>
+        <span id="tel-manip" class="tele-val mint">0.00</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">End-Effector</span>
+        <span id="tel-ee" class="tele-val">0, 0</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Servo Speed Σ|ω|</span>
+        <span id="tel-omega" class="tele-val amber">0.0 °/s</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Reach / DOF</span>
+        <span id="tel-dof" class="tele-val violet">3-DOF · 400</span>
+      </div>
+    </div>
+
+    <div class="manip-bar-wrap">
+      <span>Dexterity √det(JJᵀ)</span>
+      <div class="manip-track"><div id="manip-fill" class="manip-fill"></div></div>
+      <span id="tel-cond" style="font-family: var(--mono); color: var(--text-main);">100%</span>
+    </div>
+
+    <div class="angles-row" id="angles-row">
+      <span>θ₁: <strong id="tel-t1">0°</strong></span>
+      <span>θ₂: <strong id="tel-t2">0°</strong></span>
+      <span>θ₃: <strong id="tel-t3">0°</strong></span>
+      <span>θ₄: <strong id="tel-t4">—</strong></span>
+    </div>
+  </div>
+
+  <!-- Collapsible 330px Right Control Drawer -->
+  <aside id="drawer" class="panel drawer">
+    <div class="drawer-tabs">
+      <button class="tab-btn active" data-tab="solver">Solver &amp; Path</button>
+      <button class="tab-btn" data-tab="arm">Arm &amp; FK</button>
+      <button class="tab-btn" data-tab="workspace">Workspace</button>
+    </div>
+
+    <div class="drawer-body">
+      <!-- TAB 1: SOLVER & PRESETS -->
+      <div id="tab-solver" class="tab-pane active">
+        <div class="section">
+          <div class="section-title"><span>Curated Scenarios</span></div>
+          <div class="preset-grid">
+            <button class="preset-btn active" data-preset="weld3">
+              <span class="preset-name">3-DOF Industrial Weld</span>
+              <span class="preset-sub">FABRIK · Square weld sparks</span>
+            </button>
+            <button class="preset-btn" data-preset="snake6">
+              <span class="preset-name">6-DOF Redundant Snake</span>
+              <span class="preset-sub">FABRIK · Figure-8 Lissajous</span>
+            </button>
+            <button class="preset-btn" data-preset="singularity">
+              <span class="preset-name">Singularity &amp; DLS</span>
+              <span class="preset-sub">Damped Jacobian · Ellipsoid</span>
+            </button>
+            <button class="preset-btn" data-preset="pickplace">
+              <span class="preset-name">Obstacle Pick &amp; Place</span>
+              <span class="preset-sub">4-DOF · Live crate transfer</span>
+            </button>
+            <button class="preset-btn" data-preset="elbowlim">
+              <span class="preset-name">Joint-Limited Elbow</span>
+              <span class="preset-sub">±θ_max stops · Up/Down flip</span>
+            </button>
+            <button class="preset-btn" data-preset="classic2">
+              <span class="preset-name">2-Link Classic</span>
+              <span class="preset-sub">Annulus + Jacobian textbook</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Kinematics Solver</span></div>
+          <div class="seg-row cols-2" id="solver-seg">
+            <button class="seg-btn active" data-solver="fabrik">FABRIK</button>
+            <button class="seg-btn" data-solver="dls">DLS Jacobian</button>
+            <button class="seg-btn" data-solver="ccd">CCD Sweep</button>
+            <button class="seg-btn" data-solver="fk">FK Manual</button>
+          </div>
+
+          <div class="control-row" id="damping-wrap">
+            <div class="control-head">
+              <span>Jacobian Damping λ</span>
+              <span id="val-damping" class="val">0.22</span>
+            </div>
+            <input id="sl-damping" class="violet" type="range" min="0.01" max="1.00" step="0.01" value="0.22" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Max Solver Iterations</span>
+              <span id="val-iter" class="val">24</span>
+            </div>
+            <input id="sl-iter" type="range" min="2" max="60" step="1" value="24" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Servo Tracking Speed</span>
+              <span id="val-speed" class="val">14.0 rad/s</span>
+            </div>
+            <input id="sl-speed" class="amber" type="range" min="2" max="30" step="0.5" value="14" />
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">
+            <span>Auto-Draw Path</span>
+            <button id="btn-clear-trail" class="icon-x" title="Clear trail" style="font-size:11px;font-weight:700;color:var(--accent-cyan);">Clear Trail</button>
+          </div>
+          <div class="seg-row cols-3" id="path-seg">
+            <button class="seg-btn" data-path="manual">Manual</button>
+            <button class="seg-btn" data-path="figure8">Figure-8</button>
+            <button class="seg-btn" data-path="circle">Circle</button>
+            <button class="seg-btn" data-path="pickplace">Pick &amp; Place</button>
+            <button class="seg-btn active amber" data-path="weld">Square Weld</button>
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Path Cycle Speed</span>
+              <span id="val-pathspeed" class="val">1.00×</span>
+            </div>
+            <input id="sl-pathspeed" type="range" min="0.25" max="2.50" step="0.05" value="1.00" />
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 2: ARM & FORWARD KINEMATICS -->
+      <div id="tab-arm" class="tab-pane">
+        <div class="section">
+          <div class="section-title"><span>Manipulator Geometry</span></div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Degrees of Freedom (DOF)</span>
+              <span id="val-dof" class="val">3 Joints</span>
+            </div>
+            <input id="sl-dof" type="range" min="2" max="8" step="1" value="3" />
+          </div>
+
+          <div class="seg-row cols-3" id="profile-seg">
+            <button class="seg-btn active" data-profile="industrial">Industrial</button>
+            <button class="seg-btn" data-profile="equal">Equal</button>
+            <button class="seg-btn" data-profile="tentacle">Tentacle</button>
+          </div>
+
+          <label class="toggle-row">
+            <span>Joint Angle Limits (±θ_max)</span>
+            <input id="chk-limits" type="checkbox" />
+            <span class="switch"></span>
+          </label>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Max Servo Limit ±θ_max</span>
+              <span id="val-limit" class="val">120°</span>
+            </div>
+            <input id="sl-limit" class="amber" type="range" min="35" max="175" step="5" value="120" />
+          </div>
+
+          <div class="btn-row">
+            <button id="btn-flip-elbow" class="btn primary">⇄ Flip Elbow</button>
+            <button id="btn-home-pose" class="btn">⌂ Home Pose</button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">
+            <span>Joint Angles (FK Sliders)</span>
+            <span id="fk-hint" style="font-size:9.5px;color:var(--accent-mint);">Drag to enter FK</span>
+          </div>
+          <div id="joint-sliders" class="joint-sliders"></div>
+        </div>
+      </div>
+
+      <!-- TAB 3: WORKSPACE & OBSTACLES -->
+      <div id="tab-workspace" class="tab-pane">
+        <div class="section">
+          <div class="section-title">
+            <span>Workspace Obstacles</span>
+            <span id="obs-count" style="font-family:var(--mono);color:var(--accent-rose);">0</span>
+          </div>
+
+          <div class="btn-row">
+            <button id="btn-obs-mode" class="btn">⊕ Place Obstacle</button>
+            <button id="btn-obs-clear" class="btn danger">✕ Clear All</button>
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>New Obstacle Radius</span>
+              <span id="val-obsr" class="val">44 mm</span>
+            </div>
+            <input id="sl-obsr" class="amber" type="range" min="20" max="90" step="2" value="44" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Repulsion Safety Margin</span>
+              <span id="val-margin" class="val">22 mm</span>
+            </div>
+            <input id="sl-margin" type="range" min="8" max="60" step="2" value="22" />
+          </div>
+
+          <div id="obs-list" class="obj-list"></div>
+          <p class="note-small">Tip: Toggle <strong>Place Obstacle</strong> or hold <strong style="color:#fff">Shift + Drag</strong> anywhere on canvas to spawn a collision obstacle. Drag obstacles to reposition; right-click one to remove.</p>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Visual Overlays</span></div>
+          <label class="toggle-row">
+            <span>Reachability Heatmap &amp; Annulus</span>
+            <input id="chk-heatmap" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Manipulability Ellipsoid (JJᵀ)</span>
+            <input id="chk-ellipsoid" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Joint Limit Arcs (±θ_max)</span>
+            <input id="chk-arcs" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Torque &amp; Velocity Halos</span>
+            <input id="chk-halos" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>End-Effector Motion Trail</span>
+            <input id="chk-trail" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Repulsion &amp; Target Vectors</span>
+            <input id="chk-vectors" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Bottom-Center Transport Bar -->
+  <div class="panel bottom-bar">
+    <button id="btn-play" class="bar-btn active">⏸ Pause</button>
+    <button id="btn-reset" class="bar-btn">↺ Reset</button>
+    <div class="bar-divider"></div>
+    <button id="btn-audio" class="bar-btn">🔇 Audio</button>
+    <button id="btn-drawer" class="bar-btn active">⚙ Controls</button>
+    <button id="btn-cinema" class="bar-btn">◰ Cinema (H)</button>
+  </div>
+
+  <!-- Bottom-Left Hints -->
+  <div class="panel hint-pill">
+    <strong>Drag</strong> target reticle · <kbd>Shift</kbd>+<strong>Drag</strong> to place obstacle · <kbd>Space</kbd> Pause · <kbd>H</kbd> Cinema · <kbd>R</kbd> Reset
+  </div>
+
+  <!-- Cinema Restore Pill -->
+  <button id="btn-zen-restore" class="panel bar-btn zen-restore">Show HUD (H)</button>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // =========================================================================
+  // Canvas & Viewport State
+  // =========================================================================
+  const canvas = document.getElementById('sim-canvas');
+  const ctx = canvas.getContext('2d');
+  let W = window.innerWidth;
+  let H = window.innerHeight;
+  let dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+  // World coordinate system: (0,0) is rotary base center, +x right, +y up (mm)
+  const NOMINAL_REACH = 400; // mm
+  let baseScreenX = W * 0.44;
+  let baseScreenY = H * 0.57;
+  let targetBaseScreenX = baseScreenX;
+  let pxPerMm = 1;
+
+  function updateLayout(instant = false) {
+    W = window.innerWidth;
+    H = window.innerHeight;
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.floor(W * dpr);
+    canvas.height = Math.floor(H * dpr);
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+
+    const drawerOpen = !ui.drawerCollapsed && !ui.zenMode && W > 920;
+    const availW = drawerOpen ? (W - 348) : W;
+    targetBaseScreenX = drawerOpen ? availW * 0.52 : W * 0.5;
+    baseScreenY = H * 0.56;
+    const minDim = Math.min(availW, H - 90);
+    pxPerMm = Math.max(0.42, (minDim * 0.415) / NOMINAL_REACH);
+    if (instant) baseScreenX = targetBaseScreenX;
+  }
+
+  function worldToScreen(wx, wy) {
+    return {
+      x: baseScreenX + wx * pxPerMm,
+      y: baseScreenY - wy * pxPerMm
+    };
+  }
+
+  function screenToWorld(sx, sy) {
+    return {
+      x: (sx - baseScreenX) / pxPerMm,
+      y: (baseScreenY - sy) / pxPerMm
+    };
+  }
+
+  // =========================================================================
+  // Math Helpers
+  // =========================================================================
+  const TWO_PI = Math.PI * 2;
+  const RAD2DEG = 180 / Math.PI;
+  const DEG2RAD = Math.PI / 180;
+
+  function wrapAngle(a) {
+    while (a > Math.PI) a -= TWO_PI;
+    while (a < -Math.PI) a += TWO_PI;
+    return a;
+  }
+
+  function clamp(v, lo, hi) {
+    return v < lo ? lo : (v > hi ? hi : v);
+  }
+
+  function hypot(x, y) {
+    return Math.hypot(x, y);
+  }
+
+  function closestPointOnSegment(ax, ay, bx, by, px, py) {
+    const abx = bx - ax;
+    const aby = by - ay;
+    const ab2 = abx * abx + aby * aby;
+    let t = ab2 > 1e-8 ? ((px - ax) * abx + (py - ay) * aby) / ab2 : 0;
+    t = clamp(t, 0, 1);
+    const cx = ax + abx * t;
+    const cy = ay + aby * t;
+    const dx = cx - px;
+    const dy = cy - py;
+    return { cx, cy, t, dx, dy, dist: Math.hypot(dx, dy) };
+  }
+
+  // =========================================================================
+  // Simulation State
+  // =========================================================================
+  const ui = {
+    paused: false,
+    drawerCollapsed: false,
+    zenMode: false,
+    audioOn: false,
+    placeObstacleMode: false,
+    activePreset: 'weld3'
+  };
+
+  const sim = {
+    solver: 'fabrik', // 'fabrik' | 'dls' | 'ccd' | 'fk'
+    pathMode: 'weld', // 'manual' | 'figure8' | 'circle' | 'pickplace' | 'weld'
+    pathSpeed: 1.0,
+    pathPhase: 0,
+
+    dof: 3,
+    profile: 'industrial', // 'industrial' | 'equal' | 'tentacle'
+    lengths: [],
+    totalReach: NOMINAL_REACH,
+    minReach: 0,
+
+    // Relative joint angles (radians): theta[0] is base azimuth, theta[1..n-1] relative bends
+    theta: [],
+    thetaSolved: [],
+    omega: [],     // rad/s smoothed
+    torque: [],    // normalized lever torque proxy 0..1
+    joints: [],    // [{x,y}, ... n+1]
+    cumAngles: [], // cumulative world angles [0..n-1]
+
+    // Solver tuning
+    damping: 0.22,
+    maxIter: 24,
+    servoSpeed: 14.0, // rad/s max slew rate
+    useLimits: false,
+    limitDeg: 120,
+
+    // Target reticle (world mm)
+    target: { x: 220, y: 120 },
+
+    // Obstacles: [{id, x, y, r}]
+    obstacles: [],
+    nextObsId: 1,
+    newObsRadius: 44,
+    repulsionMargin: 22,
+    repulsionContacts: [], // [{cx, cy, nx, ny, obsX, obsY, intensity}]
+
+    // Overlays
+    showHeatmap: true,
+    showEllipsoid: true,
+    showArcs: true,
+    showHalos: true,
+    showTrail: true,
+    showVectors: true,
+
+    // Telemetry results
+    errorMm: 0,
+    iterUsed: 0,
+    manipW: 0,
+    manipNorm: 0,
+    condRatio: 1,
+    ellipsoid: { s1: 0, s2: 0, angle: 0 },
+    statusText: 'Reached',
+    statusClass: '',
+    totalOmegaDeg: 0,
+
+    // End-effector trail & weld sparks
+    trail: [], // [{x, y, age, isWeld}]
+    sparks: [], // [{x, y, vx, vy, life, maxLife}]
+    gripperOpen: 0.72, // 0 = closed, 1 = open
+    gripperTarget: 0.72,
+
+    // Pick-and-place state machine
+    pickPlace: {
+      pickPos: { x: -215, y: -95 },
+      dropPos: { x: 225, y: -95 },
+      boxPos: { x: -215, y: -95 },
+      boxCarried: false,
+      deliveredCount: 0,
+      phaseT: 0
+    },
+
+    time: 0
+  };
+
+  // =========================================================================
+  // Arm Configuration & Forward Kinematics
+  // =========================================================================
+  function buildLinkLengths(dof, profile) {
+    const raw = [];
+    for (let i = 0; i < dof; i++) {
+      if (profile === 'equal') {
+        raw.push(1.0);
+      } else if (profile === 'tentacle') {
+        raw.push(Math.pow(0.84, i));
+      } else {
+        // Industrial taper: sturdy shoulder + forearm + compact wrist
+        const frac = dof > 1 ? i / (dof - 1) : 0;
+        raw.push(1.25 - 0.58 * frac);
+      }
+    }
+    const sum = raw.reduce((a, b) => a + b, 0);
+    return raw.map(v => (v / sum) * NOMINAL_REACH);
+  }
+
+  function computeReachBounds() {
+    const L = sim.lengths;
+    const total = L.reduce((a, b) => a + b, 0);
+    sim.totalReach = total;
+
+    if (!sim.useLimits) {
+      let maxL = 0;
+      for (let i = 0; i < L.length; i++) if (L[i] > maxL) maxL = L[i];
+      sim.minReach = Math.max(0, maxL - (total - maxL));
+    } else {
+      // Simulate folding all articulated joints at +limitRad to find inner reach boundary
+      const lim = sim.limitDeg * DEG2RAD;
+      let x = L[0], y = 0, ang = 0;
+      let minR = hypot(x, y);
+      for (let i = 1; i < L.length; i++) {
+        ang += lim;
+        x += L[i] * Math.cos(ang);
+        y += L[i] * Math.sin(ang);
+      }
+      // Also test alternating zig-zag fold
+      let x2 = L[0], y2 = 0, ang2 = 0;
+      for (let i = 1; i < L.length; i++) {
+        ang2 += (i % 2 === 1 ? lim : -lim);
+        x2 += L[i] * Math.cos(ang2);
+        y2 += L[i] * Math.sin(ang2);
+      }
+      const rFold = Math.min(hypot(x, y), hypot(x2, y2));
+      // Unconstrained min reach is a hard lower bound
+      let maxL = 0;
+      for (let i = 0; i < L.length; i++) if (L[i] > maxL) maxL = L[i];
+      const hardMin = Math.max(0, maxL - (total - maxL));
+      sim.minReach = Math.max(hardMin, Math.min(rFold, total * 0.82));
+    }
+  }
+
+  function computeFK(thetaArr, outJoints, outCum) {
+    const n = sim.dof;
+    outJoints.length = n + 1;
+    outCum.length = n;
+    let x = 0, y = 0, phi = 0;
+    outJoints[0] = { x: 0, y: 0 };
+    for (let i = 0; i < n; i++) {
+      phi += thetaArr[i];
+      outCum[i] = phi;
+      x += sim.lengths[i] * Math.cos(phi);
+      y += sim.lengths[i] * Math.sin(phi);
+      outJoints[i + 1] = { x, y };
+    }
+    return outJoints[n];
+  }
+
+  function initArm(dof, profile, initialAnglesDeg = null) {
+    sim.dof = clamp(Math.round(dof), 2, 8);
+    sim.profile = profile;
+    sim.lengths = buildLinkLengths(sim.dof, sim.profile);
+    computeReachBounds();
+
+    sim.theta = new Array(sim.dof).fill(0);
+    sim.thetaSolved = new Array(sim.dof).fill(0);
+    sim.omega = new Array(sim.dof).fill(0);
+    sim.torque = new Array(sim.dof).fill(0);
+
+    if (initialAnglesDeg && initialAnglesDeg.length === sim.dof) {
+      for (let i = 0; i < sim.dof; i++) sim.theta[i] = initialAnglesDeg[i] * DEG2RAD;
+    } else {
+      sim.theta[0] = 0.85;
+      for (let i = 1; i < sim.dof; i++) {
+        sim.theta[i] = -0.45 / Math.sqrt(sim.dof * 0.5);
+      }
+    }
+    sim.thetaSolved = sim.theta.slice();
+    computeFK(sim.theta, sim.joints, sim.cumAngles);
+    buildJointSlidersUI();
+  }
+
+  // =========================================================================
+  // Jacobian, Manipulability Ellipsoid & Obstacle Repulsion
+  // =========================================================================
+  function computeJacobianAndManipulability(joints) {
+    const n = sim.dof;
+    const ee = joints[n];
+    const J0 = new Float64Array(n);
+    const J1 = new Float64Array(n);
+    let a = 0, b = 0, d = 0;
+
+    for (let j = 0; j < n; j++) {
+      const j0 = -(ee.y - joints[j].y);
+      const j1 = (ee.x - joints[j].x);
+      J0[j] = j0;
+      J1[j] = j1;
+      a += j0 * j0;
+      b += j0 * j1;
+      d += j1 * j1;
+    }
+
+    const tr = a + d;
+    const det = Math.max(0, a * d - b * b);
+    const disc = Math.sqrt(Math.max(0, (a - d) * (a - d) + 4 * b * b));
+    const l1 = Math.max(0, 0.5 * (tr + disc));
+    const l2 = Math.max(0, 0.5 * (tr - disc));
+    const s1 = Math.sqrt(l1);
+    const s2 = Math.sqrt(l2);
+    const angle = 0.5 * Math.atan2(2 * b, a - d);
+    const w = Math.sqrt(det);
+
+    // Reference manipulability for normalization (well-conditioned pose ~45-90 deg bend)
+    const wRef = sim.totalReach * sim.totalReach * (0.28 + 0.05 * Math.min(sim.dof, 6));
+    const wNorm = clamp(w / Math.max(1, wRef), 0, 1);
+    const condRatio = s1 > 1e-4 ? s2 / s1 : 0;
+
+    return { J0, J1, a, b, d, s1, s2, angle, w, wNorm, condRatio };
+  }
+
+  function applyLimitsToTheta(thetaArr) {
+    if (!sim.useLimits) return;
+    const lim = sim.limitDeg * DEG2RAD;
+    thetaArr[0] = wrapAngle(thetaArr[0]);
+    for (let i = 1; i < thetaArr.length; i++) {
+      thetaArr[i] = clamp(wrapAngle(thetaArr[i]), -lim, lim);
+    }
+  }
+
+  function computeObstacleRepulsionContacts(joints) {
+    const contacts = [];
+    const obsList = sim.obstacles;
+    if (obsList.length === 0) return contacts;
+
+    const margin = sim.repulsionMargin;
+    const n = sim.dof;
+    for (let k = 0; k < n; k++) {
+      const p0 = joints[k];
+      const p1 = joints[k + 1];
+      for (let o = 0; o < obsList.length; o++) {
+        const obs = obsList[o];
+        const cp = closestPointOnSegment(p0.x, p0.y, p1.x, p1.y, obs.x, obs.y);
+        const safeR = obs.r + margin + 8; // + link half-thickness
+        if (cp.dist < safeR) {
+          const d = Math.max(1e-3, cp.dist);
+          const nx = cp.dx / d;
+          const ny = cp.dy / d;
+          const penetration = (safeR - cp.dist) / safeR;
+          contacts.push({
+            segIdx: k,
+            cx: cp.cx,
+            cy: cp.cy,
+            nx,
+            ny,
+            obsX: obs.x,
+            obsY: obs.y,
+            obsR: obs.r,
+            penetration: safeR - cp.dist,
+            intensity: clamp(penetration * 1.4, 0, 1)
+          });
+        }
+      }
+    }
+    return contacts;
+  }
+
+  function applyObstacleJacobianPush(thetaArr, strength = 0.42) {
+    if (sim.obstacles.length === 0) return false;
+    const tmpJ = [];
+    const tmpC = [];
+    computeFK(thetaArr, tmpJ, tmpC);
+    const contacts = computeObstacleRepulsionContacts(tmpJ);
+    if (contacts.length === 0) return false;
+
+    const n = sim.dof;
+    const dTheta = new Float64Array(n);
+    const invScale = 1.0 / (sim.totalReach * sim.totalReach * 0.24);
+
+    for (let c = 0; c < contacts.length; c++) {
+      const ct = contacts[c];
+      const pushMag = ct.penetration * strength;
+      const fx = ct.nx * pushMag;
+      const fy = ct.ny * pushMag;
+      // Only joints 0..segIdx affect point C on segment segIdx
+      for (let j = 0; j <= ct.segIdx; j++) {
+        const j0 = -(ct.cy - tmpJ[j].y);
+        const j1 = (ct.cx - tmpJ[j].x);
+        dTheta[j] += (j0 * fx + j1 * fy) * invScale;
+      }
+    }
+
+    for (let j = 0; j < n; j++) {
+      thetaArr[j] = wrapAngle(thetaArr[j] + clamp(dTheta[j], -0.22, 0.22));
+    }
+    applyLimitsToTheta(thetaArr);
+    return true;
+  }
+
+  // =========================================================================
+  // IK SOLVER 1: FABRIK (with Joint Limits & Obstacle Clearance)
+  // =========================================================================
+  function solveFABRIK(startTheta, target) {
+    const n = sim.dof;
+    const L = sim.lengths;
+    const pts = [];
+    const cum = [];
+    computeFK(startTheta, pts, cum);
+
+    // Deep clone points
+    const P = pts.map(p => ({ x: p.x, y: p.y }));
+    const lim = sim.limitDeg * DEG2RAD;
+    const tx = target.x;
+    const ty = target.y;
+    const targetDist = hypot(tx, ty);
+
+    // Tiny collinear kick if target lies straight along arm axis to prevent dead-center lock
+    const ee = P[n];
+    const cross = ee.x * ty - ee.y * tx;
+    if (Math.abs(cross) < 1e-2 && targetDist < sim.totalReach - 1 && n >= 2) {
+      const perpAngle = Math.atan2(ty, tx) + Math.PI * 0.5;
+      P[1].x += Math.cos(perpAngle) * 1.5;
+      P[1].y += Math.sin(perpAngle) * 1.5;
+    }
+
+    let iterUsed = 0;
+    const tol = 0.45; // mm
+
+    for (let iter = 0; iter < sim.maxIter; iter++) {
+      iterUsed = iter + 1;
+
+      // 1. Backward reaching: snap end-effector to target
+      P[n].x = tx;
+      P[n].y = ty;
+      for (let i = n - 1; i >= 0; i--) {
+        let dx = P[i].x - P[i + 1].x;
+        let dy = P[i].y - P[i + 1].y;
+        let d = hypot(dx, dy);
+        if (d < 1e-5) {
+          dx = -Math.cos(cum[i] || 0);
+          dy = -Math.sin(cum[i] || 0);
+          d = 1;
+        }
+        P[i].x = P[i + 1].x + (dx / d) * L[i];
+        P[i].y = P[i + 1].y + (dy / d) * L[i];
+
+        // Gentle obstacle push on intermediate joint
+        if (i > 0 && sim.obstacles.length > 0) {
+          for (let o = 0; o < sim.obstacles.length; o++) {
+            const obs = sim.obstacles[o];
+            const odx = P[i].x - obs.x;
+            const ody = P[i].y - obs.y;
+            const od = hypot(odx, ody);
+            const safe = obs.r + sim.repulsionMargin + 8;
+            if (od < safe) {
+              const s = od > 1e-4 ? safe / od : safe;
+              P[i].x = obs.x + (od > 1e-4 ? odx * s : safe);
+              P[i].y = obs.y + (od > 1e-4 ? ody * s : 0);
+            }
+          }
+        }
+      }
+
+      // 2. Forward reaching: pin base to (0,0) + enforce joint limits & segment clearance
+      P[0].x = 0;
+      P[0].y = 0;
+      let prevDir = 0;
+      for (let i = 0; i < n; i++) {
+        let dir = Math.atan2(P[i + 1].y - P[i].y, P[i + 1].x - P[i].x);
+        if (sim.useLimits && i > 0) {
+          const rel = clamp(wrapAngle(dir - prevDir), -lim, lim);
+          dir = prevDir + rel;
+        }
+        let nx = P[i].x + Math.cos(dir) * L[i];
+        let ny = P[i].y + Math.sin(dir) * L[i];
+
+        // Segment-level obstacle clearance
+        if (sim.obstacles.length > 0) {
+          for (let o = 0; o < sim.obstacles.length; o++) {
+            const obs = sim.obstacles[o];
+            const cp = closestPointOnSegment(P[i].x, P[i].y, nx, ny, obs.x, obs.y);
+            const safe = obs.r + sim.repulsionMargin + 8;
+            if (cp.dist < safe && cp.t > 0.02) {
+              const d = Math.max(1e-3, cp.dist);
+              const push = (safe - cp.dist) * 0.92;
+              const px = cp.cx + (cp.dx / d) * push;
+              const py = cp.cy + (cp.dy / d) * push;
+              let newDir = Math.atan2(py - P[i].y, px - P[i].x);
+              if (sim.useLimits && i > 0) {
+                const rel = clamp(wrapAngle(newDir - prevDir), -lim, lim);
+                newDir = prevDir + rel;
+              }
+              dir = newDir;
+              nx = P[i].x + Math.cos(dir) * L[i];
+              ny = P[i].y + Math.sin(dir) * L[i];
+            }
+          }
+        }
+
+        P[i + 1].x = nx;
+        P[i + 1].y = ny;
+        prevDir = dir;
+      }
+
+      const err = hypot(tx - P[n].x, ty - P[n].y);
+      if (err < tol && computeObstacleRepulsionContacts(P).length === 0) break;
+    }
+
+    // Extract relative joint angles
+    const outTheta = new Array(n);
+    let prevAng = 0;
+    for (let i = 0; i < n; i++) {
+      const ang = Math.atan2(P[i + 1].y - P[i].y, P[i + 1].x - P[i].x);
+      outTheta[i] = i === 0 ? wrapAngle(ang) : wrapAngle(ang - prevAng);
+      prevAng = ang;
+    }
+    applyLimitsToTheta(outTheta);
+    return { theta: outTheta, iterUsed };
+  }
+
+  // =========================================================================
+  // IK SOLVER 2: Damped Least Squares Jacobian  Δθ = Jᵀ (J Jᵀ + λ² I)⁻¹ e
+  // =========================================================================
+  function solveDLS(startTheta, target) {
+    const n = sim.dof;
+    const th = startTheta.slice();
+    const tmpJ = [];
+    const tmpC = [];
+    const lambdaEff = sim.damping * sim.totalReach * 0.42;
+    const lam2 = lambdaEff * lambdaEff;
+
+    let iterUsed = 0;
+    const tol = 0.45;
+
+    for (let iter = 0; iter < sim.maxIter; iter++) {
+      iterUsed = iter + 1;
+      const ee = computeFK(th, tmpJ, tmpC);
+      let ex = target.x - ee.x;
+      let ey = target.y - ee.y;
+      const err = hypot(ex, ey);
+
+      const hasObs = sim.obstacles.length > 0;
+      if (err < tol && (!hasObs || computeObstacleRepulsionContacts(tmpJ).length === 0)) {
+        break;
+      }
+
+      // Clamp step error for numerical stability
+      const maxStep = 65;
+      if (err > maxStep) {
+        ex = (ex / err) * maxStep;
+        ey = (ey / err) * maxStep;
+      }
+
+      const jac = computeJacobianAndManipulability(tmpJ);
+      const A00 = jac.a + lam2;
+      const A01 = jac.b;
+      const A11 = jac.d + lam2;
+      const detA = A00 * A11 - A01 * A01;
+
+      if (Math.abs(detA) > 1e-8) {
+        const vx = (A11 * ex - A01 * ey) / detA;
+        const vy = (-A01 * ex + A00 * ey) / detA;
+        for (let j = 0; j < n; j++) {
+          const step = clamp(jac.J0[j] * vx + jac.J1[j] * vy, -0.35, 0.35);
+          th[j] = wrapAngle(th[j] + step);
+        }
+      }
+
+      applyLimitsToTheta(th);
+      if (hasObs) {
+        applyObstacleJacobianPush(th, 0.48);
+      }
+    }
+
+    return { theta: th, iterUsed };
+  }
+
+  // =========================================================================
+  // IK SOLVER 3: Cyclic Coordinate Descent (CCD)
+  // =========================================================================
+  function solveCCD(startTheta, target) {
+    const n = sim.dof;
+    const th = startTheta.slice();
+    const tmpJ = [];
+    const tmpC = [];
+    const lim = sim.limitDeg * DEG2RAD;
+    let iterUsed = 0;
+    const tol = 0.45;
+
+    for (let iter = 0; iter < sim.maxIter; iter++) {
+      iterUsed = iter + 1;
+      for (let j = n - 1; j >= 0; j--) {
+        const ee = computeFK(th, tmpJ, tmpC);
+        const pj = tmpJ[j];
+        const toEx = ee.x - pj.x;
+        const toEy = ee.y - pj.y;
+        const toTx = target.x - pj.x;
+        const toTy = target.y - pj.y;
+
+        if (hypot(toEx, toEy) < 1e-4 || hypot(toTx, toTy) < 1e-4) continue;
+        const aE = Math.atan2(toEy, toEx);
+        const aT = Math.atan2(toTy, toTx);
+        let dAng = wrapAngle(aT - aE) * 0.78;
+        dAng = clamp(dAng, -0.45, 0.45);
+        th[j] = wrapAngle(th[j] + dAng);
+        if (sim.useLimits && j > 0) {
+          th[j] = clamp(th[j], -lim, lim);
+        }
+      }
+
+      if (sim.obstacles.length > 0) {
+        applyObstacleJacobianPush(th, 0.45);
+      }
+
+      const ee = computeFK(th, tmpJ, tmpC);
+      if (hypot(target.x - ee.x, target.y - ee.y) < tol && computeObstacleRepulsionContacts(tmpJ).length === 0) {
+        break;
+      }
+    }
+    return { theta: th, iterUsed };
+  }
+
+  // =========================================================================
+  // Auto-Draw Path Generators (Figure-8, Circle, Pick & Place, Square Weld)
+  // =========================================================================
+  function smoothstep(t) {
+    t = clamp(t, 0, 1);
+    return t * t * (3 - 2 * t);
+  }
+
+  function lerp(a, b, t) {
+    return a + (b - a) * t;
+  }
+
+  function updateAutoPath(dt) {
+    if (sim.pathMode === 'manual' || sim.solver === 'fk') return false;
+    sim.pathPhase += dt * sim.pathSpeed;
+    const t = sim.pathPhase;
+    let isWelding = false;
+
+    if (sim.pathMode === 'figure8') {
+      const cx = 35;
+      const cy = 60;
+      const rx = sim.totalReach * 0.56;
+      const ry = sim.totalReach * 0.34;
+      sim.target.x = cx + rx * Math.sin(t * 0.95);
+      sim.target.y = cy + ry * Math.sin(t * 1.9);
+      sim.gripperTarget = 0.65;
+    } else if (sim.pathMode === 'circle') {
+      // If singularity preset, sweep right out to the outer reach boundary & back
+      if (ui.activePreset === 'singularity') {
+        const cx = 145;
+        const cy = 50;
+        const r = sim.totalReach * 0.64;
+        sim.target.x = cx + r * Math.cos(t * 0.95);
+        sim.target.y = cy + r * Math.sin(t * 0.95);
+      } else {
+        const r = sim.totalReach * 0.62;
+        sim.target.x = r * Math.cos(t * 1.05);
+        sim.target.y = r * Math.sin(t * 1.05);
+      }
+      sim.gripperTarget = 0.55;
+    } else if (sim.pathMode === 'weld') {
+      // Precision Square Weld Path in upper-right quadrant
+      const side = sim.totalReach * 0.44;
+      const cx = 155;
+      const cy = 85;
+      const half = side * 0.5;
+      const cycle = (t * 0.45) % 4;
+      const edge = Math.floor(cycle);
+      const u = cycle - edge;
+      const corners = [
+        { x: cx - half, y: cy - half },
+        { x: cx + half, y: cy - half },
+        { x: cx + half, y: cy + half },
+        { x: cx - half, y: cy + half }
+      ];
+      const a = corners[edge];
+      const b = corners[(edge + 1) % 4];
+      sim.target.x = lerp(a.x, b.x, u);
+      sim.target.y = lerp(a.y, b.y, u);
+      sim.gripperTarget = 0.15; // Tight welding torch pinch
+      isWelding = true;
+    } else if (sim.pathMode === 'pickplace') {
+      const pp = sim.pickPlace;
+      const cycleDur = 6.4;
+      pp.phaseT = (pp.phaseT + dt * sim.pathSpeed) % cycleDur;
+      const p = pp.phaseT;
+      const px = pp.pickPos.x, py = pp.pickPos.y;
+      const dx = pp.dropPos.x, dy = pp.dropPos.y;
+      const liftY = 175;
+
+      if (p < 1.1) {
+        // Move to hover above pick bin
+        const u = smoothstep(p / 1.1);
+        sim.target.x = lerp(dx, px, u);
+        sim.target.y = lerp(dy + 95, py + 95, u) + Math.sin(u * Math.PI) * 90;
+        sim.gripperTarget = 0.92;
+        pp.boxCarried = false;
+        pp.boxPos.x = px;
+        pp.boxPos.y = py;
+      } else if (p < 1.8) {
+        // Descend onto crate
+        const u = smoothstep((p - 1.1) / 0.7);
+        sim.target.x = px;
+        sim.target.y = lerp(py + 95, py + 12, u);
+        sim.gripperTarget = 0.92;
+        pp.boxCarried = false;
+        pp.boxPos.x = px;
+        pp.boxPos.y = py;
+      } else if (p < 2.3) {
+        // Grasp crate
+        sim.target.x = px;
+        sim.target.y = py + 12;
+        sim.gripperTarget = 0.18;
+        pp.boxCarried = p > 2.05;
+      } else if (p < 4.5) {
+        // Lift & parabolic transfer arc over center obstacle
+        const u = smoothstep((p - 2.3) / 2.2);
+        sim.target.x = lerp(px, dx, u);
+        const arc = Math.sin(u * Math.PI);
+        sim.target.y = lerp(py + 12, dy + 95, u) + arc * liftY;
+        sim.gripperTarget = 0.18;
+        pp.boxCarried = true;
+      } else if (p < 5.3) {
+        // Descend into drop zone
+        const u = smoothstep((p - 4.5) / 0.8);
+        sim.target.x = dx;
+        sim.target.y = lerp(dy + 95, dy + 12, u);
+        sim.gripperTarget = 0.18;
+        pp.boxCarried = true;
+      } else if (p < 5.8) {
+        // Release crate
+        sim.target.x = dx;
+        sim.target.y = dy + 12;
+        sim.gripperTarget = 0.95;
+        if (pp.boxCarried) {
+          pp.boxCarried = false;
+          pp.deliveredCount++;
+        }
+        pp.boxPos.x = dx;
+        pp.boxPos.y = dy;
+      } else {
+        // Lift clear of drop zone
+        const u = smoothstep((p - 5.8) / 0.6);
+        sim.target.x = dx;
+        sim.target.y = lerp(dy + 12, dy + 95, u);
+        sim.gripperTarget = 0.95;
+        pp.boxCarried = false;
+        pp.boxPos.x = dx;
+        pp.boxPos.y = dy;
+      }
+    }
+    return isWelding;
+  }
+
+  // =========================================================================
+  // Web Audio Servo Motor Synthesizer (Muted by Default)
+  // =========================================================================
+  let audioCtx = null;
+  let servoOsc1 = null;
+  let servoOsc2 = null;
+  let servoGain = null;
+  let servoFilter = null;
+
+  function initAudio() {
+    if (audioCtx) return;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    audioCtx = new AC();
+
+    servoOsc1 = audioCtx.createOscillator();
+    servoOsc2 = audioCtx.createOscillator();
+    servoFilter = audioCtx.createBiquadFilter();
+    servoGain = audioCtx.createGain();
+
+    servoOsc1.type = 'triangle';
+    servoOsc2.type = 'sine';
+    servoOsc1.frequency.value = 110;
+    servoOsc2.frequency.value = 330;
+
+    servoFilter.type = 'bandpass';
+    servoFilter.frequency.value = 420;
+    servoFilter.Q.value = 2.4;
+
+    servoGain.gain.value = 0.0001;
+
+    const mix2 = audioCtx.createGain();
+    mix2.gain.value = 0.35;
+
+    servoOsc1.connect(servoFilter);
+    servoOsc2.connect(mix2);
+    mix2.connect(servoFilter);
+    servoFilter.connect(servoGain);
+    servoGain.connect(audioCtx.destination);
+
+    servoOsc1.start();
+    servoOsc2.start();
+  }
+
+  function updateAudio(omegaSumRad) {
+    if (!audioCtx || !servoGain) return;
+    const now = audioCtx.currentTime;
+    if (!ui.audioOn || ui.paused) {
+      servoGain.gain.setTargetAtTime(0.0001, now, 0.06);
+      return;
+    }
+    const speedNorm = clamp(omegaSumRad / 12.0, 0, 1.4);
+    const f1 = 92 + speedNorm * 210;
+    const f2 = 276 + speedNorm * 680;
+    const vol = speedNorm < 0.015 ? 0.0001 : clamp(speedNorm * 0.055, 0.001, 0.065);
+    servoOsc1.frequency.setTargetAtTime(f1, now, 0.04);
+    servoOsc2.frequency.setTargetAtTime(f2, now, 0.04);
+    servoFilter.frequency.setTargetAtTime(320 + speedNorm * 1100, now, 0.05);
+    servoGain.gain.setTargetAtTime(vol, now, 0.05);
+  }
+
+  // =========================================================================
+  // Simulation Step
+  // =========================================================================
+  function stepSim(dt) {
+    sim.time += dt;
+    const isWelding = updateAutoPath(dt);
+
+    // Solve IK unless in FK manual mode
+    if (sim.solver !== 'fk') {
+      let res;
+      if (sim.solver === 'fabrik') {
+        res = solveFABRIK(sim.theta, sim.target);
+      } else if (sim.solver === 'dls') {
+        res = solveDLS(sim.theta, sim.target);
+      } else {
+        res = solveCCD(sim.theta, sim.target);
+      }
+      sim.thetaSolved = res.theta;
+      sim.iterUsed = res.iterUsed;
+    } else {
+      sim.iterUsed = 0;
+    }
+
+    // Smooth servo slew from current theta to solved theta
+    let omegaSum = 0;
+    const maxStep = sim.servoSpeed * dt;
+    const alphaSmooth = 1 - Math.exp(-16 * dt);
+
+    for (let i = 0; i < sim.dof; i++) {
+      const prev = sim.theta[i];
+      if (sim.solver !== 'fk') {
+        const diff = wrapAngle(sim.thetaSolved[i] - prev);
+        const step = clamp(diff, -maxStep, maxStep);
+        sim.theta[i] = wrapAngle(prev + step);
+      }
+      const instOmega = wrapAngle(sim.theta[i] - prev) / Math.max(dt, 1e-4);
+      sim.omega[i] += (instOmega - sim.omega[i]) * alphaSmooth;
+      omegaSum += Math.abs(sim.omega[i]);
+    }
+    applyLimitsToTheta(sim.theta);
+    sim.totalOmegaDeg = omegaSum * RAD2DEG;
+
+    // Recompute FK & Jacobian/Manipulability
+    const ee = computeFK(sim.theta, sim.joints, sim.cumAngles);
+
+    // Sync target in FK mode so reticle reflects end-effector cleanly if needed
+    const jac = computeJacobianAndManipulability(sim.joints);
+    sim.manipW = jac.w;
+    sim.manipNorm = jac.wNorm;
+    sim.condRatio = jac.condRatio;
+    sim.ellipsoid = { s1: jac.s1, s2: jac.s2, angle: jac.angle };
+
+    // Estimate static gravity + inertial torque proxy per joint
+    for (let i = 0; i < sim.dof; i++) {
+      const leverX = Math.abs(ee.x - sim.joints[i].x) / sim.totalReach;
+      const dyn = Math.min(1, Math.abs(sim.omega[i]) / 8.0);
+      sim.torque[i] = clamp(leverX * 0.55 + dyn * 0.65, 0, 1);
+    }
+
+    // Obstacle proximity contacts
+    sim.repulsionContacts = computeObstacleRepulsionContacts(sim.joints);
+
+    // Gripper animation
+    sim.gripperOpen += (sim.gripperTarget - sim.gripperOpen) * Math.min(1, dt * 11);
+
+    // Update carried box position in pick & place
+    if (sim.pathMode === 'pickplace' && sim.pickPlace.boxCarried) {
+      const tipAng = sim.cumAngles[sim.dof - 1];
+      sim.pickPlace.boxPos.x = ee.x + Math.cos(tipAng) * 14;
+      sim.pickPlace.boxPos.y = ee.y + Math.sin(tipAng) * 14;
+    }
+
+    // Error & Reach Status classification
+    sim.errorMm = hypot(sim.target.x - ee.x, sim.target.y - ee.y);
+    const targetR = hypot(sim.target.x, sim.target.y);
+    const outOfReach = targetR > sim.totalReach + 2 || (sim.minReach > 6 && targetR < sim.minReach - 2);
+
+    if (sim.solver === 'fk') {
+      if (sim.condRatio < 0.13) {
+        sim.statusText = 'Near Singularity!';
+        sim.statusClass = 'danger';
+      } else {
+        sim.statusText = 'FK Manual';
+        sim.statusClass = 'info';
+      }
+    } else if (outOfReach && sim.errorMm > 4) {
+      sim.statusText = 'Out of Reach';
+      sim.statusClass = 'warn';
+    } else if (sim.condRatio < 0.14 || sim.manipNorm < 0.08) {
+      sim.statusText = 'Near Singularity!';
+      sim.statusClass = 'danger';
+    } else if (sim.repulsionContacts.length > 0) {
+      sim.statusText = 'Obstacle Avoid';
+      sim.statusClass = 'warn';
+    } else if (sim.errorMm < 3.5) {
+      sim.statusText = 'Reached';
+      sim.statusClass = '';
+    } else {
+      sim.statusText = 'Tracking';
+      sim.statusClass = 'info';
+    }
+
+    // Motion Trail recording
+    if (sim.showTrail) {
+      const last = sim.trail[sim.trail.length - 1];
+      if (!last || hypot(ee.x - last.x, ee.y - last.y) > 2.2) {
+        sim.trail.push({ x: ee.x, y: ee.y, age: 0, isWeld: isWelding && sim.errorMm < 14 });
+        if (sim.trail.length > 340) sim.trail.shift();
+      }
+    }
+    for (let i = sim.trail.length - 1; i >= 0; i--) {
+      sim.trail[i].age += dt;
+      if (sim.trail[i].age > 6.5) sim.trail.splice(i, 1);
+    }
+
+    // Weld sparks when welding path active and close to seam
+    if (isWelding && sim.errorMm < 16) {
+      const spawnCount = 3;
+      for (let s = 0; s < spawnCount; s++) {
+        const ang = Math.random() * TWO_PI;
+        const spd = 65 + Math.random() * 190;
+        sim.sparks.push({
+          x: ee.x,
+          y: ee.y,
+          vx: Math.cos(ang) * spd,
+          vy: Math.sin(ang) * spd + 45,
+          life: 0,
+          maxLife: 0.25 + Math.random() * 0.35
+        });
+      }
+    }
+    for (let i = sim.sparks.length - 1; i >= 0; i--) {
+      const sp = sim.sparks[i];
+      sp.life += dt;
+      sp.vy -= 420 * dt; // subtle gravity in world mm/s²
+      sp.x += sp.vx * dt;
+      sp.y += sp.vy * dt;
+      if (sp.life >= sp.maxLife) sim.sparks.splice(i, 1);
+    }
+
+    updateAudio(omegaSum);
+  }
+
+  // =========================================================================
+  // Rendering Engine
+  // =========================================================================
+  function drawBackdropAndGrid() {
+    ctx.fillStyle = '#040711';
+    ctx.fillRect(0, 0, W, H);
+
+    // Subtle radial ambient illumination centered near the robotic base
+    const grad = ctx.createRadialGradient(
+      baseScreenX, baseScreenY, 10,
+      baseScreenX, baseScreenY, Math.max(W, H) * 0.72
+    );
+    grad.addColorStop(0, 'rgba(22, 42, 82, 0.28)');
+    grad.addColorStop(0.45, 'rgba(10, 19, 40, 0.16)');
+    grad.addColorStop(1, 'rgba(4, 7, 17, 0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+
+    // Technical blueprint grid in world mm
+    const minorStep = 50; // mm
+    const majorStep = 100; // mm
+    const minWX = Math.floor((-baseScreenX / pxPerMm) / minorStep) * minorStep;
+    const maxWX = Math.ceil(((W - baseScreenX) / pxPerMm) / minorStep) * minorStep;
+    const minWY = Math.floor((-(H - baseScreenY) / pxPerMm) / minorStep) * minorStep;
+    const maxWY = Math.ceil((baseScreenY / pxPerMm) / minorStep) * minorStep;
+
+    ctx.lineWidth = 1;
+    // Minor grid lines
+    ctx.beginPath();
+    ctx.strokeStyle = 'rgba(110, 150, 225, 0.045)';
+    for (let x = minWX; x <= maxWX; x += minorStep) {
+      if (x % majorStep === 0) continue;
+      const sx = baseScreenX + x * pxPerMm;
+      ctx.moveTo(sx, 0);
+      ctx.lineTo(sx, H);
+    }
+    for (let y = minWY; y <= maxWY; y += minorStep) {
+      if (y % majorStep === 0) continue;
+      const sy = baseScreenY - y * pxPerMm;
+      ctx.moveTo(0, sy);
+      ctx.lineTo(W, sy);
+    }
+    ctx.stroke();
+
+    // Major grid lines
+    ctx.beginPath();
+    ctx.strokeStyle = 'rgba(120, 165, 245, 0.095)';
+    for (let x = minWX; x <= maxWX; x += majorStep) {
+      const sx = baseScreenX + x * pxPerMm;
+      ctx.moveTo(sx, 0);
+      ctx.lineTo(sx, H);
+    }
+    for (let y = minWY; y <= maxWY; y += majorStep) {
+      const sy = baseScreenY - y * pxPerMm;
+      ctx.moveTo(0, sy);
+      ctx.lineTo(W, sy);
+    }
+    ctx.stroke();
+
+    // Principal world axes through rotary base
+    ctx.beginPath();
+    ctx.strokeStyle = 'rgba(88, 220, 255, 0.16)';
+    ctx.moveTo(0, baseScreenY);
+    ctx.lineTo(W, baseScreenY);
+    ctx.moveTo(baseScreenX, 0);
+    ctx.lineTo(baseScreenX, H);
+    ctx.stroke();
+
+    // Subtle polar compass ticks
+    ctx.save();
+    ctx.font = '10px ' + getComputedStyle(document.documentElement).getPropertyValue('--mono');
+    ctx.fillStyle = 'rgba(130, 158, 210, 0.35)';
+    ctx.textAlign = 'left';
+    for (let r = 100; r <= 400; r += 100) {
+      const sx = baseScreenX + r * pxPerMm + 4;
+      ctx.fillText(r + 'mm', sx, baseScreenY - 5);
+    }
+    ctx.restore();
+  }
+
+  function drawWorkspaceHeatmap() {
+    if (!sim.showHeatmap) return;
+    const rMaxPx = sim.totalReach * pxPerMm;
+    const rMinPx = sim.minReach * pxPerMm;
+
+    ctx.save();
+    // Clip to reachable annulus
+    ctx.beginPath();
+    ctx.arc(baseScreenX, baseScreenY, rMaxPx, 0, TWO_PI, false);
+    if (rMinPx > 2) {
+      ctx.arc(baseScreenX, baseScreenY, rMinPx, 0, TWO_PI, true);
+    }
+    ctx.clip('evenodd');
+
+    // Radial dexterity heatmap: peak cyan-mint in sweet spot, amber/rose near boundaries
+    const grad = ctx.createRadialGradient(
+      baseScreenX, baseScreenY, rMinPx,
+      baseScreenX, baseScreenY, rMaxPx
+    );
+    grad.addColorStop(0.00, 'rgba(255, 96, 131, 0.13)');
+    grad.addColorStop(0.16, 'rgba(255, 190, 92, 0.08)');
+    grad.addColorStop(0.45, 'rgba(74, 242, 178, 0.085)');
+    grad.addColorStop(0.76, 'rgba(88, 220, 255, 0.09)');
+    grad.addColorStop(0.92, 'rgba(255, 190, 92, 0.11)');
+    grad.addColorStop(1.00, 'rgba(255, 96, 131, 0.16)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(baseScreenX - rMaxPx - 2, baseScreenY - rMaxPx - 2, rMaxPx * 2 + 4, rMaxPx * 2 + 4);
+    ctx.restore();
+
+    // Outer reach boundary ring
+    ctx.save();
+    ctx.setLineDash([7, 6]);
+    ctx.lineWidth = 1.2;
+    ctx.strokeStyle = 'rgba(88, 220, 255, 0.34)';
+    ctx.beginPath();
+    ctx.arc(baseScreenX, baseScreenY, rMaxPx, 0, TWO_PI);
+    ctx.stroke();
+
+    // Inner dead-zone ring
+    if (rMinPx > 4) {
+      ctx.strokeStyle = 'rgba(255, 96, 131, 0.42)';
+      ctx.beginPath();
+      ctx.arc(baseScreenX, baseScreenY, rMinPx, 0, TWO_PI);
+      ctx.stroke();
+
+      // Subtle diagonal hatching in unreachable inner zone
+      ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(255, 96, 131, 0.045)';
+      ctx.beginPath();
+      ctx.arc(baseScreenX, baseScreenY, rMinPx, 0, TWO_PI);
+      ctx.fill();
+    }
+
+    // Labels for R_max & R_min
+    ctx.setLineDash([]);
+    ctx.font = '600 10px ui-monospace, Consolas, monospace';
+    ctx.fillStyle = 'rgba(88, 220, 255, 0.62)';
+    ctx.textAlign = 'center';
+    ctx.fillText('R_max ' + Math.round(sim.totalReach) + ' mm', baseScreenX, baseScreenY - rMaxPx - 7);
+    if (rMinPx > 28) {
+      ctx.fillStyle = 'rgba(255, 120, 145, 0.68)';
+      ctx.fillText('R_min ' + Math.round(sim.minReach) + ' mm', baseScreenX, baseScreenY - rMinPx + 13);
+    }
+    ctx.restore();
+  }
+
+  function drawPathGuideAndStations() {
+    ctx.save();
+    if (sim.pathMode === 'figure8') {
+      ctx.beginPath();
+      const cx = 35, cy = 60;
+      const rx = sim.totalReach * 0.56;
+      const ry = sim.totalReach * 0.34;
+      for (let i = 0; i <= 140; i++) {
+        const u = (i / 140) * TWO_PI;
+        const p = worldToScreen(cx + rx * Math.sin(u), cy + ry * Math.sin(2 * u));
+        if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y);
+      }
+      ctx.strokeStyle = 'rgba(88, 220, 255, 0.16)';
+      ctx.setLineDash([4, 6]);
+      ctx.lineWidth = 1.4;
+      ctx.stroke();
+    } else if (sim.pathMode === 'circle') {
+      const isSing = ui.activePreset === 'singularity';
+      const c = worldToScreen(isSing ? 145 : 0, isSing ? 50 : 0);
+      const r = sim.totalReach * (isSing ? 0.64 : 0.62) * pxPerMm;
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, r, 0, TWO_PI);
+      ctx.strokeStyle = isSing ? 'rgba(167, 139, 250, 0.24)' : 'rgba(88, 220, 255, 0.16)';
+      ctx.setLineDash([5, 6]);
+      ctx.lineWidth = 1.4;
+      ctx.stroke();
+    } else if (sim.pathMode === 'weld') {
+      const side = sim.totalReach * 0.44;
+      const half = side * 0.5;
+      const tl = worldToScreen(155 - half, 85 + half);
+      const br = worldToScreen(155 + half, 85 - half);
+      // Machined metal weld workpiece plate
+      ctx.fillStyle = 'rgba(18, 26, 44, 0.55)';
+      ctx.strokeStyle = 'rgba(255, 190, 92, 0.32)';
+      ctx.lineWidth = 1.5;
+      ctx.fillRect(tl.x - 14, tl.y - 14, (br.x - tl.x) + 28, (br.y - tl.y) + 28);
+      ctx.strokeRect(tl.x - 14, tl.y - 14, (br.x - tl.x) + 28, (br.y - tl.y) + 28);
+      ctx.setLineDash([4, 4]);
+      ctx.strokeStyle = 'rgba(255, 190, 92, 0.55)';
+      ctx.strokeRect(tl.x, tl.y, br.x - tl.x, br.y - tl.y);
+      ctx.setLineDash([]);
+      ctx.font = '700 9.5px ui-monospace, Consolas, monospace';
+      ctx.fillStyle = 'rgba(255, 190, 92, 0.72)';
+      ctx.fillText('WELD WORKPIECE', tl.x - 10, tl.y - 19);
+    } else if (sim.pathMode === 'pickplace') {
+      const pp = sim.pickPlace;
+      const drawStation = (pos, label, col) => {
+        const s = worldToScreen(pos.x, pos.y);
+        const pw = 56 * pxPerMm;
+        const ph = 18 * pxPerMm;
+        ctx.fillStyle = 'rgba(16, 24, 42, 0.85)';
+        ctx.strokeStyle = col;
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.roundRect(s.x - pw * 0.5, s.y + 8 * pxPerMm, pw, ph, 5);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.font = '700 9.5px ui-monospace, Consolas, monospace';
+        ctx.fillStyle = col;
+        ctx.textAlign = 'center';
+        ctx.fillText(label, s.x, s.y + 21 * pxPerMm);
+      };
+      drawStation(pp.pickPos, 'PICK ZONE', 'rgba(88, 220, 255, 0.75)');
+      drawStation(pp.dropPos, 'DROP ZONE (' + pp.deliveredCount + ')', 'rgba(74, 242, 178, 0.78)');
+
+      // Draw payload crate
+      const bp = worldToScreen(pp.boxPos.x, pp.boxPos.y);
+      const bs = 22 * pxPerMm;
+      ctx.save();
+      ctx.translate(bp.x, bp.y);
+      if (pp.boxCarried) {
+        const tipAng = sim.cumAngles[sim.dof - 1];
+        ctx.rotate(-tipAng + Math.PI * 0.5);
+      }
+      ctx.shadowColor = 'rgba(255, 190, 92, 0.55)';
+      ctx.shadowBlur = 14;
+      ctx.fillStyle = '#1b263c';
+      ctx.strokeStyle = '#ffbe5c';
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      ctx.roundRect(-bs * 0.5, -bs * 0.5, bs, bs, 4);
+      ctx.fill();
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = 'rgba(255, 190, 92, 0.45)';
+      ctx.beginPath();
+      ctx.moveTo(-bs * 0.3, -bs * 0.3);
+      ctx.lineTo(bs * 0.3, bs * 0.3);
+      ctx.moveTo(bs * 0.3, -bs * 0.3);
+      ctx.lineTo(-bs * 0.3, bs * 0.3);
+      ctx.stroke();
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
+  function drawObstacles() {
+    if (sim.obstacles.length === 0) return;
+    ctx.save();
+
+    for (let i = 0; i < sim.obstacles.length; i++) {
+      const obs = sim.obstacles[i];
+      const sp = worldToScreen(obs.x, obs.y);
+      const rPx = obs.r * pxPerMm;
+      const marginPx = (obs.r + sim.repulsionMargin + 8) * pxPerMm;
+
+      // Check active contact intensity for this obstacle
+      let maxInt = 0;
+      for (let c = 0; c < sim.repulsionContacts.length; c++) {
+        const ct = sim.repulsionContacts[c];
+        if (Math.abs(ct.obsX - obs.x) < 0.1 && Math.abs(ct.obsY - obs.y) < 0.1) {
+          if (ct.intensity > maxInt) maxInt = ct.intensity;
+        }
+      }
+
+      // Repulsion safety halo
+      const pulse = 0.5 + 0.5 * Math.sin(sim.time * 6 + i);
+      ctx.beginPath();
+      ctx.arc(sp.x, sp.y, marginPx, 0, TWO_PI);
+      ctx.fillStyle = maxInt > 0
+        ? `rgba(255, 96, 131, ${0.08 + maxInt * 0.16})`
+        : 'rgba(255, 96, 131, 0.035)';
+      ctx.fill();
+      ctx.setLineDash([4, 4]);
+      ctx.lineWidth = maxInt > 0 ? 1.8 : 1.0;
+      ctx.strokeStyle = maxInt > 0
+        ? `rgba(255, 96, 131, ${0.55 + pulse * 0.35})`
+        : 'rgba(255, 96, 131, 0.25)';
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Obstacle metallic dark bumper body
+      const g = ctx.createRadialGradient(sp.x - rPx * 0.3, sp.y - rPx * 0.3, rPx * 0.1, sp.x, sp.y, rPx);
+      g.addColorStop(0, '#2a1d32');
+      g.addColorStop(0.65, '#171222');
+      g.addColorStop(1, '#0d0a16');
+      ctx.beginPath();
+      ctx.arc(sp.x, sp.y, rPx, 0, TWO_PI);
+      ctx.fillStyle = g;
+      ctx.fill();
+
+      // Hazard ring & inner cross
+      ctx.lineWidth = 2.2;
+      ctx.strokeStyle = maxInt > 0 ? '#ff6083' : 'rgba(255, 96, 131, 0.68)';
+      ctx.stroke();
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(sp.x, sp.y, rPx - 3, 0, TWO_PI);
+      ctx.clip();
+      ctx.strokeStyle = 'rgba(255, 96, 131, 0.14)';
+      ctx.lineWidth = 4;
+      for (let d = -rPx * 2; d <= rPx * 2; d += 12) {
+        ctx.beginPath();
+        ctx.moveTo(sp.x + d, sp.y - rPx);
+        ctx.lineTo(sp.x + d - rPx, sp.y + rPx);
+        ctx.stroke();
+      }
+      ctx.restore();
+
+      // Center label
+      ctx.font = '700 9.5px ui-monospace, Consolas, monospace';
+      ctx.fillStyle = 'rgba(255, 195, 210, 0.85)';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('OBS ' + (i + 1), sp.x, sp.y);
+    }
+
+    // Draw glowing repulsion force vectors
+    if (sim.showVectors) {
+      for (let c = 0; c < sim.repulsionContacts.length; c++) {
+        const ct = sim.repulsionContacts[c];
+        const a = worldToScreen(ct.cx, ct.cy);
+        const len = (24 + ct.intensity * 32) * pxPerMm;
+        const b = { x: a.x + ct.nx * len, y: a.y - ct.ny * len };
+
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.strokeStyle = '#ff6083';
+        ctx.lineWidth = 2.4;
+        ctx.stroke();
+
+        // Arrowhead
+        const ang = Math.atan2(b.y - a.y, b.x - a.x);
+        ctx.beginPath();
+        ctx.moveTo(b.x, b.y);
+        ctx.lineTo(b.x - 8 * Math.cos(ang - 0.5), b.y - 8 * Math.sin(ang - 0.5));
+        ctx.lineTo(b.x - 8 * Math.cos(ang + 0.5), b.y - 8 * Math.sin(ang + 0.5));
+        ctx.closePath();
+        ctx.fillStyle = '#ff6083';
+        ctx.fill();
+
+        // Contact glow dot
+        ctx.beginPath();
+        ctx.arc(a.x, a.y, 4.5, 0, TWO_PI);
+        ctx.fillStyle = '#fff';
+        ctx.fill();
+      }
+    }
+    ctx.restore();
+  }
+
+  function drawMotionTrail() {
+    if (!sim.showTrail || sim.trail.length < 2) return;
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    for (let i = 1; i < sim.trail.length; i++) {
+      const p0 = sim.trail[i - 1];
+      const p1 = sim.trail[i];
+      const life = Math.max(0, 1 - p1.age / 6.5);
+      if (life <= 0) continue;
+      const s0 = worldToScreen(p0.x, p0.y);
+      const s1 = worldToScreen(p1.x, p1.y);
+      ctx.beginPath();
+      ctx.moveTo(s0.x, s0.y);
+      ctx.lineTo(s1.x, s1.y);
+      if (p1.isWeld) {
+        const hot = Math.max(0, 1 - p1.age * 1.4);
+        ctx.strokeStyle = hot > 0.35
+          ? `rgba(255, ${Math.round(160 + hot * 85)}, ${Math.round(70 + hot * 120)}, ${life * 0.92})`
+          : `rgba(255, 140, 65, ${life * 0.62})`;
+        ctx.lineWidth = 2.0 + life * 2.4;
+      } else {
+        ctx.strokeStyle = `rgba(88, 220, 255, ${life * 0.72})`;
+        ctx.lineWidth = 1.4 + life * 2.0;
+      }
+      ctx.stroke();
+    }
+
+    // Welding sparks
+    for (let i = 0; i < sim.sparks.length; i++) {
+      const sp = sim.sparks[i];
+      const a = Math.max(0, 1 - sp.life / sp.maxLife);
+      const p = worldToScreen(sp.x, sp.y);
+      ctx.fillStyle = `rgba(255, ${Math.round(180 + a * 75)}, ${Math.round(90 + a * 150)}, ${a})`;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 1.4 + a * 1.6, 0, TWO_PI);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function drawManipulabilityEllipsoid() {
+    if (!sim.showEllipsoid) return;
+    const ee = sim.joints[sim.dof];
+    if (!ee) return;
+    const s = worldToScreen(ee.x, ee.y);
+    const scale = 0.22 * pxPerMm;
+    const rx = Math.max(2, sim.ellipsoid.s1 * scale);
+    const ry = Math.max(1.5, sim.ellipsoid.s2 * scale);
+    const nearSing = sim.condRatio < 0.16;
+
+    ctx.save();
+    ctx.translate(s.x, s.y);
+    // Canvas y is inverted relative to world y, so negate world angle
+    ctx.rotate(-sim.ellipsoid.angle);
+
+    // Translucent velocity ellipsoid fill
+    ctx.beginPath();
+    ctx.ellipse(0, 0, rx, ry, 0, 0, TWO_PI);
+    ctx.fillStyle = nearSing
+      ? 'rgba(255, 96, 131, 0.16)'
+      : 'rgba(167, 139, 250, 0.13)';
+    ctx.fill();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = nearSing
+      ? 'rgba(255, 96, 131, 0.85)'
+      : 'rgba(167, 139, 250, 0.75)';
+    ctx.stroke();
+
+    // Principal singular-value axes σ₁ & σ₂
+    ctx.beginPath();
+    ctx.moveTo(-rx, 0); ctx.lineTo(rx, 0);
+    ctx.moveTo(0, -ry); ctx.lineTo(0, ry);
+    ctx.strokeStyle = nearSing
+      ? 'rgba(255, 190, 92, 0.75)'
+      : 'rgba(88, 220, 255, 0.55)';
+    ctx.lineWidth = 1.1;
+    ctx.setLineDash([3, 3]);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawRotaryBase() {
+    const rOuter = 30 * pxPerMm;
+    const rInner = 20 * pxPerMm;
+    ctx.save();
+    ctx.translate(baseScreenX, baseScreenY);
+
+    // Floor shadow
+    ctx.beginPath();
+    ctx.arc(0, 4, rOuter + 8, 0, TWO_PI);
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+    ctx.fill();
+
+    // Octagonal machined base housing
+    ctx.beginPath();
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * TWO_PI + Math.PI / 8;
+      const x = Math.cos(a) * rOuter;
+      const y = Math.sin(a) * rOuter;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    const bg = ctx.createLinearGradient(-rOuter, -rOuter, rOuter, rOuter);
+    bg.addColorStop(0, '#2a354d');
+    bg.addColorStop(0.5, '#151c2e');
+    bg.addColorStop(1, '#0b101c');
+    ctx.fillStyle = bg;
+    ctx.fill();
+    ctx.lineWidth = 1.8;
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.34)';
+    ctx.stroke();
+
+    // Corner mounting bolts
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * TWO_PI + Math.PI / 8;
+      const bx = Math.cos(a) * (rOuter * 0.8);
+      const by = Math.sin(a) * (rOuter * 0.8);
+      ctx.beginPath();
+      ctx.arc(bx, by, 2.2 * pxPerMm, 0, TWO_PI);
+      ctx.fillStyle = '#090d18';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(148, 179, 255, 0.45)';
+      ctx.lineWidth = 0.8;
+      ctx.stroke();
+    }
+
+    // Azimuth glowing turret ring
+    ctx.beginPath();
+    ctx.arc(0, 0, rInner, 0, TWO_PI);
+    ctx.fillStyle = '#11192a';
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgba(88, 220, 255, 0.55)';
+    ctx.stroke();
+
+    // Rotating azimuth pointer ticks synced to θ₁
+    ctx.rotate(-sim.theta[0]);
+    ctx.strokeStyle = '#58dcff';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(rInner * 0.45, 0);
+    ctx.lineTo(rInner * 0.96, 0);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawRobotArm() {
+    const n = sim.dof;
+    const pts = sim.joints;
+    if (pts.length < n + 1) return;
+
+    // 1. Joint Angle Limit Arcs (under links)
+    if (sim.showArcs && sim.useLimits) {
+      const lim = sim.limitDeg * DEG2RAD;
+      for (let i = 1; i < n; i++) {
+        const s = worldToScreen(pts[i].x, pts[i].y);
+        const refAng = -sim.cumAngles[i - 1]; // canvas angle of previous link
+        const arcR = Math.max(18, (28 - i * 1.8) * pxPerMm);
+        const atLimit = Math.abs(Math.abs(sim.theta[i]) - lim) < 0.03;
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(s.x, s.y);
+        ctx.arc(s.x, s.y, arcR, refAng - lim, refAng + lim, false);
+        ctx.closePath();
+        ctx.fillStyle = atLimit ? 'rgba(255, 190, 92, 0.14)' : 'rgba(88, 220, 255, 0.07)';
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, arcR, refAng - lim, refAng + lim, false);
+        ctx.strokeStyle = atLimit ? 'rgba(255, 190, 92, 0.72)' : 'rgba(88, 220, 255, 0.34)';
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+
+        // Hard-stop limit ticks
+        for (const sign of [-1, 1]) {
+          const a = refAng + sign * lim;
+          ctx.beginPath();
+          ctx.moveTo(s.x + Math.cos(a) * (arcR - 4), s.y + Math.sin(a) * (arcR - 4));
+          ctx.lineTo(s.x + Math.cos(a) * (arcR + 4), s.y + Math.sin(a) * (arcR + 4));
+          ctx.strokeStyle = atLimit ? '#ff6083' : 'rgba(255, 190, 92, 0.65)';
+          ctx.lineWidth = 1.8;
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+    }
+
+    // 2. Machined Dark-Titanium Links
+    for (let i = 0; i < n; i++) {
+      const a = worldToScreen(pts[i].x, pts[i].y);
+      const b = worldToScreen(pts[i + 1].x, pts[i + 1].y);
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const len = hypot(dx, dy);
+      const ang = Math.atan2(dy, dx);
+
+      // Taper thickness gracefully from shoulder to wrist
+      const t0 = i / n;
+      const t1 = (i + 1) / n;
+      const wStart = Math.max(7, (17 - t0 * 8.5) * pxPerMm);
+      const wEnd = Math.max(5.5, (15 - t1 * 8.0) * pxPerMm);
+
+      // Check if segment has obstacle repulsion
+      let segDanger = 0;
+      for (let c = 0; c < sim.repulsionContacts.length; c++) {
+        if (sim.repulsionContacts[c].segIdx === i) {
+          segDanger = Math.max(segDanger, sim.repulsionContacts[c].intensity);
+        }
+      }
+
+      ctx.save();
+      ctx.translate(a.x, a.y);
+      ctx.rotate(ang);
+
+      // Soft drop shadow
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.42)';
+      ctx.beginPath();
+      ctx.moveTo(0, -wStart * 0.5 + 4);
+      ctx.lineTo(len, -wEnd * 0.5 + 4);
+      ctx.lineTo(len, wEnd * 0.5 + 4);
+      ctx.lineTo(0, wStart * 0.5 + 4);
+      ctx.closePath();
+      ctx.fill();
+
+      // Main machined titanium body
+      const lg = ctx.createLinearGradient(0, -wStart * 0.6, 0, wStart * 0.6);
+      lg.addColorStop(0, '#36445f');
+      lg.addColorStop(0.28, '#1e283d');
+      lg.addColorStop(0.7, '#111828');
+      lg.addColorStop(1, '#222d44');
+
+      ctx.beginPath();
+      ctx.moveTo(0, -wStart * 0.5);
+      ctx.lineTo(len, -wEnd * 0.5);
+      ctx.lineTo(len, wEnd * 0.5);
+      ctx.lineTo(0, wStart * 0.5);
+      ctx.closePath();
+      ctx.fillStyle = lg;
+      ctx.fill();
+
+      ctx.lineWidth = 1.25;
+      ctx.strokeStyle = segDanger > 0
+        ? `rgba(255, 96, 131, ${0.55 + segDanger * 0.45})`
+        : 'rgba(155, 195, 255, 0.34)';
+      ctx.stroke();
+
+      // Recessed inner channel
+      const pad = Math.min(len * 0.18, 16 * pxPerMm);
+      if (len > pad * 2.4) {
+        ctx.fillStyle = 'rgba(5, 9, 18, 0.72)';
+        ctx.beginPath();
+        ctx.roundRect(pad, -wEnd * 0.22, len - pad * 2, wEnd * 0.44, 3);
+        ctx.fill();
+
+        // Glowing cyan/amber LED spine along link
+        const spineCol = segDanger > 0.05
+          ? '#ff6083'
+          : (sim.condRatio < 0.14 ? '#ffbe5c' : '#58dcff');
+        ctx.strokeStyle = spineCol;
+        ctx.shadowColor = spineCol;
+        ctx.shadowBlur = 8;
+        ctx.lineWidth = Math.max(1.5, 2.2 * pxPerMm);
+        ctx.beginPath();
+        ctx.moveTo(pad + 4, 0);
+        ctx.lineTo(len - pad - 4, 0);
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+      }
+
+      ctx.restore();
+    }
+
+    // 3. Servo Joints + Torque/Velocity Halos
+    for (let i = 0; i < n; i++) {
+      const s = worldToScreen(pts[i].x, pts[i].y);
+      const jr = Math.max(6.5, (14.5 - (i / n) * 5.8) * pxPerMm);
+      const speedNorm = clamp(Math.abs(sim.omega[i]) / 6.5, 0, 1);
+      const tq = sim.torque[i] || 0;
+
+      // Velocity / Torque Halo
+      if (sim.showHalos && (speedNorm > 0.03 || tq > 0.12)) {
+        const haloR = jr + (5 + speedNorm * 13 + tq * 5) * pxPerMm;
+        const hg = ctx.createRadialGradient(s.x, s.y, jr * 0.8, s.x, s.y, haloR);
+        const isHigh = speedNorm > 0.55;
+        hg.addColorStop(0, isHigh ? `rgba(255, 190, 92, ${0.32 + speedNorm * 0.25})` : `rgba(88, 220, 255, ${0.22 + speedNorm * 0.25})`);
+        hg.addColorStop(1, 'rgba(88, 220, 255, 0)');
+        ctx.fillStyle = hg;
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, haloR, 0, TWO_PI);
+        ctx.fill();
+
+        // Dynamic velocity arc indicator
+        if (speedNorm > 0.05) {
+          const spinSign = sim.omega[i] >= 0 ? -1 : 1; // canvas y-flip
+          const baseA = -sim.cumAngles[i];
+          const sweep = spinSign * (0.4 + speedNorm * 1.6);
+          ctx.beginPath();
+          ctx.arc(s.x, s.y, jr + 4.5, baseA, baseA + sweep, spinSign < 0);
+          ctx.strokeStyle = isHigh ? '#ffbe5c' : '#58dcff';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+        }
+      }
+
+      // Metallic harmonic-drive servo housing
+      const jg = ctx.createRadialGradient(s.x - jr * 0.3, s.y - jr * 0.3, jr * 0.1, s.x, s.y, jr);
+      jg.addColorStop(0, '#445577');
+      jg.addColorStop(0.6, '#1c2539');
+      jg.addColorStop(1, '#0c111e');
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, jr, 0, TWO_PI);
+      ctx.fillStyle = jg;
+      ctx.fill();
+      ctx.lineWidth = 1.6;
+      ctx.strokeStyle = 'rgba(180, 212, 255, 0.48)';
+      ctx.stroke();
+
+      // Inner glowing servo core
+      const atLimit = sim.useLimits && i > 0 && Math.abs(Math.abs(sim.theta[i]) - sim.limitDeg * DEG2RAD) < 0.03;
+      const coreCol = atLimit ? '#ffbe5c' : '#58dcff';
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, jr * 0.44, 0, TWO_PI);
+      ctx.fillStyle = '#09101f';
+      ctx.fill();
+      ctx.lineWidth = 1.6;
+      ctx.strokeStyle = coreCol;
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, jr * 0.18, 0, TWO_PI);
+      ctx.fillStyle = coreCol;
+      ctx.fill();
+    }
+
+    // 4. Animated End-Effector Gripper
+    drawEndEffector(pts[n], sim.cumAngles[n - 1]);
+  }
+
+  function drawEndEffector(ee, worldAng) {
+    const s = worldToScreen(ee.x, ee.y);
+    const sc = Math.max(0.7, pxPerMm);
+    const spread = (4 + sim.gripperOpen * 10) * sc;
+    const jawLen = 18 * sc;
+
+    ctx.save();
+    ctx.translate(s.x, s.y);
+    ctx.rotate(-worldAng);
+
+    // Wrist collar
+    ctx.fillStyle = '#1b2438';
+    ctx.strokeStyle = 'rgba(165, 205, 255, 0.52)';
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.roundRect(-7 * sc, -9 * sc, 13 * sc, 18 * sc, 3);
+    ctx.fill();
+    ctx.stroke();
+
+    // Dual articulated gripper fingers
+    for (const side of [-1, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(5 * sc, side * spread * 0.6);
+      ctx.lineTo(5 * sc + jawLen * 0.62, side * spread);
+      ctx.lineTo(5 * sc + jawLen, side * (spread * 0.52));
+      ctx.lineTo(5 * sc + jawLen - 3 * sc, side * (spread * 0.25));
+      ctx.lineTo(5 * sc + jawLen * 0.55, side * (spread * 0.68));
+      ctx.lineTo(5 * sc, side * (spread * 0.25));
+      ctx.closePath();
+      ctx.fillStyle = '#2d3b56';
+      ctx.fill();
+      ctx.strokeStyle = '#7de6ff';
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+    }
+
+    // Glowing TCP (Tool Center Point) emitter dot
+    const isWeld = sim.pathMode === 'weld' && sim.errorMm < 16 && !ui.paused;
+    ctx.beginPath();
+    ctx.arc(0, 0, 3.6 * sc, 0, TWO_PI);
+    ctx.fillStyle = isWeld ? '#fff4d6' : '#58dcff';
+    ctx.shadowColor = isWeld ? '#ff9d3b' : '#58dcff';
+    ctx.shadowBlur = isWeld ? 18 : 10;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    ctx.restore();
+  }
+
+  function drawTargetReticle() {
+    if (sim.solver === 'fk') return;
+    const t = worldToScreen(sim.target.x, sim.target.y);
+    const ee = sim.joints[sim.dof];
+
+    ctx.save();
+    // Optional error tether vector when tracking or out of reach
+    if (sim.showVectors && ee && sim.errorMm > 4) {
+      const e = worldToScreen(ee.x, ee.y);
+      ctx.beginPath();
+      ctx.moveTo(e.x, e.y);
+      ctx.lineTo(t.x, t.y);
+      ctx.setLineDash([4, 4]);
+      ctx.strokeStyle = sim.statusClass === 'warn' ? 'rgba(255, 190, 92, 0.55)' : 'rgba(88, 220, 255, 0.45)';
+      ctx.lineWidth = 1.3;
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    const pulse = 1 + 0.08 * Math.sin(sim.time * 4.5);
+    const r = 16 * pulse;
+    const reached = sim.errorMm < 4;
+    const col = sim.statusClass === 'warn' ? '#ffbe5c' : (reached ? '#4af2b2' : '#58dcff');
+
+    // Outer glow
+    const g = ctx.createRadialGradient(t.x, t.y, 2, t.x, t.y, r * 2.1);
+    g.addColorStop(0, reached ? 'rgba(74, 242, 178, 0.25)' : 'rgba(88, 220, 255, 0.25)');
+    g.addColorStop(1, 'rgba(88, 220, 255, 0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(t.x, t.y, r * 2.1, 0, TWO_PI);
+    ctx.fill();
+
+    // Rotating segmented reticle ring
+    ctx.translate(t.x, t.y);
+    ctx.rotate(sim.time * 0.9);
+    ctx.strokeStyle = col;
+    ctx.lineWidth = 1.8;
+    for (let k = 0; k < 4; k++) {
+      const a0 = k * (Math.PI * 0.5) + 0.22;
+      const a1 = (k + 1) * (Math.PI * 0.5) - 0.22;
+      ctx.beginPath();
+      ctx.arc(0, 0, r, a0, a1);
+      ctx.stroke();
+    }
+
+    // Crosshair ticks
+    ctx.rotate(-sim.time * 0.9);
+    ctx.beginPath();
+    ctx.moveTo(-r - 6, 0); ctx.lineTo(-5, 0);
+    ctx.moveTo(5, 0); ctx.lineTo(r + 6, 0);
+    ctx.moveTo(0, -r - 6); ctx.lineTo(0, -5);
+    ctx.moveTo(0, 5); ctx.lineTo(0, r + 6);
+    ctx.strokeStyle = col;
+    ctx.lineWidth = 1.25;
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(0, 0, 2.8, 0, TWO_PI);
+    ctx.fillStyle = '#fff';
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function render() {
+    // Smoothly slide base center when drawer opens/closes
+    baseScreenX += (targetBaseScreenX - baseScreenX) * 0.14;
+
+    drawBackdropAndGrid();
+    drawWorkspaceHeatmap();
+    drawPathGuideAndStations();
+    drawMotionTrail();
+    drawObstacles();
+    drawRotaryBase();
+    drawRobotArm();
+    drawManipulabilityEllipsoid();
+    drawTargetReticle();
+  }
+
+  // =========================================================================
+  // DOM & Telemetry Binding
+  // =========================================================================
+  const elSolverBadge = document.getElementById('solver-badge');
+  const elReachStatus = document.getElementById('reach-status');
+  const elTelErr = document.getElementById('tel-err');
+  const elTelIter = document.getElementById('tel-iter');
+  const elTelManip = document.getElementById('tel-manip');
+  const elTelEE = document.getElementById('tel-ee');
+  const elTelOmega = document.getElementById('tel-omega');
+  const elTelDof = document.getElementById('tel-dof');
+  const elManipFill = document.getElementById('manip-fill');
+  const elTelCond = document.getElementById('tel-cond');
+  const elT1 = document.getElementById('tel-t1');
+  const elT2 = document.getElementById('tel-t2');
+  const elT3 = document.getElementById('tel-t3');
+  const elT4 = document.getElementById('tel-t4');
+
+  const elDrawer = document.getElementById('drawer');
+  const elJointSliders = document.getElementById('joint-sliders');
+  const elObsList = document.getElementById('obs-list');
+  const elObsCount = document.getElementById('obs-count');
+  const elBtnPlay = document.getElementById('btn-play');
+  const elBtnReset = document.getElementById('btn-reset');
+  const elBtnAudio = document.getElementById('btn-audio');
+  const elBtnDrawer = document.getElementById('btn-drawer');
+  const elBtnCinema = document.getElementById('btn-cinema');
+  const elBtnZenRestore = document.getElementById('btn-zen-restore');
+  const elBtnObsMode = document.getElementById('btn-obs-mode');
+  const elBtnObsClear = document.getElementById('btn-obs-clear');
+  const elBtnClearTrail = document.getElementById('btn-clear-trail');
+  const elBtnFlipElbow = document.getElementById('btn-flip-elbow');
+  const elBtnHomePose = document.getElementById('btn-home-pose');
+  const elFkHint = document.getElementById('fk-hint');
+
+  const slDamping = document.getElementById('sl-damping');
+  const valDamping = document.getElementById('val-damping');
+  const slIter = document.getElementById('sl-iter');
+  const valIter = document.getElementById('val-iter');
+  const slSpeed = document.getElementById('sl-speed');
+  const valSpeed = document.getElementById('val-speed');
+  const slPathSpeed = document.getElementById('sl-pathspeed');
+  const valPathSpeed = document.getElementById('val-pathspeed');
+  const slDof = document.getElementById('sl-dof');
+  const valDof = document.getElementById('val-dof');
+  const slLimit = document.getElementById('sl-limit');
+  const valLimit = document.getElementById('val-limit');
+  const slObsR = document.getElementById('sl-obsr');
+  const valObsR = document.getElementById('val-obsr');
+  const slMargin = document.getElementById('sl-margin');
+  const valMargin = document.getElementById('val-margin');
+
+  const chkLimits = document.getElementById('chk-limits');
+  const chkHeatmap = document.getElementById('chk-heatmap');
+  const chkEllipsoid = document.getElementById('chk-ellipsoid');
+  const chkArcs = document.getElementById('chk-arcs');
+  const chkHalos = document.getElementById('chk-halos');
+  const chkTrail = document.getElementById('chk-trail');
+  const chkVectors = document.getElementById('chk-vectors');
+  const dampingWrap = document.getElementById('damping-wrap');
+
+  let fkSliderEls = [];
+  let fkValEls = [];
+
+  function buildJointSlidersUI() {
+    elJointSliders.innerHTML = '';
+    fkSliderEls = [];
+    fkValEls = [];
+    const lim = sim.useLimits ? sim.limitDeg : 180;
+    for (let i = 0; i < sim.dof; i++) {
+      const row = document.createElement('div');
+      row.className = 'control-row';
+
+      const head = document.createElement('div');
+      head.className = 'control-head';
+      const lbl = document.createElement('span');
+      lbl.textContent = i === 0 ? 'Joint θ₁ (Base)' : `Joint θ${String.fromCharCode(0x2081 + i)}`;
+      const val = document.createElement('span');
+      val.className = 'val';
+      const deg = Math.round(sim.theta[i] * RAD2DEG);
+      val.textContent = deg + '°';
+      head.appendChild(lbl);
+      head.appendChild(val);
+
+      const inp = document.createElement('input');
+      inp.type = 'range';
+      inp.className = 'mint';
+      inp.min = i === 0 ? -180 : -lim;
+      inp.max = i === 0 ? 180 : lim;
+      inp.step = 1;
+      inp.value = deg;
+
+      inp.addEventListener('input', () => {
+        if (sim.solver !== 'fk') setSolver('fk');
+        sim.theta[i] = parseFloat(inp.value) * DEG2RAD;
+        sim.thetaSolved[i] = sim.theta[i];
+        val.textContent = Math.round(parseFloat(inp.value)) + '°';
+        computeFK(sim.theta, sim.joints, sim.cumAngles);
+        const ee = sim.joints[sim.dof];
+        sim.target.x = ee.x;
+        sim.target.y = ee.y;
+      });
+
+      row.appendChild(head);
+      row.appendChild(inp);
+      elJointSliders.appendChild(row);
+      fkSliderEls.push(inp);
+      fkValEls.push(val);
+    }
+  }
+
+  function syncJointSliderRanges() {
+    const lim = sim.useLimits ? sim.limitDeg : 180;
+    for (let i = 1; i < fkSliderEls.length; i++) {
+      fkSliderEls[i].min = -lim;
+      fkSliderEls[i].max = lim;
+    }
+  }
+
+  function refreshObstaclesUI() {
+    elObsCount.textContent = String(sim.obstacles.length);
+    elObsList.innerHTML = '';
+    if (sim.obstacles.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'note-small';
+      empty.textContent = 'No obstacles placed. Click "Place Obstacle" or Shift+Drag on canvas.';
+      elObsList.appendChild(empty);
+      return;
+    }
+    sim.obstacles.forEach((obs, idx) => {
+      const item = document.createElement('div');
+      item.className = 'obj-item';
+
+      const dot = document.createElement('span');
+      dot.className = 'obj-dot';
+      const meta = document.createElement('div');
+      meta.className = 'obj-meta';
+      const nm = document.createElement('span');
+      nm.className = 'obj-name';
+      nm.textContent = 'Obstacle #' + (idx + 1);
+      const dist = document.createElement('span');
+      dist.className = 'obj-dist';
+      dist.textContent = `(${Math.round(obs.x)}, ${Math.round(obs.y)}) · r=${Math.round(obs.r)}mm`;
+      meta.appendChild(nm);
+      meta.appendChild(dist);
+
+      const del = document.createElement('button');
+      del.className = 'icon-x';
+      del.textContent = '×';
+      del.title = 'Remove obstacle';
+      del.addEventListener('click', () => {
+        sim.obstacles.splice(idx, 1);
+        refreshObstaclesUI();
+      });
+
+      item.appendChild(dot);
+      item.appendChild(meta);
+      item.appendChild(del);
+      elObsList.appendChild(item);
+    });
+  }
+
+  function updateTelemetryUI() {
+    elTelErr.textContent = sim.errorMm.toFixed(1) + ' mm';
+    elTelErr.className = 'tele-val ' + (sim.errorMm < 4 ? 'mint' : (sim.errorMm < 25 ? 'cyan' : 'amber'));
+
+    elTelIter.textContent = sim.solver === 'fk' ? 'FK' : `${sim.iterUsed} / ${sim.maxIter}`;
+
+    // Scale w into clean cm²-like readability (w / 1000)
+    const wDisplay = (sim.manipW / 1000).toFixed(1);
+    elTelManip.textContent = wDisplay;
+    elTelManip.className = 'tele-val ' + (sim.condRatio < 0.14 ? 'rose' : (sim.condRatio < 0.3 ? 'amber' : 'mint'));
+
+    const ee = sim.joints[sim.dof] || { x: 0, y: 0 };
+    elTelEE.textContent = `${Math.round(ee.x)}, ${Math.round(ee.y)}`;
+    elTelOmega.textContent = sim.totalOmegaDeg.toFixed(0) + ' °/s';
+    elTelDof.textContent = `${sim.dof}-DOF · ${Math.round(sim.totalReach)}`;
+
+    const dexPct = Math.round(clamp(sim.condRatio * 100, 0, 100));
+    elManipFill.style.width = Math.max(4, Math.round(sim.manipNorm * 100)) + '%';
+    elTelCond.textContent = dexPct + '%';
+
+    elReachStatus.textContent = sim.statusText;
+    elReachStatus.className = 'status-pill' + (sim.statusClass ? ' ' + sim.statusClass : '');
+
+    // Joint angles readout θ₁..θ₄
+    const fmt = (i) => i < sim.dof ? Math.round(sim.theta[i] * RAD2DEG) + '°' : '—';
+    elT1.textContent = fmt(0);
+    elT2.textContent = fmt(1);
+    elT3.textContent = fmt(2);
+    elT4.textContent = sim.dof > 4 ? `${Math.round(sim.theta[3] * RAD2DEG)}° (+${sim.dof - 4})` : fmt(3);
+
+    // Sync live FK sliders when in IK mode
+    if (sim.solver !== 'fk') {
+      for (let i = 0; i < fkSliderEls.length; i++) {
+        const deg = Math.round(sim.theta[i] * RAD2DEG);
+        fkSliderEls[i].value = deg;
+        fkValEls[i].textContent = deg + '°';
+      }
+    }
+  }
+
+  // =========================================================================
+  // Mode & Preset Setters
+  // =========================================================================
+  function setSolver(mode) {
+    sim.solver = mode;
+    document.querySelectorAll('#solver-seg .seg-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.solver === mode);
+      b.classList.toggle('violet', b.dataset.solver === 'dls' && mode === 'dls');
+    });
+    const labels = { fabrik: 'FABRIK', dls: 'DLS Jacobian', ccd: 'CCD Sweep', fk: 'FK Manual' };
+    elSolverBadge.textContent = labels[mode] || mode;
+    elSolverBadge.className = 'mode-badge' + (mode === 'fabrik' ? '' : ' ' + mode);
+    dampingWrap.style.opacity = mode === 'dls' ? '1' : '0.45';
+    elFkHint.textContent = mode === 'fk' ? 'FK Active' : 'Drag to enter FK';
+    if (mode === 'fk') {
+      sim.pathMode = 'manual';
+      syncPathButtons();
+    }
+  }
+
+  function syncPathButtons() {
+    document.querySelectorAll('#path-seg .seg-btn').forEach(b => {
+      const on = b.dataset.path === sim.pathMode;
+      b.classList.toggle('active', on);
+      b.classList.toggle('amber', on && sim.pathMode !== 'manual');
+    });
+  }
+
+  function setPathMode(path) {
+    sim.pathMode = path;
+    if (path !== 'manual' && sim.solver === 'fk') setSolver('fabrik');
+    syncPathButtons();
+    sim.trail = [];
+    sim.sparks = [];
+    if (path === 'pickplace') {
+      sim.pickPlace.phaseT = 0;
+      sim.pickPlace.boxCarried = false;
+      sim.pickPlace.boxPos = { x: sim.pickPlace.pickPos.x, y: sim.pickPlace.pickPos.y };
+    }
+  }
+
+  function setProfile(profile) {
+    sim.profile = profile;
+    document.querySelectorAll('#profile-seg .seg-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.profile === profile);
+    });
+    sim.lengths = buildLinkLengths(sim.dof, sim.profile);
+    computeReachBounds();
+    computeFK(sim.theta, sim.joints, sim.cumAngles);
+  }
+
+  function setObstacleMode(on) {
+    ui.placeObstacleMode = on;
+    elBtnObsMode.classList.toggle('active-mode', on);
+    elBtnObsMode.textContent = on ? '✓ Placing Obstacles' : '⊕ Place Obstacle';
+    canvas.classList.toggle('obstacle-mode', on);
+  }
+
+  function applyPreset(name) {
+    ui.activePreset = name;
+    document.querySelectorAll('.preset-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.preset === name);
+    });
+    sim.trail = [];
+    sim.sparks = [];
+    sim.obstacles = [];
+    setObstacleMode(false);
+
+    if (name === 'weld3') {
+      sim.useLimits = false;
+      sim.limitDeg = 130;
+      sim.damping = 0.22;
+      sim.maxIter = 24;
+      sim.servoSpeed = 16;
+      sim.pathSpeed = 1.0;
+      initArm(3, 'industrial', [75, -62, -45]);
+      setSolver('fabrik');
+      setPathMode('weld');
+      sim.showHeatmap = true;
+      sim.showEllipsoid = true;
+    } else if (name === 'snake6') {
+      sim.useLimits = false;
+      sim.limitDeg = 120;
+      sim.damping = 0.20;
+      sim.maxIter = 28;
+      sim.servoSpeed = 18;
+      sim.pathSpeed = 1.05;
+      initArm(6, 'tentacle', [95, -24, -28, -22, 18, 22]);
+      setSolver('fabrik');
+      setPathMode('figure8');
+      sim.showHeatmap = true;
+      sim.showEllipsoid = true;
+    } else if (name === 'singularity') {
+      sim.useLimits = false;
+      sim.limitDeg = 150;
+      sim.damping = 0.14;
+      sim.maxIter = 30;
+      sim.servoSpeed = 14;
+      sim.pathSpeed = 0.85;
+      initArm(3, 'equal', [28, -12, -10]);
+      setSolver('dls');
+      setPathMode('circle');
+      sim.showHeatmap = true;
+      sim.showEllipsoid = true;
+    } else if (name === 'pickplace') {
+      sim.useLimits = false;
+      sim.limitDeg = 135;
+      sim.damping = 0.24;
+      sim.maxIter = 32;
+      sim.servoSpeed = 15;
+      sim.pathSpeed = 1.0;
+      initArm(4, 'industrial', [120, -45, -45, -30]);
+      sim.obstacles = [
+        { id: sim.nextObsId++, x: 0, y: 118, r: 44 },
+        { id: sim.nextObsId++, x: -115, y: 35, r: 30 }
+      ];
+      sim.pickPlace.deliveredCount = 0;
+      setSolver('fabrik');
+      setPathMode('pickplace');
+      sim.showHeatmap = true;
+      sim.showEllipsoid = false;
+    } else if (name === 'elbowlim') {
+      sim.useLimits = true;
+      sim.limitDeg = 95;
+      sim.damping = 0.22;
+      sim.maxIter = 28;
+      sim.servoSpeed = 13;
+      sim.pathSpeed = 0.9;
+      initArm(3, 'industrial', [95, -65, -45]);
+      setSolver('ccd');
+      setPathMode('figure8');
+      sim.showHeatmap = true;
+      sim.showEllipsoid = true;
+      sim.showArcs = true;
+    } else if (name === 'classic2') {
+      sim.useLimits = false;
+      sim.limitDeg = 145;
+      sim.damping = 0.18;
+      sim.maxIter = 26;
+      sim.servoSpeed = 15;
+      sim.pathSpeed = 0.95;
+      initArm(2, 'industrial', [70, -75]);
+      setSolver('dls');
+      setPathMode('circle');
+      sim.showHeatmap = true;
+      sim.showEllipsoid = true;
+    }
+
+    syncAllControlsToState();
+    refreshObstaclesUI();
+  }
+
+  function syncAllControlsToState() {
+    slDamping.value = sim.damping;
+    valDamping.textContent = sim.damping.toFixed(2);
+    slIter.value = sim.maxIter;
+    valIter.textContent = String(sim.maxIter);
+    slSpeed.value = sim.servoSpeed;
+    valSpeed.textContent = sim.servoSpeed.toFixed(1) + ' rad/s';
+    slPathSpeed.value = sim.pathSpeed;
+    valPathSpeed.textContent = sim.pathSpeed.toFixed(2) + '×';
+    slDof.value = sim.dof;
+    valDof.textContent = sim.dof + ' Joints';
+    chkLimits.checked = sim.useLimits;
+    slLimit.value = sim.limitDeg;
+    valLimit.textContent = sim.limitDeg + '°';
+    slObsR.value = sim.newObsRadius;
+    valObsR.textContent = sim.newObsRadius + ' mm';
+    slMargin.value = sim.repulsionMargin;
+    valMargin.textContent = sim.repulsionMargin + ' mm';
+
+    chkHeatmap.checked = sim.showHeatmap;
+    chkEllipsoid.checked = sim.showEllipsoid;
+    chkArcs.checked = sim.showArcs;
+    chkHalos.checked = sim.showHalos;
+    chkTrail.checked = sim.showTrail;
+    chkVectors.checked = sim.showVectors;
+
+    document.querySelectorAll('#profile-seg .seg-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.profile === sim.profile);
+    });
+    computeReachBounds();
+    syncJointSliderRanges();
+  }
+
+  // =========================================================================
+  // Pointer Interaction (Drag Target, Place/Drag/Delete Obstacles)
+  // =========================================================================
+  let pointerState = {
+    active: false,
+    mode: null, // 'target' | 'obs-move' | 'obs-create'
+    obsIdx: -1,
+    createStart: null
+  };
+
+  function findObstacleAt(wx, wy) {
+    for (let i = sim.obstacles.length - 1; i >= 0; i--) {
+      const o = sim.obstacles[i];
+      if (hypot(wx - o.x, wy - o.y) <= o.r + 6) return i;
+    }
+    return -1;
+  }
+
+  canvas.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    const w = screenToWorld(e.clientX, e.clientY);
+    const idx = findObstacleAt(w.x, w.y);
+    if (idx >= 0) {
+      sim.obstacles.splice(idx, 1);
+      refreshObstaclesUI();
+    }
+  });
+
+  canvas.addEventListener('pointerdown', (e) => {
+    if (e.button === 2) return;
+    canvas.setPointerCapture(e.pointerId);
+    const w = screenToWorld(e.clientX, e.clientY);
+    const hitObs = findObstacleAt(w.x, w.y);
+
+    if (e.shiftKey || ui.placeObstacleMode) {
+      if (hitObs >= 0 && !e.shiftKey) {
+        pointerState = { active: true, mode: 'obs-move', obsIdx: hitObs, createStart: null };
+        canvas.classList.add('grabbing');
+      } else {
+        const obs = { id: sim.nextObsId++, x: w.x, y: w.y, r: sim.newObsRadius };
+        sim.obstacles.push(obs);
+        pointerState = { active: true, mode: 'obs-create', obsIdx: sim.obstacles.length - 1, createStart: w };
+        refreshObstaclesUI();
+      }
+      return;
+    }
+
+    // Check if grabbing an existing obstacle
+    if (hitObs >= 0 && hypot(w.x - sim.target.x, w.y - sim.target.y) > 22) {
+      pointerState = { active: true, mode: 'obs-move', obsIdx: hitObs, createStart: null };
+      canvas.classList.add('grabbing');
+      return;
+    }
+
+    // Otherwise drag target reticle directly (switches out of auto-path & FK)
+    if (sim.solver === 'fk') setSolver('fabrik');
+    if (sim.pathMode !== 'manual') {
+      sim.pathMode = 'manual';
+      syncPathButtons();
+    }
+    sim.target.x = w.x;
+    sim.target.y = w.y;
+    pointerState = { active: true, mode: 'target', obsIdx: -1, createStart: null };
+    canvas.classList.add('grabbing');
+  });
+
+  canvas.addEventListener('pointermove', (e) => {
+    const w = screenToWorld(e.clientX, e.clientY);
+    if (!pointerState.active) {
+      const overTarget = hypot(w.x - sim.target.x, w.y - sim.target.y) < 28;
+      const overObs = findObstacleAt(w.x, w.y) >= 0;
+      canvas.classList.toggle('grab', (overTarget || overObs) && !ui.placeObstacleMode);
+      return;
+    }
+
+    if (pointerState.mode === 'target') {
+      sim.target.x = w.x;
+      sim.target.y = w.y;
+    } else if (pointerState.mode === 'obs-move' && sim.obstacles[pointerState.obsIdx]) {
+      sim.obstacles[pointerState.obsIdx].x = w.x;
+      sim.obstacles[pointerState.obsIdx].y = w.y;
+      refreshObstaclesUI();
+    } else if (pointerState.mode === 'obs-create' && sim.obstacles[pointerState.obsIdx]) {
+      const d = hypot(w.x - pointerState.createStart.x, w.y - pointerState.createStart.y);
+      if (d > 14) {
+        sim.obstacles[pointerState.obsIdx].r = clamp(d, 18, 110);
+        refreshObstaclesUI();
+      }
+    }
+  });
+
+  function endPointer(e) {
+    if (!pointerState.active) return;
+    pointerState.active = false;
+    pointerState.mode = null;
+    canvas.classList.remove('grabbing');
+    try { canvas.releasePointerCapture(e.pointerId); } catch (_) {}
+  }
+  canvas.addEventListener('pointerup', endPointer);
+  canvas.addEventListener('pointercancel', endPointer);
+
+  // =========================================================================
+  // UI Event Listeners
+  // =========================================================================
+  // Tabs
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      const pane = document.getElementById('tab-' + btn.dataset.tab);
+      if (pane) pane.classList.add('active');
+    });
+  });
+
+  // Presets
+  document.querySelectorAll('.preset-btn').forEach(btn => {
+    btn.addEventListener('click', () => applyPreset(btn.dataset.preset));
+  });
+
+  // Solver buttons
+  document.querySelectorAll('#solver-seg .seg-btn').forEach(btn => {
+    btn.addEventListener('click', () => setSolver(btn.dataset.solver));
+  });
+
+  // Auto-path buttons
+  document.querySelectorAll('#path-seg .seg-btn').forEach(btn => {
+    btn.addEventListener('click', () => setPathMode(btn.dataset.path));
+  });
+
+  // Profile buttons
+  document.querySelectorAll('#profile-seg .seg-btn').forEach(btn => {
+    btn.addEventListener('click', () => setProfile(btn.dataset.profile));
+  });
+
+  // Sliders
+  slDamping.addEventListener('input', () => {
+    sim.damping = parseFloat(slDamping.value);
+    valDamping.textContent = sim.damping.toFixed(2);
+  });
+  slIter.addEventListener('input', () => {
+    sim.maxIter = parseInt(slIter.value, 10);
+    valIter.textContent = String(sim.maxIter);
+  });
+  slSpeed.addEventListener('input', () => {
+    sim.servoSpeed = parseFloat(slSpeed.value);
+    valSpeed.textContent = sim.servoSpeed.toFixed(1) + ' rad/s';
+  });
+  slPathSpeed.addEventListener('input', () => {
+    sim.pathSpeed = parseFloat(slPathSpeed.value);
+    valPathSpeed.textContent = sim.pathSpeed.toFixed(2) + '×';
+  });
+  slDof.addEventListener('input', () => {
+    const newDof = parseInt(slDof.value, 10);
+    valDof.textContent = newDof + ' Joints';
+    initArm(newDof, sim.profile);
+    sim.trail = [];
+  });
+  chkLimits.addEventListener('change', () => {
+    sim.useLimits = chkLimits.checked;
+    computeReachBounds();
+    applyLimitsToTheta(sim.theta);
+    syncJointSliderRanges();
+  });
+  slLimit.addEventListener('input', () => {
+    sim.limitDeg = parseInt(slLimit.value, 10);
+    valLimit.textContent = sim.limitDeg + '°';
+    computeReachBounds();
+    applyLimitsToTheta(sim.theta);
+    syncJointSliderRanges();
+  });
+  slObsR.addEventListener('input', () => {
+    sim.newObsRadius = parseInt(slObsR.value, 10);
+    valObsR.textContent = sim.newObsRadius + ' mm';
+  });
+  slMargin.addEventListener('input', () => {
+    sim.repulsionMargin = parseInt(slMargin.value, 10);
+    valMargin.textContent = sim.repulsionMargin + ' mm';
+  });
+
+  // Overlays
+  chkHeatmap.addEventListener('change', () => { sim.showHeatmap = chkHeatmap.checked; });
+  chkEllipsoid.addEventListener('change', () => { sim.showEllipsoid = chkEllipsoid.checked; });
+  chkArcs.addEventListener('change', () => { sim.showArcs = chkArcs.checked; });
+  chkHalos.addEventListener('change', () => { sim.showHalos = chkHalos.checked; });
+  chkTrail.addEventListener('change', () => {
+    sim.showTrail = chkTrail.checked;
+    if (!sim.showTrail) sim.trail = [];
+  });
+  chkVectors.addEventListener('change', () => { sim.showVectors = chkVectors.checked; });
+
+  // Action buttons
+  elBtnObsMode.addEventListener('click', () => setObstacleMode(!ui.placeObstacleMode));
+  elBtnObsClear.addEventListener('click', () => {
+    sim.obstacles = [];
+    refreshObstaclesUI();
+  });
+  elBtnClearTrail.addEventListener('click', () => {
+    sim.trail = [];
+    sim.sparks = [];
+  });
+  elBtnFlipElbow.addEventListener('click', () => {
+    // Reflect bend angles θ₂..θₙ across line from base to target for Elbow-Up / Elbow-Down swap
+    const baseToTarget = Math.atan2(sim.target.y, sim.target.x);
+    sim.theta[0] = wrapAngle(2 * baseToTarget - sim.theta[0]);
+    for (let i = 1; i < sim.dof; i++) {
+      sim.theta[i] = -sim.theta[i];
+    }
+    sim.thetaSolved = sim.theta.slice();
+    applyLimitsToTheta(sim.theta);
+    computeFK(sim.theta, sim.joints, sim.cumAngles);
+  });
+  elBtnHomePose.addEventListener('click', () => {
+    sim.theta[0] = Math.PI * 0.5;
+    for (let i = 1; i < sim.dof; i++) sim.theta[i] = -0.35;
+    sim.thetaSolved = sim.theta.slice();
+    computeFK(sim.theta, sim.joints, sim.cumAngles);
+    const ee = sim.joints[sim.dof];
+    sim.target.x = ee.x;
+    sim.target.y = ee.y;
+    sim.trail = [];
+  });
+
+  // Transport bar
+  function togglePause() {
+    ui.paused = !ui.paused;
+    elBtnPlay.textContent = ui.paused ? '▶ Play' : '⏸ Pause';
+    elBtnPlay.classList.toggle('active', !ui.paused);
+  }
+
+  function toggleAudio() {
+    if (!audioCtx) initAudio();
+    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+    ui.audioOn = !ui.audioOn;
+    elBtnAudio.textContent = ui.audioOn ? '🔊 Audio' : '🔇 Audio';
+    elBtnAudio.classList.toggle('active', ui.audioOn);
+  }
+
+  function toggleDrawer() {
+    ui.drawerCollapsed = !ui.drawerCollapsed;
+    elDrawer.classList.toggle('collapsed', ui.drawerCollapsed);
+    elBtnDrawer.classList.toggle('active', !ui.drawerCollapsed);
+    updateLayout(false);
+  }
+
+  function toggleCinema() {
+    ui.zenMode = !ui.zenMode;
+    document.body.classList.toggle('zen-mode', ui.zenMode);
+    elBtnCinema.classList.toggle('active', ui.zenMode);
+    updateLayout(false);
+  }
+
+  elBtnPlay.addEventListener('click', togglePause);
+  elBtnReset.addEventListener('click', () => applyPreset(ui.activePreset));
+  elBtnAudio.addEventListener('click', toggleAudio);
+  elBtnDrawer.addEventListener('click', toggleDrawer);
+  elBtnCinema.addEventListener('click', toggleCinema);
+  elBtnZenRestore.addEventListener('click', toggleCinema);
+
+  // Keyboard shortcuts
+  window.addEventListener('keydown', (e) => {
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+    if (e.code === 'Space') {
+      e.preventDefault();
+      togglePause();
+    } else if (e.key === 'h' || e.key === 'H') {
+      toggleCinema();
+    } else if (e.key === 'r' || e.key === 'R') {
+      applyPreset(ui.activePreset);
+    } else if (e.key === 'm' || e.key === 'M') {
+      toggleAudio();
+    } else if (e.key === 'c' || e.key === 'C') {
+      toggleDrawer();
+    } else if (e.key === 'Escape' && ui.placeObstacleMode) {
+      setObstacleMode(false);
+    }
+  });
+
+  window.addEventListener('resize', () => updateLayout(false));
+
+  // =========================================================================
+  // Main Animation Loop
+  // =========================================================================
+  let lastTs = performance.now();
+  let uiAccum = 0;
+
+  function frame(ts) {
+    const rawDt = (ts - lastTs) / 1000;
+    lastTs = ts;
+    const dt = Math.min(Math.max(rawDt, 0.001), 0.05);
+
+    if (!ui.paused) {
+      stepSim(dt);
+    } else {
+      updateAudio(0);
+    }
+
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    render();
+
+    uiAccum += dt;
+    if (uiAccum >= 0.05) {
+      uiAccum = 0;
+      updateTelemetryUI();
+    }
+
+    requestAnimationFrame(frame);
+  }
+
+  // Boot
+  updateLayout(true);
+  applyPreset('weld3');
+  updateTelemetryUI();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

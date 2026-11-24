@@ -43,3 +43,7 @@ Electronics Wave II back doors, 23 November 2026: `index.html` gained back doors
 ## Back door 117 — Web Page Workshop · 23 November 2026
 
 `index.html` gained one back door (117) for the Web Page Workshop (Nerd Heaven) — a kid-friendly WYSIWYG editor whose lesson teaches its own construction: the contenteditable doorway, the execCommand engine named honestly, the two-way View Source, and the nine driven interaction tests (13 checks passing, Preview asserted byte-identical to Export). The section heading rose from "One hundred sixteen games" to "One hundred seventeen games", verified sequential 1–117 on the page. The full measurements live in the lesson, in its home room.
+
+Back doors 118–125 — Mechanical Engineering, Robotics & Control wave · 24 November 2026
+
+`index.html` gained eight back doors (118–125) for the Antigravity wave in Everyday Physics: Kinematics — Robotic Arm IK (118), Stabilizer — PID Inverted Pendulum (119), Clockwork — Gears & Linkages (120), Topology — FEA Optimizer (121), SLAM — Lidar Robot (122), Carnot — Heat Engines P–V (123), Harmonics — Acoustics FFT Synth (124) and Mach — Supersonic Lab (125). The section heading rose from "One hundred seventeen games" to "One hundred twenty-five games", verified sequential 1–125 on the page. The full measurements live in the lessons, in their home room.

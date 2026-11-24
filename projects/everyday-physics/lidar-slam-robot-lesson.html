@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>SLAM Robot — The Lesson · Everyday Physics</title>
+<style>
+  :root{
+    --bg:#050914; --panel:#0b1226; --panel2:#0e1730; --border:#22335c;
+    --text:#dbe7ff; --muted:#8ea1bd; --accent:#7dd3fc; --good:#4ade80;
+    --bad:#f87171; --warn:#fbbf24;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:radial-gradient(circle at 50% -10%,rgba(56,120,246,.16),transparent 55%),var(--bg);
+    color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,sans-serif;line-height:1.55}
+  .wrap{max-width:860px;margin:0 auto;padding:22px 18px 44px}
+  .eyebrow{color:var(--accent);font-size:11.5px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;margin:0 0 6px}
+  h1{font-size:27px;margin:0 0 8px;font-weight:800;letter-spacing:-.3px}
+  h1 span{color:var(--accent)}
+  h2{font-size:19px;margin:30px 0 8px;font-weight:750;border-top:1px solid var(--border);padding-top:20px}
+  h2:first-of-type{border-top:none;padding-top:0}
+  h3{font-size:15.5px;margin:18px 0 5px;color:#fff}
+  p{color:#c3d3f2;font-size:14.5px;margin:8px 0}
+  .lead{font-size:15.5px;color:#e7f2ff}
+  a{color:var(--accent)}
+  .play{display:inline-block;background:#155e86;border:1px solid #2b7fb3;color:#fff;text-decoration:none;
+    border-radius:9px;padding:8px 15px;font-size:14px;font-weight:600;margin:10px 0 2px}
+  .play:hover{background:#1a6f9e}
+  .formula{background:var(--panel);border:1px solid var(--border);border-left:3px solid var(--accent);
+    border-radius:10px;padding:11px 16px;margin:12px 0;font-size:15.5px;color:#fff;
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;overflow-x:auto;white-space:nowrap}
+  .formula small{display:block;color:var(--muted);font-family:inherit;font-size:12.5px;margin-top:4px;white-space:normal}
+  .honest{background:var(--panel2);border:1px dashed var(--border);border-radius:10px;padding:10px 15px;margin:12px 0}
+  .honest p{margin:2px 0;font-size:13.5px}
+  .honest b{color:var(--warn)}
+  table{border-collapse:collapse;margin:12px 0;width:100%;font-size:14px}
+  th,td{border:1px solid var(--border);padding:7px 11px;text-align:left}
+  th{background:var(--panel2);color:#fff}
+  td{color:#c3d3f2;font-variant-numeric:tabular-nums}
+  ol,ul{color:#c3d3f2;font-size:14.5px;padding-left:22px}
+  li{margin:5px 0}
+  code{background:var(--panel2);border:1px solid var(--border);border-radius:5px;padding:0 5px;
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px;color:#e7f2ff}
+  .receipt{color:var(--good);font-weight:600}
+  .trap{color:var(--bad);font-weight:600}
+  .keepgoing{display:grid;gap:9px;margin:14px 0}
+  .keepgoing a{display:block;background:var(--panel);border:1px solid var(--border);border-radius:11px;
+    padding:11px 15px;text-decoration:none;color:var(--text)}
+  .keepgoing a:hover{border-color:var(--accent)}
+  .keepgoing b{color:#fff;display:block;font-size:14.5px}
+  .keepgoing span{color:var(--muted);font-size:13px}
+  footer{color:var(--muted);font-size:12px;margin-top:26px;text-align:center}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <p class="eyebrow">Everyday Physics · The back door to SLAM Robot</p>
+  <h1>SLAM Robot <span>— the lesson</span></h1>
+  <p class="lead">A small robot wakes up in a building it has never seen, with no map, no GPS, and
+  wheel sensors that lie a little more every metre it travels. All it has is a spinning lidar that
+  reports how far the walls are — noisily — in every direction at once. From that alone it must
+  answer two questions that depend on each other: <em>where am I?</em> and <em>what does this place
+  look like?</em> That circular problem is SLAM — simultaneous localization and mapping — and this
+  exhibit builds most of it for real: the rays, the noise, the drifting odometry, the Bayesian map,
+  the explorer that hunts the map's unfinished edges. This page is the other half: the engineering,
+  the mathematics the robot runs, and the audit that measured all of it — including the correction
+  layer where the exhibit quietly cheats, printed just as plainly as its genuine receipts.</p>
+  <p><strong>Verdict:</strong> The sensing, mapping and navigation are real — exact ray casting, honest noise (σ 3.99 measured vs 4.0 claimed), genuine log-odds fusion — but 'ICP' is correlative search rather than ICP, the pose is pulled toward ground truth (16% a call, 72% on a snap), loop closure is a cooldown counter, and 'Map Complete 100%' fired at 98.39%.</p>
+  <p style="color:var(--muted);font-size:13px">The SLAM Robot exhibit was built by Google Antigravity (Gemini)
+  at Steven Powell's direction; this lesson and its audit were written by Muse, from reading the
+  shipped code and driving it headlessly.</p>
+  <a class="play" href="lidar-slam-robot.html">Play SLAM Robot →</a>
+
+  <h2>The engineering</h2>
+
+  <h3>The chicken-and-egg problem at the heart of SLAM</h3>
+  <p>To place a lidar reading on a map, you must know where the robot was standing when it took the
+  reading. To know where the robot is standing, you compare its readings against the map. Neither
+  answer exists first — so a SLAM system builds both at once, incrementally: dead-reckon a short
+  distance, use the new scan to correct the drift and extend the map, repeat. Every part of the
+  exhibit exists to serve that loop. The world is a grid of 160 × 104 cells at 0.15 m — 24.0 ×
+  15.6 m of building — and the robot's belief about that world is a second grid, built scan by
+  scan, which the Fog view shows you honestly: the robot plans and drives on the <em>belief</em>,
+  not on the truth you can see in X-Ray.</p>
+
+  <h3>Lidar: distance by ray, 120 times a sweep</h3>
+  <p>The sensor fires 120 rays over the full 360°, each out to a maximum range of 6.0 m (40 cells),
+  and reports the distance to the first occupied cell along its line. The exhibit casts those rays
+  with a DDA — digital differential analyser — walk through the actual drawn grid, static and
+  dynamic obstacles alike, so a wall you paint is a wall the lidar genuinely hits. Real sensors
+  lie, so the exhibit's do too: every hit range carries additive Gaussian noise (σ = 4.0 cm by
+  default), while a ray that hits nothing honestly reports max range. At 120 rays and one scan per
+  step at 60 steps a second, the telemetry's 7,200 rays/sec is the page's own arithmetic, and it
+  checks out.</p>
+
+  <h3>Odometry: dead reckoning, and why it always drifts</h3>
+  <p>Between scans, the robot tracks itself the way sailors once did: integrate the motion the
+  wheels report. The exhibit integrates the robot's <em>actual</em> post-collision displacement —
+  the collision resolver's output, not the commanded motion — and then corrupts it with the error
+  terms real wheels suffer: a systematic heading bias plus stochastic noise, scaled by the drift
+  dial. The result is the pale "ghost" trailing away from the true robot on screen, and it is the
+  honest centre of the whole demonstration: dead reckoning is exact when the errors are zero and
+  hopeless when they are not, and no amount of careful integration fixes a bias — only an outside
+  reference (the scan, matched against the map) can pull the estimate back.</p>
+
+  <h3>Occupancy grids: a map that keeps its doubts in numbers</h3>
+  <p>The belief map never says "wall" or "no wall." Each cell carries a <em>log-odds</em> score —
+  the logarithm of the odds that the cell is occupied — which every scan nudges: up where a ray
+  ends, down along the path the ray travelled freely. Log-odds is the engineer's way of keeping
+  Bayesian evidence additive: independent observations simply sum, the score is clamped to
+  [−4.6, +5.4] so no cell becomes unchangeably certain, and a cell no ray has ever touched stays
+  at exactly zero — unknown, a third state no binary map can express. The explorer lives off that
+  third state: a <strong>frontier</strong> is a known-free cell touching an unknown one, and the
+  map's frontiers are, literally, the edge of what the robot knows.</p>
+
+  <h3>Getting around: frontiers, A*, and Pure Pursuit</h3>
+  <p>Exploration is a real pipeline. Frontier cells are clustered by breadth-first search, filtered
+  (clusters under 3 cells are ignored), and scored by size, distance, and heading continuity; the
+  winner becomes a goal for A* — a genuine binary-heap, 8-connected search over a costmap inflated
+  around believed walls (hard radius 2.4 cells by default), with soft costs, unknown-cell
+  penalties, and diagonal corner-cut prevention. A Pure Pursuit controller then steers the
+  differential-drive robot along the path — curvature 2y/L² toward a lookahead point, with pivot
+  behaviour when the heading error is large — through a motion model with acceleration limits and
+  a circle-versus-cell collision resolver. Nothing in that chain is decorative, and the audit
+  drove it into walls and corners to prove the last link.</p>
+
+  <h2>The math the game runs</h2>
+
+  <h3>The log-odds update</h3>
+  <div class="formula">l(cell) ← clamp( l(cell) + Δl, −4.6, +5.4 ); &nbsp; Δl = +l<sub>occ</sub> at the endpoint, a proportional free increment along the ray
+    <small>The update is projected from the <em>estimated</em> pose using the <em>noisy measured</em>
+    ranges — the map is fused from what the robot believes it saw, standing where it believes it
+    stands, not painted from ground truth. One noise-free scan from the office start, taken at the
+    true pose, changed 1,561 cells: 94 went occupied (above +0.35), 1,471 went free (below −0.35),
+    and the rest stayed unknown. Two small bends, named in the honest box: the occupied cell is
+    placed 0.12 cells (1.8 cm) beyond the measured range, and the robot's own footprint is forcibly
+    held at or below −1.2 log-odds every scan.</small>
+  </div>
+
+  <h3>The odometry error model</h3>
+  <div class="formula">estimate ← integrate(actual displacement) + systematic heading bias + stochastic terms, scaled by the drift dial
+    <small>With drift set to 0 the integration is exact — zero error over a 19.764-cell (2.96 m)
+    straight drive. At drift 1.0 with scan-matching off, the same drive ended 4.567 cells (68.5 cm)
+    off, with a heading error of +0.471 rad (27.0°); at drift 3.5 the error reached 17.80 cells
+    (2.67 m). The dominant term is a systematic heading bias of about 0.018–0.022 rad per cell
+    travelled, its sign randomised per preset — which is why the ghost doesn't just jitter, it
+    <em>veers</em>. The "×" on the dial has no calibrated physical baseline; it is a game dial, not
+    a drift rate.</small>
+  </div>
+
+  <h3>The scan matcher — and what ICP actually is</h3>
+  <div class="formula">score(pose) = Σ likelihood-field value at each scan endpoint; &nbsp; search ±0.55 then ±0.18 cells, ±0.035 then ±0.012 rad
+    <small>This is <em>correlative scan-to-map matching</em>: try a small grid of candidate poses,
+    coarse then fine, score each by how well the scan's endpoints land on likely-occupied cells of
+    a distance-blurred map, keep the best. Real
+    <a href="https://en.wikipedia.org/wiki/Iterative_closest_point" target="_blank" rel="noopener">iterative closest point</a>
+    is a different algorithm — it pairs each scan point with its closest map point and solves for
+    the rigid transform that minimises the pairing error, iteratively. The exhibit's matcher has no
+    correspondences and no closest-point solve. It works, within limits the audit measured: a small
+    imposed error of 0.583 cells was corrected to 0.130 cells (heading 0.030 → 0.006 rad), but a
+    3-cell (45 cm) displacement was not corrected at all — outside its capture basin, the search
+    simply never finds home.</small>
+  </div>
+
+  <h2>The audit — claims checked against the code, with receipts</h2>
+  <p>The audit instrumented the shipped page in memory (the file on disk was not changed) to expose
+  its state and functions, then tested DDA rays against known geometry, collected thousands of
+  noisy range samples, displaced the estimated pose by known amounts, drove the robot into a wall
+  and a corner, ran autonomous exploration in all six presets, and drove the DOM controls, canvas
+  tools, pan/zoom, and keyboard drive. Every number below is measured.</p>
+
+  <h3>Receipt 1: the rays are exact, and the noise is honest</h3>
+  <p>With noise set to zero, every measured range equalled the DDA's true range. Against known
+  geometry in the Blank arena, the first-occupied-cell boundaries came back exact in every
+  direction the audit probed:</p>
+  <table>
+    <tr><th>Ray (Blank arena)</th><th>Measured</th></tr>
+    <tr><td>East to the centre disc</td><td class="receipt">53 cells (7.95 m) — exact</td></tr>
+    <tr><td>West to the perimeter</td><td class="receipt">22 cells (3.30 m) — exact</td></tr>
+    <tr><td>North / south</td><td class="receipt">50 cells (7.50 m) — exact</td></tr>
+    <tr><td>From x = 100, west to the disc</td><td class="receipt">16 cells (2.40 m) — exact</td></tr>
+  </table>
+  <p>Then the noise: over 300 scans and 11,700 hit ranges at the office start, the mean error was
+  −0.11 cm and the standard deviation <span class="receipt">3.99 cm</span> against the claimed
+  σ = 4.0 cm, with extremes of −15.5 / +14.6 cm. That is a Gaussian doing exactly what the label
+  promises. One bend at the extremes: measured distances are clamped to [0.4 cells, max range], so
+  at σ = 24 cm the distribution is truncated rather than purely Gaussian (one-scan RMS ≈ 22.5 cm).
+  No-hit rays correctly stay at max range — in the Blank arena from (24, 52), only 39 of 120 rays
+  hit anything within 6 m, and the rest said so.</p>
+
+  <h3>Receipt 2: the navigation chain is real, and the robot does not go through walls</h3>
+  <p>Frontier detection, the inflated-costmap A*, and Pure Pursuit are working implementations, not
+  labels (see The engineering). The audit's physical test was blunt: drive at full command into a
+  wall for five seconds, then diagonally into a corner.</p>
+  <table>
+    <tr><th>Collision test</th><th>Measured stop point</th></tr>
+    <tr><td>Head-on into a wall</td><td class="receipt">centre at y = 3.55 cells — exactly wall boundary (2) + robot radius (1.55)</td></tr>
+    <tr><td>Diagonally into a corner</td><td class="receipt">(3.55, 3.553)</td></tr>
+    <tr><td>Six 60 s autonomous runs — maximum wall penetration</td><td class="receipt">≈ 0 cells (≤ 7 × 10<sup>−15</sup>, numerical noise)</td></tr>
+  </table>
+  <p>Clicking a goal at grid (50, 52) produced a 24-point path and "Navigating Goal"; after 60 s
+  the Office still held 5–6 frontiers and was still exploring, while the Blank arena reached zero.
+  One timing bend on the "reroutes live" claim: painting a wall changes the true grid at once, but
+  the planner's costmap is built from the <em>belief</em> grid — a new wall affects routes only
+  after the lidar observes it and the next replan cycle runs (0.38 s timer; a brush stroke shortens
+  it to 0.05 s). Live on a sub-second, after-observation basis — which is, to be fair, the only
+  basis a real robot has.</p>
+
+  <h3>Receipt 3 — the false layer: the pose is pulled toward ground truth</h3>
+  <p>After the correlative search runs, the shipped code does something no real SLAM system can do:
+  if the match score exceeds 0.38 (or on a forced snap), it moves the estimated pose directly
+  toward <code>state.bot</code> — the true robot pose, ground truth the robot is supposed to be
+  estimating — by <span class="trap">16% per normal call</span>, and by <span class="trap">72% on a
+  forced snap</span>. The audit measured what that buys: a forced snap with a 5.83-cell imposed
+  error ended at 0.409 cells and counted a loop closure — a recovery far outside what the
+  correlative search, which cannot correct even a 3-cell displacement, could have supplied. With
+  matching enabled on a 2.96 m drift-1.0 drive, the estimated-pose error was a handsome 0.428 cells
+  (6.4 cm) — good-looking, and not achievable from the matcher alone as implemented. In the
+  High-Noise &amp; Drift preset (which the audit verified sets σ = 13.5 cm and drift = 2.4×), a
+  60 s run held SLAM error to 7.0 cm while raw odometry error in the same run was 5.18 m; across
+  the six 60 s runs, odometry error grew to 15–52 m — the ghost is unbounded and leaves the world —
+  while SLAM error stayed at 6–29 cm. Those SLAM numbers are real measurements of the shipped
+  system; they are measurements of a system with a truth leak, and cannot be credited to scan
+  matching. Toggle the matcher off and the controlled trial shows the difference honestly: a
+  0.583-cell error stayed exactly where it was put.</p>
+
+  <h3>Receipt 4 — the false counter: "loop closure" closes no loops</h3>
+  <p>Real loop closure is place recognition: the robot notices "I have been here before," adds a
+  constraint between its current pose and a past one in a pose graph, and re-optimises the whole
+  trajectory. None of that machinery exists here. The counter increments when accumulated
+  correction plus odometry error pass thresholds after a 4.5 s cooldown — or immediately on any
+  successful forced snap. The audit's evidence:</p>
+  <table>
+    <tr><th>Test</th><th>Measured</th></tr>
+    <tr><td>Forced snap at the start pose, real map, zero travel</td><td class="trap">Counter +1 — and the estimate moved from exact truth to 0.063 cells of error</td></tr>
+    <tr><td>Forced snap with zero imposed error (core test)</td><td class="trap">Error 0 → 0.091 cells; counter +1</td></tr>
+    <tr><td>60 s autonomous runs, six presets</td><td class="trap">13, 13, 13, 13, 14, 12–13 closures — the 4.5 s cooldown ceiling, in every environment alike</td></tr>
+    <tr><td>"Trigger Loop Snap" on an empty belief map</td><td class="trap">Nothing snapped and no loop counted — but the banner still announced "ICP Loop-Closure snap executed!"</td></tr>
+  </table>
+  <p>Six different buildings do not produce six identical revisit histories; a cadence counter
+  produces exactly that. And a button that can increment the counter at the start pose, before the
+  robot has travelled anywhere, is counting something — just not loop closures.</p>
+
+  <h3>Receipt 5 — the false banner: "Map Complete 100%" fired at 98.39%</h3>
+  <p>The coverage metric itself is a bend worth understanding first: "Map Explored" counts
+  reachable cells whose log-odds have fallen below the free threshold, divided by a reachable-cell
+  total computed from the <em>true</em> static grid. Ground truth as an evaluation denominator is
+  reasonable for a score — but "explored" really means "confidently observed free"; observed walls
+  and weakly observed cells do not count toward it. Against even that metric, the completion
+  banner overstates: in the Blank arena the robot was declared "Map Complete!" with 0 frontiers
+  while coverage read <span class="trap">98.39%</span> — the banner's "100% of reachable space
+  discovered" overstates the page's own number by 1.61 points. The completion rule fires when no
+  frontier clusters survive the costmap and frontier filters (or at ≥ 98.8%, or as a fallback above
+  94% when the remaining frontiers are unreachable). "No reachable frontier left" is a sensible
+  stopping condition; it is not 100%, and the banner should not say it is.</p>
+
+  <h3>Receipt 6: the controls all do real work</h3>
+  <p>No wholly dead control was found. All six presets load with distinct starts and reachable-cell
+  totals (Office 14,042; Warehouse 14,521; Maze 12,668; Dynamic 15,007; Noisy 14,739; Blank
+  15,571). Every slider — speed, brush, ray count (→ 180), range (→ 9.0 m), noise (→ 12.5 cm),
+  drift (→ 2.0×), log-odds gain (→ +1.40), A* inflation (→ 3.4 cells) — updated both its label and
+  the internal state. "Clear Belief Map" took the log-odds absolute sum from 1033.7 (1,561 nonzero
+  cells) to exactly 0 and re-anchored the estimated and odometry poses to the robot; "Reset Ghost
+  Drift" re-anchored the ghost to the true pose exactly. Camera pan, zoom (6.396 → 7.291), Fit /
+  Follow, drawer, Cinema, and the keyboard (Space, B, X, H, R, and a 0.5 s W-hold that switched to
+  Manual and drove the robot from x = 24 to x = 27.36 at y = 52) all work.</p>
+
+  <h2>How it's built — the coding choices</h2>
+
+  <h3>Two grids, kept honestly apart — mostly</h3>
+  <p>The architecture's virtue is the separation the whole field depends on: a true grid the lidar
+  casts against, and a belief grid fused from noisy scans at the estimated pose, which is the only
+  map the planner ever sees. Painting and erasing edit the truth; "Clear Belief Map" zeroes the
+  belief; the robot re-learns what it can no longer assume. The separation leaks in exactly the
+  places the receipts name — the truth pull in the pose estimate, the truth-based coverage
+  denominator, and one drawing shortcut: the lidar visibility polygon and ray beams in Fog view are
+  drawn from the scan's <em>true</em> hit coordinates, while only the small hit sparks use the
+  noisy measured endpoints at the estimated pose. In Fog view, the fan shows exact wall geometry
+  the sensor model never measured.</p>
+
+  <h3>An instantaneous scan wearing a spinning turret</h3>
+  <p>The sensor model is a full 360° scan taken in a single physics step; the rotating turret is
+  visual dressing. That is a fair simplification for a grid world at this scale — but it is why the
+  rays/sec counter behaves as it does at 4× speed, where the loop casts a complete scan per
+  physics substep and the count rises accordingly. Real scanning lidars smear a sweep across the
+  robot's motion; this one freezes the world politely, 120 rays at a time.</p>
+
+  <h2>Simplifications and divergences, named</h2>
+  <div class="honest">
+    <p><b>The pose correction is not sensor-only:</b> beyond the correlative matcher, the estimate is
+    pulled toward the true pose by 16% per strong-match call and 72% on a forced snap. No real
+    SLAM system has access to that term. Every flattering SLAM-error number on the page (6–29 cm
+    across the 60 s runs, against 15–52 m of raw odometry error) is partly this term's work.</p>
+    <p><b>"ICP" is a mislabel:</b> the matcher is coarse-to-fine correlative scan-to-map search over
+    a blurred likelihood field — no point correspondences, no iterative closest-point solve — and
+    its capture basin is small: no correction at all for a 3-cell (45 cm) displacement.</p>
+    <p><b>"Loop closure" is a counter, not a detection:</b> no place recognition, no pose graph, no
+    revisit test — accumulated correction plus odometry error past a threshold, gated by a 4.5 s
+    cooldown, or any forced snap. It fires at the start pose with zero travel and at the cooldown
+    cadence (12–14 per 60 s) in every preset.</p>
+    <p><b>"Map Complete — 100%" overstates the page's own metric:</b> it fired at 98.39% coverage in
+    the Blank arena. The rule is frontier exhaustion (or ≥ 98.8%, or a &gt; 94% fallback when
+    remaining frontiers are unreachable) — a reasonable stop, mislabelled as completeness.</p>
+    <p><b>Coverage means "confidently observed free":</b> the denominator is computed from the true
+    static grid, and observed walls do not count as explored. As a score it is defensible; as a
+    plain-language claim about discovery it bends.</p>
+    <p><b>The map's small bends:</b> occupied endpoints are written 0.12 cells (1.8 cm) beyond the
+    measured range; the robot's footprint is forcibly held free (≤ −1.2 log-odds) every scan; and
+    dynamic-obstacle hits enter the same persistent grid with no temporal decay, so moving obstacles
+    can leave ghost walls until re-observed as free. The dynamic obstacles themselves are genuinely
+    simulated, raycast, and avoided — and they politely pause rather than crush the robot, while
+    the robot's collision state keeps "pushing" at commanded speed even when the resolver has
+    clamped its position.</p>
+    <p><b>Telemetry scope:</b> "Pose (x, y)" and heading display the <em>estimated</em> pose; the
+    error readout is computed against ground truth — available to a simulator as a score, never to
+    a real robot. The drift dial's "×" is uncalibrated, and its systematic heading bias
+    (0.018–0.022 rad per cell) is very large by real-wheel standards.</p>
+    <p><b>Small print:</b> the snap button's success banner appears even when nothing snapped (empty
+    map); in Split view, a pointer press within 16 px of the divider is captured as a divider drag
+    even with the Wall tool armed, so a paint click near the divider drags instead of painting;
+    and the noise model's clamping ([0.4 cells, max range]) truncates the Gaussian at extreme σ
+    settings.</p>
+  </div>
+
+  <h2>Keep going</h2>
+  <div class="keepgoing">
+    <a href="fea-topology-optimizer.html"><b>Topology Optimizer →</b><span>The other half of this pair: a finite-element solver and SIMP optimizer carving titanium into skeletons — and the rare exhibit whose core claims survive their audit almost whole, grey-material stress factor aside.</span></a>
+    <a href="docking.html"><b>Docking →</b><span>The same problem wearing a spacesuit: a vehicle that must know exactly where it is relative to a target, with sensors that only tell it part of the truth. Compare its honesty about relative navigation with this robot's truth pull.</span></a>
+    <a href="get-to-orbit.html"><b>Get to Orbit →</b><span>Dead reckoning's bigger stage: integrate your thrust faithfully and small errors still compound into a very different orbit — the drift lesson, at planetary scale.</span></a>
+    <a href="index.html"><b>Everyday Physics →</b><span>The room this exhibit lives in — the pool table, the landers, the star forge, and the rest of the benches.</span></a>
+    <a href="physics-game-table.html"><b>The Physics Game Table →</b><span>Every game on the table: orbits, soft bodies, sieges, and the other rooms' games visiting.</span></a>
+    <a href="https://mitpress.mit.edu/9780262201629/probabilistic-robotics/" target="_blank" rel="noopener"><b>Probabilistic Robotics — Thrun, Burgard &amp; Fox ↗</b><span>The canonical SLAM textbook, from MIT Press: the whole probabilistic frame of this exhibit — occupancy-grid mapping with log-odds updates, scan matching, and loop closure as it is actually done.</span></a>
+    <a href="https://en.wikipedia.org/wiki/Simultaneous_localization_and_mapping" target="_blank" rel="noopener"><b>Simultaneous localization and mapping — Wikipedia ↗</b><span>The SLAM problem itself: pose-graph loop closure, and the odometry-drift failure mode the exhibit's drift dial demonstrates.</span></a>
+    <a href="https://en.wikipedia.org/wiki/Occupancy_grid_mapping" target="_blank" rel="noopener"><b>Occupancy grid mapping — Wikipedia ↗</b><span>The Bayesian log-odds cell update — the l<sub>occ</sub> gain — and the unknown / free / occupied belief map the exhibit paints.</span></a>
+    <a href="https://en.wikipedia.org/wiki/Iterative_closest_point" target="_blank" rel="noopener"><b>Iterative closest point — Wikipedia ↗</b><span>What ICP actually is — point correspondences and an iterative least-squares transform — so you can see for yourself how it differs from the correlative search the exhibit runs under its name.</span></a>
+  </div>
+
+  <footer>Everyday Cool · Everyday Physics — The SLAM Robot exhibit was built by Google Antigravity (Gemini) at Steven Powell's direction; this lesson and audit are by Muse. The game is the front door, this page is the back door.</footer>
+
+</div>
+</body>
+</html>

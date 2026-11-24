@@ -1,0 +1,3837 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>SLAM — Autonomous 360° Lidar Robot &amp; Occupancy Mapping</title>
+<style>
+  :root {
+    --bg-deep: #040711;
+    --panel-bg: rgba(9, 13, 24, 0.78);
+    --panel-bg-strong: rgba(8, 12, 22, 0.92);
+    --panel-border: rgba(148, 179, 255, 0.16);
+    --panel-border-hi: rgba(148, 179, 255, 0.36);
+    --text-main: #eef3ff;
+    --text-dim: #9aa9cc;
+    --text-muted: #68789c;
+    --accent-amber: #ffbe5c;
+    --accent-cyan: #58dcff;
+    --accent-mint: #3ef2b8;
+    --accent-rose: #ff6482;
+    --accent-violet: #a78bfa;
+    --radius-lg: 14px;
+    --radius-md: 10px;
+    --radius-sm: 7px;
+    --mono: ui-monospace, "Cascadia Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Inter, Helvetica, Arial, sans-serif;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg-deep);
+    color: var(--text-main);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    touch-action: none;
+  }
+
+  #sim-canvas {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    cursor: crosshair;
+  }
+  #sim-canvas.panning { cursor: grabbing; }
+  #sim-canvas.brush-wall { cursor: cell; }
+  #sim-canvas.brush-erase { cursor: not-allowed; }
+  #sim-canvas.split-hover { cursor: ew-resize; }
+
+  /* HUD Layer */
+  .hud {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 10;
+  }
+  body.zen-mode .hud > :not(.zen-restore) {
+    opacity: 0;
+    pointer-events: none !important;
+  }
+
+  .panel {
+    pointer-events: auto;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-lg);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.52), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    transition: opacity 0.25s ease, transform 0.25s ease;
+  }
+
+  /* Top-Left Brand + Telemetry */
+  .top-left {
+    position: fixed;
+    top: 14px;
+    left: 14px;
+    width: min(416px, calc(100vw - 360px));
+    min-width: 286px;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .brand-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .brand-title-wrap {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .brand-title {
+    font-size: 16px;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    background: linear-gradient(120deg, #eafff8 0%, #3ef2b8 42%, #58dcff 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .mode-badge {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 999px;
+    border: 1px solid rgba(62, 242, 184, 0.4);
+    background: rgba(62, 242, 184, 0.12);
+    color: var(--accent-mint);
+  }
+  .mode-badge.drift-only {
+    border-color: rgba(255, 100, 130, 0.45);
+    background: rgba(255, 100, 130, 0.14);
+    color: var(--accent-rose);
+  }
+
+  .status-pill {
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 3px 9px;
+    border-radius: 999px;
+    background: rgba(255, 190, 92, 0.15);
+    color: var(--accent-amber);
+    border: 1px solid rgba(255, 190, 92, 0.4);
+    white-space: nowrap;
+  }
+  .status-pill.goal {
+    background: rgba(88, 220, 255, 0.16);
+    color: var(--accent-cyan);
+    border-color: rgba(88, 220, 255, 0.42);
+  }
+  .status-pill.complete {
+    background: rgba(62, 242, 184, 0.16);
+    color: var(--accent-mint);
+    border-color: rgba(62, 242, 184, 0.42);
+  }
+  .status-pill.manual {
+    background: rgba(167, 139, 250, 0.18);
+    color: #c8b6ff;
+    border-color: rgba(167, 139, 250, 0.45);
+  }
+
+  .telemetry-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+  }
+
+  .tele-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(148, 179, 255, 0.1);
+    border-radius: var(--radius-sm);
+    padding: 6px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .tele-label {
+    font-size: 9.5px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .tele-val {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--text-main);
+    white-space: nowrap;
+  }
+  .tele-val.amber { color: var(--accent-amber); }
+  .tele-val.cyan { color: var(--accent-cyan); }
+  .tele-val.mint { color: var(--accent-mint); }
+  .tele-val.rose { color: var(--accent-rose); }
+
+  .progress-bar-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 10.5px;
+    color: var(--text-dim);
+  }
+  .progress-track {
+    flex: 1;
+    height: 6px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    width: 0%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #3ef2b8 0%, #58dcff 65%, #ffbe5c 100%);
+    transition: width 0.15s ease;
+  }
+
+  .clock-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding-top: 4px;
+    border-top: 1px solid rgba(148, 179, 255, 0.1);
+    font-size: 10.5px;
+    color: var(--text-dim);
+    font-family: var(--mono);
+  }
+  .clock-row span strong {
+    color: var(--text-main);
+    font-weight: 600;
+  }
+
+  /* Right Control Drawer */
+  .drawer {
+    position: fixed;
+    top: 14px;
+    right: 14px;
+    bottom: 14px;
+    width: 330px;
+    max-width: calc(100vw - 28px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: transform 0.25s ease, opacity 0.25s ease;
+  }
+  .drawer.collapsed {
+    transform: translateX(calc(100% + 24px));
+    pointer-events: none;
+  }
+
+  .drawer-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+    padding: 8px 8px 6px;
+    border-bottom: 1px solid var(--panel-border);
+    background: rgba(4, 7, 15, 0.45);
+  }
+
+  .tab-btn {
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 11.5px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    padding: 7px 6px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .tab-btn:hover {
+    color: var(--text-main);
+    background: rgba(255, 255, 255, 0.04);
+  }
+  .tab-btn.active {
+    color: #fff;
+    background: rgba(62, 242, 184, 0.15);
+    border-color: rgba(62, 242, 184, 0.4);
+  }
+
+  .drawer-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 13px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .drawer-body::-webkit-scrollbar { width: 5px; }
+  .drawer-body::-webkit-scrollbar-thumb {
+    background: rgba(148, 179, 255, 0.22);
+    border-radius: 999px;
+  }
+
+  .tab-pane {
+    display: none;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .tab-pane.active { display: flex; }
+
+  .section {
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(148, 179, 255, 0.11);
+    border-radius: var(--radius-md);
+    padding: 10px 11px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .section-title {
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  /* Presets grid */
+  .preset-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .preset-btn {
+    text-align: left;
+    padding: 7px 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(148, 179, 255, 0.14);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-main);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .preset-btn:hover {
+    border-color: rgba(62, 242, 184, 0.45);
+    background: rgba(62, 242, 184, 0.07);
+  }
+  .preset-btn.active {
+    border-color: var(--accent-mint);
+    background: rgba(62, 242, 184, 0.13);
+  }
+  .preset-name {
+    font-size: 11.2px;
+    font-weight: 700;
+  }
+  .preset-sub {
+    font-size: 9.5px;
+    color: var(--text-muted);
+    line-height: 1.25;
+  }
+
+  /* Sliders */
+  .control-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .control-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11.5px;
+    color: var(--text-dim);
+  }
+  .control-head .val {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--text-main);
+    font-weight: 600;
+  }
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 5px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.18);
+    outline: none;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent-cyan);
+    border: 2px solid #08101f;
+    box-shadow: 0 0 10px rgba(88, 220, 255, 0.65);
+    cursor: pointer;
+  }
+  input[type="range"].mint::-webkit-slider-thumb {
+    background: var(--accent-mint);
+    box-shadow: 0 0 10px rgba(62, 242, 184, 0.65);
+  }
+  input[type="range"].rose::-webkit-slider-thumb {
+    background: var(--accent-rose);
+    box-shadow: 0 0 10px rgba(255, 100, 130, 0.65);
+  }
+  input[type="range"].amber::-webkit-slider-thumb {
+    background: var(--accent-amber);
+    box-shadow: 0 0 10px rgba(255, 190, 92, 0.65);
+  }
+
+  /* Segmented pills */
+  .seg-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(60px, 1fr));
+    gap: 4px;
+  }
+  .seg-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-dim);
+    font-size: 10.8px;
+    font-weight: 650;
+    padding: 6px 5px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-align: center;
+  }
+  .seg-btn:hover {
+    color: #fff;
+    border-color: rgba(148, 179, 255, 0.35);
+  }
+  .seg-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.18);
+    border-color: var(--accent-cyan);
+  }
+  .seg-btn.active.mint {
+    background: rgba(62, 242, 184, 0.18);
+    border-color: var(--accent-mint);
+    color: #d6fff1;
+  }
+  .seg-btn.active.amber {
+    background: rgba(255, 190, 92, 0.18);
+    border-color: var(--accent-amber);
+    color: #ffe4b5;
+  }
+  .seg-btn.active.rose {
+    background: rgba(255, 100, 130, 0.18);
+    border-color: var(--accent-rose);
+    color: #ffd3dc;
+  }
+
+  /* Action Buttons */
+  .btn-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .btn {
+    border: 1px solid rgba(148, 179, 255, 0.22);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-main);
+    font-size: 11.2px;
+    font-weight: 700;
+    padding: 7px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+  .btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 179, 255, 0.45);
+  }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary {
+    background: linear-gradient(135deg, rgba(62, 242, 184, 0.24), rgba(88, 220, 255, 0.22));
+    border-color: rgba(62, 242, 184, 0.52);
+    color: #e6fff8;
+  }
+  .btn.primary:hover {
+    background: linear-gradient(135deg, rgba(62, 242, 184, 0.36), rgba(88, 220, 255, 0.34));
+  }
+  .btn.amber {
+    background: linear-gradient(135deg, rgba(255, 190, 92, 0.24), rgba(255, 135, 65, 0.2));
+    border-color: rgba(255, 190, 92, 0.5);
+    color: #fff3db;
+  }
+
+  /* Toggle switches */
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11.5px;
+    color: var(--text-dim);
+    cursor: pointer;
+    gap: 8px;
+  }
+  .toggle-row input { display: none; }
+  .switch {
+    width: 34px;
+    height: 18px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.2);
+    border: 1px solid rgba(148, 179, 255, 0.25);
+    position: relative;
+    transition: all 0.18s ease;
+    flex-shrink: 0;
+  }
+  .switch::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #c8d7f5;
+    transition: transform 0.18s ease, background 0.18s ease;
+  }
+  .toggle-row input:checked + .switch {
+    background: rgba(62, 242, 184, 0.3);
+    border-color: var(--accent-mint);
+  }
+  .toggle-row input:checked + .switch::after {
+    transform: translateX(16px);
+    background: #fff;
+  }
+
+  /* Legend Swatches */
+  .legend-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    font-size: 10.5px;
+    color: var(--text-dim);
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .swatch {
+    width: 10px;
+    height: 10px;
+    border-radius: 3px;
+    flex-shrink: 0;
+    border: 1px solid rgba(255, 255, 255, 0.22);
+  }
+
+  /* Bottom Transport Bar */
+  .bottom-bar {
+    position: fixed;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 7px 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: nowrap;
+  }
+
+  .bar-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-main);
+    font-size: 11.5px;
+    font-weight: 650;
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    white-space: nowrap;
+  }
+  .bar-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 179, 255, 0.4);
+  }
+  .bar-btn.active {
+    background: rgba(88, 220, 255, 0.2);
+    border-color: var(--accent-cyan);
+    color: #fff;
+  }
+
+  .bar-divider {
+    width: 1px;
+    height: 20px;
+    background: rgba(148, 179, 255, 0.16);
+    margin: 0 2px;
+  }
+
+  /* Bottom-left interaction hint */
+  .hint-pill {
+    position: fixed;
+    bottom: 14px;
+    left: 14px;
+    padding: 7px 11px;
+    font-size: 11px;
+    color: var(--text-dim);
+    max-width: 340px;
+    line-height: 1.42;
+  }
+  .hint-pill kbd {
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #fff;
+  }
+
+  /* Event Banner */
+  .event-banner {
+    position: fixed;
+    top: 18px;
+    left: 50%;
+    transform: translateX(-50%) translateY(-10px);
+    padding: 9px 15px;
+    border-radius: var(--radius-md);
+    background: rgba(8, 18, 28, 0.9);
+    border: 1px solid rgba(62, 242, 184, 0.5);
+    color: #d8fff2;
+    font-size: 12px;
+    font-weight: 650;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease, transform 0.25s ease;
+    z-index: 20;
+    backdrop-filter: blur(12px);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  }
+  .event-banner.visible {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateX(-50%) translateY(0);
+  }
+
+  .zen-restore {
+    position: fixed;
+    bottom: 14px;
+    right: 14px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+  }
+  body.zen-mode .zen-restore {
+    opacity: 0.9;
+    pointer-events: auto;
+  }
+
+  .note-small {
+    font-size: 10.5px;
+    color: var(--text-muted);
+    line-height: 1.38;
+  }
+
+  @media (max-width: 960px) {
+    .top-left {
+      width: calc(100vw - 28px);
+      max-width: none;
+    }
+    .drawer {
+      top: auto;
+      bottom: 62px;
+      height: 52vh;
+      width: calc(100vw - 28px);
+    }
+    .hint-pill { display: none; }
+  }
+</style>
+</head>
+<body>
+<canvas id="sim-canvas"></canvas>
+
+<div class="hud">
+  <!-- Top-Left Brand & Telemetry -->
+  <div class="panel top-left">
+    <div class="brand-row">
+      <div class="brand-title-wrap">
+        <div class="brand-title">SLAM</div>
+        <span id="slam-badge" class="mode-badge">ICP Scan-Match</span>
+      </div>
+      <span id="planner-status" class="status-pill">Exploring Frontier</span>
+    </div>
+
+    <div class="telemetry-grid">
+      <div class="tele-card">
+        <span class="tele-label">Map Explored</span>
+        <span id="tel-explored" class="tele-val mint">0.0%</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Lidar Rays/sec</span>
+        <span id="tel-rays" class="tele-val cyan">7,200/s</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Active Frontiers</span>
+        <span id="tel-frontiers" class="tele-val amber">0</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Pose (x, y)</span>
+        <span id="tel-pose-xy" class="tele-val">0.00, 0.00 m</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Heading θ</span>
+        <span id="tel-pose-th" class="tele-val">0.0°</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Odom / SLAM Err</span>
+        <span id="tel-err" class="tele-val rose">0.0 / 0.0 cm</span>
+      </div>
+    </div>
+
+    <div class="progress-bar-wrap">
+      <span>Coverage</span>
+      <div class="progress-track"><div id="cov-fill" class="progress-fill"></div></div>
+      <span id="tel-cov-cells" style="font-family:var(--mono); color:var(--text-main);">0%</span>
+    </div>
+
+    <div class="clock-row">
+      <span>Loop Closures: <strong id="tel-loops" style="color:var(--accent-cyan)">0</strong></span>
+      <span>Distance: <strong id="tel-dist">0.0 m</strong></span>
+      <span>Time: <strong id="tel-time">0.0 s</strong></span>
+    </div>
+  </div>
+
+  <!-- Right Control Drawer (330px) -->
+  <aside id="drawer" class="panel drawer">
+    <div class="drawer-tabs">
+      <button class="tab-btn active" data-tab="mission">Mission</button>
+      <button class="tab-btn" data-tab="lidar">Lidar &amp; SLAM</button>
+      <button class="tab-btn" data-tab="visuals">Visuals</button>
+    </div>
+
+    <div class="drawer-body">
+      <!-- TAB 1: MISSION & TOOLS -->
+      <div id="tab-mission" class="tab-pane active">
+        <div class="section">
+          <div class="section-title"><span>Environment Presets</span></div>
+          <div class="preset-grid" id="preset-grid">
+            <button class="preset-btn active" data-preset="office">
+              <span class="preset-name">Office Rooms</span>
+              <span class="preset-sub">Suites, corridors &amp; doors</span>
+            </button>
+            <button class="preset-btn" data-preset="warehouse">
+              <span class="preset-name">Warehouse Grid</span>
+              <span class="preset-sub">Pillar bays &amp; AGV patrol</span>
+            </button>
+            <button class="preset-btn" data-preset="maze">
+              <span class="preset-name">Labyrinth Maze</span>
+              <span class="preset-sub">Looping corridors &amp; rooms</span>
+            </button>
+            <button class="preset-btn" data-preset="dynamic">
+              <span class="preset-name">Dynamic Obstacles</span>
+              <span class="preset-sub">Moving bots &amp; live replan</span>
+            </button>
+            <button class="preset-btn" data-preset="noisy">
+              <span class="preset-name">High-Noise &amp; Drift</span>
+              <span class="preset-sub">Stress-test ICP &amp; loops</span>
+            </button>
+            <button class="preset-btn" data-preset="blank">
+              <span class="preset-name">Blank Arena</span>
+              <span class="preset-sub">Paint custom walls live</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">
+            <span>Autonomy Mode</span>
+            <span id="autonomy-readout" style="color:var(--accent-mint); font-family:var(--mono);">AUTO</span>
+          </div>
+          <div class="seg-row" id="drive-mode-row">
+            <button class="seg-btn active mint" data-mode="explore">Auto-Explore</button>
+            <button class="seg-btn" data-mode="goal">Click Goal</button>
+            <button class="seg-btn amber" data-mode="manual">Manual</button>
+          </div>
+          <div class="control-row">
+            <div class="control-head">
+              <span>Rover Max Speed</span>
+              <span id="val-speed" class="val">1.65 m/s</span>
+            </div>
+            <input id="sl-speed" class="mint" type="range" min="0.6" max="3.2" step="0.05" value="1.65" />
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">
+            <span>Canvas Pointer Tool</span>
+            <span id="tool-readout" style="color:var(--accent-cyan); font-family:var(--mono);">GOAL</span>
+          </div>
+          <div class="seg-row" id="tool-row">
+            <button class="seg-btn active" data-tool="goal">Drop Goal</button>
+            <button class="seg-btn amber" data-tool="wall">Paint Wall</button>
+            <button class="seg-btn rose" data-tool="erase">Open Door</button>
+          </div>
+          <div class="control-row">
+            <div class="control-head">
+              <span>Wall Brush Radius</span>
+              <span id="val-brush" class="val">2 cells</span>
+            </div>
+            <input id="sl-brush" class="amber" type="range" min="1" max="5" step="1" value="2" />
+          </div>
+          <div class="btn-row">
+            <button id="btn-clear-map" class="btn">Clear Belief Map</button>
+            <button id="btn-replan" class="btn primary">Force Replan</button>
+          </div>
+          <div class="note-small">
+            Paint walls or carve open doorways mid-run: Lidar immediately updates log-odds cells and A* reroutes live.
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 2: LIDAR & SLAM -->
+      <div id="tab-lidar" class="tab-pane">
+        <div class="section">
+          <div class="section-title"><span>360° Lidar Scanner</span></div>
+          <div class="control-row">
+            <div class="control-head">
+              <span>Lidar Ray Count</span>
+              <span id="val-rays" class="val">120 rays</span>
+            </div>
+            <input id="sl-rays" type="range" min="72" max="180" step="6" value="120" />
+          </div>
+          <div class="control-row">
+            <div class="control-head">
+              <span>Max Lidar Range</span>
+              <span id="val-range" class="val">6.0 m</span>
+            </div>
+            <input id="sl-range" type="range" min="2.4" max="10.5" step="0.3" value="6.0" />
+          </div>
+          <div class="control-row">
+            <div class="control-head">
+              <span>Gaussian Range Noise σ</span>
+              <span id="val-noise" class="val">4.0 cm</span>
+            </div>
+            <input id="sl-noise" class="amber" type="range" min="0" max="24" step="0.5" value="4.0" />
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Odometry &amp; Scan-Matching</span></div>
+          <label class="toggle-row">
+            <span>ICP Scan-Matching &amp; Loop Closure</span>
+            <input id="chk-icp" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Show Coral Odometry Ghost Trail</span>
+            <input id="chk-odom-ghost" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <div class="control-row">
+            <div class="control-head">
+              <span>Wheel Odometry Drift</span>
+              <span id="val-drift" class="val">1.0×</span>
+            </div>
+            <input id="sl-drift" class="rose" type="range" min="0" max="3.5" step="0.1" value="1.0" />
+          </div>
+          <div class="btn-row">
+            <button id="btn-snap-icp" class="btn primary">Trigger Loop Snap</button>
+            <button id="btn-zero-odom" class="btn">Reset Ghost Drift</button>
+          </div>
+          <div class="note-small">
+            Toggle ICP off to watch raw wheel odometry drift and double-wall the occupancy grid; re-enable to snap pose back via correlative scan matching.
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Bayesian Log-Odds Tuning</span></div>
+          <div class="control-row">
+            <div class="control-head">
+              <span>Map Update Gain (l_occ)</span>
+              <span id="val-logodds" class="val">+0.95</span>
+            </div>
+            <input id="sl-logodds" class="mint" type="range" min="0.4" max="1.8" step="0.05" value="0.95" />
+          </div>
+          <div class="control-row">
+            <div class="control-head">
+              <span>A* Safety Inflation</span>
+              <span id="val-inflate" class="val">2.4 cells</span>
+            </div>
+            <input id="sl-inflate" type="range" min="1.8" max="4.0" step="0.2" value="2.4" />
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 3: VISUALS -->
+      <div id="tab-visuals" class="tab-pane">
+        <div class="section">
+          <div class="section-title"><span>Ground Truth vs Belief View</span></div>
+          <div class="seg-row" id="view-mode-row">
+            <button class="seg-btn active mint" data-view="fog">Fog-of-War</button>
+            <button class="seg-btn" data-view="xray">X-Ray Truth</button>
+            <button class="seg-btn amber" data-view="split">Split View</button>
+          </div>
+          <div class="note-small">
+            In <strong>Fog-of-War</strong> you see only what the robot has mapped. In <strong>X-Ray</strong> the true floorplan glows softly underneath. In <strong>Split View</strong> drag the center divider.
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Sensor &amp; Planner Overlays</span></div>
+          <label class="toggle-row">
+            <span>360° Lidar Laser Fan &amp; Hits</span>
+            <input id="chk-lidar" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Pulsing Gold Frontiers</span>
+            <input id="chk-frontiers" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Inflated A* Path &amp; Pure Pursuit</span>
+            <input id="chk-path" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>SLAM Trajectory Ribbon</span>
+            <input id="chk-trail" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Metric Engineering Grid</span>
+            <input id="chk-grid" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Occupancy Map Legend</span></div>
+          <div class="legend-grid">
+            <div class="legend-item"><span class="swatch" style="background:#0c1322;"></span>Unknown (l ≈ 0)</div>
+            <div class="legend-item"><span class="swatch" style="background:#0f3a4f;"></span>Free Space (l &lt; 0)</div>
+            <div class="legend-item"><span class="swatch" style="background:#9ef7ff;"></span>Wall Belief (l &gt; 0)</div>
+            <div class="legend-item"><span class="swatch" style="background:#ffbe5c;"></span>Active Frontier</div>
+            <div class="legend-item"><span class="swatch" style="background:#3ef2b8;"></span>Lidar Scan / SLAM</div>
+            <div class="legend-item"><span class="swatch" style="background:#ff6482;"></span>Odom Drift Ghost</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Event Toast Banner -->
+  <div id="event-banner" class="event-banner">
+    <span id="event-text">Map Complete — 100% of reachable space discovered!</span>
+  </div>
+
+  <!-- Bottom-Left Hints -->
+  <div class="panel hint-pill">
+    <div><strong>Click map</strong> Goal beacon · <kbd>WASD</kbd>/<kbd>Arrows</kbd> Manual drive · <kbd>Space</kbd> Pause</div>
+    <div><kbd>B</kbd> Paint wall · <kbd>X</kbd> X-Ray · <strong>Right-drag</strong> pan · <strong>Scroll</strong> zoom · <kbd>H</kbd> Cinema</div>
+  </div>
+
+  <!-- Bottom-Center Transport Bar -->
+  <div class="panel bottom-bar">
+    <button id="btn-play" class="bar-btn active">⏸ Pause</button>
+    <button id="btn-reset" class="bar-btn">↺ Reset</button>
+    <div class="bar-divider"></div>
+    <button class="bar-btn speed-btn" data-speed="0.5">0.5×</button>
+    <button class="bar-btn speed-btn active" data-speed="1">1×</button>
+    <button class="bar-btn speed-btn" data-speed="2">2×</button>
+    <button class="bar-btn speed-btn" data-speed="4">4×</button>
+    <div class="bar-divider"></div>
+    <button id="btn-cam" class="bar-btn">Cam: Fit</button>
+    <button id="btn-sound" class="bar-btn">🔇 Audio</button>
+    <button id="btn-toggle-drawer" class="bar-btn active">Controls</button>
+    <button id="btn-zen" class="bar-btn" title="Hide HUD (H)">Cinema</button>
+  </div>
+
+  <button id="btn-zen-restore" class="panel bar-btn zen-restore">Show HUD (H)</button>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // =========================================================================
+  // CORE CONSTANTS & GRID DIMENSIONS
+  // =========================================================================
+  const GRID_W = 160;
+  const GRID_H = 104;
+  const GRID_N = GRID_W * GRID_H;
+  const CELL_METERS = 0.15; // 24.0m x 15.6m world
+  const BOT_RADIUS = 1.55;  // cells (~0.23m)
+
+  const L_MIN = -4.6;
+  const L_MAX = 5.4;
+  const L_FREE_THRESH = -0.35;
+  const L_OCC_THRESH = 0.35;
+
+  // =========================================================================
+  // CANVAS & OFFSCREEN OCCUPANCY GRID BUFFER
+  // =========================================================================
+  const canvas = document.getElementById('sim-canvas');
+  const ctx = canvas.getContext('2d');
+
+  const occCanvas = document.createElement('canvas');
+  occCanvas.width = GRID_W;
+  occCanvas.height = GRID_H;
+  const occCtx = occCanvas.getContext('2d');
+  const occImg = occCtx.createImageData(GRID_W, GRID_H);
+  const occPixels = occImg.data;
+
+  // =========================================================================
+  // WORLD & SLAM DATA ARRAYS
+  // =========================================================================
+  const staticGrid = new Uint8Array(GRID_N);     // 1 = true wall
+  const dynamicMask = new Uint8Array(GRID_N);    // 1 = moving obstacle cell
+  const reachableMask = new Uint8Array(GRID_N);  // 1 = reachable free space from start
+  const logOdds = new Float32Array(GRID_N);      // Bayesian occupancy log-odds
+  const likelihood = new Float32Array(GRID_N);   // Smoothed wall likelihood for ICP
+  const inflatedCost = new Uint8Array(GRID_N);   // 255 = hard blocked, 1..20 = soft cost
+  const frontierFlag = new Uint8Array(GRID_N);   // 1 = frontier cell
+
+  // A* reusable scratch buffers (zero GC churn)
+  const gScore = new Float32Array(GRID_N);
+  const cameFrom = new Int32Array(GRID_N);
+  const closedMark = new Uint32Array(GRID_N);
+  const openMark = new Uint32Array(GRID_N);
+  let astarEpoch = 1;
+
+  // =========================================================================
+  // SIMULATION STATE
+  // =========================================================================
+  const state = {
+    preset: 'office',
+    running: true,
+    simSpeed: 1,
+    simTime: 0,
+    driveMode: 'explore', // 'explore' | 'goal' | 'manual'
+    pointerTool: 'goal',  // 'goal' | 'wall' | 'erase'
+    viewMode: 'fog',      // 'fog' | 'xray' | 'split'
+    splitRatio: 0.48,
+    camMode: 'fit',       // 'fit' | 'follow'
+    audioEnabled: false,
+    drawerOpen: true,
+    zenMode: false,
+
+    // Parameters
+    maxSpeedMps: 1.65,
+    brushRadius: 2,
+    rayCount: 120,
+    maxRangeMeters: 6.0,
+    noiseSigmaCm: 4.0,
+    icpEnabled: true,
+    showOdomGhost: true,
+    driftMult: 1.0,
+    logOddsGain: 0.95,
+    inflateRadius: 2.4,
+
+    // Visual toggles
+    showLidar: true,
+    showFrontiers: true,
+    showPath: true,
+    showTrail: true,
+    showGrid: true,
+
+    // Robot true pose (in grid cells)
+    bot: {
+      x: 16, y: 52, th: 0,
+      v: 0, w: 0,
+      wheelPhase: 0,
+      turretAngle: 0,
+      totalDistCells: 0
+    },
+    // Raw noisy odometry pose (dead reckoning)
+    odom: { x: 16, y: 52, th: 0 },
+    // SLAM estimated pose (odometry + ICP scan matching)
+    est: { x: 16, y: 52, th: 0 },
+
+    // Trails
+    slamTrail: [],
+    odomTrail: [],
+    loopPulses: [],
+    loopClosures: 0,
+    lastLoopTime: -10,
+
+    // Dynamic obstacles
+    dynObstacles: [],
+
+    // Lidar scan buffer
+    scan: [],
+    raysPerSec: 0,
+    rayAccumulator: 0,
+    raySampleTimer: 0,
+
+    // Exploration & Navigation
+    frontiers: [],         // array of cluster objects { cx, cy, size, cells }
+    frontierCount: 0,
+    activeFrontier: null,  // { x, y }
+    goal: null,            // { x, y }
+    path: [],              // [{ x, y }, ...]
+    lookaheadPt: null,     // { x, y }
+    plannerStatus: 'Exploring Frontier',
+    exploredPct: 0,
+    reachableTotal: 1,
+    mapCompleteAnnounced: false,
+    replanTimer: 0,
+    stuckTimer: 0,
+    lastProgressX: 16,
+    lastProgressY: 52,
+    recoveryTimer: 0,
+    recoveryDir: 1,
+    blacklistedTargets: [], // [{ x, y, until }]
+
+    // Flags
+    occDirty: true,
+    likelihoodDirty: true,
+    costmapDirty: true,
+    odomBiasW: 0.018,
+    odomBiasV: 0.014,
+    icpAccumCorrection: 0
+  };
+
+  // Camera transform (screen <-> grid)
+  const cam = {
+    x: GRID_W * 0.5,
+    y: GRID_H * 0.5,
+    zoom: 6.5,
+    targetZoom: 6.5,
+    dpr: Math.min(window.devicePixelRatio || 1, 2),
+    width: window.innerWidth,
+    height: window.innerHeight
+  };
+
+  // Input state
+  const keys = {};
+  const pointer = {
+    down: false,
+    button: 0,
+    panning: false,
+    draggingSplit: false,
+    painting: false,
+    lastX: 0,
+    lastY: 0,
+    hoverGx: -1,
+    hoverGy: -1
+  };
+
+  // =========================================================================
+  // WEB AUDIO ENGINE (SYNTHESIZED, MUTED BY DEFAULT)
+  // =========================================================================
+  let audioCtx = null;
+  let lastSonarTime = 0;
+
+  function ensureAudio() {
+    if (!audioCtx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) audioCtx = new AC();
+    }
+    if (audioCtx && audioCtx.state === 'suspended') {
+      audioCtx.resume().catch(() => {});
+    }
+  }
+
+  function playSonarPing() {
+    if (!state.audioEnabled || !audioCtx) return;
+    const now = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(1180, now);
+    osc.frequency.exponentialRampToValueAtTime(840, now + 0.14);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.022, now + 0.012);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.18);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(now);
+    osc.stop(now + 0.19);
+  }
+
+  function playArrivalChime(grand = false) {
+    if (!state.audioEnabled || !audioCtx) return;
+    const now = audioCtx.currentTime;
+    const notes = grand ? [523.25, 659.25, 783.99, 1046.5] : [659.25, 987.77];
+    notes.forEach((freq, idx) => {
+      const t = now + idx * 0.085;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(freq, t);
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.exponentialRampToValueAtTime(0.045, t + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.36);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(t);
+      osc.stop(t + 0.38);
+    });
+  }
+
+  function playLoopClick() {
+    if (!state.audioEnabled || !audioCtx) return;
+    const now = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(1650, now);
+    osc.frequency.exponentialRampToValueAtTime(2100, now + 0.055);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.025, now + 0.008);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.075);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(now);
+    osc.stop(now + 0.08);
+  }
+
+  // =========================================================================
+  // MATH & RANDOM UTILITIES
+  // =========================================================================
+  function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
+  function wrapAngle(a) {
+    while (a > Math.PI) a -= Math.PI * 2;
+    while (a < -Math.PI) a += Math.PI * 2;
+    return a;
+  }
+  function gaussianRand() {
+    let u = 0, v = 0;
+    while (u === 0) u = Math.random();
+    while (v === 0) v = Math.random();
+    return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+  }
+  function seededRng(seed) {
+    let s = seed >>> 0;
+    return () => {
+      s = (s * 1664525 + 1013904223) >>> 0;
+      return s / 4294967296;
+    };
+  }
+
+  // =========================================================================
+  // FLOORPLAN DRAWING HELPERS & PRESETS
+  // =========================================================================
+  function fillRectGrid(x0, y0, w, h, val = 1) {
+    const x1 = clamp(Math.floor(x0), 0, GRID_W - 1);
+    const y1 = clamp(Math.floor(y0), 0, GRID_H - 1);
+    const x2 = clamp(Math.floor(x0 + w), 0, GRID_W);
+    const y2 = clamp(Math.floor(y0 + h), 0, GRID_H);
+    for (let y = y1; y < y2; y++) {
+      const row = y * GRID_W;
+      for (let x = x1; x < x2; x++) {
+        staticGrid[row + x] = val;
+      }
+    }
+  }
+
+  function fillCircleGrid(cx, cy, r, val = 1) {
+    const r2 = r * r;
+    const x0 = clamp(Math.floor(cx - r), 1, GRID_W - 2);
+    const x1 = clamp(Math.ceil(cx + r), 1, GRID_W - 2);
+    const y0 = clamp(Math.floor(cy - r), 1, GRID_H - 2);
+    const y1 = clamp(Math.ceil(cy + r), 1, GRID_H - 2);
+    for (let y = y0; y <= y1; y++) {
+      const dy = y - cy;
+      for (let x = x0; x <= x1; x++) {
+        const dx = x - cx;
+        if (dx * dx + dy * dy <= r2) {
+          staticGrid[y * GRID_W + x] = val;
+        }
+      }
+    }
+  }
+
+  function addPerimeter() {
+    fillRectGrid(0, 0, GRID_W, 2, 1);
+    fillRectGrid(0, GRID_H - 2, GRID_W, 2, 1);
+    fillRectGrid(0, 0, 2, GRID_H, 1);
+    fillRectGrid(GRID_W - 2, 0, 2, GRID_H, 1);
+  }
+
+  function buildPreset(name) {
+    staticGrid.fill(0);
+    dynamicMask.fill(0);
+    state.dynObstacles = [];
+    addPerimeter();
+
+    let startX = 18, startY = 52, startTh = 0;
+
+    if (name === 'office') {
+      // Horizontal corridor walls
+      fillRectGrid(2, 34, 156, 2, 1);
+      fillRectGrid(2, 68, 156, 2, 1);
+      // Corridor doorways (top rooms)
+      fillRectGrid(16, 34, 9, 2, 0);
+      fillRectGrid(56, 34, 9, 2, 0);
+      fillRectGrid(98, 34, 10, 2, 0);
+      fillRectGrid(134, 34, 10, 2, 0);
+      // Corridor doorways (bottom rooms)
+      fillRectGrid(20, 68, 9, 2, 0);
+      fillRectGrid(62, 68, 10, 2, 0);
+      fillRectGrid(108, 68, 9, 2, 0);
+      fillRectGrid(140, 68, 9, 2, 0);
+
+      // Vertical room dividers (top)
+      fillRectGrid(40, 2, 2, 33, 1);
+      fillRectGrid(82, 2, 2, 33, 1);
+      fillRectGrid(120, 2, 2, 33, 1);
+      // Inter-room doors (top)
+      fillRectGrid(40, 13, 2, 8, 0);
+      fillRectGrid(120, 14, 2, 8, 0);
+
+      // Vertical room dividers (bottom)
+      fillRectGrid(46, 69, 2, 33, 1);
+      fillRectGrid(92, 69, 2, 33, 1);
+      fillRectGrid(126, 69, 2, 33, 1);
+      // Inter-room door (bottom)
+      fillRectGrid(92, 81, 2, 8, 0);
+
+      // Conference tables / office islands / columns
+      fillRectGrid(14, 12, 12, 5, 1);
+      fillRectGrid(56, 12, 14, 7, 1);
+      fillRectGrid(96, 10, 10, 8, 1);
+      fillRectGrid(136, 11, 10, 6, 1);
+
+      fillRectGrid(18, 82, 14, 6, 1);
+      fillRectGrid(62, 80, 14, 8, 1);
+      fillRectGrid(105, 82, 8, 8, 1);
+
+      // Central lobby columns & reception island
+      fillRectGrid(68, 48, 22, 6, 1);
+      fillCircleGrid(32, 51, 3.0, 1);
+      fillCircleGrid(124, 51, 3.0, 1);
+
+      // One gentle patrolling office courier bot
+      state.dynObstacles.push({
+        x: 98, y: 58, r: 2.3,
+        waypoints: [{ x: 102, y: 58 }, { x: 146, y: 58 }, { x: 146, y: 44 }, { x: 102, y: 44 }],
+        wpIdx: 1, speed: 5.5
+      });
+
+      startX = 14; startY = 51; startTh = 0.05;
+    } else if (name === 'warehouse') {
+      // Loading bay dividing walls
+      fillRectGrid(2, 22, 32, 2, 1);
+      fillRectGrid(126, 22, 32, 2, 1);
+      fillRectGrid(2, 80, 32, 2, 1);
+      fillRectGrid(126, 80, 32, 2, 1);
+
+      // Symmetric structural pillars (3 x 5 grid)
+      for (let gx = 0; gx < 5; gx++) {
+        for (let gy = 0; gy < 3; gy++) {
+          const px = 26 + gx * 26;
+          const py = 26 + gy * 24;
+          fillRectGrid(px, py, 5, 5, 1);
+        }
+      }
+
+      // Pallet rack shelving rows
+      fillRectGrid(42, 10, 28, 4, 1);
+      fillRectGrid(90, 10, 28, 4, 1);
+      fillRectGrid(42, 90, 28, 4, 1);
+      fillRectGrid(90, 90, 28, 4, 1);
+
+      // Patrolling warehouse AGVs
+      state.dynObstacles.push(
+        {
+          x: 42, y: 40, r: 2.6,
+          waypoints: [{ x: 42, y: 40 }, { x: 118, y: 40 }, { x: 118, y: 64 }, { x: 42, y: 64 }],
+          wpIdx: 1, speed: 7.2
+        },
+        {
+          x: 118, y: 64, r: 2.6,
+          waypoints: [{ x: 118, y: 64 }, { x: 42, y: 64 }, { x: 42, y: 40 }, { x: 118, y: 40 }],
+          wpIdx: 1, speed: 6.4
+        }
+      );
+
+      startX = 14; startY = 52; startTh = 0;
+    } else if (name === 'maze') {
+      // Deterministic maze with guaranteed wide robot-passable corridors & loop closures
+      const rng = seededRng(20260417);
+      const cols = 10;
+      const rows = 6;
+      const cellW = 15;
+      const cellH = 16;
+      const offX = 5;
+      const offY = 4;
+
+      // Fill interior walls on grid lattice
+      for (let r = 0; r <= rows; r++) {
+        fillRectGrid(offX, offY + r * cellH, cols * cellW + 2, 2, 1);
+      }
+      for (let c = 0; c <= cols; c++) {
+        fillRectGrid(offX + c * cellW, offY, 2, rows * cellH + 2, 1);
+      }
+
+      // Recursive backtracker to carve maze
+      const visited = new Uint8Array(cols * rows);
+      const stack = [[0, 0]];
+      visited[0] = 1;
+      const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+
+      while (stack.length > 0) {
+        const [cx, cy] = stack[stack.length - 1];
+        const nbrs = [];
+        for (const [dx, dy] of dirs) {
+          const nx = cx + dx, ny = cy + dy;
+          if (nx >= 0 && nx < cols && ny >= 0 && ny < rows && !visited[ny * cols + nx]) {
+            nbrs.push([nx, ny, dx, dy]);
+          }
+        }
+        if (nbrs.length === 0) {
+          stack.pop();
+        } else {
+          const [nx, ny, dx, dy] = nbrs[Math.floor(rng() * nbrs.length)];
+          visited[ny * cols + nx] = 1;
+          if (dx === 1) fillRectGrid(offX + (cx + 1) * cellW, offY + cy * cellH + 2, 2, cellH - 2, 0);
+          else if (dx === -1) fillRectGrid(offX + cx * cellW, offY + cy * cellH + 2, 2, cellH - 2, 0);
+          else if (dy === 1) fillRectGrid(offX + cx * cellW + 2, offY + (cy + 1) * cellH, cellW - 2, 2, 0);
+          else if (dy === -1) fillRectGrid(offX + cx * cellW + 2, offY + cy * cellH, cellW - 2, 2, 0);
+          stack.push([nx, ny]);
+        }
+      }
+
+      // Open ~18% extra walls to create satisfying SLAM loop closures
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          if (c < cols - 1 && rng() < 0.2) {
+            fillRectGrid(offX + (c + 1) * cellW, offY + r * cellH + 3, 2, cellH - 4, 0);
+          }
+          if (r < rows - 1 && rng() < 0.2) {
+            fillRectGrid(offX + c * cellW + 3, offY + (r + 1) * cellH, cellW - 4, 2, 0);
+          }
+        }
+      }
+
+      // Seal outer padding nicely
+      fillRectGrid(0, 0, offX, GRID_H, 1);
+      fillRectGrid(offX + cols * cellW + 2, 0, GRID_W, GRID_H, 1);
+      fillRectGrid(0, 0, GRID_W, offY, 1);
+      fillRectGrid(0, offY + rows * cellH + 2, GRID_W, GRID_H, 1);
+
+      startX = offX + Math.floor(cellW * 0.5) + 1;
+      startY = offY + Math.floor(cellH * 0.5) + 1;
+      startTh = 0;
+    } else if (name === 'dynamic') {
+      // Atrium with side alcoves and 6 moving obstacles
+      fillRectGrid(44, 2, 2, 28, 1);
+      fillRectGrid(114, 2, 2, 28, 1);
+      fillRectGrid(44, 74, 2, 28, 1);
+      fillRectGrid(114, 74, 2, 28, 1);
+      fillCircleGrid(80, 52, 7.5, 1);
+      fillRectGrid(20, 44, 6, 16, 1);
+      fillRectGrid(134, 44, 6, 16, 1);
+
+      state.dynObstacles.push(
+        { x: 56, y: 24, r: 3.0, waypoints: [{ x: 56, y: 20 }, { x: 104, y: 20 }], wpIdx: 1, speed: 8.2 },
+        { x: 104, y: 82, r: 3.0, waypoints: [{ x: 104, y: 84 }, { x: 56, y: 84 }], wpIdx: 1, speed: 7.8 },
+        { x: 58, y: 52, r: 2.8, waypoints: [{ x: 58, y: 34 }, { x: 58, y: 70 }], wpIdx: 1, speed: 7.0 },
+        { x: 102, y: 52, r: 2.8, waypoints: [{ x: 102, y: 70 }, { x: 102, y: 34 }], wpIdx: 1, speed: 7.5 },
+        { x: 34, y: 22, r: 2.6, waypoints: [{ x: 34, y: 16 }, { x: 34, y: 88 }], wpIdx: 1, speed: 6.2 },
+        { x: 126, y: 82, r: 2.6, waypoints: [{ x: 126, y: 88 }, { x: 126, y: 16 }], wpIdx: 1, speed: 6.5 }
+      );
+
+      startX = 12; startY = 52; startTh = 0;
+    } else if (name === 'noisy') {
+      // High-feature architectural loop for testing high Lidar noise & odometry drift
+      fillRectGrid(34, 22, 92, 2, 1);
+      fillRectGrid(34, 80, 92, 2, 1);
+      fillRectGrid(34, 22, 2, 60, 1);
+      fillRectGrid(124, 22, 2, 60, 1);
+
+      // Doorways into central courtyard
+      fillRectGrid(75, 22, 12, 2, 0);
+      fillRectGrid(75, 80, 12, 2, 0);
+      fillRectGrid(34, 46, 2, 12, 0);
+      fillRectGrid(124, 46, 2, 12, 0);
+
+      // Courtyard features (high geometric signature for ICP)
+      fillRectGrid(62, 42, 8, 8, 1);
+      fillRectGrid(92, 54, 8, 8, 1);
+      fillCircleGrid(80, 52, 4.2, 1);
+
+      // Outer corridor baffles
+      fillRectGrid(14, 30, 8, 3, 1);
+      fillRectGrid(14, 70, 8, 3, 1);
+      fillRectGrid(138, 30, 8, 3, 1);
+      fillRectGrid(138, 70, 8, 3, 1);
+      fillRectGrid(58, 9, 3, 7, 1);
+      fillRectGrid(100, 9, 3, 7, 1);
+      fillRectGrid(58, 88, 3, 7, 1);
+      fillRectGrid(100, 88, 3, 7, 1);
+
+      startX = 18; startY = 52; startTh = -Math.PI * 0.5;
+    } else if (name === 'blank') {
+      // Clean perimeter arena with two subtle center anchor markers
+      fillCircleGrid(80, 52, 3.0, 1);
+      startX = 24; startY = 52; startTh = 0;
+    }
+
+    // Apply preset-specific sensor tuning defaults
+    if (name === 'noisy') {
+      state.noiseSigmaCm = 13.5;
+      state.driftMult = 2.4;
+      state.icpEnabled = true;
+      state.showOdomGhost = true;
+    } else {
+      state.noiseSigmaCm = 4.0;
+      state.driftMult = 1.0;
+    }
+
+    // Reset robot & SLAM belief
+    state.bot.x = startX;
+    state.bot.y = startY;
+    state.bot.th = startTh;
+    state.bot.v = 0;
+    state.bot.w = 0;
+    state.bot.totalDistCells = 0;
+
+    state.odom.x = startX;
+    state.odom.y = startY;
+    state.odom.th = startTh;
+
+    state.est.x = startX;
+    state.est.y = startY;
+    state.est.th = startTh;
+
+    state.simTime = 0;
+    state.loopClosures = 0;
+    state.lastLoopTime = -10;
+    state.icpAccumCorrection = 0;
+    state.odomBiasW = (Math.random() > 0.5 ? 1 : -1) * 0.022;
+    state.odomBiasV = 0.016;
+
+    clearBeliefMap(false);
+    computeReachableMask();
+    fitCameraToWorld();
+    syncControlsFromState();
+  }
+
+  function clearBeliefMap(keepPose = true) {
+    logOdds.fill(0);
+    likelihood.fill(0);
+    inflatedCost.fill(0);
+    frontierFlag.fill(0);
+    state.slamTrail = [{ x: state.est.x, y: state.est.y }];
+    state.odomTrail = [{ x: state.odom.x, y: state.odom.y }];
+    state.loopPulses = [];
+    state.frontiers = [];
+    state.frontierCount = 0;
+    state.activeFrontier = null;
+    state.path = [];
+    state.lookaheadPt = null;
+    state.blacklistedTargets = [];
+    state.mapCompleteAnnounced = false;
+    state.exploredPct = 0;
+    state.replanTimer = 0;
+    state.stuckTimer = 0;
+    state.occDirty = true;
+    state.likelihoodDirty = true;
+    state.costmapDirty = true;
+
+    if (keepPose) {
+      state.est.x = state.bot.x;
+      state.est.y = state.bot.y;
+      state.est.th = state.bot.th;
+      state.odom.x = state.bot.x;
+      state.odom.y = state.bot.y;
+      state.odom.th = state.bot.th;
+      state.slamTrail = [{ x: state.est.x, y: state.est.y }];
+      state.odomTrail = [{ x: state.odom.x, y: state.odom.y }];
+    }
+  }
+
+  function computeReachableMask() {
+    reachableMask.fill(0);
+    const sx = clamp(Math.floor(state.bot.x), 1, GRID_W - 2);
+    const sy = clamp(Math.floor(state.bot.y), 1, GRID_H - 2);
+    const startIdx = sy * GRID_W + sx;
+    if (staticGrid[startIdx]) {
+      state.reachableTotal = 1;
+      return;
+    }
+    const queue = new Int32Array(GRID_N);
+    let head = 0, tail = 0;
+    queue[tail++] = startIdx;
+    reachableMask[startIdx] = 1;
+    let count = 0;
+
+    while (head < tail) {
+      const idx = queue[head++];
+      count++;
+      const x = idx % GRID_W;
+      const y = (idx - x) / GRID_W;
+      if (x > 1) {
+        const n = idx - 1;
+        if (!reachableMask[n] && !staticGrid[n]) { reachableMask[n] = 1; queue[tail++] = n; }
+      }
+      if (x < GRID_W - 2) {
+        const n = idx + 1;
+        if (!reachableMask[n] && !staticGrid[n]) { reachableMask[n] = 1; queue[tail++] = n; }
+      }
+      if (y > 1) {
+        const n = idx - GRID_W;
+        if (!reachableMask[n] && !staticGrid[n]) { reachableMask[n] = 1; queue[tail++] = n; }
+      }
+      if (y < GRID_H - 2) {
+        const n = idx + GRID_W;
+        if (!reachableMask[n] && !staticGrid[n]) { reachableMask[n] = 1; queue[tail++] = n; }
+      }
+    }
+    state.reachableTotal = Math.max(1, count);
+  }
+
+  // =========================================================================
+  // DYNAMIC OBSTACLES
+  // =========================================================================
+  function updateDynamicObstacles(dt) {
+    dynamicMask.fill(0);
+    for (let i = 0; i < state.dynObstacles.length; i++) {
+      const ob = state.dynObstacles[i];
+      const wp = ob.waypoints[ob.wpIdx];
+      const dx = wp.x - ob.x;
+      const dy = wp.y - ob.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist < 0.6) {
+        ob.wpIdx = (ob.wpIdx + 1) % ob.waypoints.length;
+      } else {
+        const step = Math.min(dist, ob.speed * dt);
+        const nx = ob.x + (dx / dist) * step;
+        const ny = ob.y + (dy / dist) * step;
+        // Pause politely if about to crush the robot
+        const dBot = Math.hypot(nx - state.bot.x, ny - state.bot.y);
+        if (dBot > ob.r + BOT_RADIUS + 0.8) {
+          ob.x = nx;
+          ob.y = ny;
+        }
+      }
+
+      // Rasterize dynamic obstacle into dynamicMask
+      const r2 = ob.r * ob.r;
+      const x0 = clamp(Math.floor(ob.x - ob.r), 1, GRID_W - 2);
+      const x1 = clamp(Math.ceil(ob.x + ob.r), 1, GRID_W - 2);
+      const y0 = clamp(Math.floor(ob.y - ob.r), 1, GRID_H - 2);
+      const y1 = clamp(Math.ceil(ob.y + ob.r), 1, GRID_H - 2);
+      for (let y = y0; y <= y1; y++) {
+        const dy2 = (y - ob.y) * (y - ob.y);
+        const row = y * GRID_W;
+        for (let x = x0; x <= x1; x++) {
+          const dx2 = (x - ob.x) * (x - ob.x);
+          if (dx2 + dy2 <= r2) {
+            dynamicMask[row + x] = 1;
+          }
+        }
+      }
+    }
+  }
+
+  // =========================================================================
+  // 360° DDA RAYCAST LIDAR
+  // =========================================================================
+  function castRayDDA(ox, oy, angle, maxDist) {
+    const dx = Math.cos(angle);
+    const dy = Math.sin(angle);
+    let mapX = Math.floor(ox);
+    let mapY = Math.floor(oy);
+
+    const deltaDistX = Math.abs(dx) < 1e-8 ? 1e8 : Math.abs(1 / dx);
+    const deltaDistY = Math.abs(dy) < 1e-8 ? 1e8 : Math.abs(1 / dy);
+
+    let stepX, sideDistX;
+    if (dx < 0) {
+      stepX = -1;
+      sideDistX = (ox - mapX) * deltaDistX;
+    } else {
+      stepX = 1;
+      sideDistX = (mapX + 1.0 - ox) * deltaDistX;
+    }
+
+    let stepY, sideDistY;
+    if (dy < 0) {
+      stepY = -1;
+      sideDistY = (oy - mapY) * deltaDistY;
+    } else {
+      stepY = 1;
+      sideDistY = (mapY + 1.0 - oy) * deltaDistY;
+    }
+
+    let dist = 0;
+    while (dist < maxDist) {
+      if (sideDistX < sideDistY) {
+        dist = sideDistX;
+        sideDistX += deltaDistX;
+        mapX += stepX;
+      } else {
+        dist = sideDistY;
+        sideDistY += deltaDistY;
+        mapY += stepY;
+      }
+      if (mapX < 0 || mapX >= GRID_W || mapY < 0 || mapY >= GRID_H) {
+        return { dist: Math.min(dist, maxDist), hit: true, dynamic: false };
+      }
+      const idx = mapY * GRID_W + mapX;
+      if (staticGrid[idx]) {
+        return { dist: Math.min(dist, maxDist), hit: true, dynamic: false };
+      }
+      if (dynamicMask[idx]) {
+        return { dist: Math.min(dist, maxDist), hit: true, dynamic: true };
+      }
+    }
+    return { dist: maxDist, hit: false, dynamic: false };
+  }
+
+  function performLidarScan() {
+    const n = state.rayCount;
+    const maxRangeCells = state.maxRangeMeters / CELL_METERS;
+    const sigmaCells = (state.noiseSigmaCm * 0.01) / CELL_METERS;
+    const scan = state.scan;
+    scan.length = n;
+
+    const ox = state.bot.x;
+    const oy = state.bot.y;
+    const th = state.bot.th;
+
+    for (let i = 0; i < n; i++) {
+      const relAngle = (i / n) * Math.PI * 2;
+      const worldAngle = th + relAngle;
+      const res = castRayDDA(ox, oy, worldAngle, maxRangeCells);
+
+      let measuredDist = res.dist;
+      if (res.hit && sigmaCells > 0) {
+        measuredDist = clamp(res.dist + gaussianRand() * sigmaCells, 0.4, maxRangeCells);
+      }
+
+      scan[i] = {
+        relAngle,
+        trueDist: res.dist,
+        measuredDist,
+        hit: res.hit,
+        dynamic: res.dynamic,
+        hx: ox + Math.cos(worldAngle) * res.dist,
+        hy: oy + Math.sin(worldAngle) * res.dist
+      };
+    }
+
+    state.rayAccumulator += n;
+  }
+
+  // =========================================================================
+  // BAYESIAN LOG-ODDS OCCUPANCY GRID UPDATE & ICP SCAN-MATCHING
+  // =========================================================================
+  function rebuildLikelihoodField() {
+    // Fast 3-pixel distance-weighted wall likelihood field for correlative scan matching
+    likelihood.fill(0);
+    for (let y = 1; y < GRID_H - 1; y++) {
+      const row = y * GRID_W;
+      for (let x = 1; x < GRID_W - 1; x++) {
+        const l = logOdds[row + x];
+        if (l > L_OCC_THRESH) {
+          const w = Math.min(1.0, l / 2.2);
+          for (let dy = -2; dy <= 2; dy++) {
+            const ny = y + dy;
+            if (ny < 0 || ny >= GRID_H) continue;
+            const nrow = ny * GRID_W;
+            for (let dx = -2; dx <= 2; dx++) {
+              const nx = x + dx;
+              if (nx < 0 || nx >= GRID_W) continue;
+              const d2 = dx * dx + dy * dy;
+              const val = w * Math.exp(-d2 * 0.45);
+              if (val > likelihood[nrow + nx]) likelihood[nrow + nx] = val;
+            }
+          }
+        }
+      }
+    }
+    state.likelihoodDirty = false;
+  }
+
+  function scoreScanPose(px, py, pth, stride) {
+    const scan = state.scan;
+    let score = 0;
+    let hits = 0;
+    for (let i = 0; i < scan.length; i += stride) {
+      const s = scan[i];
+      if (!s.hit || s.dynamic) continue;
+      const a = pth + s.relAngle;
+      const gx = Math.floor(px + Math.cos(a) * s.measuredDist);
+      const gy = Math.floor(py + Math.sin(a) * s.measuredDist);
+      if (gx >= 0 && gx < GRID_W && gy >= 0 && gy < GRID_H) {
+        score += likelihood[gy * GRID_W + gx];
+        hits++;
+      }
+    }
+    return hits > 8 ? score / hits : 0;
+  }
+
+  function runICPScanMatch(forceSnap = false) {
+    if (!state.icpEnabled && !forceSnap) return;
+    if (state.likelihoodDirty) rebuildLikelihoodField();
+
+    let bestX = state.est.x;
+    let bestY = state.est.y;
+    let bestTh = state.est.th;
+    const baseScore = scoreScanPose(bestX, bestY, bestTh, 2);
+    let bestScore = baseScore;
+
+    // Only match once we have enough mapped wall structure in view
+    if (baseScore < 0.08 && !forceSnap) return;
+
+    // Coarse-to-fine correlative scan-to-map search
+    const stages = forceSnap
+      ? [
+          { dxy: 1.4, dth: 0.08, nxy: 2, nth: 2, stride: 3 },
+          { dxy: 0.55, dth: 0.032, nxy: 2, nth: 2, stride: 2 },
+          { dxy: 0.18, dth: 0.012, nxy: 1, nth: 1, stride: 2 }
+        ]
+      : [
+          { dxy: 0.55, dth: 0.035, nxy: 1, nth: 1, stride: 3 },
+          { dxy: 0.18, dth: 0.012, nxy: 1, nth: 1, stride: 2 }
+        ];
+
+    for (let st = 0; st < stages.length; st++) {
+      const { dxy, dth, nxy, nth, stride } = stages[st];
+      const cx = bestX, cy = bestY, cth = bestTh;
+      for (let it = -nth; it <= nth; it++) {
+        const th = cth + it * dth;
+        for (let iy = -nxy; iy <= nxy; iy++) {
+          const y = cy + iy * dxy;
+          for (let ix = -nxy; ix <= nxy; ix++) {
+            if (ix === 0 && iy === 0 && it === 0) continue;
+            const x = cx + ix * dxy;
+            const sc = scoreScanPose(x, y, th, stride);
+            if (sc > bestScore + 0.0025) {
+              bestScore = sc;
+              bestX = x;
+              bestY = y;
+              bestTh = th;
+            }
+          }
+        }
+      }
+    }
+
+    // Apply scan-match correction + subtle loop-closure constraint when match is strong
+    const corrDist = Math.hypot(bestX - state.est.x, bestY - state.est.y);
+    const corrTh = Math.abs(wrapAngle(bestTh - state.est.th));
+
+    if (bestScore > 0.24) {
+      // Blend toward scan-matched pose smoothly
+      const alpha = forceSnap ? 0.88 : 0.65;
+      state.est.x += (bestX - state.est.x) * alpha;
+      state.est.y += (bestY - state.est.y) * alpha;
+      state.est.th = wrapAngle(state.est.th + wrapAngle(bestTh - state.est.th) * alpha);
+
+      // Simulate global pose-graph loop-closure refinement against true map anchors
+      // when scan-match confidence is high and we've travelled / drifted
+      const errToTrue = Math.hypot(state.bot.x - state.est.x, state.bot.y - state.est.y);
+      const errThTrue = wrapAngle(state.bot.th - state.est.th);
+      if (bestScore > 0.38 || forceSnap) {
+        const pull = forceSnap ? 0.72 : 0.16;
+        state.est.x += (state.bot.x - state.est.x) * pull;
+        state.est.y += (state.bot.y - state.est.y) * pull;
+        state.est.th = wrapAngle(state.est.th + errThTrue * pull);
+      }
+
+      state.icpAccumCorrection += corrDist + corrTh * 6;
+      const odomErr = Math.hypot(state.odom.x - state.bot.x, state.odom.y - state.bot.y);
+
+      if ((forceSnap || (state.icpAccumCorrection > 2.2 && odomErr > 2.8 && state.simTime - state.lastLoopTime > 4.5 && errToTrue < 4.5))) {
+        state.loopClosures++;
+        state.lastLoopTime = state.simTime;
+        state.icpAccumCorrection = 0;
+        state.loopPulses.push({ x: state.est.x, y: state.est.y, r: 2.0, maxR: 22, alpha: 0.95 });
+        playLoopClick();
+      }
+    }
+  }
+
+  function updateOccupancyGridFromScan() {
+    const ox = state.est.x;
+    const oy = state.est.y;
+    const th = state.est.th;
+    const lOcc = state.logOddsGain;
+    const lFree = -0.36 * (lOcc / 0.95);
+    const scan = state.scan;
+
+    for (let i = 0; i < scan.length; i++) {
+      const s = scan[i];
+      const a = th + s.relAngle;
+      const dx = Math.cos(a);
+      const dy = Math.sin(a);
+      const dist = s.measuredDist;
+
+      // March along ray to carve free space (Bresenham-like step 0.72 cells)
+      const freeEnd = Math.max(0, dist - 0.65);
+      const steps = Math.floor(freeEnd / 0.72);
+      let prevIdx = -1;
+      for (let k = 0; k <= steps; k++) {
+        const d = k * 0.72;
+        const gx = Math.floor(ox + dx * d);
+        const gy = Math.floor(oy + dy * d);
+        if (gx < 0 || gx >= GRID_W || gy < 0 || gy >= GRID_H) break;
+        const idx = gy * GRID_W + gx;
+        if (idx !== prevIdx) {
+          const nl = logOdds[idx] + lFree;
+          logOdds[idx] = nl < L_MIN ? L_MIN : nl;
+          prevIdx = idx;
+        }
+      }
+
+      // Mark occupied hit cell
+      if (s.hit) {
+        const hx = Math.floor(ox + dx * (dist + 0.12));
+        const hy = Math.floor(oy + dy * (dist + 0.12));
+        if (hx >= 0 && hx < GRID_W && hy >= 0 && hy < GRID_H) {
+          const idx = hy * GRID_W + hx;
+          const nl = logOdds[idx] + lOcc;
+          logOdds[idx] = nl > L_MAX ? L_MAX : nl;
+        }
+      }
+    }
+
+    // Ensure robot footprint itself is marked free
+    const rbx = Math.floor(ox), rby = Math.floor(oy);
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const gx = rbx + dx, gy = rby + dy;
+        if (gx > 0 && gx < GRID_W - 1 && gy > 0 && gy < GRID_H - 1) {
+          const idx = gy * GRID_W + gx;
+          if (logOdds[idx] > -1.2) logOdds[idx] = -1.2;
+        }
+      }
+    }
+
+    state.occDirty = true;
+    state.likelihoodDirty = true;
+    state.costmapDirty = true;
+  }
+
+  function refreshOccupancyImage() {
+    if (!state.occDirty) return;
+    let exploredReachable = 0;
+
+    for (let i = 0; i < GRID_N; i++) {
+      const l = logOdds[i];
+      const p4 = i * 4;
+
+      if (reachableMask[i] && l < L_FREE_THRESH) {
+        exploredReachable++;
+      }
+
+      if (l > L_OCC_THRESH) {
+        // Occupied wall: glowing cyan-white
+        const prob = 1 / (1 + Math.exp(-l)); // ~0.58 .. 0.995
+        const t = clamp((prob - 0.55) / 0.44, 0, 1);
+        occPixels[p4]     = Math.round(55 + t * 175);
+        occPixels[p4 + 1] = Math.round(195 + t * 58);
+        occPixels[p4 + 2] = Math.round(230 + t * 25);
+        occPixels[p4 + 3] = 255;
+      } else if (l < L_FREE_THRESH) {
+        // Free space: deep luminous teal-slate
+        const cert = clamp((-l - 0.35) / 3.5, 0, 1);
+        occPixels[p4]     = Math.round(9 + cert * 7);
+        occPixels[p4 + 1] = Math.round(28 + cert * 28);
+        occPixels[p4 + 2] = Math.round(44 + cert * 34);
+        occPixels[p4 + 3] = 255;
+      } else {
+        // Unknown fog-of-war: dark slate
+        occPixels[p4]     = 11;
+        occPixels[p4 + 1] = 17;
+        occPixels[p4 + 2] = 31;
+        occPixels[p4 + 3] = 255;
+      }
+    }
+
+    occCtx.putImageData(occImg, 0, 0);
+    state.exploredPct = clamp((exploredReachable / state.reachableTotal) * 100, 0, 100);
+    state.occDirty = false;
+  }
+
+  // =========================================================================
+  // INFLATED COSTMAP, FRONTIER DETECTION & A* PATH PLANNER
+  // =========================================================================
+  function rebuildCostmap() {
+    if (!state.costmapDirty) return;
+    inflatedCost.fill(0);
+
+    const hardR = state.inflateRadius;
+    const softR = hardR + 2.2;
+    const maxR = Math.ceil(softR);
+    const hardR2 = hardR * hardR;
+    const softR2 = softR * softR;
+
+    for (let y = 0; y < GRID_H; y++) {
+      const row = y * GRID_W;
+      for (let x = 0; x < GRID_W; x++) {
+        if (logOdds[row + x] > L_OCC_THRESH) {
+          const y0 = Math.max(0, y - maxR);
+          const y1 = Math.min(GRID_H - 1, y + maxR);
+          const x0 = Math.max(0, x - maxR);
+          const x1 = Math.min(GRID_W - 1, x + maxR);
+          for (let ny = y0; ny <= y1; ny++) {
+            const dy2 = (ny - y) * (ny - y);
+            const nrow = ny * GRID_W;
+            for (let nx = x0; nx <= x1; nx++) {
+              const d2 = (nx - x) * (nx - x) + dy2;
+              if (d2 <= hardR2) {
+                inflatedCost[nrow + nx] = 255;
+              } else if (d2 <= softR2) {
+                const pen = Math.round(14 * (1 - Math.sqrt(d2) / softR));
+                if (pen > inflatedCost[nrow + nx] && inflatedCost[nrow + nx] < 255) {
+                  inflatedCost[nrow + nx] = pen;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    state.costmapDirty = false;
+  }
+
+  function detectFrontiers() {
+    rebuildCostmap();
+    frontierFlag.fill(0);
+    let totalCells = 0;
+
+    for (let y = 2; y < GRID_H - 2; y++) {
+      const row = y * GRID_W;
+      for (let x = 2; x < GRID_W - 2; x++) {
+        const idx = row + x;
+        if (logOdds[idx] >= L_FREE_THRESH) continue;
+        if (inflatedCost[idx] >= 255) continue;
+
+        // Check 4-neighbors for unknown cell
+        const n1 = logOdds[idx - 1];
+        const n2 = logOdds[idx + 1];
+        const n3 = logOdds[idx - GRID_W];
+        const n4 = logOdds[idx + GRID_W];
+        const hasUnknown =
+          (n1 >= L_FREE_THRESH && n1 <= L_OCC_THRESH) ||
+          (n2 >= L_FREE_THRESH && n2 <= L_OCC_THRESH) ||
+          (n3 >= L_FREE_THRESH && n3 <= L_OCC_THRESH) ||
+          (n4 >= L_FREE_THRESH && n4 <= L_OCC_THRESH);
+
+        if (hasUnknown) {
+          frontierFlag[idx] = 1;
+          totalCells++;
+        }
+      }
+    }
+
+    // Group frontier cells into connected clusters via BFS
+    const visited = new Uint8Array(GRID_N);
+    const clusters = [];
+    const q = [];
+
+    for (let y = 2; y < GRID_H - 2; y++) {
+      for (let x = 2; x < GRID_W - 2; x++) {
+        const start = y * GRID_W + x;
+        if (!frontierFlag[start] || visited[start]) continue;
+
+        visited[start] = 1;
+        q.length = 0;
+        q.push(start);
+        const cells = [];
+        let sumX = 0, sumY = 0;
+
+        for (let qi = 0; qi < q.length; qi++) {
+          const cur = q[qi];
+          const cx = cur % GRID_W;
+          const cy = (cur - cx) / GRID_W;
+          cells.push(cur);
+          sumX += cx;
+          sumY += cy;
+
+          for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+              if (dx === 0 && dy === 0) continue;
+              const nx = cx + dx, ny = cy + dy;
+              if (nx < 2 || nx >= GRID_W - 2 || ny < 2 || ny >= GRID_H - 2) continue;
+              const nIdx = ny * GRID_W + nx;
+              if (frontierFlag[nIdx] && !visited[nIdx]) {
+                visited[nIdx] = 1;
+                q.push(nIdx);
+              }
+            }
+          }
+        }
+
+        if (cells.length >= 3) {
+          const meanX = sumX / cells.length;
+          const meanY = sumY / cells.length;
+          // Snap cluster target to actual frontier cell closest to centroid
+          let bestCell = cells[0], bestD = 1e9;
+          for (let k = 0; k < cells.length; k++) {
+            const cIdx = cells[k];
+            const fx = cIdx % GRID_W;
+            const fy = (cIdx - fx) / GRID_W;
+            const d = (fx - meanX) * (fx - meanX) + (fy - meanY) * (fy - meanY);
+            if (d < bestD) { bestD = d; bestCell = cIdx; }
+          }
+          clusters.push({
+            cx: (bestCell % GRID_W) + 0.5,
+            cy: Math.floor(bestCell / GRID_W) + 0.5,
+            size: cells.length,
+            cells
+          });
+        }
+      }
+    }
+
+    state.frontiers = clusters;
+    state.frontierCount = clusters.length;
+    return totalCells;
+  }
+
+  // Binary Min-Heap for fast A*
+  const heapIdx = new Int32Array(GRID_N);
+  const heapF = new Float32Array(GRID_N);
+  let heapSize = 0;
+
+  function heapPush(idx, f) {
+    let i = heapSize++;
+    heapIdx[i] = idx;
+    heapF[i] = f;
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (heapF[p] <= heapF[i]) break;
+      const ti = heapIdx[p], tf = heapF[p];
+      heapIdx[p] = heapIdx[i]; heapF[p] = heapF[i];
+      heapIdx[i] = ti; heapF[i] = tf;
+      i = p;
+    }
+  }
+
+  function heapPop() {
+    const top = heapIdx[0];
+    heapSize--;
+    if (heapSize > 0) {
+      heapIdx[0] = heapIdx[heapSize];
+      heapF[0] = heapF[heapSize];
+      let i = 0;
+      while (true) {
+        let l = (i << 1) + 1;
+        let r = l + 1;
+        let smallest = i;
+        if (l < heapSize && heapF[l] < heapF[smallest]) smallest = l;
+        if (r < heapSize && heapF[r] < heapF[smallest]) smallest = r;
+        if (smallest === i) break;
+        const ti = heapIdx[i], tf = heapF[i];
+        heapIdx[i] = heapIdx[smallest]; heapF[i] = heapF[smallest];
+        heapIdx[smallest] = ti; heapF[smallest] = tf;
+        i = smallest;
+      }
+    }
+    return top;
+  }
+
+  function findNearestPassable(gx, gy, allowUnknown) {
+    gx = clamp(Math.floor(gx), 2, GRID_W - 3);
+    gy = clamp(Math.floor(gy), 2, GRID_H - 3);
+    const isOk = (x, y) => {
+      const idx = y * GRID_W + x;
+      if (inflatedCost[idx] >= 255) return false;
+      if (!allowUnknown && logOdds[idx] >= L_FREE_THRESH) return false;
+      return true;
+    };
+    if (isOk(gx, gy)) return { x: gx, y: gy };
+    for (let r = 1; r <= 7; r++) {
+      for (let dy = -r; dy <= r; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+          if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue;
+          const nx = gx + dx, ny = gy + dy;
+          if (nx >= 2 && nx < GRID_W - 2 && ny >= 2 && ny < GRID_H - 2 && isOk(nx, ny)) {
+            return { x: nx, y: ny };
+          }
+        }
+      }
+    }
+    return { x: gx, y: gy };
+  }
+
+  const DIRS8 = [
+    [1, 0, 1.0], [-1, 0, 1.0], [0, 1, 1.0], [0, -1, 1.0],
+    [1, 1, 1.4142], [-1, 1, 1.4142], [1, -1, 1.4142], [-1, -1, 1.4142]
+  ];
+
+  function planPathAStar(startX, startY, goalX, goalY, allowUnknown = true) {
+    rebuildCostmap();
+    const sPt = findNearestPassable(startX, startY, true);
+    const gPt = findNearestPassable(goalX, goalY, allowUnknown);
+    const startIdx = sPt.y * GRID_W + sPt.x;
+    const goalIdx = gPt.y * GRID_W + gPt.x;
+
+    if (startIdx === goalIdx) return [{ x: goalX, y: goalY }];
+
+    astarEpoch++;
+    if (astarEpoch > 0xfffffff0) {
+      closedMark.fill(0);
+      openMark.fill(0);
+      astarEpoch = 1;
+    }
+
+    heapSize = 0;
+    gScore[startIdx] = 0;
+    cameFrom[startIdx] = -1;
+    openMark[startIdx] = astarEpoch;
+    heapPush(startIdx, Math.hypot(gPt.x - sPt.x, gPt.y - sPt.y));
+
+    let found = false;
+    let expansions = 0;
+
+    while (heapSize > 0 && expansions < 12000) {
+      const cur = heapPop();
+      if (closedMark[cur] === astarEpoch) continue;
+      closedMark[cur] = astarEpoch;
+      expansions++;
+
+      if (cur === goalIdx) { found = true; break; }
+
+      const cx = cur % GRID_W;
+      const cy = (cur - cx) / GRID_W;
+      const curG = gScore[cur];
+
+      for (let d = 0; d < 8; d++) {
+        const dx = DIRS8[d][0];
+        const dy = DIRS8[d][1];
+        const stepC = DIRS8[d][2];
+        const nx = cx + dx;
+        const ny = cy + dy;
+        if (nx < 1 || nx >= GRID_W - 1 || ny < 1 || ny >= GRID_H - 1) continue;
+        const nIdx = ny * GRID_W + nx;
+        if (closedMark[nIdx] === astarEpoch) continue;
+
+        const cost = inflatedCost[nIdx];
+        if (cost >= 255 && nIdx !== goalIdx) continue;
+
+        // Prevent diagonal corner cutting
+        if (d >= 4) {
+          if (inflatedCost[cy * GRID_W + nx] >= 255 || inflatedCost[ny * GRID_W + cx] >= 255) continue;
+        }
+
+        const l = logOdds[nIdx];
+        let unknownPen = 0;
+        if (l >= L_FREE_THRESH && l <= L_OCC_THRESH) {
+          if (!allowUnknown && nIdx !== goalIdx) continue;
+          unknownPen = 1.6;
+        } else if (l > L_OCC_THRESH && nIdx !== goalIdx) {
+          continue;
+        }
+
+        const tentG = curG + stepC + cost * 0.24 + unknownPen;
+        if (openMark[nIdx] !== astarEpoch || tentG < gScore[nIdx]) {
+          gScore[nIdx] = tentG;
+          cameFrom[nIdx] = cur;
+          openMark[nIdx] = astarEpoch;
+          const h = Math.hypot(gPt.x - nx, gPt.y - ny);
+          heapPush(nIdx, tentG + h * 1.04);
+        }
+      }
+    }
+
+    if (!found) return null;
+
+    const raw = [];
+    let cur = goalIdx;
+    while (cur !== -1) {
+      const px = (cur % GRID_W) + 0.5;
+      const py = Math.floor(cur / GRID_W) + 0.5;
+      raw.push({ x: px, y: py });
+      cur = cameFrom[cur];
+    }
+    raw.reverse();
+    return smoothPath(raw);
+  }
+
+  function lineOfSightFree(ax, ay, bx, by) {
+    const dist = Math.hypot(bx - ax, by - ay);
+    const steps = Math.ceil(dist * 2.2);
+    for (let i = 1; i < steps; i++) {
+      const t = i / steps;
+      const gx = Math.floor(ax + (bx - ax) * t);
+      const gy = Math.floor(ay + (by - ay) * t);
+      if (gx < 1 || gx >= GRID_W - 1 || gy < 1 || gy >= GRID_H - 1) return false;
+      const idx = gy * GRID_W + gx;
+      if (inflatedCost[idx] >= 255 || logOdds[idx] > L_OCC_THRESH) return false;
+    }
+    return true;
+  }
+
+  function smoothPath(raw) {
+    if (raw.length <= 2) return raw;
+    // String-pull line-of-sight pruning + light subdivision for Pure Pursuit
+    const pruned = [raw[0]];
+    let anchor = 0;
+    while (anchor < raw.length - 1) {
+      let far = raw.length - 1;
+      while (far > anchor + 1 && !lineOfSightFree(raw[anchor].x, raw[anchor].y, raw[far].x, raw[far].y)) {
+        far--;
+      }
+      pruned.push(raw[far]);
+      anchor = far;
+    }
+    // Resample every ~1.6 cells so Pure Pursuit lookahead is ultra smooth
+    const dense = [pruned[0]];
+    for (let i = 0; i < pruned.length - 1; i++) {
+      const a = pruned[i], b = pruned[i + 1];
+      const seg = Math.hypot(b.x - a.x, b.y - a.y);
+      const n = Math.max(1, Math.ceil(seg / 1.6));
+      for (let k = 1; k <= n; k++) {
+        const t = k / n;
+        dense.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+      }
+    }
+    return dense;
+  }
+
+  function isPathStillValid(path) {
+    if (!path || path.length < 2) return false;
+    for (let i = 1; i < path.length; i++) {
+      const gx = Math.floor(path[i].x);
+      const gy = Math.floor(path[i].y);
+      if (gx < 1 || gx >= GRID_W - 1 || gy < 1 || gy >= GRID_H - 1) return false;
+      if (inflatedCost[gy * GRID_W + gx] >= 255) return false;
+    }
+    return true;
+  }
+
+  function isBlacklisted(x, y) {
+    for (let i = 0; i < state.blacklistedTargets.length; i++) {
+      const b = state.blacklistedTargets[i];
+      if (b.until > state.simTime && Math.hypot(b.x - x, b.y - y) < 4.5) return true;
+    }
+    return false;
+  }
+
+  function planAutonomousMission(force = false) {
+    // Clean expired blacklists
+    state.blacklistedTargets = state.blacklistedTargets.filter(b => b.until > state.simTime);
+
+    if (state.driveMode === 'manual') {
+      state.plannerStatus = 'Manual Drive';
+      return;
+    }
+
+    if (state.driveMode === 'goal') {
+      if (!state.goal) {
+        state.path = [];
+        state.plannerStatus = 'Navigating Goal';
+        return;
+      }
+      const distToGoal = Math.hypot(state.goal.x - state.est.x, state.goal.y - state.est.y);
+      if (distToGoal < 2.0) {
+        state.goal = null;
+        state.path = [];
+        state.lookaheadPt = null;
+        playArrivalChime(false);
+        showEventBanner('Waypoint Reached — Goal navigation complete!');
+        state.plannerStatus = 'Navigating Goal';
+        return;
+      }
+      if (force || !isPathStillValid(state.path)) {
+        const p = planPathAStar(state.est.x, state.est.y, state.goal.x, state.goal.y, true);
+        state.path = p || [];
+        if (!p) {
+          showEventBanner('Goal blocked — waiting or clear an opening!');
+        }
+      }
+      state.plannerStatus = 'Navigating Goal';
+      return;
+    }
+
+    // AUTO-EXPLORE (FRONTIER-BASED SLAM)
+    detectFrontiers();
+
+    if (state.frontiers.length === 0 || state.exploredPct >= 98.8) {
+      state.activeFrontier = null;
+      state.path = [];
+      state.lookaheadPt = null;
+      state.plannerStatus = 'Map Complete!';
+      if (!state.mapCompleteAnnounced && state.simTime > 2.0) {
+        state.mapCompleteAnnounced = true;
+        playArrivalChime(true);
+        showEventBanner('Map Complete! 100% of reachable rooms & corridors discovered.');
+      }
+      return;
+    }
+
+    state.mapCompleteAnnounced = false;
+    state.plannerStatus = 'Exploring Frontier';
+
+    // Check if current frontier target is still valid and close to an active frontier
+    let keepCurrent = false;
+    if (!force && state.activeFrontier && isPathStillValid(state.path)) {
+      const d = Math.hypot(state.activeFrontier.x - state.est.x, state.activeFrontier.y - state.est.y);
+      if (d > 2.4 && !isBlacklisted(state.activeFrontier.x, state.activeFrontier.y)) {
+        for (let i = 0; i < state.frontiers.length; i++) {
+          const f = state.frontiers[i];
+          if (Math.hypot(f.cx - state.activeFrontier.x, f.cy - state.activeFrontier.y) < 5.5) {
+            keepCurrent = true;
+            break;
+          }
+        }
+      }
+    }
+    if (keepCurrent) return;
+
+    // Score candidate frontier clusters by information gain / travel distance + heading continuity
+    const candidates = [];
+    for (let i = 0; i < state.frontiers.length; i++) {
+      const f = state.frontiers[i];
+      if (isBlacklisted(f.cx, f.cy)) continue;
+      const dist = Math.hypot(f.cx - state.est.x, f.cy - state.est.y);
+      const angDiff = Math.abs(wrapAngle(Math.atan2(f.cy - state.est.y, f.cx - state.est.x) - state.est.th));
+      const headingBonus = 1.0 + 0.28 * Math.cos(angDiff);
+      const score = (Math.pow(f.size, 0.62) * headingBonus) / (dist + 6.5);
+      candidates.push({ f, score });
+    }
+    candidates.sort((a, b) => b.score - a.score);
+
+    // Try top candidates with A* until we find a reachable frontier
+    const maxTries = Math.min(6, candidates.length);
+    for (let i = 0; i < maxTries; i++) {
+      const f = candidates[i].f;
+      const p = planPathAStar(state.est.x, state.est.y, f.cx, f.cy, false);
+      if (p && p.length >= 2) {
+        state.activeFrontier = { x: f.cx, y: f.cy };
+        state.path = p;
+        return;
+      } else {
+        state.blacklistedTargets.push({ x: f.cx, y: f.cy, until: state.simTime + 8.0 });
+      }
+    }
+
+    // Fallback: allow planning with unknown cells if strictly-known path failed
+    if (candidates.length > 0) {
+      const f = candidates[0].f;
+      const p = planPathAStar(state.est.x, state.est.y, f.cx, f.cy, true);
+      if (p && p.length >= 2) {
+        state.activeFrontier = { x: f.cx, y: f.cy };
+        state.path = p;
+        return;
+      }
+    }
+
+    // If all remaining frontiers are tiny/unreachable, declare complete
+    if (state.exploredPct > 94.0) {
+      state.activeFrontier = null;
+      state.path = [];
+      state.plannerStatus = 'Map Complete!';
+      if (!state.mapCompleteAnnounced) {
+        state.mapCompleteAnnounced = true;
+        playArrivalChime(true);
+        showEventBanner('Map Complete! All accessible frontiers explored.');
+      }
+    }
+  }
+
+  // =========================================================================
+  // PURE PURSUIT CONTROLLER, MANUAL DRIVE & DIFFERENTIAL-DRIVE PHYSICS
+  // =========================================================================
+  function computeSteeringCommands(dt) {
+    const maxVCells = state.maxSpeedMps / CELL_METERS; // cells/sec
+    const maxW = 3.2; // rad/sec
+
+    // Manual keyboard input overrides seamlessly
+    const fwd = (keys['KeyW'] || keys['ArrowUp'] ? 1 : 0) - (keys['KeyS'] || keys['ArrowDown'] ? 1 : 0);
+    const turn = (keys['KeyD'] || keys['ArrowRight'] ? 1 : 0) - (keys['KeyA'] || keys['ArrowLeft'] ? 1 : 0);
+
+    if (fwd !== 0 || turn !== 0) {
+      if (state.driveMode !== 'manual') {
+        state.driveMode = 'manual';
+        state.plannerStatus = 'Manual Drive';
+        syncControlsFromState();
+      }
+      return {
+        targetV: fwd * maxVCells,
+        targetW: turn * maxW * 0.85
+      };
+    }
+
+    if (state.driveMode === 'manual') {
+      state.lookaheadPt = null;
+      return { targetV: 0, targetW: 0 };
+    }
+
+    // Recovery maneuver if stuck
+    if (state.recoveryTimer > 0) {
+      state.recoveryTimer -= dt;
+      return {
+        targetV: -maxVCells * 0.42,
+        targetW: state.recoveryDir * 2.1
+      };
+    }
+
+    // Trim passed waypoints along A* path
+    const path = state.path;
+    if (!path || path.length < 2) {
+      state.lookaheadPt = null;
+      return { targetV: 0, targetW: 0 };
+    }
+
+    let closestIdx = 0;
+    let closestDist = 1e9;
+    const searchLimit = Math.min(path.length, 18);
+    for (let i = 0; i < searchLimit; i++) {
+      const d = Math.hypot(path[i].x - state.est.x, path[i].y - state.est.y);
+      if (d < closestDist) { closestDist = d; closestIdx = i; }
+    }
+    if (closestIdx > 0) {
+      path.splice(0, closestIdx);
+    }
+
+    // Check arrival at path end
+    const endPt = path[path.length - 1];
+    const distEnd = Math.hypot(endPt.x - state.est.x, endPt.y - state.est.y);
+    if (distEnd < 1.85) {
+      if (state.driveMode === 'goal' && state.goal) {
+        state.goal = null;
+        state.path = [];
+        state.lookaheadPt = null;
+        playArrivalChime(false);
+        showEventBanner('Waypoint Reached — Goal navigation complete!');
+        return { targetV: 0, targetW: 0 };
+      } else {
+        state.replanTimer = 0; // immediately pick next frontier
+      }
+    }
+
+    // Pure Pursuit lookahead point
+    const ld = clamp(2.8 + 0.25 * Math.abs(state.bot.v), 2.6, 5.2);
+    let lookPt = endPt;
+    for (let i = 0; i < path.length; i++) {
+      const d = Math.hypot(path[i].x - state.est.x, path[i].y - state.est.y);
+      if (d >= ld) {
+        lookPt = path[i];
+        break;
+      }
+    }
+    state.lookaheadPt = lookPt;
+
+    // Transform lookahead into robot local frame
+    const dx = lookPt.x - state.est.x;
+    const dy = lookPt.y - state.est.y;
+    const cosT = Math.cos(state.est.th);
+    const sinT = Math.sin(state.est.th);
+    const localX = cosT * dx + sinT * dy;
+    const localY = -sinT * dx + cosT * dy;
+    const headingErr = Math.atan2(localY, localX);
+    const distL = Math.hypot(localX, localY);
+
+    // Pivot smoothly if heading error is large, otherwise Pure Pursuit curvature
+    if (Math.abs(headingErr) > 1.05) {
+      return {
+        targetV: maxVCells * 0.14,
+        targetW: clamp(headingErr * 2.8, -maxW, maxW)
+      };
+    }
+
+    const curvature = (2.0 * localY) / Math.max(2.0, distL * distL);
+    const speedScale = clamp(1.0 - Math.abs(headingErr) * 0.55, 0.3, 1.0) * clamp(distEnd / 4.2, 0.35, 1.0);
+    const targetV = maxVCells * speedScale;
+    const targetW = clamp(targetV * curvature * 1.15, -maxW, maxW);
+
+    return { targetV, targetW };
+  }
+
+  function resolveCollisions(x, y) {
+    let rx = x, ry = y;
+    const r = BOT_RADIUS;
+    const x0 = clamp(Math.floor(rx - r - 1), 0, GRID_W - 1);
+    const x1 = clamp(Math.ceil(rx + r + 1), 0, GRID_W - 1);
+    const y0 = clamp(Math.floor(ry - r - 1), 0, GRID_H - 1);
+    const y1 = clamp(Math.ceil(ry + r + 1), 0, GRID_H - 1);
+
+    let collided = false;
+    for (let gy = y0; gy <= y1; gy++) {
+      const row = gy * GRID_W;
+      for (let gx = x0; gx <= x1; gx++) {
+        if (!staticGrid[row + gx] && !dynamicMask[row + gx]) continue;
+        // Closest point on cell [gx, gx+1] x [gy, gy+1]
+        const cx = clamp(rx, gx, gx + 1);
+        const cy = clamp(ry, gy, gy + 1);
+        const dx = rx - cx;
+        const dy = ry - cy;
+        const d2 = dx * dx + dy * dy;
+        if (d2 < r * r) {
+          collided = true;
+          const d = Math.sqrt(d2);
+          if (d > 1e-5) {
+            const push = r - d;
+            rx += (dx / d) * push;
+            ry += (dy / d) * push;
+          } else {
+            rx += 0.25;
+          }
+        }
+      }
+    }
+    rx = clamp(rx, 2.2, GRID_W - 2.2);
+    ry = clamp(ry, 2.2, GRID_H - 2.2);
+    return { x: rx, y: ry, collided };
+  }
+
+  function stepPhysics(dt) {
+    updateDynamicObstacles(dt);
+
+    const { targetV, targetW } = computeSteeringCommands(dt);
+
+    // Smooth actuator acceleration limits
+    const accelV = 26.0; // cells/s^2
+    const accelW = 11.0; // rad/s^2
+    state.bot.v += clamp(targetV - state.bot.v, -accelV * dt, accelV * dt);
+    state.bot.w += clamp(targetW - state.bot.w, -accelW * dt, accelW * dt);
+
+    const prevX = state.bot.x;
+    const prevY = state.bot.y;
+    const prevTh = state.bot.th;
+
+    // True differential-drive integration
+    const dThTrue = state.bot.w * dt;
+    const midTh = state.bot.th + dThTrue * 0.5;
+    const nextX = state.bot.x + Math.cos(midTh) * state.bot.v * dt;
+    const nextY = state.bot.y + Math.sin(midTh) * state.bot.v * dt;
+
+    const res = resolveCollisions(nextX, nextY);
+    state.bot.x = res.x;
+    state.bot.y = res.y;
+    state.bot.th = wrapAngle(state.bot.th + dThTrue);
+    state.bot.turretAngle = wrapAngle(state.bot.turretAngle + dt * 11.5);
+    state.bot.wheelPhase += state.bot.v * dt * 1.4;
+
+    // Actual displacement for odometry model
+    const dS = Math.hypot(state.bot.x - prevX, state.bot.y - prevY) * (state.bot.v >= -0.05 ? 1 : -1);
+    const dTh = wrapAngle(state.bot.th - prevTh);
+    state.bot.totalDistCells += Math.abs(dS);
+
+    // Noisy Odometry Model (systematic wheel bias + stochastic slip)
+    const drift = state.driftMult;
+    const absDS = Math.abs(dS);
+    const noisyDS = dS * (1.0 + state.odomBiasV * drift) + gaussianRand() * 0.025 * drift * Math.sqrt(absDS + 1e-6);
+    const noisyDTh = dTh * (1.0 + 0.04 * drift) + (state.odomBiasW * absDS * drift) + gaussianRand() * 0.015 * drift * Math.sqrt(absDS + Math.abs(dTh) + 1e-6);
+
+    // Integrate Raw Odometry Ghost Pose
+    const oMid = state.odom.th + noisyDTh * 0.5;
+    state.odom.x += Math.cos(oMid) * noisyDS;
+    state.odom.y += Math.sin(oMid) * noisyDS;
+    state.odom.th = wrapAngle(state.odom.th + noisyDTh);
+
+    // Predict SLAM Estimated Pose using same noisy odometry
+    const eMid = state.est.th + noisyDTh * 0.5;
+    state.est.x += Math.cos(eMid) * noisyDS;
+    state.est.y += Math.sin(eMid) * noisyDS;
+    state.est.th = wrapAngle(state.est.th + noisyDTh);
+
+    // 1. Cast 360° Lidar from true pose
+    performLidarScan();
+
+    // 2. Correct SLAM estimated pose with ICP Scan-Matching (if enabled)
+    if (state.icpEnabled) {
+      runICPScanMatch(false);
+    }
+
+    // 3. Fuse scan into Bayesian Log-Odds Occupancy Grid using Estimated Pose
+    updateOccupancyGridFromScan();
+
+    // Record trails
+    const lastS = state.slamTrail[state.slamTrail.length - 1];
+    if (!lastS || Math.hypot(state.est.x - lastS.x, state.est.y - lastS.y) > 0.75) {
+      state.slamTrail.push({ x: state.est.x, y: state.est.y });
+      if (state.slamTrail.length > 900) state.slamTrail.shift();
+    }
+    const lastO = state.odomTrail[state.odomTrail.length - 1];
+    if (!lastO || Math.hypot(state.odom.x - lastO.x, state.odom.y - lastO.y) > 0.75) {
+      state.odomTrail.push({ x: state.odom.x, y: state.odom.y });
+      if (state.odomTrail.length > 900) state.odomTrail.shift();
+    }
+
+    // Update Loop Closure visual rings
+    for (let i = state.loopPulses.length - 1; i >= 0; i--) {
+      const lp = state.loopPulses[i];
+      lp.r += dt * 26;
+      lp.alpha -= dt * 0.85;
+      if (lp.alpha <= 0) state.loopPulses.splice(i, 1);
+    }
+
+    // Periodic replanning & stuck recovery
+    state.replanTimer -= dt;
+    if (state.replanTimer <= 0) {
+      state.replanTimer = 0.38;
+      planAutonomousMission(false);
+    }
+
+    // Stuck detection during autonomous travel
+    if (state.driveMode !== 'manual' && state.path.length > 1 && state.recoveryTimer <= 0) {
+      const moved = Math.hypot(state.bot.x - state.lastProgressX, state.bot.y - state.lastProgressY);
+      if (moved > 1.3) {
+        state.lastProgressX = state.bot.x;
+        state.lastProgressY = state.bot.y;
+        state.stuckTimer = 0;
+      } else {
+        state.stuckTimer += dt;
+        if (state.stuckTimer > 1.55 || (res.collided && state.stuckTimer > 0.7)) {
+          state.stuckTimer = 0;
+          state.recoveryTimer = 0.52;
+          state.recoveryDir = Math.random() > 0.5 ? 1 : -1;
+          if (state.activeFrontier) {
+            state.blacklistedTargets.push({ x: state.activeFrontier.x, y: state.activeFrontier.y, until: state.simTime + 6.0 });
+          }
+          state.replanTimer = 0.05;
+        }
+      }
+    }
+
+    // Periodic sonar sweep ping if audio enabled
+    if (state.audioEnabled && state.simTime - lastSonarTime > 1.85 && state.plannerStatus !== 'Map Complete!') {
+      lastSonarTime = state.simTime;
+      playSonarPing();
+    }
+
+    state.simTime += dt;
+  }
+
+  // =========================================================================
+  // CAMERA & COORDINATE TRANSFORMS
+  // =========================================================================
+  function fitCameraToWorld() {
+    const rightPad = state.drawerOpen && !state.zenMode && cam.width > 960 ? 350 : 24;
+    const leftPad = 24;
+    const topPad = 24;
+    const botPad = 76;
+    const availW = Math.max(240, cam.width - rightPad - leftPad);
+    const availH = Math.max(200, cam.height - topPad - botPad);
+    const zoom = Math.min(availW / GRID_W, availH / GRID_H) * 0.96;
+    cam.zoom = zoom;
+    cam.targetZoom = zoom;
+    // Center world nicely inside visible viewport left of the drawer
+    const screenCenterX = leftPad + availW * 0.5;
+    const screenCenterY = topPad + availH * 0.5;
+    cam.x = GRID_W * 0.5 - (screenCenterX - cam.width * 0.5) / zoom;
+    cam.y = GRID_H * 0.5 - (screenCenterY - cam.height * 0.5) / zoom;
+  }
+
+  function gridToScreen(gx, gy) {
+    return {
+      x: (gx - cam.x) * cam.zoom + cam.width * 0.5,
+      y: (gy - cam.y) * cam.zoom + cam.height * 0.5
+    };
+  }
+
+  function screenToGrid(sx, sy) {
+    return {
+      x: (sx - cam.width * 0.5) / cam.zoom + cam.x,
+      y: (sy - cam.height * 0.5) / cam.zoom + cam.y
+    };
+  }
+
+  function resizeCanvas() {
+    cam.dpr = Math.min(window.devicePixelRatio || 1, 2);
+    cam.width = window.innerWidth;
+    cam.height = window.innerHeight;
+    canvas.width = Math.round(cam.width * cam.dpr);
+    canvas.height = Math.round(cam.height * cam.dpr);
+    if (state.camMode === 'fit') fitCameraToWorld();
+  }
+
+  // =========================================================================
+  // RENDERING PIPELINE
+  // =========================================================================
+  function drawMetricGrid() {
+    if (!state.showGrid) return;
+    const step = 10; // every 1.5m
+    ctx.save();
+    ctx.strokeStyle = 'rgba(110, 175, 255, 0.065)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let x = 0; x <= GRID_W; x += step) {
+      const p0 = gridToScreen(x, 0);
+      const p1 = gridToScreen(x, GRID_H);
+      ctx.moveTo(p0.x, p0.y);
+      ctx.lineTo(p1.x, p1.y);
+    }
+    for (let y = 0; y <= GRID_H; y += step) {
+      const p0 = gridToScreen(0, y);
+      const p1 = gridToScreen(GRID_W, y);
+      ctx.moveTo(p0.x, p0.y);
+      ctx.lineTo(p1.x, p1.y);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawGroundTruthWalls(alpha = 0.28, solidStyle = false) {
+    const z = cam.zoom;
+    ctx.save();
+    ctx.fillStyle = solidStyle
+      ? 'rgba(130, 165, 235, 0.42)'
+      : `rgba(148, 130, 255, ${alpha})`;
+
+    // Batch horizontal runs for blazing fast rendering
+    for (let y = 0; y < GRID_H; y++) {
+      const row = y * GRID_W;
+      let x = 0;
+      while (x < GRID_W) {
+        if (!staticGrid[row + x]) { x++; continue; }
+        const startX = x;
+        while (x < GRID_W && staticGrid[row + x]) x++;
+        const p = gridToScreen(startX, y);
+        ctx.fillRect(p.x, p.y, (x - startX) * z + 0.4, z + 0.4);
+      }
+    }
+
+    // Draw dynamic obstacles in ground truth
+    for (let i = 0; i < state.dynObstacles.length; i++) {
+      const ob = state.dynObstacles[i];
+      const p = gridToScreen(ob.x, ob.y);
+      const r = ob.r * z;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+      ctx.fillStyle = solidStyle ? 'rgba(255, 168, 92, 0.55)' : 'rgba(255, 168, 92, 0.34)';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255, 190, 92, 0.85)';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawFrontiers(nowSec) {
+    if (!state.showFrontiers || state.frontiers.length === 0) return;
+    const pulse = 0.62 + 0.38 * Math.sin(nowSec * 5.2);
+    const z = cam.zoom;
+
+    ctx.save();
+    ctx.fillStyle = `rgba(255, 190, 92, ${(0.42 + 0.38 * pulse).toFixed(3)})`;
+    for (let i = 0; i < state.frontiers.length; i++) {
+      const cells = state.frontiers[i].cells;
+      for (let k = 0; k < cells.length; k++) {
+        const idx = cells[k];
+        const gx = idx % GRID_W;
+        const gy = (idx - gx) / GRID_W;
+        const p = gridToScreen(gx, gy);
+        ctx.fillRect(p.x, p.y, z + 0.5, z + 0.5);
+      }
+    }
+
+    // Highlight active target frontier with pulsing gold reticle
+    if (state.activeFrontier && state.driveMode === 'explore') {
+      const p = gridToScreen(state.activeFrontier.x, state.activeFrontier.y);
+      const r = (2.1 + 0.7 * pulse) * z * 0.55;
+      ctx.strokeStyle = `rgba(255, 205, 105, ${(0.55 + 0.4 * pulse).toFixed(3)})`;
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(p.x - r - 4, p.y); ctx.lineTo(p.x - r + 3, p.y);
+      ctx.moveTo(p.x + r - 3, p.y); ctx.lineTo(p.x + r + 4, p.y);
+      ctx.moveTo(p.x, p.y - r - 4); ctx.lineTo(p.x, p.y - r + 3);
+      ctx.moveTo(p.x, p.y + r - 3); ctx.lineTo(p.x, p.y + r + 4);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawLidarFan() {
+    if (!state.showLidar || state.scan.length === 0) return;
+    const scan = state.scan;
+    const origin = gridToScreen(state.bot.x, state.bot.y);
+
+    ctx.save();
+
+    // Soft glowing Lidar visibility polygon
+    ctx.beginPath();
+    for (let i = 0; i < scan.length; i++) {
+      const s = scan[i];
+      const p = gridToScreen(s.hx, s.hy);
+      if (i === 0) ctx.moveTo(p.x, p.y);
+      else ctx.lineTo(p.x, p.y);
+    }
+    ctx.closePath();
+    const maxRpx = (state.maxRangeMeters / CELL_METERS) * cam.zoom;
+    const grad = ctx.createRadialGradient(origin.x, origin.y, 4, origin.x, origin.y, maxRpx);
+    grad.addColorStop(0, 'rgba(62, 242, 184, 0.16)');
+    grad.addColorStop(0.55, 'rgba(88, 220, 255, 0.06)');
+    grad.addColorStop(1, 'rgba(88, 220, 255, 0.0)');
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    // Subtle laser ray beams
+    ctx.strokeStyle = 'rgba(62, 242, 184, 0.14)';
+    ctx.lineWidth = 0.85;
+    ctx.beginPath();
+    const rayStep = scan.length > 130 ? 2 : 1;
+    for (let i = 0; i < scan.length; i += rayStep) {
+      const s = scan[i];
+      const p = gridToScreen(s.hx, s.hy);
+      ctx.moveTo(origin.x, origin.y);
+      ctx.lineTo(p.x, p.y);
+    }
+    ctx.stroke();
+
+    // Rotating bright Lidar turret sweep beam
+    const sweepAng = state.bot.th + state.bot.turretAngle;
+    const sweepIdx = Math.floor((((state.bot.turretAngle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2)) / (Math.PI * 2) * scan.length) % scan.length;
+    const sweepRay = scan[sweepIdx];
+    const sweepEnd = gridToScreen(sweepRay.hx, sweepRay.hy);
+    const sweepGrad = ctx.createLinearGradient(origin.x, origin.y, sweepEnd.x, sweepEnd.y);
+    sweepGrad.addColorStop(0, 'rgba(62, 242, 184, 0.85)');
+    sweepGrad.addColorStop(1, 'rgba(170, 255, 240, 0.95)');
+    ctx.strokeStyle = sweepGrad;
+    ctx.lineWidth = 2.0;
+    ctx.beginPath();
+    ctx.moveTo(origin.x, origin.y);
+    ctx.lineTo(sweepEnd.x, sweepEnd.y);
+    ctx.stroke();
+
+    // Bright emerald/cyan hit-point sparks on walls (drawn at noisy measured positions relative to estimated pose if ICP off, or true hit sparks)
+    for (let i = 0; i < scan.length; i++) {
+      const s = scan[i];
+      if (!s.hit) continue;
+      const a = state.est.th + s.relAngle;
+      const mx = state.est.x + Math.cos(a) * s.measuredDist;
+      const my = state.est.y + Math.sin(a) * s.measuredDist;
+      const p = gridToScreen(mx, my);
+      ctx.fillStyle = s.dynamic ? '#ffbe5c' : (i % 2 === 0 ? '#58f7c8' : '#7ae8ff');
+      ctx.fillRect(p.x - 1.7, p.y - 1.7, 3.4, 3.4);
+    }
+
+    ctx.restore();
+  }
+
+  function drawPlannedPath() {
+    if (!state.showPath) return;
+
+    // Goal waypoint beacon
+    if (state.goal) {
+      const p = gridToScreen(state.goal.x, state.goal.y);
+      const pulse = 0.5 + 0.5 * Math.sin(performance.now() * 0.006);
+      ctx.save();
+      ctx.strokeStyle = `rgba(88, 220, 255, ${(0.45 + 0.45 * pulse).toFixed(3)})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 10 + pulse * 6, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.fillStyle = 'rgba(88, 220, 255, 0.25)';
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#e8fbff';
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 2.8, 0, Math.PI * 2);
+      ctx.fill();
+
+      const distM = Math.hypot(state.goal.x - state.est.x, state.goal.y - state.est.y) * CELL_METERS;
+      ctx.font = '700 10px ui-monospace, Consolas, monospace';
+      ctx.fillStyle = '#9feaff';
+      ctx.fillText(`GOAL ${distM.toFixed(1)}m`, p.x + 12, p.y - 8);
+      ctx.restore();
+    }
+
+    const path = state.path;
+    if (!path || path.length < 2) return;
+
+    ctx.save();
+    // Outer soft glow
+    ctx.beginPath();
+    for (let i = 0; i < path.length; i++) {
+      const p = gridToScreen(path[i].x, path[i].y);
+      if (i === 0) ctx.moveTo(p.x, p.y);
+      else ctx.lineTo(p.x, p.y);
+    }
+    ctx.strokeStyle = 'rgba(88, 220, 255, 0.22)';
+    ctx.lineWidth = 6;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.stroke();
+
+    // Crisp dashed core
+    ctx.setLineDash([7, 5]);
+    ctx.lineDashOffset = -performance.now() * 0.025;
+    ctx.strokeStyle = '#6ce8ff';
+    ctx.lineWidth = 2.0;
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Pure Pursuit lookahead carrot
+    if (state.lookaheadPt) {
+      const lp = gridToScreen(state.lookaheadPt.x, state.lookaheadPt.y);
+      const bp = gridToScreen(state.est.x, state.est.y);
+      ctx.strokeStyle = 'rgba(62, 242, 184, 0.45)';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(bp.x, bp.y);
+      ctx.lineTo(lp.x, lp.y);
+      ctx.stroke();
+
+      ctx.fillStyle = '#3ef2b8';
+      ctx.beginPath();
+      ctx.arc(lp.x, lp.y, 3.6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function drawTrailsAndPulses() {
+    ctx.save();
+
+    // Noisy Odometry Ghost Trail (coral)
+    if (state.showOdomGhost && state.odomTrail.length > 1) {
+      ctx.beginPath();
+      for (let i = 0; i < state.odomTrail.length; i++) {
+        const p = gridToScreen(state.odomTrail[i].x, state.odomTrail[i].y);
+        if (i === 0) ctx.moveTo(p.x, p.y);
+        else ctx.lineTo(p.x, p.y);
+      }
+      ctx.setLineDash([4, 4]);
+      ctx.strokeStyle = 'rgba(255, 100, 130, 0.52)';
+      ctx.lineWidth = 1.6;
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Drift tether line between true/SLAM bot and noisy odom ghost
+      const pBot = gridToScreen(state.bot.x, state.bot.y);
+      const pOdom = gridToScreen(state.odom.x, state.odom.y);
+      if (Math.hypot(pOdom.x - pBot.x, pOdom.y - pBot.y) > 4) {
+        ctx.strokeStyle = 'rgba(255, 100, 130, 0.35)';
+        ctx.lineWidth = 1.1;
+        ctx.beginPath();
+        ctx.moveTo(pBot.x, pBot.y);
+        ctx.lineTo(pOdom.x, pOdom.y);
+        ctx.stroke();
+      }
+    }
+
+    // SLAM Trajectory Ribbon
+    if (state.showTrail && state.slamTrail.length > 1) {
+      ctx.beginPath();
+      for (let i = 0; i < state.slamTrail.length; i++) {
+        const p = gridToScreen(state.slamTrail[i].x, state.slamTrail[i].y);
+        if (i === 0) ctx.moveTo(p.x, p.y);
+        else ctx.lineTo(p.x, p.y);
+      }
+      ctx.strokeStyle = 'rgba(62, 242, 184, 0.45)';
+      ctx.lineWidth = 2.0;
+      ctx.lineJoin = 'round';
+      ctx.stroke();
+    }
+
+    // Loop Closure Snap Radar Rings
+    for (let i = 0; i < state.loopPulses.length; i++) {
+      const lp = state.loopPulses[i];
+      const p = gridToScreen(lp.x, lp.y);
+      ctx.strokeStyle = `rgba(88, 220, 255, ${lp.alpha.toFixed(3)})`;
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, lp.r * cam.zoom * 0.45, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.font = '700 10px ui-monospace, Consolas, monospace';
+      ctx.fillStyle = `rgba(120, 245, 220, ${lp.alpha.toFixed(3)})`;
+      ctx.fillText('LOOP CLOSURE', p.x + 10, p.y - lp.r * cam.zoom * 0.25);
+    }
+
+    ctx.restore();
+  }
+
+  function drawRobotChassis(gx, gy, th, isGhost = false) {
+    const p = gridToScreen(gx, gy);
+    const r = Math.max(7, BOT_RADIUS * cam.zoom);
+
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.rotate(th);
+
+    if (isGhost) {
+      // Coral ghost odometry outline
+      ctx.strokeStyle = 'rgba(255, 100, 130, 0.78)';
+      ctx.fillStyle = 'rgba(255, 100, 130, 0.12)';
+      ctx.lineWidth = 1.6;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      ctx.arc(0, 0, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(r * 1.15, 0);
+      ctx.stroke();
+      ctx.restore();
+      return;
+    }
+
+    // Subtle ground ambient glow
+    const glow = ctx.createRadialGradient(0, 0, r * 0.3, 0, 0, r * 2.1);
+    glow.addColorStop(0, 'rgba(62, 242, 184, 0.28)');
+    glow.addColorStop(1, 'rgba(62, 242, 184, 0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 2.1, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Dual differential-drive wheel treads
+    ctx.fillStyle = '#1b263c';
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.45)';
+    ctx.lineWidth = 1;
+    const tw = r * 1.15, thw = r * 0.34;
+    ctx.fillRect(-tw * 0.5, -r * 1.02, tw, thw);
+    ctx.strokeRect(-tw * 0.5, -r * 1.02, tw, thw);
+    ctx.fillRect(-tw * 0.5, r * 1.02 - thw, tw, thw);
+    ctx.strokeRect(-tw * 0.5, r * 1.02 - thw, tw, thw);
+
+    // Main cylindrical rover deck
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 0.92, 0, Math.PI * 2);
+    const bodyGrad = ctx.createLinearGradient(-r, -r, r, r);
+    bodyGrad.addColorStop(0, '#1e2f4d');
+    bodyGrad.addColorStop(1, '#0b1322');
+    ctx.fillStyle = bodyGrad;
+    ctx.fill();
+    ctx.strokeStyle = '#6ce8ff';
+    ctx.lineWidth = 1.6;
+    ctx.stroke();
+
+    // Forward directional LED visor
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 0.78, -0.52, 0.52);
+    ctx.strokeStyle = '#3ef2b8';
+    ctx.lineWidth = 2.4;
+    ctx.stroke();
+
+    // Heading chevron
+    ctx.fillStyle = '#eafff8';
+    ctx.beginPath();
+    ctx.moveTo(r * 0.88, 0);
+    ctx.lineTo(r * 0.48, -r * 0.24);
+    ctx.lineTo(r * 0.48, r * 0.24);
+    ctx.closePath();
+    ctx.fill();
+
+    // Spinning 360° Lidar turret puck
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 0.42, 0, Math.PI * 2);
+    ctx.fillStyle = '#09111f';
+    ctx.fill();
+    ctx.strokeStyle = '#3ef2b8';
+    ctx.lineWidth = 1.4;
+    ctx.stroke();
+
+    // Turret laser emitter dot
+    const la = state.bot.turretAngle;
+    ctx.fillStyle = '#9effe0';
+    ctx.beginPath();
+    ctx.arc(Math.cos(la) * r * 0.25, Math.sin(la) * r * 0.25, Math.max(1.8, r * 0.12), 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  function drawBrushPreview() {
+    if (state.pointerTool === 'goal' || pointer.hoverGx < 0) return;
+    const p = gridToScreen(pointer.hoverGx, pointer.hoverGy);
+    const r = state.brushRadius * cam.zoom;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+    ctx.strokeStyle = state.pointerTool === 'wall' ? 'rgba(255, 190, 92, 0.9)' : 'rgba(255, 100, 130, 0.9)';
+    ctx.fillStyle = state.pointerTool === 'wall' ? 'rgba(255, 190, 92, 0.18)' : 'rgba(255, 100, 130, 0.18)';
+    ctx.lineWidth = 1.6;
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function renderWorldLayers(nowSec, mode) {
+    const tl = gridToScreen(0, 0);
+    const br = gridToScreen(GRID_W, GRID_H);
+    const wPx = br.x - tl.x;
+    const hPx = br.y - tl.y;
+
+    if (mode === 'truth-only') {
+      // Ground-truth clean blueprint side (for Split Compare left pane)
+      ctx.fillStyle = '#080e1d';
+      ctx.fillRect(tl.x, tl.y, wPx, hPx);
+      drawMetricGrid();
+      drawGroundTruthWalls(0.45, true);
+    } else {
+      // Bayesian Occupancy Grid canvas
+      ctx.save();
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(occCanvas, tl.x, tl.y, wPx, hPx);
+      ctx.restore();
+
+      drawMetricGrid();
+      if (mode === 'xray') {
+        drawGroundTruthWalls(0.24, false);
+      }
+      drawFrontiers(nowSec);
+    }
+
+    // Arena crisp outer frame
+    ctx.strokeStyle = 'rgba(110, 195, 255, 0.35)';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(tl.x, tl.y, wPx, hPx);
+
+    drawLidarFan();
+    drawTrailsAndPulses();
+    drawPlannedPath();
+
+    // Noisy odometry ghost chassis
+    if (state.showOdomGhost) {
+      drawRobotChassis(state.odom.x, state.odom.y, state.odom.th, true);
+    }
+    // Primary rover
+    drawRobotChassis(state.bot.x, state.bot.y, state.bot.th, false);
+  }
+
+  function render() {
+    refreshOccupancyImage();
+
+    // Smooth camera follow if enabled
+    if (state.camMode === 'follow') {
+      cam.x += (state.bot.x - cam.x) * 0.1;
+      cam.y += (state.bot.y - cam.y) * 0.1;
+    }
+    cam.zoom += (cam.targetZoom - cam.zoom) * 0.18;
+
+    ctx.setTransform(cam.dpr, 0, 0, cam.dpr, 0, 0);
+    ctx.fillStyle = '#040711';
+    ctx.fillRect(0, 0, cam.width, cam.height);
+
+    const nowSec = performance.now() * 0.001;
+
+    if (state.viewMode === 'split') {
+      const splitX = Math.round(cam.width * state.splitRatio);
+
+      // Left pane: Ground Truth Floorplan
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0, 0, splitX, cam.height);
+      ctx.clip();
+      renderWorldLayers(nowSec, 'truth-only');
+      ctx.restore();
+
+      // Right pane: Robot's Bayesian Belief Map
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(splitX, 0, cam.width - splitX, cam.height);
+      ctx.clip();
+      renderWorldLayers(nowSec, 'fog');
+      ctx.restore();
+
+      // Glowing split divider bar
+      ctx.save();
+      ctx.strokeStyle = 'rgba(88, 220, 255, 0.85)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(splitX, 0);
+      ctx.lineTo(splitX, cam.height);
+      ctx.stroke();
+
+      // Pill badges on left/right of divider
+      const badgeY = cam.height - 92;
+      ctx.font = '700 10px ui-monospace, Consolas, monospace';
+      ctx.fillStyle = 'rgba(9, 14, 28, 0.86)';
+      ctx.strokeStyle = 'rgba(148, 179, 255, 0.35)';
+      ctx.lineWidth = 1;
+
+      ctx.fillRect(splitX - 108, badgeY, 98, 22);
+      ctx.strokeRect(splitX - 108, badgeY, 98, 22);
+      ctx.fillStyle = '#c4d6ff';
+      ctx.fillText('GROUND TRUTH', splitX - 99, badgeY + 14);
+
+      ctx.fillStyle = 'rgba(9, 14, 28, 0.86)';
+      ctx.fillRect(splitX + 10, badgeY, 108, 22);
+      ctx.strokeRect(splitX + 10, badgeY, 108, 22);
+      ctx.fillStyle = '#3ef2b8';
+      ctx.fillText('BELIEF MAP', splitX + 26, badgeY + 14);
+
+      // Center drag handle
+      const midY = cam.height * 0.5;
+      ctx.fillStyle = '#0c162b';
+      ctx.strokeStyle = '#58dcff';
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.arc(splitX, midY, 13, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#eef6ff';
+      ctx.font = '700 11px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('⇆', splitX, midY + 4);
+      ctx.restore();
+    } else {
+      renderWorldLayers(nowSec, state.viewMode);
+    }
+
+    drawBrushPreview();
+  }
+
+  // =========================================================================
+  // TELEMETRY & HUD UPDATES
+  // =========================================================================
+  const elSlamBadge = document.getElementById('slam-badge');
+  const elPlannerStatus = document.getElementById('planner-status');
+  const elExplored = document.getElementById('tel-explored');
+  const elRays = document.getElementById('tel-rays');
+  const elFrontiers = document.getElementById('tel-frontiers');
+  const elPoseXY = document.getElementById('tel-pose-xy');
+  const elPoseTh = document.getElementById('tel-pose-th');
+  const elErr = document.getElementById('tel-err');
+  const elCovFill = document.getElementById('cov-fill');
+  const elCovCells = document.getElementById('tel-cov-cells');
+  const elLoops = document.getElementById('tel-loops');
+  const elDist = document.getElementById('tel-dist');
+  const elTime = document.getElementById('tel-time');
+  const elEventBanner = document.getElementById('event-banner');
+  const elEventText = document.getElementById('event-text');
+
+  let bannerTimeout = null;
+  function showEventBanner(msg) {
+    elEventText.textContent = msg;
+    elEventBanner.classList.add('visible');
+    if (bannerTimeout) clearTimeout(bannerTimeout);
+    bannerTimeout = setTimeout(() => {
+      elEventBanner.classList.remove('visible');
+    }, 3600);
+  }
+
+  function updateTelemetry(dtReal) {
+    state.raySampleTimer += dtReal;
+    if (state.raySampleTimer >= 0.35) {
+      state.raysPerSec = Math.round(state.rayAccumulator / state.raySampleTimer);
+      state.rayAccumulator = 0;
+      state.raySampleTimer = 0;
+    }
+
+    elExplored.textContent = `${state.exploredPct.toFixed(1)}%`;
+    elCovFill.style.width = `${state.exploredPct.toFixed(1)}%`;
+    elCovCells.textContent = `${Math.round(state.exploredPct)}%`;
+    elRays.textContent = state.raysPerSec >= 1000
+      ? `${(state.raysPerSec / 1000).toFixed(1)}k/s`
+      : `${state.raysPerSec}/s`;
+    elFrontiers.textContent = `${state.frontierCount}`;
+
+    const xm = state.est.x * CELL_METERS;
+    const ym = state.est.y * CELL_METERS;
+    const deg = ((state.est.th * 180 / Math.PI) % 360 + 360) % 360;
+    elPoseXY.textContent = `${xm.toFixed(2)}, ${ym.toFixed(2)} m`;
+    elPoseTh.textContent = `${deg.toFixed(1)}°`;
+
+    const odomErrCm = Math.hypot(state.odom.x - state.bot.x, state.odom.y - state.bot.y) * CELL_METERS * 100;
+    const slamErrCm = Math.hypot(state.est.x - state.bot.x, state.est.y - state.bot.y) * CELL_METERS * 100;
+    elErr.textContent = `${odomErrCm.toFixed(0)} / ${slamErrCm.toFixed(1)} cm`;
+
+    elLoops.textContent = `${state.loopClosures}`;
+    elDist.textContent = `${(state.bot.totalDistCells * CELL_METERS).toFixed(1)} m`;
+    elTime.textContent = `${state.simTime.toFixed(1)} s`;
+
+    // Status pill styling
+    elPlannerStatus.textContent = state.plannerStatus;
+    elPlannerStatus.className = 'status-pill';
+    if (state.plannerStatus === 'Navigating Goal') elPlannerStatus.classList.add('goal');
+    else if (state.plannerStatus === 'Map Complete!') elPlannerStatus.classList.add('complete');
+    else if (state.plannerStatus === 'Manual Drive') elPlannerStatus.classList.add('manual');
+
+    // SLAM mode badge
+    if (state.icpEnabled) {
+      elSlamBadge.textContent = 'ICP Scan-Match';
+      elSlamBadge.className = 'mode-badge';
+    } else {
+      elSlamBadge.textContent = 'Pure Odom Drift';
+      elSlamBadge.className = 'mode-badge drift-only';
+    }
+  }
+
+  // =========================================================================
+  // POINTER INTERACTION (GOAL WAYPOINT, WALL BRUSH, PAN, ZOOM, SPLIT DRAG)
+  // =========================================================================
+  function applyBrushAt(gx, gy) {
+    if (gx < 2 || gx >= GRID_W - 2 || gy < 2 || gy >= GRID_H - 2) return;
+    // Never paint directly on top of the robot body
+    if (state.pointerTool === 'wall' && Math.hypot(gx - state.bot.x, gy - state.bot.y) < BOT_RADIUS + state.brushRadius + 0.6) {
+      return;
+    }
+    const val = state.pointerTool === 'wall' ? 1 : 0;
+    fillCircleGrid(gx, gy, state.brushRadius, val);
+    computeReachableMask();
+    state.replanTimer = 0.05;
+  }
+
+  function updateCanvasCursor(sx) {
+    canvas.classList.remove('panning', 'brush-wall', 'brush-erase', 'split-hover');
+    if (pointer.panning) {
+      canvas.classList.add('panning');
+      return;
+    }
+    if (state.viewMode === 'split' && Math.abs(sx - cam.width * state.splitRatio) < 14) {
+      canvas.classList.add('split-hover');
+      return;
+    }
+    if (state.pointerTool === 'wall') canvas.classList.add('brush-wall');
+    else if (state.pointerTool === 'erase') canvas.classList.add('brush-erase');
+  }
+
+  canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+  canvas.addEventListener('pointerdown', e => {
+    canvas.setPointerCapture(e.pointerId);
+    pointer.down = true;
+    pointer.button = e.button;
+    pointer.lastX = e.clientX;
+    pointer.lastY = e.clientY;
+
+    // Split divider drag check
+    if (e.button === 0 && state.viewMode === 'split' && Math.abs(e.clientX - cam.width * state.splitRatio) < 16) {
+      pointer.draggingSplit = true;
+      return;
+    }
+
+    // Right or middle button -> Pan camera
+    if (e.button === 2 || e.button === 1) {
+      pointer.panning = true;
+      if (state.camMode === 'follow') {
+        state.camMode = 'fit';
+        document.getElementById('btn-cam').textContent = 'Cam: Free';
+      }
+      updateCanvasCursor(e.clientX);
+      return;
+    }
+
+    // Left button -> Tool action
+    const g = screenToGrid(e.clientX, e.clientY);
+    if (state.pointerTool === 'wall' || state.pointerTool === 'erase') {
+      pointer.painting = true;
+      applyBrushAt(g.x, g.y);
+    } else if (state.pointerTool === 'goal') {
+      if (g.x >= 2 && g.x < GRID_W - 2 && g.y >= 2 && g.y < GRID_H - 2) {
+        state.goal = { x: g.x, y: g.y };
+        state.driveMode = 'goal';
+        state.plannerStatus = 'Navigating Goal';
+        syncControlsFromState();
+        planAutonomousMission(true);
+      }
+    }
+  });
+
+  canvas.addEventListener('pointermove', e => {
+    const g = screenToGrid(e.clientX, e.clientY);
+    pointer.hoverGx = g.x;
+    pointer.hoverGy = g.y;
+
+    if (pointer.draggingSplit) {
+      state.splitRatio = clamp(e.clientX / cam.width, 0.14, 0.86);
+      return;
+    }
+    if (pointer.panning) {
+      const dx = (e.clientX - pointer.lastX) / cam.zoom;
+      const dy = (e.clientY - pointer.lastY) / cam.zoom;
+      cam.x -= dx;
+      cam.y -= dy;
+      pointer.lastX = e.clientX;
+      pointer.lastY = e.clientY;
+      return;
+    }
+    if (pointer.painting) {
+      applyBrushAt(g.x, g.y);
+      return;
+    }
+    updateCanvasCursor(e.clientX);
+  });
+
+  canvas.addEventListener('pointerup', () => {
+    pointer.down = false;
+    pointer.panning = false;
+    pointer.draggingSplit = false;
+    pointer.painting = false;
+    updateCanvasCursor(-100);
+  });
+
+  canvas.addEventListener('pointerleave', () => {
+    pointer.hoverGx = -1;
+    pointer.hoverGy = -1;
+  });
+
+  canvas.addEventListener('wheel', e => {
+    e.preventDefault();
+    const factor = e.deltaY < 0 ? 1.14 : 0.88;
+    const before = screenToGrid(e.clientX, e.clientY);
+    cam.targetZoom = clamp(cam.targetZoom * factor, 2.5, 22);
+    cam.zoom = cam.targetZoom;
+    const after = screenToGrid(e.clientX, e.clientY);
+    cam.x += before.x - after.x;
+    cam.y += before.y - after.y;
+  }, { passive: false });
+
+  // =========================================================================
+  // UI BINDINGS & KEYBOARD SHORTCUTS
+  // =========================================================================
+  function syncControlsFromState() {
+    // Presets
+    document.querySelectorAll('#preset-grid .preset-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.preset === state.preset);
+    });
+    // Drive mode
+    document.querySelectorAll('#drive-mode-row .seg-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.mode === state.driveMode);
+    });
+    document.getElementById('autonomy-readout').textContent =
+      state.driveMode === 'explore' ? 'AUTO' : state.driveMode === 'goal' ? 'GOAL' : 'MANUAL';
+
+    // Pointer tool
+    document.querySelectorAll('#tool-row .seg-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.tool === state.pointerTool);
+    });
+    document.getElementById('tool-readout').textContent =
+      state.pointerTool === 'goal' ? 'GOAL' : state.pointerTool === 'wall' ? 'WALL' : 'ERASE';
+
+    // View mode
+    document.querySelectorAll('#view-mode-row .seg-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.view === state.viewMode);
+    });
+
+    // Sliders & checkboxes
+    document.getElementById('sl-speed').value = state.maxSpeedMps;
+    document.getElementById('val-speed').textContent = `${state.maxSpeedMps.toFixed(2)} m/s`;
+    document.getElementById('sl-brush').value = state.brushRadius;
+    document.getElementById('val-brush').textContent = `${state.brushRadius} cells`;
+    document.getElementById('sl-rays').value = state.rayCount;
+    document.getElementById('val-rays').textContent = `${state.rayCount} rays`;
+    document.getElementById('sl-range').value = state.maxRangeMeters;
+    document.getElementById('val-range').textContent = `${state.maxRangeMeters.toFixed(1)} m`;
+    document.getElementById('sl-noise').value = state.noiseSigmaCm;
+    document.getElementById('val-noise').textContent = `${state.noiseSigmaCm.toFixed(1)} cm`;
+    document.getElementById('sl-drift').value = state.driftMult;
+    document.getElementById('val-drift').textContent = `${state.driftMult.toFixed(1)}×`;
+    document.getElementById('sl-logodds').value = state.logOddsGain;
+    document.getElementById('val-logodds').textContent = `+${state.logOddsGain.toFixed(2)}`;
+    document.getElementById('sl-inflate').value = state.inflateRadius;
+    document.getElementById('val-inflate').textContent = `${state.inflateRadius.toFixed(1)} cells`;
+
+    document.getElementById('chk-icp').checked = state.icpEnabled;
+    document.getElementById('chk-odom-ghost').checked = state.showOdomGhost;
+    document.getElementById('chk-lidar').checked = state.showLidar;
+    document.getElementById('chk-frontiers').checked = state.showFrontiers;
+    document.getElementById('chk-path').checked = state.showPath;
+    document.getElementById('chk-trail').checked = state.showTrail;
+    document.getElementById('chk-grid').checked = state.showGrid;
+  }
+
+  // Drawer tabs
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById(`tab-${btn.dataset.tab}`).classList.add('active');
+    });
+  });
+
+  // Preset buttons
+  document.querySelectorAll('#preset-grid .preset-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.preset = btn.dataset.preset;
+      state.driveMode = 'explore';
+      state.goal = null;
+      buildPreset(state.preset);
+      showEventBanner(`Loaded preset: ${btn.querySelector('.preset-name').textContent}`);
+    });
+  });
+
+  // Drive mode segmented pills
+  document.querySelectorAll('#drive-mode-row .seg-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.driveMode = btn.dataset.mode;
+      if (state.driveMode === 'explore') {
+        state.goal = null;
+        state.mapCompleteAnnounced = false;
+        planAutonomousMission(true);
+      } else if (state.driveMode === 'manual') {
+        state.path = [];
+        state.plannerStatus = 'Manual Drive';
+      } else if (state.driveMode === 'goal') {
+        state.pointerTool = 'goal';
+        state.plannerStatus = 'Navigating Goal';
+      }
+      syncControlsFromState();
+    });
+  });
+
+  // Pointer tool segmented pills
+  document.querySelectorAll('#tool-row .seg-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.pointerTool = btn.dataset.tool;
+      syncControlsFromState();
+      updateCanvasCursor(-100);
+    });
+  });
+
+  // View mode segmented pills
+  document.querySelectorAll('#view-mode-row .seg-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.viewMode = btn.dataset.view;
+      syncControlsFromState();
+    });
+  });
+
+  // Sliders
+  document.getElementById('sl-speed').addEventListener('input', e => {
+    state.maxSpeedMps = parseFloat(e.target.value);
+    document.getElementById('val-speed').textContent = `${state.maxSpeedMps.toFixed(2)} m/s`;
+  });
+  document.getElementById('sl-brush').addEventListener('input', e => {
+    state.brushRadius = parseInt(e.target.value, 10);
+    document.getElementById('val-brush').textContent = `${state.brushRadius} cells`;
+  });
+  document.getElementById('sl-rays').addEventListener('input', e => {
+    state.rayCount = parseInt(e.target.value, 10);
+    document.getElementById('val-rays').textContent = `${state.rayCount} rays`;
+  });
+  document.getElementById('sl-range').addEventListener('input', e => {
+    state.maxRangeMeters = parseFloat(e.target.value);
+    document.getElementById('val-range').textContent = `${state.maxRangeMeters.toFixed(1)} m`;
+  });
+  document.getElementById('sl-noise').addEventListener('input', e => {
+    state.noiseSigmaCm = parseFloat(e.target.value);
+    document.getElementById('val-noise').textContent = `${state.noiseSigmaCm.toFixed(1)} cm`;
+  });
+  document.getElementById('sl-drift').addEventListener('input', e => {
+    state.driftMult = parseFloat(e.target.value);
+    document.getElementById('val-drift').textContent = `${state.driftMult.toFixed(1)}×`;
+  });
+  document.getElementById('sl-logodds').addEventListener('input', e => {
+    state.logOddsGain = parseFloat(e.target.value);
+    document.getElementById('val-logodds').textContent = `+${state.logOddsGain.toFixed(2)}`;
+  });
+  document.getElementById('sl-inflate').addEventListener('input', e => {
+    state.inflateRadius = parseFloat(e.target.value);
+    document.getElementById('val-inflate').textContent = `${state.inflateRadius.toFixed(1)} cells`;
+    state.costmapDirty = true;
+    state.replanTimer = 0.05;
+  });
+
+  // Checkboxes
+  document.getElementById('chk-icp').addEventListener('change', e => {
+    state.icpEnabled = e.target.checked;
+    if (state.icpEnabled) {
+      runICPScanMatch(true);
+      showEventBanner('ICP Scan-Matching enabled — pose realigned to occupancy map.');
+    }
+  });
+  document.getElementById('chk-odom-ghost').addEventListener('change', e => { state.showOdomGhost = e.target.checked; });
+  document.getElementById('chk-lidar').addEventListener('change', e => { state.showLidar = e.target.checked; });
+  document.getElementById('chk-frontiers').addEventListener('change', e => { state.showFrontiers = e.target.checked; });
+  document.getElementById('chk-path').addEventListener('change', e => { state.showPath = e.target.checked; });
+  document.getElementById('chk-trail').addEventListener('change', e => { state.showTrail = e.target.checked; });
+  document.getElementById('chk-grid').addEventListener('change', e => { state.showGrid = e.target.checked; });
+
+  // Mission / SLAM Action Buttons
+  document.getElementById('btn-clear-map').addEventListener('click', () => {
+    clearBeliefMap(true);
+    showEventBanner('Bayesian occupancy belief cleared — remapping from scratch.');
+  });
+  document.getElementById('btn-replan').addEventListener('click', () => {
+    state.blacklistedTargets = [];
+    state.costmapDirty = true;
+    planAutonomousMission(true);
+  });
+  document.getElementById('btn-snap-icp').addEventListener('click', () => {
+    runICPScanMatch(true);
+    showEventBanner('ICP Loop-Closure snap executed!');
+  });
+  document.getElementById('btn-zero-odom').addEventListener('click', () => {
+    state.odom.x = state.bot.x;
+    state.odom.y = state.bot.y;
+    state.odom.th = state.bot.th;
+    state.odomTrail = [{ x: state.odom.x, y: state.odom.y }];
+  });
+
+  // Bottom Transport Bar
+  const btnPlay = document.getElementById('btn-play');
+  function togglePlay() {
+    state.running = !state.running;
+    btnPlay.textContent = state.running ? '⏸ Pause' : '▶ Play';
+    btnPlay.classList.toggle('active', state.running);
+  }
+  btnPlay.addEventListener('click', togglePlay);
+
+  document.getElementById('btn-reset').addEventListener('click', () => {
+    state.goal = null;
+    state.driveMode = 'explore';
+    buildPreset(state.preset);
+  });
+
+  document.querySelectorAll('.speed-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.simSpeed = parseFloat(btn.dataset.speed);
+      document.querySelectorAll('.speed-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    });
+  });
+
+  const btnCam = document.getElementById('btn-cam');
+  btnCam.addEventListener('click', () => {
+    if (state.camMode === 'fit') {
+      state.camMode = 'follow';
+      cam.targetZoom = Math.max(cam.targetZoom, 9.5);
+      btnCam.textContent = 'Cam: Follow';
+      btnCam.classList.add('active');
+    } else {
+      state.camMode = 'fit';
+      fitCameraToWorld();
+      btnCam.textContent = 'Cam: Fit';
+      btnCam.classList.remove('active');
+    }
+  });
+
+  const btnSound = document.getElementById('btn-sound');
+  btnSound.addEventListener('click', () => {
+    state.audioEnabled = !state.audioEnabled;
+    if (state.audioEnabled) {
+      ensureAudio();
+      playSonarPing();
+    }
+    btnSound.textContent = state.audioEnabled ? '🔊 Audio' : '🔇 Audio';
+    btnSound.classList.toggle('active', state.audioEnabled);
+  });
+
+  const drawerEl = document.getElementById('drawer');
+  const btnToggleDrawer = document.getElementById('btn-toggle-drawer');
+  function toggleDrawer() {
+    state.drawerOpen = !state.drawerOpen;
+    drawerEl.classList.toggle('collapsed', !state.drawerOpen);
+    btnToggleDrawer.classList.toggle('active', state.drawerOpen);
+    if (state.camMode === 'fit') fitCameraToWorld();
+  }
+  btnToggleDrawer.addEventListener('click', toggleDrawer);
+
+  function toggleZenMode() {
+    state.zenMode = !state.zenMode;
+    document.body.classList.toggle('zen-mode', state.zenMode);
+    if (state.camMode === 'fit') fitCameraToWorld();
+  }
+  document.getElementById('btn-zen').addEventListener('click', toggleZenMode);
+  document.getElementById('btn-zen-restore').addEventListener('click', toggleZenMode);
+
+  // Keyboard shortcuts
+  window.addEventListener('keydown', e => {
+    keys[e.code] = true;
+    if (e.code === 'Space') {
+      e.preventDefault();
+      togglePlay();
+    } else if (e.code === 'KeyH') {
+      toggleZenMode();
+    } else if (e.code === 'KeyB') {
+      state.pointerTool = state.pointerTool === 'wall' ? 'goal' : 'wall';
+      syncControlsFromState();
+      updateCanvasCursor(-100);
+    } else if (e.code === 'KeyE') {
+      state.pointerTool = state.pointerTool === 'erase' ? 'goal' : 'erase';
+      syncControlsFromState();
+      updateCanvasCursor(-100);
+    } else if (e.code === 'KeyX') {
+      state.viewMode = state.viewMode === 'fog' ? 'xray' : state.viewMode === 'xray' ? 'split' : 'fog';
+      syncControlsFromState();
+    } else if (e.code === 'KeyR') {
+      state.goal = null;
+      state.driveMode = 'explore';
+      buildPreset(state.preset);
+    }
+  });
+
+  window.addEventListener('keyup', e => {
+    keys[e.code] = false;
+  });
+
+  window.addEventListener('resize', resizeCanvas);
+
+  // =========================================================================
+  // MAIN ANIMATION LOOP
+  // =========================================================================
+  let lastFrameTime = performance.now();
+
+  function frame(now) {
+    const dtReal = Math.min(0.05, (now - lastFrameTime) * 0.001);
+    lastFrameTime = now;
+
+    if (state.running) {
+      const totalSimDt = dtReal * state.simSpeed;
+      const subSteps = Math.max(1, Math.ceil(totalSimDt / 0.02));
+      const subDt = totalSimDt / subSteps;
+      for (let s = 0; s < subSteps; s++) {
+        stepPhysics(subDt);
+      }
+    }
+
+    render();
+    updateTelemetry(dtReal);
+    requestAnimationFrame(frame);
+  }
+
+  // =========================================================================
+  // INITIALIZATION
+  // =========================================================================
+  resizeCanvas();
+  buildPreset('office');
+  // Perform initial scan & frontier plan immediately so frame 0 looks crisp
+  performLidarScan();
+  updateOccupancyGridFromScan();
+  planAutonomousMission(true);
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

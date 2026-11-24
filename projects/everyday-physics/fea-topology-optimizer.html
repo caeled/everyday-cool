@@ -1,0 +1,3074 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Topology — Finite Element Stress &amp; Structural Optimizer (SIMP)</title>
+<style>
+  :root {
+    --bg-deep: #040711;
+    --panel-bg: rgba(9, 13, 24, 0.80);
+    --panel-bg-strong: rgba(8, 12, 22, 0.94);
+    --panel-border: rgba(148, 179, 255, 0.16);
+    --panel-border-hi: rgba(148, 179, 255, 0.36);
+    --text-main: #eef3ff;
+    --text-dim: #9aa9cc;
+    --text-muted: #68789c;
+    --accent-amber: #ffbe5c;
+    --accent-cyan: #58dcff;
+    --accent-mint: #4af2b2;
+    --accent-rose: #ff6083;
+    --accent-coral: #ff7a59;
+    --accent-violet: #a78bfa;
+    --radius-lg: 14px;
+    --radius-md: 10px;
+    --radius-sm: 7px;
+    --mono: ui-monospace, "Cascadia Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Inter, Helvetica, Arial, sans-serif;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg-deep);
+    color: var(--text-main);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    touch-action: none;
+  }
+
+  #sim-canvas {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    cursor: crosshair;
+  }
+  #sim-canvas.grab { cursor: grab; }
+  #sim-canvas.grabbing { cursor: grabbing; }
+  #sim-canvas.paint { cursor: cell; }
+
+  /* HUD Layer */
+  .hud {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 10;
+  }
+  body.zen-mode .hud > :not(.zen-restore) {
+    opacity: 0;
+    pointer-events: none !important;
+  }
+
+  .panel {
+    pointer-events: auto;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-lg);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.52), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    transition: opacity 0.25s ease, transform 0.25s ease;
+  }
+
+  /* Top-Left Telemetry Card */
+  .top-left {
+    position: fixed;
+    top: 14px;
+    left: 14px;
+    width: min(414px, calc(100vw - 360px));
+    min-width: 288px;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .brand-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .brand-title-wrap {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .brand-title {
+    font-size: 16px;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    background: linear-gradient(120deg, #ffffff 0%, #9ce8ff 46%, #ffbe5c 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .mode-badge {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 999px;
+    border: 1px solid rgba(88, 220, 255, 0.4);
+    background: rgba(88, 220, 255, 0.12);
+    color: var(--accent-cyan);
+  }
+
+  .status-pill {
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: rgba(88, 220, 255, 0.15);
+    color: var(--accent-cyan);
+    border: 1px solid rgba(88, 220, 255, 0.38);
+    white-space: nowrap;
+  }
+  .status-pill.converged {
+    background: rgba(74, 242, 178, 0.15);
+    color: var(--accent-mint);
+    border-color: rgba(74, 242, 178, 0.38);
+  }
+  .status-pill.paused {
+    background: rgba(255, 190, 92, 0.15);
+    color: var(--accent-amber);
+    border-color: rgba(255, 190, 92, 0.38);
+  }
+
+  .telemetry-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+  }
+
+  .tele-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(148, 179, 255, 0.1);
+    border-radius: var(--radius-sm);
+    padding: 6px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .tele-label {
+    font-size: 9.5px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .tele-val {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-main);
+  }
+  .tele-val.amber { color: var(--accent-amber); }
+  .tele-val.cyan { color: var(--accent-cyan); }
+  .tele-val.mint { color: var(--accent-mint); }
+  .tele-val.rose { color: var(--accent-rose); }
+
+  /* Sparkline Row */
+  .spark-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding-top: 6px;
+    border-top: 1px solid rgba(148, 179, 255, 0.1);
+  }
+  .spark-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 10px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .spark-head strong {
+    font-family: var(--mono);
+    color: var(--accent-mint);
+    font-weight: 700;
+  }
+  #sparkline-canvas {
+    width: 100%;
+    height: 40px;
+    display: block;
+    border-radius: 6px;
+    background: rgba(4, 7, 17, 0.55);
+    border: 1px solid rgba(148, 179, 255, 0.1);
+  }
+
+  /* Right Control Drawer */
+  .drawer {
+    position: fixed;
+    top: 14px;
+    right: 14px;
+    bottom: 14px;
+    width: 330px;
+    max-width: calc(100vw - 28px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: transform 0.25s ease, opacity 0.25s ease;
+  }
+  .drawer.collapsed {
+    transform: translateX(calc(100% + 24px));
+    pointer-events: none;
+  }
+
+  .drawer-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+    padding: 8px 8px 6px;
+    border-bottom: 1px solid var(--panel-border);
+    background: rgba(4, 7, 15, 0.42);
+  }
+
+  .tab-btn {
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 11.5px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    padding: 7px 6px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .tab-btn:hover {
+    color: var(--text-main);
+    background: rgba(255, 255, 255, 0.04);
+  }
+  .tab-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.16);
+    border-color: rgba(88, 220, 255, 0.42);
+  }
+
+  .drawer-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 13px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .drawer-body::-webkit-scrollbar { width: 5px; }
+  .drawer-body::-webkit-scrollbar-thumb {
+    background: rgba(148, 179, 255, 0.22);
+    border-radius: 999px;
+  }
+
+  .tab-pane {
+    display: none;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .tab-pane.active { display: flex; }
+
+  .section {
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(148, 179, 255, 0.11);
+    border-radius: var(--radius-md);
+    padding: 10px 11px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .section-title {
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  /* Presets grid */
+  .preset-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .preset-btn {
+    text-align: left;
+    padding: 7px 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(148, 179, 255, 0.14);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-main);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .preset-btn:hover {
+    border-color: rgba(88, 220, 255, 0.45);
+    background: rgba(88, 220, 255, 0.08);
+  }
+  .preset-btn.active {
+    border-color: var(--accent-cyan);
+    background: rgba(88, 220, 255, 0.15);
+  }
+  .preset-name {
+    font-size: 11.5px;
+    font-weight: 700;
+  }
+  .preset-sub {
+    font-size: 9.5px;
+    color: var(--text-muted);
+    line-height: 1.25;
+  }
+
+  /* Sliders */
+  .control-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .control-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11.5px;
+    color: var(--text-dim);
+  }
+  .control-head .val {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--text-main);
+    font-weight: 600;
+  }
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 5px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.18);
+    outline: none;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent-cyan);
+    border: 2px solid #08101f;
+    box-shadow: 0 0 10px rgba(88, 220, 255, 0.65);
+    cursor: pointer;
+  }
+  input[type="range"].amber::-webkit-slider-thumb {
+    background: var(--accent-amber);
+    box-shadow: 0 0 10px rgba(255, 190, 92, 0.65);
+  }
+
+  /* Segmented Buttons */
+  .seg-row {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 5px;
+  }
+  .seg-row.cols-3 {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .seg-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-dim);
+    font-size: 11px;
+    font-weight: 650;
+    padding: 7px 6px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-align: center;
+  }
+  .seg-btn:hover {
+    color: #fff;
+    border-color: rgba(148, 179, 255, 0.38);
+  }
+  .seg-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.18);
+    border-color: var(--accent-cyan);
+  }
+  .seg-btn.active.amber {
+    background: rgba(255, 190, 92, 0.18);
+    border-color: var(--accent-amber);
+    color: #ffdfaa;
+  }
+  .seg-btn.active.rose {
+    background: rgba(255, 96, 131, 0.18);
+    border-color: var(--accent-rose);
+    color: #ffd0db;
+  }
+  .seg-btn.active.mint {
+    background: rgba(74, 242, 178, 0.18);
+    border-color: var(--accent-mint);
+    color: #d6ffef;
+  }
+
+  /* Buttons */
+  .btn-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .btn {
+    border: 1px solid rgba(148, 179, 255, 0.22);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-main);
+    font-size: 11.5px;
+    font-weight: 700;
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+  .btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 179, 255, 0.45);
+  }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary {
+    background: linear-gradient(135deg, rgba(88, 220, 255, 0.28), rgba(56, 140, 255, 0.24));
+    border-color: rgba(88, 220, 255, 0.55);
+    color: #e6f9ff;
+  }
+  .btn.danger {
+    background: rgba(255, 96, 131, 0.14);
+    border-color: rgba(255, 96, 131, 0.4);
+    color: #ffc2d0;
+  }
+
+  /* Toggle switches */
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11.5px;
+    color: var(--text-dim);
+    cursor: pointer;
+  }
+  .toggle-row input { display: none; }
+  .switch {
+    width: 34px;
+    height: 18px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.2);
+    border: 1px solid rgba(148, 179, 255, 0.25);
+    position: relative;
+    transition: all 0.18s ease;
+    flex-shrink: 0;
+  }
+  .switch::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #c8d7f5;
+    transition: transform 0.18s ease, background 0.18s ease;
+  }
+  .toggle-row input:checked + .switch {
+    background: rgba(88, 220, 255, 0.32);
+    border-color: var(--accent-cyan);
+  }
+  .toggle-row input:checked + .switch::after {
+    transform: translateX(16px);
+    background: #fff;
+  }
+
+  /* Material Spec Card */
+  .spec-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 5px;
+    font-size: 10.5px;
+  }
+  .spec-item {
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(148, 179, 255, 0.09);
+    border-radius: 6px;
+    padding: 5px 7px;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+  .spec-k { color: var(--text-muted); font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .spec-v { color: var(--text-main); font-family: var(--mono); font-weight: 600; font-size: 11px; }
+
+  .note-small {
+    font-size: 10.5px;
+    color: var(--text-muted);
+    line-height: 1.38;
+  }
+
+  /* Bottom Transport Bar */
+  .bottom-bar {
+    position: fixed;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 7px 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: nowrap;
+  }
+
+  .bar-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-main);
+    font-size: 11.5px;
+    font-weight: 650;
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    white-space: nowrap;
+  }
+  .bar-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 179, 255, 0.4);
+  }
+  .bar-btn.active {
+    background: rgba(88, 220, 255, 0.2);
+    border-color: var(--accent-cyan);
+    color: #fff;
+  }
+  .bar-btn.amber-active {
+    background: rgba(255, 190, 92, 0.2);
+    border-color: var(--accent-amber);
+    color: #ffe4b5;
+  }
+
+  .bar-divider {
+    width: 1px;
+    height: 20px;
+    background: rgba(148, 179, 255, 0.16);
+    margin: 0 2px;
+  }
+
+  /* Bottom-left hints */
+  .hint-pill {
+    position: fixed;
+    bottom: 14px;
+    left: 14px;
+    padding: 7px 11px;
+    font-size: 11px;
+    color: var(--text-dim);
+    max-width: 320px;
+    line-height: 1.45;
+  }
+  .hint-pill kbd {
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #fff;
+  }
+
+  /* Probe Readout Pill */
+  .probe-pill {
+    position: fixed;
+    top: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 6px 12px;
+    font-size: 11px;
+    font-family: var(--mono);
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s ease;
+  }
+  .probe-pill.visible { opacity: 1; }
+  .probe-pill strong { color: var(--text-main); }
+
+  .zen-restore {
+    position: fixed;
+    bottom: 14px;
+    right: 14px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+  }
+  body.zen-mode .zen-restore {
+    opacity: 0.9;
+    pointer-events: auto;
+  }
+
+  @media (max-width: 960px) {
+    .top-left { width: calc(100vw - 28px); max-width: none; }
+    .drawer { top: auto; bottom: 62px; height: 50vh; width: calc(100vw - 28px); }
+    .hint-pill, .probe-pill { display: none; }
+  }
+</style>
+</head>
+<body>
+<canvas id="sim-canvas"></canvas>
+
+<div class="hud">
+  <!-- Top-Left Brand + Telemetry -->
+  <div class="panel top-left">
+    <div class="brand-row">
+      <div class="brand-title-wrap">
+        <div class="brand-title">Topology</div>
+        <span id="solver-badge" class="mode-badge">Q4 FEM · SIMP</span>
+      </div>
+      <span id="opt-status" class="status-pill">Optimizing</span>
+    </div>
+
+    <div class="telemetry-grid">
+      <div class="tele-card">
+        <span class="tele-label">Iteration</span>
+        <span id="tel-iter" class="tele-val cyan">0</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Strain Energy</span>
+        <span id="tel-comp" class="tele-val amber">— J</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Volume Used</span>
+        <span id="tel-vol" class="tele-val">40.0%</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Max Deflection</span>
+        <span id="tel-disp" class="tele-val">— mm</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Peak von Mises</span>
+        <span id="tel-stress" class="tele-val rose">— MPa</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Safety Factor</span>
+        <span id="tel-sf" class="tele-val mint">—</span>
+      </div>
+    </div>
+
+    <div class="spark-wrap">
+      <div class="spark-head">
+        <span>Compliance Convergence</span>
+        <strong id="tel-reduction">ΔC: 0.0%</strong>
+      </div>
+      <canvas id="sparkline-canvas" width="380" height="40"></canvas>
+    </div>
+  </div>
+
+  <!-- Live Element Probe Pill -->
+  <div id="probe-pill" class="panel probe-pill">
+    <span>ρ <strong id="pr-rho">0.00</strong></span>
+    <span>σ<sub>vM</sub> <strong id="pr-vm">0 MPa</strong></span>
+    <span>σ<sub>1</sub>/σ<sub>2</sub> <strong id="pr-prin">0 / 0</strong></span>
+    <span>|u| <strong id="pr-u">0.00 mm</strong></span>
+  </div>
+
+  <!-- Right Control Drawer -->
+  <aside id="drawer" class="panel drawer">
+    <div class="drawer-tabs">
+      <button class="tab-btn active" data-tab="design">Design</button>
+      <button class="tab-btn" data-tab="solver">Optimizer</button>
+      <button class="tab-btn" data-tab="visuals">Display</button>
+    </div>
+
+    <div class="drawer-body">
+      <!-- TAB 1: DESIGN & PRESETS -->
+      <div id="tab-design" class="tab-pane active">
+        <div class="section">
+          <div class="section-title">
+            <span>Structural Presets</span>
+            <span id="mesh-info" style="font-family:var(--mono);font-size:10px;color:var(--accent-cyan);">48×24 Q4</span>
+          </div>
+          <div class="preset-grid">
+            <button class="preset-btn active" data-preset="cantilever">
+              <span class="preset-name">Cantilever Beam</span>
+              <span class="preset-sub">Tip load · Michell truss</span>
+            </button>
+            <button class="preset-btn" data-preset="mbb">
+              <span class="preset-name">MBB Bridge</span>
+              <span class="preset-sub">Simply-supported center</span>
+            </button>
+            <button class="preset-btn" data-preset="arch">
+              <span class="preset-name">Arch Deck</span>
+              <span class="preset-sub">Distributed road load</span>
+            </button>
+            <button class="preset-btn" data-preset="lbracket">
+              <span class="preset-name">L-Bracket Mount</span>
+              <span class="preset-sub">Re-entrant corner stress</span>
+            </button>
+            <button class="preset-btn" data-preset="wheel">
+              <span class="preset-name">Torque Wheel</span>
+              <span class="preset-sub">Hub rim spiral spokes</span>
+            </button>
+            <button class="preset-btn" data-preset="hole">
+              <span class="preset-name">Hole-Bypass</span>
+              <span class="preset-sub">Route around bolt hole</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Interactive Tools</span></div>
+          <div class="seg-row">
+            <button class="seg-btn active amber" data-tool="load">Drag Load (F)</button>
+            <button class="seg-btn" data-tool="void">Paint Cutout</button>
+            <button class="seg-btn" data-tool="solid">Paint Solid Rib</button>
+            <button class="seg-btn" data-tool="erase">Erase Mask</button>
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Brush Radius</span>
+              <span id="val-brush" class="val">2.2 el</span>
+            </div>
+            <input id="sl-brush" type="range" min="1" max="5" step="0.2" value="2.2" />
+          </div>
+
+          <div class="btn-row">
+            <button id="btn-clear-masks" class="btn danger">Clear Painted</button>
+            <button id="btn-reset-density" class="btn primary">Re-Sculpt</button>
+          </div>
+          <p class="note-small">
+            Drag the glowing <strong>F</strong> anchor along any edge to shift load, or drag its tail ring to steer the force angle in real time.
+          </p>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Applied Load Vector</span></div>
+          <div class="control-row">
+            <div class="control-head">
+              <span>Applied Force (F)</span>
+              <span id="val-force" class="val">120 kN</span>
+            </div>
+            <input id="sl-force" class="amber" type="range" min="10" max="500" step="5" value="120" />
+          </div>
+          <div class="control-row">
+            <div class="control-head">
+              <span>Force Angle</span>
+              <span id="val-angle" class="val">270°</span>
+            </div>
+            <input id="sl-angle" class="amber" type="range" min="0" max="360" step="1" value="270" />
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 2: OPTIMIZER PARAMETERS -->
+      <div id="tab-solver" class="tab-pane">
+        <div class="section">
+          <div class="section-title"><span>SIMP Parameters</span></div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Target Volume Fraction</span>
+              <span id="val-vol" class="val">40%</span>
+            </div>
+            <input id="sl-vol" type="range" min="0.20" max="0.65" step="0.01" value="0.40" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Filter Radius (r<sub>min</sub>)</span>
+              <span id="val-rmin" class="val">1.65 el</span>
+            </div>
+            <input id="sl-rmin" type="range" min="1.1" max="3.5" step="0.05" value="1.65" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>SIMP Penalty (p)</span>
+              <span id="val-penal" class="val">3.00</span>
+            </div>
+            <input id="sl-penal" type="range" min="1.5" max="4.5" step="0.1" value="3.0" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Optimization Pace</span>
+              <span id="val-pace" class="val">18 it/s</span>
+            </div>
+            <input id="sl-pace" type="range" min="4" max="60" step="2" value="18" />
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Material · Ti-6Al-4V</span></div>
+          <div class="spec-grid">
+            <div class="spec-item">
+              <span class="spec-k">Young's E₀</span>
+              <span class="spec-v">114.0 GPa</span>
+            </div>
+            <div class="spec-item">
+              <span class="spec-k">Poisson ν</span>
+              <span class="spec-v">0.30</span>
+            </div>
+            <div class="spec-item">
+              <span class="spec-k">Yield σ<sub>y</sub></span>
+              <span class="spec-v">880 MPa</span>
+            </div>
+            <div class="spec-item">
+              <span class="spec-k">Plate Thick.</span>
+              <span class="spec-v">20 mm</span>
+            </div>
+          </div>
+          <p class="note-small">
+            Linear-elastic plane-stress Q4 bilinear finite elements solved live via Preconditioned Conjugate Gradient (PCG) with sensitivity filtering and Optimality Criteria updates.
+          </p>
+        </div>
+      </div>
+
+      <!-- TAB 3: VISUAL OVERLAYS -->
+      <div id="tab-visuals" class="tab-pane">
+        <div class="section">
+          <div class="section-title"><span>Engineering Overlay</span></div>
+          <div class="seg-row cols-3">
+            <button class="seg-btn active" data-view="density">Structure</button>
+            <button class="seg-btn" data-view="vonmises">von Mises</button>
+            <button class="seg-btn" data-view="principal">Tension / Comp</button>
+          </div>
+
+          <div class="control-row" style="margin-top:4px;">
+            <div class="control-head">
+              <span>Elastic Deformation Scale</span>
+              <span id="val-deform" class="val">3.0×</span>
+            </div>
+            <input id="sl-deform" class="amber" type="range" min="0" max="10" step="0.1" value="3.0" />
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>CAD Layers</span></div>
+          <label class="toggle-row">
+            <span>Deformed Q4 Mesh Wireframe</span>
+            <input id="chk-mesh" type="checkbox" />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Principal Stress Trajectories</span>
+            <input id="chk-traj" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Undeformed Ghost Outline</span>
+            <input id="chk-ghost" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Specular Metallic Shading</span>
+            <input id="chk-shade" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Bottom-Center Transport Bar -->
+  <div class="panel bottom-bar">
+    <button id="btn-play" class="bar-btn active">Pause</button>
+    <button id="btn-step" class="bar-btn">Step +1</button>
+    <button id="btn-reset" class="bar-btn">Reset</button>
+    <div class="bar-divider"></div>
+    <button id="btn-v-density" class="bar-btn active" data-quickview="density">Structure</button>
+    <button id="btn-v-vonmises" class="bar-btn" data-quickview="vonmises">Stress</button>
+    <button id="btn-v-principal" class="bar-btn" data-quickview="principal">T / C</button>
+    <div class="bar-divider"></div>
+    <button id="btn-audio" class="bar-btn">Audio Off</button>
+    <button id="btn-drawer" class="bar-btn active">Controls</button>
+    <button id="btn-zen" class="bar-btn">Cinema</button>
+  </div>
+
+  <!-- Bottom-Left Hints -->
+  <div class="panel hint-pill">
+    <strong>Drag F</strong> move/rotate load · <strong>Click</strong> paint cutout/rib · <kbd>Space</kbd> play · <kbd>1-3</kbd> views · <kbd>R</kbd> reset · <kbd>H</kbd> cinema
+  </div>
+
+  <!-- Cinema Restore -->
+  <button id="btn-zen-restore" class="panel bar-btn zen-restore">Exit Cinema (H)</button>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // =========================================================================
+  // 1. MATERIAL & ENGINEERING CONSTANTS (Ti-6Al-4V Aerospace Titanium)
+  // =========================================================================
+  const MAT = {
+    name: 'Ti-6Al-4V',
+    E0_MPa: 114000,   // 114 GPa = 114,000 N/mm²
+    nu: 0.30,
+    yield_MPa: 880,   // 880 MPa yield strength
+    thickness_mm: 20, // 20 mm plate thickness
+    elemSize_mm: 25   // 25 mm per Q4 element (48x24 = 1200mm x 600mm)
+  };
+
+  // =========================================================================
+  // 2. Q4 BILINEAR PLANE-STRESS ELEMENT MATRICES (EXACT 2×2 GAUSS QUADRATURE)
+  //    Node order in Cartesian (x right, y up):
+  //      0: (-1, -1) bottom-left
+  //      1: (+1, -1) bottom-right
+  //      2: (+1, +1) top-right
+  //      3: (-1, +1) top-left
+  // =========================================================================
+  function buildUnitQ4Matrices(nu) {
+    const D = [
+      [1 / (1 - nu * nu), nu / (1 - nu * nu), 0],
+      [nu / (1 - nu * nu), 1 / (1 - nu * nu), 0],
+      [0, 0, (1 - nu) / (2 * (1 - nu * nu))]
+    ];
+
+    function computeB(xi, eta) {
+      // For unit square element [-1, 1]^2 mapped to [0, 1]^2: dx/dxi = 0.5, dy/deta = 0.5
+      // dN/dx = 2 * dN/dxi, dN/dy = 2 * dN/deta
+      const dNdxi = [
+        -0.25 * (1 - eta),
+         0.25 * (1 - eta),
+         0.25 * (1 + eta),
+        -0.25 * (1 + eta)
+      ];
+      const dNdeta = [
+        -0.25 * (1 - xi),
+        -0.25 * (1 + xi),
+         0.25 * (1 + xi),
+         0.25 * (1 - xi)
+      ];
+      const B = [
+        new Float64Array(8),
+        new Float64Array(8),
+        new Float64Array(8)
+      ];
+      for (let i = 0; i < 4; i++) {
+        const dNx = 2 * dNdxi[i];
+        const dNy = 2 * dNdeta[i];
+        B[0][2 * i]     = dNx;
+        B[1][2 * i + 1] = dNy;
+        B[2][2 * i]     = dNy;
+        B[2][2 * i + 1] = dNx;
+      }
+      return B;
+    }
+
+    const KE = new Float64Array(64);
+    const gp = 1 / Math.sqrt(3);
+    const pts = [[-gp, -gp], [gp, -gp], [gp, gp], [-gp, gp]];
+    const detJ = 0.25; // (1/2) * (1/2) for unit square
+
+    for (let p = 0; p < 4; p++) {
+      const B = computeB(pts[p][0], pts[p][1]);
+      // DB = D * B (3 x 8)
+      const DB = [new Float64Array(8), new Float64Array(8), new Float64Array(8)];
+      for (let r = 0; r < 3; r++) {
+        for (let c = 0; c < 8; c++) {
+          DB[r][c] = D[r][0] * B[0][c] + D[r][1] * B[1][c] + D[r][2] * B[2][c];
+        }
+      }
+      // KE += B^T * DB * detJ
+      for (let i = 0; i < 8; i++) {
+        for (let j = 0; j < 8; j++) {
+          KE[i * 8 + j] += (B[0][i] * DB[0][j] + B[1][i] * DB[1][j] + B[2][i] * DB[2][j]) * detJ;
+        }
+      }
+    }
+
+    // Centroid stress matrix S0 = D * B(0, 0) (3 x 8)
+    const B0 = computeB(0, 0);
+    const S0 = [new Float64Array(8), new Float64Array(8), new Float64Array(8)];
+    for (let r = 0; r < 3; r++) {
+      for (let c = 0; c < 8; c++) {
+        S0[r][c] = D[r][0] * B0[0][c] + D[r][1] * B0[1][c] + D[r][2] * B0[2][c];
+      }
+    }
+
+    return { KE, S0 };
+  }
+
+  const { KE, S0 } = buildUnitQ4Matrices(MAT.nu);
+
+  // =========================================================================
+  // 3. FINITE ELEMENT + SIMP TOPOLOGY OPTIMIZER ENGINE
+  // =========================================================================
+  class TopologySolver {
+    constructor() {
+      this.nx = 48;
+      this.ny = 24;
+      this.volFrac = 0.40;
+      this.penal = 3.0;
+      this.rmin = 1.65;
+      this.rhoMin = 0.001;
+      this.Emin = 1e-5;
+      this.force_kN = 120;
+      this.forceAngleDeg = 270; // 270° = straight down (-y)
+
+      this.preset = 'cantilever';
+      this.iter = 0;
+      this.converged = false;
+      this.lastChange = 1.0;
+
+      // Telemetry
+      this.compliance_J = 0;
+      this.initialCompliance_J = 0;
+      this.complianceHistory = [];
+      this.volumeUsed = 0.40;
+      this.maxDisp_mm = 0;
+      this.peakVM_MPa = 0;
+      this.safetyFactor = 99;
+      this.maxPrinStress_MPa = 1;
+
+      // Loads & Supports metadata for rendering & dragging
+      // load: { id, gx, gy, fx, fy, angleDeg, weight, draggable }
+      this.loads = [];
+      // support: { nx, ny, fixX, fixY, type: 'pin'|'roller'|'clamp' }
+      this.supports = [];
+
+      this.loadPreset('cantilever');
+    }
+
+    allocate(nx, ny) {
+      this.nx = nx;
+      this.ny = ny;
+      this.nElem = nx * ny;
+      this.nNodes = (nx + 1) * (ny + 1);
+      this.nDof = this.nNodes * 2;
+
+      this.rho = new Float64Array(this.nElem);
+      this.rhoVis = new Float64Array(this.nElem); // smooth interpolated for 60fps
+      this.mask = new Int8Array(this.nElem);      // 0: free, -1: void cutout, 1: fixed solid
+      this.Eeff = new Float64Array(this.nElem);
+      this.dc = new Float64Array(this.nElem);
+      this.dcFilt = new Float64Array(this.nElem);
+
+      // Element stress results (MPa)
+      this.sxx = new Float64Array(this.nElem);
+      this.syy = new Float64Array(this.nElem);
+      this.sxy = new Float64Array(this.nElem);
+      this.svm = new Float64Array(this.nElem);
+      this.s1 = new Float64Array(this.nElem);
+      this.s2 = new Float64Array(this.nElem);
+      this.sAngle = new Float64Array(this.nElem);
+
+      // DOF vectors
+      this.fixed = new Uint8Array(this.nDof);
+      this.fNorm = new Float64Array(this.nDof);
+      this.uNorm = new Float64Array(this.nDof);
+      this.uDispMM = new Float64Array(this.nDof);
+      this.uVisMM = new Float64Array(this.nDof);
+
+      // PCG scratch buffers (zero GC per iteration)
+      this.diagK = new Float64Array(this.nDof);
+      this.invDiag = new Float64Array(this.nDof);
+      this.rVec = new Float64Array(this.nDof);
+      this.zVec = new Float64Array(this.nDof);
+      this.pVec = new Float64Array(this.nDof);
+      this.ApVec = new Float64Array(this.nDof);
+
+      // Precompute element -> 8 DOF indices
+      this.elemDofs = new Int32Array(this.nElem * 8);
+      const stride = nx + 1;
+      for (let ey = 0; ey < ny; ey++) {
+        for (let ex = 0; ex < nx; ex++) {
+          const e = ey * nx + ex;
+          const n0 = ey * stride + ex;
+          const n1 = n0 + 1;
+          const n2 = n0 + stride + 1;
+          const n3 = n0 + stride;
+          const base = e * 8;
+          this.elemDofs[base]     = n0 * 2;
+          this.elemDofs[base + 1] = n0 * 2 + 1;
+          this.elemDofs[base + 2] = n1 * 2;
+          this.elemDofs[base + 3] = n1 * 2 + 1;
+          this.elemDofs[base + 4] = n2 * 2;
+          this.elemDofs[base + 5] = n2 * 2 + 1;
+          this.elemDofs[base + 6] = n3 * 2;
+          this.elemDofs[base + 7] = n3 * 2 + 1;
+        }
+      }
+
+      this.buildFilter();
+    }
+
+    buildFilter() {
+      const { nx, ny, nElem, rmin } = this;
+      const rad = Math.ceil(rmin);
+      const offsets = new Int32Array(nElem + 1);
+      const weightSums = new Float64Array(nElem);
+
+      // First pass: count entries
+      let total = 0;
+      for (let ey = 0; ey < ny; ey++) {
+        for (let ex = 0; ex < nx; ex++) {
+          const e = ey * nx + ex;
+          offsets[e] = total;
+          const y0 = Math.max(0, ey - rad);
+          const y1 = Math.min(ny - 1, ey + rad);
+          const x0 = Math.max(0, ex - rad);
+          const x1 = Math.min(nx - 1, ex + rad);
+          for (let fy = y0; fy <= y1; fy++) {
+            const dy = fy - ey;
+            for (let fx = x0; fx <= x1; fx++) {
+              const dx = fx - ex;
+              const dist = Math.hypot(dx, dy);
+              if (dist < rmin) total++;
+            }
+          }
+        }
+      }
+      offsets[nElem] = total;
+
+      const indices = new Int32Array(total);
+      const weights = new Float64Array(total);
+      let ptr = 0;
+      for (let ey = 0; ey < ny; ey++) {
+        for (let ex = 0; ex < nx; ex++) {
+          const e = ey * nx + ex;
+          let sum = 0;
+          const y0 = Math.max(0, ey - rad);
+          const y1 = Math.min(ny - 1, ey + rad);
+          const x0 = Math.max(0, ex - rad);
+          const x1 = Math.min(nx - 1, ex + rad);
+          for (let fy = y0; fy <= y1; fy++) {
+            const dy = fy - ey;
+            for (let fx = x0; fx <= x1; fx++) {
+              const dx = fx - ex;
+              const dist = Math.hypot(dx, dy);
+              if (dist < rmin) {
+                const w = rmin - dist;
+                indices[ptr] = fy * nx + fx;
+                weights[ptr] = w;
+                sum += w;
+                ptr++;
+              }
+            }
+          }
+          weightSums[e] = sum;
+        }
+      }
+
+      this.filtOffsets = offsets;
+      this.filtIndices = indices;
+      this.filtWeights = weights;
+      this.filtWeightSums = weightSums;
+    }
+
+    nodeIdx(ix, iy) {
+      return iy * (this.nx + 1) + ix;
+    }
+
+    fixNode(ix, iy, fixX, fixY, type) {
+      const n = this.nodeIdx(ix, iy);
+      if (fixX) this.fixed[n * 2] = 1;
+      if (fixY) this.fixed[n * 2 + 1] = 1;
+      this.supports.push({ ix, iy, fixX, fixY, type });
+    }
+
+    loadPreset(name) {
+      this.preset = name;
+      let nx = 48, ny = 24;
+      if (name === 'lbracket' || name === 'wheel') {
+        nx = 34; ny = 34;
+      }
+      this.allocate(nx, ny);
+      this.fixed.fill(0);
+      this.mask.fill(0);
+      this.supports = [];
+      this.loads = [];
+
+      if (name === 'cantilever') {
+        for (let iy = 0; iy <= ny; iy++) {
+          this.fixNode(0, iy, true, true, 'clamp');
+        }
+        this.forceAngleDeg = 270;
+        this.loads.push({
+          id: 0, gx: nx, gy: ny / 2, angleDeg: 270, weight: 1.0, draggable: true
+        });
+      } else if (name === 'mbb') {
+        // Simply supported bridge: pinned bottom-left, roller bottom-right
+        this.fixNode(0, 0, true, true, 'pin');
+        this.fixNode(1, 0, true, true, 'pin');
+        this.fixNode(nx, 0, false, true, 'roller');
+        this.fixNode(nx - 1, 0, false, true, 'roller');
+        this.forceAngleDeg = 270;
+        this.loads.push({
+          id: 0, gx: nx / 2, gy: ny, angleDeg: 270, weight: 1.0, draggable: true
+        });
+      } else if (name === 'arch') {
+        // Fixed arch abutments at bottom corners + solid roadway deck along top
+        for (let ix = 0; ix <= 2; ix++) this.fixNode(ix, 0, true, true, 'pin');
+        for (let ix = nx - 2; ix <= nx; ix++) this.fixNode(ix, 0, true, true, 'pin');
+        for (let ex = 0; ex < nx; ex++) {
+          this.mask[(ny - 1) * nx + ex] = 1; // permanent roadway deck
+        }
+        this.forceAngleDeg = 270;
+        const count = 7;
+        for (let k = 0; k < count; k++) {
+          const gx = Math.round(((k + 0.5) / count) * nx);
+          this.loads.push({
+            id: k, gx, gy: ny, angleDeg: 270, weight: 1 / count, draggable: true
+          });
+        }
+      } else if (name === 'lbracket') {
+        // L-bracket: upper-right quadrant is permanent void cutout
+        const cutX = Math.floor(nx * 0.41);
+        const cutY = Math.floor(ny * 0.41);
+        for (let ey = cutY; ey < ny; ey++) {
+          for (let ex = cutX; ex < nx; ex++) {
+            this.mask[ey * nx + ex] = -1;
+          }
+        }
+        // Clamped along top of vertical stem
+        for (let ix = 0; ix <= cutX; ix++) {
+          this.fixNode(ix, ny, true, true, 'clamp');
+        }
+        this.forceAngleDeg = 270;
+        this.loads.push({
+          id: 0, gx: nx, gy: cutY - 1, angleDeg: 270, weight: 1.0, draggable: true
+        });
+      } else if (name === 'wheel') {
+        // Circular torque hub & rim
+        const cx = nx / 2;
+        const cy = ny / 2;
+        const rOuter = nx * 0.485;
+        const rRimIn = nx * 0.425;
+        const rHub = nx * 0.145;
+        for (let ey = 0; ey < ny; ey++) {
+          for (let ex = 0; ex < nx; ex++) {
+            const dist = Math.hypot(ex + 0.5 - cx, ey + 0.5 - cy);
+            const idx = ey * nx + ex;
+            if (dist > rOuter) {
+              this.mask[idx] = -1; // outside wheel is void
+            } else if (dist >= rRimIn || dist <= rHub) {
+              this.mask[idx] = 1;  // outer rim and central hub fixed solid
+            }
+          }
+        }
+        // Fix central hub nodes
+        for (let iy = 0; iy <= ny; iy++) {
+          for (let ix = 0; ix <= nx; ix++) {
+            if (Math.hypot(ix - cx, iy - cy) <= rHub) {
+              this.fixNode(ix, iy, true, true, 'clamp');
+            }
+          }
+        }
+        // 4 tangential torque loads around outer rim
+        this.forceAngleDeg = 90;
+        const rLoad = Math.round(nx * 0.46);
+        const rimPts = [
+          { gx: Math.round(cx + rLoad), gy: Math.round(cy), ang: 90 },
+          { gx: Math.round(cx), gy: Math.round(cy + rLoad), ang: 180 },
+          { gx: Math.round(cx - rLoad), gy: Math.round(cy), ang: 270 },
+          { gx: Math.round(cx), gy: Math.round(cy - rLoad), ang: 0 }
+        ];
+        rimPts.forEach((pt, idx) => {
+          this.loads.push({
+            id: idx, gx: pt.gx, gy: pt.gy, angleDeg: pt.ang, weight: 0.25, draggable: true
+          });
+        });
+      } else if (name === 'hole') {
+        // Hole-bypass cantilever with big central bolt cutout
+        for (let iy = 0; iy <= ny; iy++) {
+          this.fixNode(0, iy, true, true, 'clamp');
+        }
+        const cx = nx * 0.45;
+        const cy = ny * 0.50;
+        const rad = ny * 0.23;
+        for (let ey = 0; ey < ny; ey++) {
+          for (let ex = 0; ex < nx; ex++) {
+            if (Math.hypot(ex + 0.5 - cx, ey + 0.5 - cy) <= rad) {
+              this.mask[ey * nx + ex] = -1;
+            }
+          }
+        }
+        this.forceAngleDeg = 270;
+        this.loads.push({
+          id: 0, gx: nx, gy: ny / 2, angleDeg: 270, weight: 1.0, draggable: true
+        });
+      }
+
+      this.resetDensity();
+    }
+
+    resetDensity() {
+      for (let e = 0; e < this.nElem; e++) {
+        if (this.mask[e] === -1) this.rho[e] = this.rhoMin;
+        else if (this.mask[e] === 1) this.rho[e] = 1.0;
+        else this.rho[e] = this.volFrac;
+        this.rhoVis[e] = this.rho[e];
+      }
+      this.uNorm.fill(0);
+      this.uDispMM.fill(0);
+      this.uVisMM.fill(0);
+      this.iter = 0;
+      this.converged = false;
+      this.lastChange = 1.0;
+      this.complianceHistory = [];
+      this.initialCompliance_J = 0;
+      this.rebuildForceVector();
+      // Initial FE solve so view is immediately populated
+      this.solveFEM(550);
+      this.computePostProcessing();
+      this.uVisMM.set(this.uDispMM);
+      this.initialCompliance_J = this.compliance_J;
+      this.complianceHistory.push(this.compliance_J);
+    }
+
+    rebuildForceVector() {
+      this.fNorm.fill(0);
+      const { nx, ny } = this;
+      for (let i = 0; i < this.loads.length; i++) {
+        const ld = this.loads[i];
+        const rad = (ld.angleDeg * Math.PI) / 180;
+        const fx = Math.cos(rad) * ld.weight;
+        const fy = Math.sin(rad) * ld.weight;
+
+        // Bilinear distribution to nearest grid nodes (allows smooth sub-node load dragging!)
+        const gx = Math.max(0, Math.min(nx, ld.gx));
+        const gy = Math.max(0, Math.min(ny, ld.gy));
+        const ix0 = Math.min(nx - 1, Math.floor(gx));
+        const iy0 = Math.min(ny - 1, Math.floor(gy));
+        const tx = gx - ix0;
+        const ty = gy - iy0;
+
+        const w00 = (1 - tx) * (1 - ty);
+        const w10 = tx * (1 - ty);
+        const w01 = (1 - tx) * ty;
+        const w11 = tx * ty;
+
+        const addNodeForce = (ix, iy, w) => {
+          if (w < 1e-6) return;
+          const n = this.nodeIdx(ix, iy);
+          if (!this.fixed[n * 2])     this.fNorm[n * 2]     += fx * w;
+          if (!this.fixed[n * 2 + 1]) this.fNorm[n * 2 + 1] += fy * w;
+        };
+
+        addNodeForce(ix0,     iy0,     w00);
+        addNodeForce(ix0 + 1, iy0,     w10);
+        addNodeForce(ix0,     iy0 + 1, w01);
+        addNodeForce(ix0 + 1, iy0 + 1, w11);
+      }
+    }
+
+    setGlobalForceAngle(deg) {
+      const delta = deg - this.forceAngleDeg;
+      this.forceAngleDeg = ((deg % 360) + 360) % 360;
+      for (let i = 0; i < this.loads.length; i++) {
+        this.loads[i].angleDeg = ((this.loads[i].angleDeg + delta) % 360 + 360) % 360;
+      }
+      this.rebuildForceVector();
+      this.converged = false;
+    }
+
+    updateStiffnessArray() {
+      const { nElem, rho, Eeff, Emin, penal } = this;
+      const dE = 1.0 - Emin;
+      for (let e = 0; e < nElem; e++) {
+        Eeff[e] = Emin + Math.pow(rho[e], penal) * dE;
+      }
+    }
+
+    // Matrix-free K * x (element-by-element using unit Q4 KE)
+    applyK(x, out) {
+      out.fill(0);
+      const { nElem, elemDofs, Eeff, fixed } = this;
+      for (let e = 0; e < nElem; e++) {
+        const Ee = Eeff[e];
+        const base = e * 8;
+        const d0 = elemDofs[base],     d1 = elemDofs[base + 1],
+              d2 = elemDofs[base + 2], d3 = elemDofs[base + 3],
+              d4 = elemDofs[base + 4], d5 = elemDofs[base + 5],
+              d6 = elemDofs[base + 6], d7 = elemDofs[base + 7];
+
+        const x0 = x[d0], x1 = x[d1], x2 = x[d2], x3 = x[d3],
+              x4 = x[d4], x5 = x[d5], x6 = x[d6], x7 = x[d7];
+
+        out[d0] += Ee * (KE[0]*x0 + KE[1]*x1 + KE[2]*x2 + KE[3]*x3 + KE[4]*x4 + KE[5]*x5 + KE[6]*x6 + KE[7]*x7);
+        out[d1] += Ee * (KE[8]*x0 + KE[9]*x1 + KE[10]*x2 + KE[11]*x3 + KE[12]*x4 + KE[13]*x5 + KE[14]*x6 + KE[15]*x7);
+        out[d2] += Ee * (KE[16]*x0 + KE[17]*x1 + KE[18]*x2 + KE[19]*x3 + KE[20]*x4 + KE[21]*x5 + KE[22]*x6 + KE[23]*x7);
+        out[d3] += Ee * (KE[24]*x0 + KE[25]*x1 + KE[26]*x2 + KE[27]*x3 + KE[28]*x4 + KE[29]*x5 + KE[30]*x6 + KE[31]*x7);
+        out[d4] += Ee * (KE[32]*x0 + KE[33]*x1 + KE[34]*x2 + KE[35]*x3 + KE[36]*x4 + KE[37]*x5 + KE[38]*x6 + KE[39]*x7);
+        out[d5] += Ee * (KE[40]*x0 + KE[41]*x1 + KE[42]*x2 + KE[43]*x3 + KE[44]*x4 + KE[45]*x5 + KE[46]*x6 + KE[47]*x7);
+        out[d6] += Ee * (KE[48]*x0 + KE[49]*x1 + KE[50]*x2 + KE[51]*x3 + KE[52]*x4 + KE[53]*x5 + KE[54]*x6 + KE[55]*x7);
+        out[d7] += Ee * (KE[56]*x0 + KE[57]*x1 + KE[58]*x2 + KE[59]*x3 + KE[60]*x4 + KE[61]*x5 + KE[62]*x6 + KE[63]*x7);
+      }
+      for (let i = 0; i < this.nDof; i++) {
+        if (fixed[i]) out[i] = 0;
+      }
+    }
+
+    // Jacobi-Preconditioned Conjugate Gradient solver for K * uNorm = fNorm
+    solveFEM(maxIter = 280, tol = 1e-4) {
+      this.updateStiffnessArray();
+      const { nDof, nElem, elemDofs, Eeff, fixed, fNorm, uNorm, diagK, invDiag, rVec, zVec, pVec, ApVec } = this;
+
+      // Check norm of RHS
+      let bNorm2 = 0;
+      for (let i = 0; i < nDof; i++) {
+        if (fixed[i]) {
+          uNorm[i] = 0;
+        } else {
+          bNorm2 += fNorm[i] * fNorm[i];
+        }
+      }
+      if (bNorm2 < 1e-24) {
+        uNorm.fill(0);
+        return 0;
+      }
+      const bNorm = Math.sqrt(bNorm2);
+
+      // Assemble diagonal preconditioner
+      diagK.fill(0);
+      const k0 = KE[0], k9 = KE[9], k18 = KE[18], k27 = KE[27],
+            k36 = KE[36], k45 = KE[45], k54 = KE[54], k63 = KE[63];
+      for (let e = 0; e < nElem; e++) {
+        const Ee = Eeff[e];
+        const base = e * 8;
+        diagK[elemDofs[base]]     += Ee * k0;
+        diagK[elemDofs[base + 1]] += Ee * k9;
+        diagK[elemDofs[base + 2]] += Ee * k18;
+        diagK[elemDofs[base + 3]] += Ee * k27;
+        diagK[elemDofs[base + 4]] += Ee * k36;
+        diagK[elemDofs[base + 5]] += Ee * k45;
+        diagK[elemDofs[base + 6]] += Ee * k54;
+        diagK[elemDofs[base + 7]] += Ee * k63;
+      }
+      for (let i = 0; i < nDof; i++) {
+        invDiag[i] = (!fixed[i] && diagK[i] > 1e-20) ? (1.0 / diagK[i]) : 0.0;
+      }
+
+      // Initial residual r = f - K*u (warm-started from previous uNorm)
+      this.applyK(uNorm, ApVec);
+      let rz = 0;
+      let rr = 0;
+      for (let i = 0; i < nDof; i++) {
+        const ri = fixed[i] ? 0 : (fNorm[i] - ApVec[i]);
+        rVec[i] = ri;
+        const zi = ri * invDiag[i];
+        zVec[i] = zi;
+        pVec[i] = zi;
+        rz += ri * zi;
+        rr += ri * ri;
+      }
+
+      const targetR2 = (tol * bNorm) * (tol * bNorm);
+      let k = 0;
+      for (; k < maxIter && rr > targetR2; k++) {
+        if (rz <= 1e-30) break;
+        this.applyK(pVec, ApVec);
+
+        let pAp = 0;
+        for (let i = 0; i < nDof; i++) pAp += pVec[i] * ApVec[i];
+        if (pAp <= 1e-30) break;
+
+        const alpha = rz / pAp;
+        let rzNew = 0;
+        rr = 0;
+        for (let i = 0; i < nDof; i++) {
+          uNorm[i] += alpha * pVec[i];
+          const ri = rVec[i] - alpha * ApVec[i];
+          rVec[i] = ri;
+          const zi = ri * invDiag[i];
+          zVec[i] = zi;
+          rzNew += ri * zi;
+          rr += ri * ri;
+        }
+        const beta = rzNew / rz;
+        for (let i = 0; i < nDof; i++) {
+          pVec[i] = zVec[i] + beta * pVec[i];
+        }
+        rz = rzNew;
+      }
+      return k;
+    }
+
+    // Compute physical displacements (mm), element stresses (MPa), sensitivities dc, and telemetry
+    computePostProcessing() {
+      const { nElem, nNodes, elemDofs, uNorm, uDispMM, rho, mask, penal, Emin } = this;
+      const F_N = this.force_kN * 1000;
+      const dispScale = F_N / (MAT.E0_MPa * MAT.thickness_mm); // u_mm = uNorm * dispScale
+      const stressScale = F_N / (MAT.thickness_mm * MAT.elemSize_mm); // MPa per unit normalized stress
+
+      // Physical displacements & max deflection
+      let maxDisp2 = 0;
+      for (let n = 0; n < nNodes; n++) {
+        const ux = uNorm[n * 2] * dispScale;
+        const uy = uNorm[n * 2 + 1] * dispScale;
+        uDispMM[n * 2] = ux;
+        uDispMM[n * 2 + 1] = uy;
+        const d2 = ux * ux + uy * uy;
+        if (d2 > maxDisp2) maxDisp2 = d2;
+      }
+      this.maxDisp_mm = Math.sqrt(maxDisp2);
+
+      // Element strain energy, sensitivity dc, von Mises & principal stresses
+      const dE = 1.0 - Emin;
+      let totalCompNorm = 0;
+      let peakVM = 0;
+      let maxPrin = 1e-6;
+      let volSum = 0;
+      let designablePlusSolid = 0;
+
+      const s00 = S0[0], s01 = S0[1], s02 = S0[2];
+
+      for (let e = 0; e < nElem; e++) {
+        const base = e * 8;
+        const u0 = uNorm[elemDofs[base]],     u1 = uNorm[elemDofs[base + 1]],
+              u2 = uNorm[elemDofs[base + 2]], u3 = uNorm[elemDofs[base + 3]],
+              u4 = uNorm[elemDofs[base + 4]], u5 = uNorm[elemDofs[base + 5]],
+              u6 = uNorm[elemDofs[base + 6]], u7 = uNorm[elemDofs[base + 7]];
+
+        // ce = u_e^T * KE * u_e
+        const ku0 = KE[0]*u0 + KE[1]*u1 + KE[2]*u2 + KE[3]*u3 + KE[4]*u4 + KE[5]*u5 + KE[6]*u6 + KE[7]*u7;
+        const ku1 = KE[8]*u0 + KE[9]*u1 + KE[10]*u2 + KE[11]*u3 + KE[12]*u4 + KE[13]*u5 + KE[14]*u6 + KE[15]*u7;
+        const ku2 = KE[16]*u0 + KE[17]*u1 + KE[18]*u2 + KE[19]*u3 + KE[20]*u4 + KE[21]*u5 + KE[22]*u6 + KE[23]*u7;
+        const ku3 = KE[24]*u0 + KE[25]*u1 + KE[26]*u2 + KE[27]*u3 + KE[28]*u4 + KE[29]*u5 + KE[30]*u6 + KE[31]*u7;
+        const ku4 = KE[32]*u0 + KE[33]*u1 + KE[34]*u2 + KE[35]*u3 + KE[36]*u4 + KE[37]*u5 + KE[38]*u6 + KE[39]*u7;
+        const ku5 = KE[40]*u0 + KE[41]*u1 + KE[42]*u2 + KE[43]*u3 + KE[44]*u4 + KE[45]*u5 + KE[46]*u6 + KE[47]*u7;
+        const ku6 = KE[48]*u0 + KE[49]*u1 + KE[50]*u2 + KE[51]*u3 + KE[52]*u4 + KE[53]*u5 + KE[54]*u6 + KE[55]*u7;
+        const ku7 = KE[56]*u0 + KE[57]*u1 + KE[58]*u2 + KE[59]*u3 + KE[60]*u4 + KE[61]*u5 + KE[62]*u6 + KE[63]*u7;
+
+        const ce = Math.max(0, u0*ku0 + u1*ku1 + u2*ku2 + u3*ku3 + u4*ku4 + u5*ku5 + u6*ku6 + u7*ku7);
+        const re = rho[e];
+        const Ee = Emin + Math.pow(re, penal) * dE;
+        totalCompNorm += Ee * ce;
+        this.dc[e] = -penal * dE * Math.pow(re, penal - 1) * ce;
+
+        // Centroid stress scaled by linear density rho for clean physical stress in solid ribs
+        const fac = re * stressScale;
+        const sx = fac * (s00[0]*u0 + s00[1]*u1 + s00[2]*u2 + s00[3]*u3 + s00[4]*u4 + s00[5]*u5 + s00[6]*u6 + s00[7]*u7);
+        const sy = fac * (s01[0]*u0 + s01[1]*u1 + s01[2]*u2 + s01[3]*u3 + s01[4]*u4 + s01[5]*u5 + s01[6]*u6 + s01[7]*u7);
+        const tx = fac * (s02[0]*u0 + s02[1]*u1 + s02[2]*u2 + s02[3]*u3 + s02[4]*u4 + s02[5]*u5 + s02[6]*u6 + s02[7]*u7);
+
+        this.sxx[e] = sx;
+        this.syy[e] = sy;
+        this.sxy[e] = tx;
+
+        const vm = Math.sqrt(Math.max(0, sx * sx - sx * sy + sy * sy + 3 * tx * tx));
+        this.svm[e] = vm;
+
+        const avg = 0.5 * (sx + sy);
+        const diff = 0.5 * (sx - sy);
+        const R = Math.hypot(diff, tx);
+        const p1 = avg + R;
+        const p2 = avg - R;
+        this.s1[e] = p1;
+        this.s2[e] = p2;
+        this.sAngle[e] = 0.5 * Math.atan2(2 * tx, sx - sy);
+
+        if (re > 0.25) {
+          if (vm > peakVM) peakVM = vm;
+          const m = Math.max(Math.abs(p1), Math.abs(p2));
+          if (m > maxPrin) maxPrin = m;
+        }
+        if (mask[e] !== -1) {
+          volSum += re;
+          designablePlusSolid++;
+        }
+      }
+
+      // Strain Energy U = 0.5 * f^T * u (in Joules = N·m = N·mm / 1000)
+      // fNorm^T * uNorm = totalCompNorm; F_N * dispScale = F_N^2 / (E0 * t)
+      this.compliance_J = 0.5 * totalCompNorm * F_N * dispScale / 1000;
+      this.peakVM_MPa = peakVM;
+      this.maxPrinStress_MPa = maxPrin;
+      this.safetyFactor = peakVM > 1e-3 ? (MAT.yield_MPa / peakVM) : 99.9;
+      this.volumeUsed = designablePlusSolid > 0 ? (volSum / designablePlusSolid) : 0;
+    }
+
+    // Mesh-independency sensitivity filter (Sigmund 2001)
+    filterSensitivities() {
+      const { nElem, rho, dc, dcFilt, filtOffsets, filtIndices, filtWeights, filtWeightSums } = this;
+      for (let e = 0; e < nElem; e++) {
+        let sum = 0;
+        const start = filtOffsets[e];
+        const end = filtOffsets[e + 1];
+        for (let k = start; k < end; k++) {
+          const f = filtIndices[k];
+          sum += filtWeights[k] * rho[f] * dc[f];
+        }
+        const denom = Math.max(1e-3, rho[e]) * filtWeightSums[e];
+        dcFilt[e] = sum / denom;
+      }
+    }
+
+    // Optimality Criteria (OC) density update with normalized bisection
+    optimalityCriteriaUpdate() {
+      const { nElem, rho, mask, dcFilt, rhoMin, volFrac } = this;
+      const move = 0.2;
+
+      let activeCount = 0;
+      let negSum = 0;
+      for (let e = 0; e < nElem; e++) {
+        if (mask[e] === 0) {
+          activeCount++;
+          negSum += Math.max(1e-12, -dcFilt[e]);
+        }
+      }
+      if (activeCount === 0) return 0;
+
+      const meanNeg = Math.max(1e-18, negSum / activeCount);
+      const targetActiveSum = volFrac * activeCount;
+
+      let l1 = 0.0;
+      let l2 = 1e6;
+      let lmid = 1.0;
+
+      for (let b = 0; b < 46; b++) {
+        lmid = 0.5 * (l1 + l2);
+        let sum = 0;
+        const invLmid = 1.0 / Math.max(1e-18, lmid);
+        for (let e = 0; e < nElem; e++) {
+          if (mask[e] !== 0) continue;
+          const re = rho[e];
+          const nd = Math.max(1e-12, -dcFilt[e]) / meanNeg;
+          let rNew = re * Math.sqrt(nd * invLmid);
+          const lo = Math.max(rhoMin, re - move);
+          const hi = Math.min(1.0, re + move);
+          if (rNew < lo) rNew = lo;
+          else if (rNew > hi) rNew = hi;
+          sum += rNew;
+        }
+        if (sum > targetActiveSum) l1 = lmid;
+        else l2 = lmid;
+        if ((l2 - l1) / (l1 + l2 + 1e-12) < 1e-5) break;
+      }
+
+      let maxChange = 0;
+      const invLmid = 1.0 / Math.max(1e-18, lmid);
+      for (let e = 0; e < nElem; e++) {
+        if (mask[e] === -1) {
+          rho[e] = rhoMin;
+          continue;
+        }
+        if (mask[e] === 1) {
+          rho[e] = 1.0;
+          continue;
+        }
+        const re = rho[e];
+        const nd = Math.max(1e-12, -dcFilt[e]) / meanNeg;
+        let rNew = re * Math.sqrt(nd * invLmid);
+        const lo = Math.max(rhoMin, re - move);
+        const hi = Math.min(1.0, re + move);
+        if (rNew < lo) rNew = lo;
+        else if (rNew > hi) rNew = hi;
+        const diff = Math.abs(rNew - re);
+        if (diff > maxChange) maxChange = diff;
+        rho[e] = rNew;
+      }
+      return maxChange;
+    }
+
+    // Perform 1 full SIMP iteration: FEM Solve -> Sensitivities -> Filter -> OC Update
+    step() {
+      const maxPcg = this.iter < 2 ? 500 : 240;
+      this.solveFEM(maxPcg, 1e-4);
+      this.computePostProcessing();
+      this.filterSensitivities();
+      this.lastChange = this.optimalityCriteriaUpdate();
+      this.iter++;
+
+      // Re-evaluate post-processing only on next solve, record current compliance
+      if (this.iter === 1 && this.initialCompliance_J <= 0) {
+        this.initialCompliance_J = this.compliance_J;
+      }
+      this.complianceHistory.push(this.compliance_J);
+      if (this.complianceHistory.length > 140) {
+        this.complianceHistory.shift();
+      }
+      if (this.iter >= 22 && this.lastChange < 0.0045) {
+        this.converged = true;
+      }
+      return this.lastChange;
+    }
+
+    paintMask(gx, gy, radius, maskVal) {
+      const { nx, ny, mask, rho, rhoMin, volFrac } = this;
+      let changed = false;
+      const r2 = radius * radius;
+      const x0 = Math.max(0, Math.floor(gx - radius));
+      const x1 = Math.min(nx - 1, Math.ceil(gx + radius));
+      const y0 = Math.max(0, Math.floor(gy - radius));
+      const y1 = Math.min(ny - 1, Math.ceil(gy + radius));
+      for (let ey = y0; ey <= y1; ey++) {
+        for (let ex = x0; ex <= x1; ex++) {
+          const dx = ex + 0.5 - gx;
+          const dy = ey + 0.5 - gy;
+          if (dx * dx + dy * dy <= r2) {
+            const idx = ey * nx + ex;
+            if (mask[idx] !== maskVal) {
+              mask[idx] = maskVal;
+              if (maskVal === -1) rho[idx] = rhoMin;
+              else if (maskVal === 1) rho[idx] = 1.0;
+              else rho[idx] = volFrac;
+              changed = true;
+            }
+          }
+        }
+      }
+      if (changed) {
+        this.converged = false;
+      }
+      return changed;
+    }
+  }
+
+  // Expose solver test hook for automated Node.js verification when run outside browser
+  if (typeof window === 'undefined') {
+    globalThis.__TopologySolver = TopologySolver;
+    return;
+  }
+
+  // =========================================================================
+  // 4. WEB AUDIO ENGINE (MUTED BY DEFAULT, CRYSTALLINE CONVERGENCE TONES)
+  // =========================================================================
+  class AudioEngine {
+    constructor() {
+      this.enabled = false;
+      this.ctx = null;
+      this.lastTick = 0;
+    }
+    toggle() {
+      this.enabled = !this.enabled;
+      if (this.enabled && !this.ctx) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (AC) this.ctx = new AC();
+      }
+      if (this.enabled && this.ctx && this.ctx.state === 'suspended') {
+        this.ctx.resume();
+      }
+      return this.enabled;
+    }
+    pingIteration(ratio, change) {
+      if (!this.enabled || !this.ctx) return;
+      const now = this.ctx.currentTime;
+      if (now - this.lastTick < 0.045) return;
+      this.lastTick = now;
+
+      // Smooth upward crystalline glide as compliance ratio drops from 1.0 -> 0.25
+      const progress = Math.max(0, Math.min(1, 1 - ratio));
+      const baseFreq = 320 + progress * 540;
+      const gainPeak = Math.min(0.055, 0.012 + change * 0.14);
+
+      const osc = this.ctx.createOscillator();
+      const osc2 = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sine';
+      osc2.type = 'triangle';
+      osc.frequency.setValueAtTime(baseFreq, now);
+      osc2.frequency.setValueAtTime(baseFreq * 1.5, now);
+
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.exponentialRampToValueAtTime(gainPeak, now + 0.008);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.095);
+
+      osc.connect(gain);
+      osc2.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(now);
+      osc2.start(now);
+      osc.stop(now + 0.105);
+      osc2.stop(now + 0.105);
+    }
+  }
+
+  // =========================================================================
+  // 5. COLORMAPS (ENGINEERING HEATMAPS)
+  // =========================================================================
+  function lerp(a, b, t) { return a + (b - a) * t; }
+
+  // Deep Indigo -> Electric Blue -> Cyan -> Warm Amber -> Incandescent Crimson
+  const VM_STOPS = [
+    [0.00,  15,  20,  58],
+    [0.24,  28,  92, 232],
+    [0.50,  46, 224, 255],
+    [0.74, 255, 190,  62],
+    [0.92, 255,  52,  92],
+    [1.00, 255, 224, 234]
+  ];
+
+  function sampleVonMisesRGB(t) {
+    const c = Math.max(0, Math.min(1, t));
+    for (let i = 0; i < VM_STOPS.length - 1; i++) {
+      const a = VM_STOPS[i], b = VM_STOPS[i + 1];
+      if (c <= b[0]) {
+        const f = (c - a[0]) / (b[0] - a[0]);
+        return [
+          Math.round(lerp(a[1], b[1], f)),
+          Math.round(lerp(a[2], b[2], f)),
+          Math.round(lerp(a[3], b[3], f))
+        ];
+      }
+    }
+    return [255, 224, 234];
+  }
+
+  // =========================================================================
+  // 6. APPLICATION STATE & CANVAS RENDERER
+  // =========================================================================
+  const canvas = document.getElementById('sim-canvas');
+  const ctx = canvas.getContext('2d');
+  const sparkCanvas = document.getElementById('sparkline-canvas');
+  const sparkCtx = sparkCanvas.getContext('2d');
+
+  const solver = new TopologySolver();
+  const audio = new AudioEngine();
+
+  const state = {
+    running: true,
+    viewMode: 'density', // 'density' | 'vonmises' | 'principal'
+    tool: 'load',        // 'load' | 'void' | 'solid' | 'erase'
+    brushRadius: 2.2,
+    deformScale: 3.0,
+    pace: 18,            // SIMP iterations/sec
+    showMesh: false,
+    showTraj: true,
+    showGhost: true,
+    showShade: true,
+    drawerOpen: true,
+    zen: false,
+
+    // Layout transform (domain grid -> screen px)
+    ox: 0,
+    oy: 0,
+    cellPx: 18,
+    W: window.innerWidth,
+    H: window.innerHeight,
+    dpr: Math.min(window.devicePixelRatio || 1, 2),
+
+    // Pointer interaction
+    draggingLoadIdx: -1,
+    dragMode: null, // 'move' | 'rotate' | 'paint'
+    hoverLoadIdx: -1,
+    hoverLoadPart: null, // 'base' | 'tail'
+    hoverElem: -1,
+    mouseX: -1000,
+    mouseY: -1000
+  };
+
+  function resize() {
+    state.W = window.innerWidth;
+    state.H = window.innerHeight;
+    state.dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.round(state.W * state.dpr);
+    canvas.height = Math.round(state.H * state.dpr);
+    computeViewport();
+  }
+
+  function computeViewport() {
+    const rightPad = (state.drawerOpen && !state.zen && state.W > 960) ? 358 : 48;
+    const leftPad = 48;
+    const topPad = state.zen ? 54 : 184;
+    const botPad = state.zen ? 54 : 92;
+
+    const availW = Math.max(220, state.W - leftPad - rightPad);
+    const availH = Math.max(160, state.H - topPad - botPad);
+
+    const scale = Math.min(availW / solver.nx, availH / solver.ny) * 0.88;
+    state.cellPx = Math.max(6, scale);
+
+    const meshW = solver.nx * state.cellPx;
+    const meshH = solver.ny * state.cellPx;
+    state.ox = leftPad + (availW - meshW) * 0.5;
+    state.oy = topPad + (availH - meshH) * 0.5 + meshH; // Cartesian y=0 at bottom of mesh
+  }
+
+  // Convert Cartesian grid coords (gx in [0, nx], gy in [0, ny]) -> canvas CSS pixels
+  function gridToScreen(gx, gy) {
+    return [state.ox + gx * state.cellPx, state.oy - gy * state.cellPx];
+  }
+  function screenToGrid(sx, sy) {
+    return [(sx - state.ox) / state.cellPx, (state.oy - sy) / state.cellPx];
+  }
+
+  // Compute deformed screen position for node (ix, iy)
+  function nodeScreenPos(ix, iy, deformMul) {
+    const n = solver.nodeIdx(ix, iy);
+    const ux = solver.uVisMM[n * 2] * deformMul;
+    const uy = solver.uVisMM[n * 2 + 1] * deformMul;
+    return [
+      state.ox + ix * state.cellPx + ux,
+      state.oy - iy * state.cellPx - uy
+    ];
+  }
+
+  function getVisualDeformMultiplier() {
+    if (state.deformScale <= 0.001 || solver.maxDisp_mm < 1e-6) return 0;
+    // Normalize visual displacement so 1× is subtle realistic bend and 10× is dramatic (~1.4 cells max)
+    const maxAllowedPx = state.cellPx * 0.24 * state.deformScale;
+    const rawScale = (state.cellPx / MAT.elemSize_mm) * 2.6 * state.deformScale;
+    return Math.min(rawScale, maxAllowedPx / Math.max(0.05, solver.maxDisp_mm));
+  }
+
+  // =========================================================================
+  // 7. RENDERING PIPELINE (60 FPS MUSEUM-GRADE CAD VISUALIZATION)
+  // =========================================================================
+  function render() {
+    const { W, H, dpr, cellPx, ox, oy } = state;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    // 1. Deep blueprint backdrop with subtle ambient radial glow
+    ctx.fillStyle = '#040711';
+    ctx.fillRect(0, 0, W, H);
+
+    const cxMesh = ox + solver.nx * cellPx * 0.5;
+    const cyMesh = oy - solver.ny * cellPx * 0.5;
+    const radGlow = Math.max(solver.nx, solver.ny) * cellPx * 0.85;
+    const bgGrad = ctx.createRadialGradient(cxMesh, cyMesh, 20, cxMesh, cyMesh, radGlow);
+    bgGrad.addColorStop(0, 'rgba(32, 68, 128, 0.16)');
+    bgGrad.addColorStop(0.55, 'rgba(12, 22, 48, 0.08)');
+    bgGrad.addColorStop(1, 'rgba(4, 7, 17, 0)');
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, W, H);
+
+    // 2. Subtle engineering CAD grid
+    drawCADGrid(W, H, ox, oy, cellPx);
+
+    // 3. Undeformed ghost domain outline + physical dimensions
+    if (state.showGhost) {
+      drawGhostDomain(ox, oy, cellPx);
+    }
+
+    // 4. Deformed Q4 Finite Element Mesh
+    const deformMul = getVisualDeformMultiplier();
+    drawFiniteElements(deformMul);
+
+    // 5. Principal Stress Trajectories (optional overlay in Principal or Stress view)
+    if (state.showTraj && (state.viewMode === 'principal' || state.viewMode === 'vonmises')) {
+      drawStressTrajectories(deformMul);
+    }
+
+    // 6. Painted Void Cutouts & Fixed Solid Rib Hatch Overlays
+    drawMaskOverlays(deformMul);
+
+    // 7. Boundary Condition Supports (Clamps, Pins, Rollers)
+    drawSupports();
+
+    // 8. Interactive Force Arrows (F)
+    drawLoadArrows(deformMul);
+
+    // 9. Brush preview cursor when painting
+    if (state.tool !== 'load' && state.hoverElem >= 0) {
+      drawBrushPreview();
+    }
+
+    // 10. Colorbar Legend on Canvas
+    if (!state.zen) {
+      drawColorLegend();
+    }
+  }
+
+  function drawCADGrid(W, H, ox, oy, cellPx) {
+    const step = cellPx * 4;
+    if (step < 14) return;
+    ctx.save();
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(130, 165, 235, 0.045)';
+    ctx.beginPath();
+    const startX = ((ox % step) + step) % step;
+    for (let x = startX; x < W; x += step) {
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, H);
+    }
+    const startY = ((oy % step) + step) % step;
+    for (let y = startY; y < H; y += step) {
+      ctx.moveTo(0, y);
+      ctx.lineTo(W, y);
+    }
+    ctx.stroke();
+
+    // Fine subgrid inside design domain
+    ctx.strokeStyle = 'rgba(130, 165, 235, 0.04)';
+    ctx.beginPath();
+    const meshW = solver.nx * cellPx;
+    const meshH = solver.ny * cellPx;
+    for (let i = 0; i <= solver.nx; i += 4) {
+      const x = ox + i * cellPx;
+      ctx.moveTo(x, oy);
+      ctx.lineTo(x, oy - meshH);
+    }
+    for (let j = 0; j <= solver.ny; j += 4) {
+      const y = oy - j * cellPx;
+      ctx.moveTo(ox, y);
+      ctx.lineTo(ox + meshW, y);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawGhostDomain(ox, oy, cellPx) {
+    const meshW = solver.nx * cellPx;
+    const meshH = solver.ny * cellPx;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.22)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([5, 5]);
+    ctx.strokeRect(ox, oy - meshH, meshW, meshH);
+    ctx.setLineDash([]);
+
+    // Dimension callout lines
+    const lenMM = solver.nx * MAT.elemSize_mm;
+    const hgtMM = solver.ny * MAT.elemSize_mm;
+    ctx.font = '600 10.5px ui-monospace, Menlo, Consolas, monospace';
+    ctx.fillStyle = 'rgba(154, 169, 204, 0.65)';
+    ctx.textAlign = 'center';
+    ctx.fillText(`${lenMM} mm`, ox + meshW * 0.5, oy + 22);
+
+    ctx.save();
+    ctx.translate(ox - 20, oy - meshH * 0.5);
+    ctx.rotate(-Math.PI / 2);
+    ctx.fillText(`${hgtMM} mm`, 0, 0);
+    ctx.restore();
+    ctx.restore();
+  }
+
+  function drawFiniteElements(deformMul) {
+    const { nx, ny, rhoVis, mask, svm, s1, s2 } = solver;
+    const mode = state.viewMode;
+    const peakVM = Math.max(10, solver.peakVM_MPa);
+    const maxP = Math.max(10, solver.maxPrinStress_MPa);
+    const showShade = state.showShade;
+
+    // Precompute deformed screen coordinates for all nodes once per frame
+    const nNodes = solver.nNodes;
+    if (!state._nodeX || state._nodeX.length !== nNodes) {
+      state._nodeX = new Float32Array(nNodes);
+      state._nodeY = new Float32Array(nNodes);
+    }
+    const nodeX = state._nodeX;
+    const nodeY = state._nodeY;
+    const stride = nx + 1;
+    const { ox, oy, cellPx } = state;
+    const uVis = solver.uVisMM;
+
+    for (let iy = 0; iy <= ny; iy++) {
+      const baseY = oy - iy * cellPx;
+      const rowOff = iy * stride;
+      for (let ix = 0; ix <= nx; ix++) {
+        const n = rowOff + ix;
+        nodeX[n] = ox + ix * cellPx + uVis[n * 2] * deformMul;
+        nodeY[n] = baseY - uVis[n * 2 + 1] * deformMul;
+      }
+    }
+
+    // Subtle outer glow pass for carved metallic structure
+    ctx.save();
+    for (let ey = 0; ey < ny; ey++) {
+      const rowE = ey * nx;
+      const rowN = ey * stride;
+      for (let ex = 0; ex < nx; ex++) {
+        const e = rowE + ex;
+        const r = rhoVis[e];
+        if (mask[e] === -1 || r < 0.045) continue;
+
+        const n0 = rowN + ex;
+        const n1 = n0 + 1;
+        const n2 = n0 + stride + 1;
+        const n3 = n0 + stride;
+
+        // Slight quad expansion (0.35px) prevents hairline cracks between deformed Q4 quads
+        const x0 = nodeX[n0], y0 = nodeY[n0];
+        const x1 = nodeX[n1], y1 = nodeY[n1];
+        const x2 = nodeX[n2], y2 = nodeY[n2];
+        const x3 = nodeX[n3], y3 = nodeY[n3];
+        const cx = 0.25 * (x0 + x1 + x2 + x3);
+        const cy = 0.25 * (y0 + y1 + y2 + y3);
+        const pad = 1.035;
+
+        const px0 = cx + (x0 - cx) * pad, py0 = cy + (y0 - cy) * pad;
+        const px1 = cx + (x1 - cx) * pad, py1 = cy + (y1 - cy) * pad;
+        const px2 = cx + (x2 - cx) * pad, py2 = cy + (y2 - cy) * pad;
+        const px3 = cx + (x3 - cx) * pad, py3 = cy + (y3 - cy) * pad;
+
+        // Smooth alpha threshold so voids dissolve cleanly while solid ribs stay razor sharp
+        const alpha = Math.min(1, Math.pow((r - 0.04) / 0.96, 0.72));
+
+        let fillStr;
+        if (mode === 'density') {
+          // Metallic titanium shading with directional top-left key light from density gradient
+          let shade = 0;
+          if (showShade) {
+            const rL = ex > 0 ? rhoVis[e - 1] : 0;
+            const rR = ex < nx - 1 ? rhoVis[e + 1] : 0;
+            const rD = ey > 0 ? rhoVis[e - nx] : 0;
+            const rU = ey < ny - 1 ? rhoVis[e + nx] : 0;
+            const gx = rR - rL;
+            const gy = rU - rD;
+            // Key light from upper-left (-0.65, +0.75)
+            shade = (-0.65 * gx + 0.75 * gy) * 38;
+          }
+          const base = 158 + r * 92 + shade;
+          const cr = Math.max(30, Math.min(255, Math.round(base * 0.90)));
+          const cg = Math.max(40, Math.min(255, Math.round(base * 0.96)));
+          const cb = Math.max(55, Math.min(255, Math.round(base * 1.04)));
+          fillStr = `rgba(${cr},${cg},${cb},${alpha.toFixed(3)})`;
+        } else if (mode === 'vonmises') {
+          // Gamma-boosted stress intensity so mid-stresses glow clearly alongside crimson peaks
+          const norm = Math.pow(Math.min(1, svm[e] / peakVM), 0.72);
+          const rgb = sampleVonMisesRGB(norm);
+          fillStr = `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${(alpha * 0.96).toFixed(3)})`;
+        } else {
+          // Principal Tension (electric cyan) vs Compression (coral-amber)
+          const p1 = s1[e];
+          const p2 = s2[e];
+          const tMag = Math.max(0, p1);
+          const cMag = Math.max(0, -p2);
+          const tot = tMag + cMag + 1e-6;
+          const tFrac = tMag / tot; // 1 = pure tension, 0 = pure compression
+          const intensity = Math.pow(Math.min(1, Math.max(tMag, cMag) / (maxP * 0.85)), 0.65);
+
+          // Blend deep slate -> electric cyan (tension) vs coral-amber (compression)
+          const tr = lerp(24, 96, intensity);
+          const tg = lerp(42, 236, intensity);
+          const tb = lerp(74, 255, intensity);
+
+          const crC = lerp(52, 255, intensity);
+          const cgC = lerp(28, 146, intensity);
+          const cbC = lerp(38, 86, intensity);
+
+          const rr = Math.round(lerp(crC, tr, tFrac));
+          const gg = Math.round(lerp(cgC, tg, tFrac));
+          const bb = Math.round(lerp(cbC, tb, tFrac));
+          fillStr = `rgba(${rr},${gg},${bb},${(alpha * 0.96).toFixed(3)})`;
+        }
+
+        ctx.fillStyle = fillStr;
+        ctx.beginPath();
+        ctx.moveTo(px0, py0);
+        ctx.lineTo(px1, py1);
+        ctx.lineTo(px2, py2);
+        ctx.lineTo(px3, py3);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+
+    // Optional Deformed Q4 Mesh Wireframe
+    if (state.showMesh) {
+      ctx.strokeStyle = 'rgba(130, 195, 255, 0.22)';
+      ctx.lineWidth = 0.75;
+      ctx.beginPath();
+      for (let ey = 0; ey < ny; ey++) {
+        const rowE = ey * nx;
+        const rowN = ey * stride;
+        for (let ex = 0; ex < nx; ex++) {
+          const e = rowE + ex;
+          if (mask[e] === -1) continue;
+          const n0 = rowN + ex;
+          const n1 = n0 + 1;
+          const n2 = n0 + stride + 1;
+          const n3 = n0 + stride;
+          ctx.moveTo(nodeX[n0], nodeY[n0]);
+          ctx.lineTo(nodeX[n1], nodeY[n1]);
+          ctx.lineTo(nodeX[n2], nodeY[n2]);
+          ctx.lineTo(nodeX[n3], nodeY[n3]);
+          ctx.closePath();
+        }
+      }
+      ctx.stroke();
+    }
+
+    // Hover element highlight
+    if (state.hoverElem >= 0 && state.hoverElem < solver.nElem) {
+      const ex = state.hoverElem % nx;
+      const ey = Math.floor(state.hoverElem / nx);
+      const n0 = ey * stride + ex;
+      const n1 = n0 + 1;
+      const n2 = n0 + stride + 1;
+      const n3 = n0 + stride;
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(nodeX[n0], nodeY[n0]);
+      ctx.lineTo(nodeX[n1], nodeY[n1]);
+      ctx.lineTo(nodeX[n2], nodeY[n2]);
+      ctx.lineTo(nodeX[n3], nodeY[n3]);
+      ctx.closePath();
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawStressTrajectories(deformMul) {
+    const { nx, ny, rhoVis, mask, s1, s2, sAngle } = solver;
+    const nodeX = state._nodeX;
+    const nodeY = state._nodeY;
+    const stride = nx + 1;
+    const maxP = Math.max(10, solver.maxPrinStress_MPa);
+    const halfLen = state.cellPx * 0.42;
+
+    ctx.save();
+    ctx.lineWidth = 1.2;
+    ctx.lineCap = 'round';
+
+    for (let ey = 0; ey < ny; ey++) {
+      const rowE = ey * nx;
+      const rowN = ey * stride;
+      for (let ex = 0; ex < nx; ex++) {
+        const e = rowE + ex;
+        if (mask[e] === -1 || rhoVis[e] < 0.35) continue;
+
+        const n0 = rowN + ex;
+        const n1 = n0 + 1;
+        const n2 = n0 + stride + 1;
+        const n3 = n0 + stride;
+        const cx = 0.25 * (nodeX[n0] + nodeX[n1] + nodeX[n2] + nodeX[n3]);
+        const cy = 0.25 * (nodeY[n0] + nodeY[n1] + nodeY[n2] + nodeY[n3]);
+
+        // Screen y is flipped relative to Cartesian y, so flip angle sign
+        const ang = -sAngle[e];
+        const p1 = s1[e];
+        const p2 = s2[e];
+
+        const mag1 = Math.min(1, Math.abs(p1) / (maxP * 0.7));
+        if (mag1 > 0.12) {
+          const l1 = halfLen * (0.45 + 0.55 * mag1);
+          const dx = Math.cos(ang) * l1;
+          const dy = Math.sin(ang) * l1;
+          ctx.strokeStyle = p1 >= 0
+            ? `rgba(170, 248, 255, ${(0.3 + 0.55 * mag1).toFixed(2)})`
+            : `rgba(255, 200, 130, ${(0.3 + 0.55 * mag1).toFixed(2)})`;
+          ctx.beginPath();
+          ctx.moveTo(cx - dx, cy - dy);
+          ctx.lineTo(cx + dx, cy + dy);
+          ctx.stroke();
+        }
+
+        const mag2 = Math.min(1, Math.abs(p2) / (maxP * 0.7));
+        if (mag2 > 0.12) {
+          const l2 = halfLen * (0.45 + 0.55 * mag2);
+          const dx = -Math.sin(ang) * l2;
+          const dy = Math.cos(ang) * l2;
+          ctx.strokeStyle = p2 >= 0
+            ? `rgba(170, 248, 255, ${(0.3 + 0.55 * mag2).toFixed(2)})`
+            : `rgba(255, 140, 100, ${(0.3 + 0.55 * mag2).toFixed(2)})`;
+          ctx.beginPath();
+          ctx.moveTo(cx - dx, cy - dy);
+          ctx.lineTo(cx + dx, cy + dy);
+          ctx.stroke();
+        }
+      }
+    }
+    ctx.restore();
+  }
+
+  function drawMaskOverlays(deformMul) {
+    const { nx, ny, mask } = solver;
+    const nodeX = state._nodeX;
+    const nodeY = state._nodeY;
+    const stride = nx + 1;
+
+    ctx.save();
+    // Draw forbidden voids with crisp crimson hatch
+    ctx.strokeStyle = 'rgba(255, 96, 131, 0.36)';
+    ctx.fillStyle = 'rgba(255, 50, 95, 0.08)';
+    ctx.lineWidth = 0.85;
+    for (let ey = 0; ey < ny; ey++) {
+      const rowE = ey * nx;
+      const rowN = ey * stride;
+      for (let ex = 0; ex < nx; ex++) {
+        const e = rowE + ex;
+        const m = mask[e];
+        if (m === 0) continue;
+
+        const n0 = rowN + ex;
+        const n1 = n0 + 1;
+        const n2 = n0 + stride + 1;
+        const n3 = n0 + stride;
+        const x0 = nodeX[n0], y0 = nodeY[n0];
+        const x1 = nodeX[n1], y1 = nodeY[n1];
+        const x2 = nodeX[n2], y2 = nodeY[n2];
+        const x3 = nodeX[n3], y3 = nodeY[n3];
+
+        if (m === -1) {
+          ctx.beginPath();
+          ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.lineTo(x2, y2); ctx.lineTo(x3, y3);
+          ctx.closePath();
+          ctx.fill();
+          ctx.beginPath();
+          ctx.moveTo(x0, y0); ctx.lineTo(x2, y2);
+          ctx.stroke();
+        } else if (m === 1) {
+          ctx.strokeStyle = 'rgba(88, 220, 255, 0.34)';
+          ctx.beginPath();
+          ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.lineTo(x2, y2); ctx.lineTo(x3, y3);
+          ctx.closePath();
+          ctx.stroke();
+          ctx.strokeStyle = 'rgba(255, 96, 131, 0.36)';
+        }
+      }
+    }
+    ctx.restore();
+  }
+
+  function drawSupports() {
+    const { supports } = solver;
+    const { cellPx } = state;
+    ctx.save();
+
+    // Draw clamp wall bars nicely if many nodes along an edge are clamped
+    const stepDraw = supports.length > 35 ? 2 : 1;
+    for (let i = 0; i < supports.length; i += stepDraw) {
+      const s = supports[i];
+      const [sx, sy] = gridToScreen(s.ix, s.iy);
+      if (s.type === 'clamp') {
+        ctx.fillStyle = 'rgba(88, 220, 255, 0.78)';
+        ctx.beginPath();
+        ctx.arc(sx, sy, Math.max(2.3, cellPx * 0.14), 0, Math.PI * 2);
+        ctx.fill();
+        // Ground hatch tick
+        ctx.strokeStyle = 'rgba(88, 220, 255, 0.45)';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        if (s.ix === 0) {
+          ctx.moveTo(sx - 2, sy);
+          ctx.lineTo(sx - 9, sy + 5);
+        } else if (s.iy === solver.ny) {
+          ctx.moveTo(sx, sy - 2);
+          ctx.lineTo(sx - 5, sy - 9);
+        } else {
+          ctx.moveTo(sx - 3, sy - 3);
+          ctx.lineTo(sx + 3, sy + 3);
+        }
+        ctx.stroke();
+      } else if (s.type === 'pin') {
+        const sz = Math.max(7, cellPx * 0.48);
+        ctx.fillStyle = 'rgba(74, 242, 178, 0.25)';
+        ctx.strokeStyle = '#4af2b2';
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.moveTo(sx, sy);
+        ctx.lineTo(sx - sz * 0.75, sy + sz);
+        ctx.lineTo(sx + sz * 0.75, sy + sz);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      } else if (s.type === 'roller') {
+        const sz = Math.max(7, cellPx * 0.46);
+        ctx.fillStyle = 'rgba(88, 220, 255, 0.25)';
+        ctx.strokeStyle = '#58dcff';
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.moveTo(sx, sy);
+        ctx.lineTo(sx - sz * 0.7, sy + sz * 0.85);
+        ctx.lineTo(sx + sz * 0.7, sy + sz * 0.85);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        // Rollers
+        ctx.beginPath();
+        ctx.arc(sx - sz * 0.35, sy + sz * 1.15, 2.3, 0, Math.PI * 2);
+        ctx.arc(sx + sz * 0.35, sy + sz * 1.15, 2.3, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+
+  function getLoadHandleGeometry(ld, deformMul) {
+    // Interpolate deformed position at (ld.gx, ld.gy)
+    const ix = Math.max(0, Math.min(solver.nx, Math.round(ld.gx)));
+    const iy = Math.max(0, Math.min(solver.ny, Math.round(ld.gy)));
+    const n = solver.nodeIdx(ix, iy);
+    const [bx0, by0] = gridToScreen(ld.gx, ld.gy);
+    const bx = bx0 + solver.uVisMM[n * 2] * deformMul;
+    const by = by0 - solver.uVisMM[n * 2 + 1] * deformMul;
+
+    const rad = (ld.angleDeg * Math.PI) / 180;
+    // Direction vector on screen (note screen y is flipped!)
+    const dx = Math.cos(rad);
+    const dy = -Math.sin(rad);
+    const arrowLen = Math.max(44, state.cellPx * 3.1) * (solver.loads.length > 2 ? 0.75 : 1.0);
+    // Arrow points INTO or OUT OF base? Engineering convention: tail outside pushing/pulling at point (bx, by)
+    // Place tail behind the anchor along -dir so arrowhead touches (bx, by)
+    const tx = bx - dx * arrowLen;
+    const ty = by - dy * arrowLen;
+    return { bx, by, tx, ty, dx, dy, arrowLen };
+  }
+
+  function drawLoadArrows(deformMul) {
+    ctx.save();
+    for (let i = 0; i < solver.loads.length; i++) {
+      const ld = solver.loads[i];
+      const { bx, by, tx, ty, dx, dy } = getLoadHandleGeometry(ld, deformMul);
+      const isHover = (state.hoverLoadIdx === i) || (state.draggingLoadIdx === i);
+
+      // Glow shadow
+      ctx.shadowColor = 'rgba(255, 190, 92, 0.75)';
+      ctx.shadowBlur = isHover ? 16 : 9;
+
+      // Shaft
+      ctx.strokeStyle = isHover ? '#ffe4a8' : '#ffbe5c';
+      ctx.lineWidth = isHover ? 3.4 : 2.6;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(tx, ty);
+      ctx.lineTo(bx - dx * 9, by - dy * 9);
+      ctx.stroke();
+
+      // Arrowhead at (bx, by)
+      const headLen = 11;
+      const headW = 5.5;
+      ctx.fillStyle = isHover ? '#fff0cc' : '#ffbe5c';
+      ctx.beginPath();
+      ctx.moveTo(bx, by);
+      ctx.lineTo(bx - dx * headLen - dy * headW, by - dy * headLen + dx * headW);
+      ctx.lineTo(bx - dx * headLen + dy * headW, by - dy * headLen - dx * headW);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.shadowBlur = 0;
+
+      // Base anchor handle (drag to move load)
+      ctx.fillStyle = isHover && state.hoverLoadPart === 'base' ? '#ffffff' : '#ffbe5c';
+      ctx.strokeStyle = '#08101f';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(bx, by, isHover ? 6.5 : 5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+
+      // Tail rotation ring handle (drag to rotate force angle)
+      ctx.fillStyle = isHover && state.hoverLoadPart === 'tail' ? '#58dcff' : 'rgba(8, 14, 28, 0.9)';
+      ctx.strokeStyle = isHover && state.hoverLoadPart === 'tail' ? '#ffffff' : '#ffbe5c';
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      ctx.arc(tx, ty, isHover ? 6 : 4.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+
+      // Label on primary load (or first load)
+      if (i === 0 || solver.loads.length <= 2) {
+        const forceMag = Math.round(solver.force_kN * ld.weight);
+        ctx.font = '700 11px ui-monospace, Menlo, Consolas, monospace';
+        ctx.fillStyle = '#ffe5b0';
+        ctx.textAlign = 'center';
+        ctx.fillText(`F ${forceMag} kN`, tx - dx * 16, ty - dy * 14 + 4);
+      }
+    }
+    ctx.restore();
+  }
+
+  function drawBrushPreview() {
+    const rPx = state.brushRadius * state.cellPx;
+    ctx.save();
+    ctx.strokeStyle = state.tool === 'void'
+      ? 'rgba(255, 96, 131, 0.85)'
+      : state.tool === 'solid'
+        ? 'rgba(88, 220, 255, 0.85)'
+        : 'rgba(255, 255, 255, 0.7)';
+    ctx.fillStyle = state.tool === 'void'
+      ? 'rgba(255, 96, 131, 0.14)'
+      : state.tool === 'solid'
+        ? 'rgba(88, 220, 255, 0.14)'
+        : 'rgba(255, 255, 255, 0.08)';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.arc(state.mouseX, state.mouseY, rPx, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawColorLegend() {
+    const mode = state.viewMode;
+    const rightEdge = (state.drawerOpen && state.W > 960) ? (state.W - 358) : (state.W - 22);
+    const barW = 168;
+    const barH = 10;
+    const x = rightEdge - barW - 14;
+    const y = state.H - 74;
+
+    if (x < 340) return;
+
+    ctx.save();
+    ctx.fillStyle = 'rgba(9, 13, 24, 0.76)';
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.18)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(x - 10, y - 22, barW + 20, 48, 10);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.font = '700 9.5px system-ui, sans-serif';
+    ctx.fillStyle = '#9aa9cc';
+    ctx.textAlign = 'left';
+
+    const grad = ctx.createLinearGradient(x, 0, x + barW, 0);
+    if (mode === 'density') {
+      ctx.fillText('MATERIAL DENSITY ρ', x, y - 8);
+      grad.addColorStop(0, '#1b243b');
+      grad.addColorStop(0.5, '#9ab2d4');
+      grad.addColorStop(1, '#ffffff');
+    } else if (mode === 'vonmises') {
+      ctx.fillText('VON MISES STRESS (MPa)', x, y - 8);
+      for (let i = 0; i < VM_STOPS.length; i++) {
+        const s = VM_STOPS[i];
+        grad.addColorStop(s[0], `rgb(${s[1]},${s[2]},${s[3]})`);
+      }
+    } else {
+      ctx.fillText('COMPRESSION ↔ TENSION', x, y - 8);
+      grad.addColorStop(0, '#ff7847');
+      grad.addColorStop(0.5, '#2b3452');
+      grad.addColorStop(1, '#3ce6ff');
+    }
+
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.roundRect(x, y, barW, barH, 4);
+    ctx.fill();
+
+    ctx.font = '600 9.5px ui-monospace, Menlo, Consolas, monospace';
+    ctx.fillStyle = '#c8d7f5';
+    if (mode === 'density') {
+      ctx.textAlign = 'left';  ctx.fillText('0.0 Void', x, y + 21);
+      ctx.textAlign = 'right'; ctx.fillText('1.0 Solid', x + barW, y + 21);
+    } else if (mode === 'vonmises') {
+      ctx.textAlign = 'left';  ctx.fillText('0', x, y + 21);
+      ctx.textAlign = 'right'; ctx.fillText(`${Math.round(solver.peakVM_MPa)} MPa`, x + barW, y + 21);
+    } else {
+      ctx.textAlign = 'left';  ctx.fillText('Comp (-σ₂)', x, y + 21);
+      ctx.textAlign = 'right'; ctx.fillText('Tens (+σ₁)', x + barW, y + 21);
+    }
+    ctx.restore();
+  }
+
+  // =========================================================================
+  // 8. TELEMETRY & SPARKLINE HUD UPDATER
+  // =========================================================================
+  const elIter = document.getElementById('tel-iter');
+  const elComp = document.getElementById('tel-comp');
+  const elVol = document.getElementById('tel-vol');
+  const elDisp = document.getElementById('tel-disp');
+  const elStress = document.getElementById('tel-stress');
+  const elSF = document.getElementById('tel-sf');
+  const elReduction = document.getElementById('tel-reduction');
+  const elStatus = document.getElementById('opt-status');
+  const elMeshInfo = document.getElementById('mesh-info');
+
+  const elProbe = document.getElementById('probe-pill');
+  const elPrRho = document.getElementById('pr-rho');
+  const elPrVM = document.getElementById('pr-vm');
+  const elPrPrin = document.getElementById('pr-prin');
+  const elPrU = document.getElementById('pr-u');
+
+  function updateTelemetryUI() {
+    elIter.textContent = String(solver.iter);
+    elComp.textContent = solver.compliance_J >= 100
+      ? `${solver.compliance_J.toFixed(1)} J`
+      : `${solver.compliance_J.toFixed(2)} J`;
+    elVol.textContent = `${(solver.volumeUsed * 100).toFixed(1)}%`;
+    elDisp.textContent = `${solver.maxDisp_mm.toFixed(2)} mm`;
+    elStress.textContent = `${Math.round(solver.peakVM_MPa)} MPa`;
+
+    const sf = solver.safetyFactor;
+    elSF.textContent = sf > 50 ? '>50×' : `${sf.toFixed(2)}×`;
+    elSF.className = 'tele-val ' + (sf >= 2.0 ? 'mint' : sf >= 1.15 ? 'amber' : 'rose');
+
+    if (solver.initialCompliance_J > 1e-6) {
+      const pct = ((solver.compliance_J - solver.initialCompliance_J) / solver.initialCompliance_J) * 100;
+      const sign = pct <= 0 ? '' : '+';
+      elReduction.textContent = `ΔC: ${sign}${pct.toFixed(1)}%`;
+      elReduction.style.color = pct <= 0 ? 'var(--accent-mint)' : 'var(--accent-amber)';
+    }
+
+    if (!state.running) {
+      elStatus.textContent = 'Paused';
+      elStatus.className = 'status-pill paused';
+    } else if (solver.converged) {
+      elStatus.textContent = 'Converged';
+      elStatus.className = 'status-pill converged';
+    } else {
+      elStatus.textContent = 'Optimizing';
+      elStatus.className = 'status-pill';
+    }
+
+    elMeshInfo.textContent = `${solver.nx}×${solver.ny} Q4`;
+    drawSparkline();
+  }
+
+  function drawSparkline() {
+    const hist = solver.complianceHistory;
+    const w = sparkCanvas.width;
+    const h = sparkCanvas.height;
+    sparkCtx.clearRect(0, 0, w, h);
+    if (hist.length < 2) return;
+
+    let minV = Infinity, maxV = -Infinity;
+    for (let i = 0; i < hist.length; i++) {
+      if (hist[i] < minV) minV = hist[i];
+      if (hist[i] > maxV) maxV = hist[i];
+    }
+    const span = Math.max(1e-6, maxV - minV);
+    const padX = 4, padY = 5;
+
+    const grad = sparkCtx.createLinearGradient(0, padY, 0, h);
+    grad.addColorStop(0, 'rgba(88, 220, 255, 0.32)');
+    grad.addColorStop(1, 'rgba(88, 220, 255, 0.0)');
+
+    sparkCtx.beginPath();
+    for (let i = 0; i < hist.length; i++) {
+      const x = padX + (i / (hist.length - 1)) * (w - padX * 2);
+      const y = h - padY - ((hist[i] - minV) / span) * (h - padY * 2);
+      if (i === 0) sparkCtx.moveTo(x, y);
+      else sparkCtx.lineTo(x, y);
+    }
+    sparkCtx.strokeStyle = '#58dcff';
+    sparkCtx.lineWidth = 1.8;
+    sparkCtx.stroke();
+
+    // Area fill under curve
+    sparkCtx.lineTo(w - padX, h);
+    sparkCtx.lineTo(padX, h);
+    sparkCtx.closePath();
+    sparkCtx.fillStyle = grad;
+    sparkCtx.fill();
+  }
+
+  function updateProbeUI() {
+    const e = state.hoverElem;
+    if (e < 0 || e >= solver.nElem || state.zen || solver.mask[e] === -1) {
+      elProbe.classList.remove('visible');
+      return;
+    }
+    elProbe.classList.add('visible');
+    elPrRho.textContent = solver.rho[e].toFixed(2);
+    elPrVM.textContent = `${Math.round(solver.svm[e])} MPa`;
+    elPrPrin.textContent = `${Math.round(solver.s1[e])} / ${Math.round(solver.s2[e])}`;
+    const ex = e % solver.nx;
+    const ey = Math.floor(e / solver.nx);
+    const n = solver.nodeIdx(ex, ey);
+    const uMag = Math.hypot(solver.uDispMM[n * 2], solver.uDispMM[n * 2 + 1]);
+    elPrU.textContent = `${uMag.toFixed(2)} mm`;
+  }
+
+  // =========================================================================
+  // 9. POINTER INTERACTION (DRAG/ROTATE LOAD ARROWS + PAINT CUTOUT/SOLID)
+  // =========================================================================
+  function hitTestLoads(sx, sy) {
+    const deformMul = getVisualDeformMultiplier();
+    let bestIdx = -1;
+    let bestPart = null;
+    let bestDist = 20;
+
+    for (let i = 0; i < solver.loads.length; i++) {
+      const ld = solver.loads[i];
+      const g = getLoadHandleGeometry(ld, deformMul);
+      const dBase = Math.hypot(sx - g.bx, sy - g.by);
+      if (dBase < bestDist) {
+        bestDist = dBase;
+        bestIdx = i;
+        bestPart = 'base';
+      }
+      const dTail = Math.hypot(sx - g.tx, sy - g.ty);
+      if (dTail < bestDist) {
+        bestDist = dTail;
+        bestIdx = i;
+        bestPart = 'tail';
+      }
+    }
+    return { idx: bestIdx, part: bestPart };
+  }
+
+  function applyPaintAt(sx, sy) {
+    const [gx, gy] = screenToGrid(sx, sy);
+    const maskVal = state.tool === 'void' ? -1 : state.tool === 'solid' ? 1 : 0;
+    const changed = solver.paintMask(gx, gy, state.brushRadius, maskVal);
+    if (changed) {
+      solver.solveFEM(160, 2e-4);
+      solver.computePostProcessing();
+      updateTelemetryUI();
+    }
+  }
+
+  canvas.addEventListener('pointerdown', (e) => {
+    canvas.setPointerCapture(e.pointerId);
+    const rect = canvas.getBoundingClientRect();
+    const sx = e.clientX - rect.left;
+    const sy = e.clientY - rect.top;
+    state.mouseX = sx;
+    state.mouseY = sy;
+
+    // Always allow grabbing a load arrow directly even if brush tool is active
+    const hit = hitTestLoads(sx, sy);
+    if (hit.idx >= 0) {
+      state.draggingLoadIdx = hit.idx;
+      state.dragMode = hit.part === 'tail' ? 'rotate' : 'move';
+      canvas.className = 'grabbing';
+      return;
+    }
+
+    if (state.tool === 'load') {
+      // Clicking near the mesh in Load mode moves the primary load directly there
+      const [gx, gy] = screenToGrid(sx, sy);
+      if (gx >= -1 && gx <= solver.nx + 1 && gy >= -1 && gy <= solver.ny + 1 && solver.loads.length > 0) {
+        state.draggingLoadIdx = 0;
+        state.dragMode = 'move';
+        moveLoadTo(0, gx, gy);
+        canvas.className = 'grabbing';
+      }
+    } else {
+      state.dragMode = 'paint';
+      applyPaintAt(sx, sy);
+    }
+  });
+
+  function moveLoadTo(idx, gx, gy) {
+    const ld = solver.loads[idx];
+    ld.gx = Math.max(0, Math.min(solver.nx, gx));
+    ld.gy = Math.max(0, Math.min(solver.ny, gy));
+    solver.rebuildForceVector();
+    solver.converged = false;
+    solver.solveFEM(160, 2e-4);
+    solver.computePostProcessing();
+    updateTelemetryUI();
+  }
+
+  canvas.addEventListener('pointermove', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const sx = e.clientX - rect.left;
+    const sy = e.clientY - rect.top;
+    state.mouseX = sx;
+    state.mouseY = sy;
+
+    const [gx, gy] = screenToGrid(sx, sy);
+    if (gx >= 0 && gx < solver.nx && gy >= 0 && gy < solver.ny) {
+      state.hoverElem = Math.floor(gy) * solver.nx + Math.floor(gx);
+    } else {
+      state.hoverElem = -1;
+    }
+    updateProbeUI();
+
+    if (state.dragMode === 'move' && state.draggingLoadIdx >= 0) {
+      moveLoadTo(state.draggingLoadIdx, gx, gy);
+      return;
+    }
+
+    if (state.dragMode === 'rotate' && state.draggingLoadIdx >= 0) {
+      const ld = solver.loads[state.draggingLoadIdx];
+      const deformMul = getVisualDeformMultiplier();
+      const g = getLoadHandleGeometry(ld, deformMul);
+      // Vector from tail -> base is force direction (note screen y flipped)
+      const dx = g.bx - sx;
+      const dy = -(g.by - sy);
+      const ang = ((Math.atan2(dy, dx) * 180) / Math.PI + 360) % 360;
+      ld.angleDeg = ang;
+      if (state.draggingLoadIdx === 0) {
+        solver.forceAngleDeg = Math.round(ang);
+        document.getElementById('sl-angle').value = solver.forceAngleDeg;
+        document.getElementById('val-angle').textContent = `${solver.forceAngleDeg}°`;
+      }
+      solver.rebuildForceVector();
+      solver.converged = false;
+      solver.solveFEM(160, 2e-4);
+      solver.computePostProcessing();
+      updateTelemetryUI();
+      return;
+    }
+
+    if (state.dragMode === 'paint') {
+      applyPaintAt(sx, sy);
+      return;
+    }
+
+    // Hover state
+    const hit = hitTestLoads(sx, sy);
+    state.hoverLoadIdx = hit.idx;
+    state.hoverLoadPart = hit.part;
+    if (hit.idx >= 0) canvas.className = 'grab';
+    else if (state.tool !== 'load') canvas.className = 'paint';
+    else canvas.className = '';
+  });
+
+  canvas.addEventListener('pointerup', () => {
+    state.draggingLoadIdx = -1;
+    state.dragMode = null;
+    canvas.className = state.tool !== 'load' ? 'paint' : '';
+  });
+
+  canvas.addEventListener('pointerleave', () => {
+    state.hoverElem = -1;
+    updateProbeUI();
+  });
+
+  // =========================================================================
+  // 10. UI WIRING (TABS, PRESETS, SLIDERS, OVERLAYS, TRANSPORT, KEYS)
+  // =========================================================================
+  function setViewMode(mode) {
+    state.viewMode = mode;
+    document.querySelectorAll('[data-view]').forEach((b) => {
+      b.classList.toggle('active', b.dataset.view === mode);
+    });
+    document.querySelectorAll('[data-quickview]').forEach((b) => {
+      b.classList.toggle('active', b.dataset.quickview === mode);
+    });
+  }
+
+  function setTool(tool) {
+    state.tool = tool;
+    document.querySelectorAll('[data-tool]').forEach((b) => {
+      const active = b.dataset.tool === tool;
+      b.classList.toggle('active', active);
+      b.classList.toggle('amber', active && tool === 'load');
+      b.classList.toggle('rose', active && tool === 'void');
+      b.classList.toggle('mint', active && tool === 'solid');
+    });
+    canvas.className = tool !== 'load' ? 'paint' : '';
+  }
+
+  function togglePlay(forceState) {
+    state.running = typeof forceState === 'boolean' ? forceState : !state.running;
+    const btn = document.getElementById('btn-play');
+    btn.textContent = state.running ? 'Pause' : 'Play';
+    btn.classList.toggle('active', state.running);
+    if (state.running && solver.converged) {
+      // Allow continuing if clicked Play
+      solver.converged = false;
+    }
+    updateTelemetryUI();
+  }
+
+  function toggleDrawer() {
+    state.drawerOpen = !state.drawerOpen;
+    document.getElementById('drawer').classList.toggle('collapsed', !state.drawerOpen);
+    document.getElementById('btn-drawer').classList.toggle('active', state.drawerOpen);
+    computeViewport();
+  }
+
+  function toggleZen() {
+    state.zen = !state.zen;
+    document.body.classList.toggle('zen-mode', state.zen);
+    document.getElementById('btn-zen').classList.toggle('active', state.zen);
+    computeViewport();
+  }
+
+  // Tabs
+  document.querySelectorAll('.tab-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach((b) => b.classList.remove('active'));
+      document.querySelectorAll('.tab-pane').forEach((p) => p.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById(`tab-${btn.dataset.tab}`).classList.add('active');
+    });
+  });
+
+  // Presets
+  document.querySelectorAll('[data-preset]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('[data-preset]').forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+      solver.loadPreset(btn.dataset.preset);
+      document.getElementById('sl-angle').value = Math.round(solver.forceAngleDeg);
+      document.getElementById('val-angle').textContent = `${Math.round(solver.forceAngleDeg)}°`;
+      computeViewport();
+      togglePlay(true);
+      updateTelemetryUI();
+    });
+  });
+
+  // Tools
+  document.querySelectorAll('[data-tool]').forEach((btn) => {
+    btn.addEventListener('click', () => setTool(btn.dataset.tool));
+  });
+
+  // View toggles (drawer + bottom bar)
+  document.querySelectorAll('[data-view]').forEach((btn) => {
+    btn.addEventListener('click', () => setViewMode(btn.dataset.view));
+  });
+  document.querySelectorAll('[data-quickview]').forEach((btn) => {
+    btn.addEventListener('click', () => setViewMode(btn.dataset.quickview));
+  });
+
+  // Sliders
+  document.getElementById('sl-brush').addEventListener('input', (e) => {
+    state.brushRadius = parseFloat(e.target.value);
+    document.getElementById('val-brush').textContent = `${state.brushRadius.toFixed(1)} el`;
+  });
+
+  document.getElementById('sl-force').addEventListener('input', (e) => {
+    solver.force_kN = parseFloat(e.target.value);
+    document.getElementById('val-force').textContent = `${Math.round(solver.force_kN)} kN`;
+    solver.computePostProcessing();
+    updateTelemetryUI();
+  });
+
+  document.getElementById('sl-angle').addEventListener('input', (e) => {
+    const deg = parseFloat(e.target.value);
+    document.getElementById('val-angle').textContent = `${Math.round(deg)}°`;
+    solver.setGlobalForceAngle(deg);
+    solver.solveFEM(160, 2e-4);
+    solver.computePostProcessing();
+    updateTelemetryUI();
+  });
+
+  document.getElementById('sl-vol').addEventListener('input', (e) => {
+    solver.volFrac = parseFloat(e.target.value);
+    document.getElementById('val-vol').textContent = `${Math.round(solver.volFrac * 100)}%`;
+    solver.converged = false;
+  });
+
+  document.getElementById('sl-rmin').addEventListener('input', (e) => {
+    solver.rmin = parseFloat(e.target.value);
+    document.getElementById('val-rmin').textContent = `${solver.rmin.toFixed(2)} el`;
+    solver.buildFilter();
+    solver.converged = false;
+  });
+
+  document.getElementById('sl-penal').addEventListener('input', (e) => {
+    solver.penal = parseFloat(e.target.value);
+    document.getElementById('val-penal').textContent = solver.penal.toFixed(2);
+    solver.converged = false;
+  });
+
+  document.getElementById('sl-pace').addEventListener('input', (e) => {
+    state.pace = parseInt(e.target.value, 10);
+    document.getElementById('val-pace').textContent = `${state.pace} it/s`;
+  });
+
+  document.getElementById('sl-deform').addEventListener('input', (e) => {
+    state.deformScale = parseFloat(e.target.value);
+    document.getElementById('val-deform').textContent = `${state.deformScale.toFixed(1)}×`;
+  });
+
+  // Checkboxes
+  document.getElementById('chk-mesh').addEventListener('change', (e) => { state.showMesh = e.target.checked; });
+  document.getElementById('chk-traj').addEventListener('change', (e) => { state.showTraj = e.target.checked; });
+  document.getElementById('chk-ghost').addEventListener('change', (e) => { state.showGhost = e.target.checked; });
+  document.getElementById('chk-shade').addEventListener('change', (e) => { state.showShade = e.target.checked; });
+
+  // Action buttons
+  document.getElementById('btn-clear-masks').addEventListener('click', () => {
+    solver.loadPreset(solver.preset);
+    computeViewport();
+    updateTelemetryUI();
+  });
+
+  document.getElementById('btn-reset-density').addEventListener('click', () => {
+    solver.resetDensity();
+    togglePlay(true);
+    updateTelemetryUI();
+  });
+
+  document.getElementById('btn-play').addEventListener('click', () => togglePlay());
+  document.getElementById('btn-step').addEventListener('click', () => {
+    togglePlay(false);
+    solver.step();
+    updateTelemetryUI();
+  });
+  document.getElementById('btn-reset').addEventListener('click', () => {
+    solver.resetDensity();
+    togglePlay(true);
+    updateTelemetryUI();
+  });
+
+  document.getElementById('btn-audio').addEventListener('click', (e) => {
+    const on = audio.toggle();
+    e.target.textContent = on ? 'Audio On' : 'Audio Off';
+    e.target.classList.toggle('amber-active', on);
+  });
+
+  document.getElementById('btn-drawer').addEventListener('click', () => toggleDrawer());
+  document.getElementById('btn-zen').addEventListener('click', () => toggleZen());
+  document.getElementById('btn-zen-restore').addEventListener('click', () => toggleZen());
+
+  // Keyboard shortcuts
+  window.addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'INPUT') return;
+    if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
+    else if (e.key === 'r' || e.key === 'R') { solver.resetDensity(); togglePlay(true); updateTelemetryUI(); }
+    else if (e.key === 'h' || e.key === 'H') toggleZen();
+    else if (e.key === 'c' || e.key === 'C') toggleDrawer();
+    else if (e.key === '1') setViewMode('density');
+    else if (e.key === '2') setViewMode('vonmises');
+    else if (e.key === '3') setViewMode('principal');
+  });
+
+  window.addEventListener('resize', resize);
+
+  // =========================================================================
+  // 11. MAIN 60 FPS ANIMATION & LIVE OPTIMIZATION LOOP
+  // =========================================================================
+  let lastFrameTime = performance.now();
+  let simAccum = 0;
+
+  function tick(now) {
+    const dt = Math.min(0.08, (now - lastFrameTime) / 1000);
+    lastFrameTime = now;
+
+    // Step SIMP optimizer at configured pace when running & not converged
+    if (state.running && !solver.converged) {
+      simAccum += dt;
+      const stepInterval = 1 / state.pace;
+      if (simAccum >= stepInterval) {
+        simAccum = Math.min(simAccum - stepInterval, stepInterval);
+        const change = solver.step();
+        const ratio = solver.initialCompliance_J > 1e-6
+          ? solver.compliance_J / solver.initialCompliance_J
+          : 1.0;
+        audio.pingIteration(ratio, change);
+        updateTelemetryUI();
+      }
+    }
+
+    // Smoothly interpolate visual densities & elastic deformation at 60fps
+    const lerpRate = Math.min(1, dt * 18);
+    const { nElem, nDof, rho, rhoVis, uDispMM, uVisMM } = solver;
+    for (let e = 0; e < nElem; e++) {
+      rhoVis[e] += (rho[e] - rhoVis[e]) * lerpRate;
+    }
+    for (let i = 0; i < nDof; i++) {
+      uVisMM[i] += (uDispMM[i] - uVisMM[i]) * lerpRate;
+    }
+
+    render();
+    requestAnimationFrame(tick);
+  }
+
+  // Boot
+  resize();
+  updateTelemetryUI();
+  requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>

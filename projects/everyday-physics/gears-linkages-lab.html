@@ -1,0 +1,4385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Clockwork — Involute Gear Trains, Planetary Differentials & Linkages</title>
+<style>
+  :root {
+    --bg-deep: #040711;
+    --panel-bg: rgba(9, 13, 24, 0.78);
+    --panel-bg-strong: rgba(8, 12, 22, 0.92);
+    --panel-border: rgba(148, 179, 255, 0.16);
+    --panel-border-hi: rgba(148, 179, 255, 0.36);
+    --text-main: #eef3ff;
+    --text-dim: #9aa9cc;
+    --text-muted: #68789c;
+    --accent-amber: #ffbe5c;
+    --accent-cyan: #58dcff;
+    --accent-mint: #4af2b2;
+    --accent-rose: #ff6083;
+    --accent-violet: #a78bfa;
+    --radius-lg: 14px;
+    --radius-md: 10px;
+    --radius-sm: 7px;
+    --mono: ui-monospace, "Cascadia Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Inter, Helvetica, Arial, sans-serif;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg-deep);
+    color: var(--text-main);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    touch-action: none;
+  }
+
+  #sim-canvas {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    cursor: grab;
+  }
+  #sim-canvas.grabbing {
+    cursor: grabbing;
+  }
+  #sim-canvas.hover-interactive {
+    cursor: pointer;
+  }
+
+  /* HUD Layer */
+  .hud {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 10;
+  }
+  body.zen-mode .hud > :not(.zen-restore) {
+    opacity: 0;
+    pointer-events: none !important;
+  }
+
+  .panel {
+    pointer-events: auto;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-lg);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.52), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    transition: opacity 0.25s ease, transform 0.25s ease;
+  }
+
+  /* Top-Left Telemetry Card */
+  .top-left {
+    position: fixed;
+    top: 14px;
+    left: 14px;
+    width: min(420px, calc(100vw - 368px));
+    min-width: 288px;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .brand-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .brand-title-wrap {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .brand-title {
+    font-size: 16px;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    background: linear-gradient(120deg, #fff5dc 0%, #ffbe5c 45%, #6ee7ff 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .mode-badge {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 190, 92, 0.42);
+    background: rgba(255, 190, 92, 0.12);
+    color: var(--accent-amber);
+  }
+
+  .status-pill {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: rgba(74, 242, 178, 0.14);
+    color: var(--accent-mint);
+    border: 1px solid rgba(74, 242, 178, 0.35);
+    white-space: nowrap;
+  }
+  .status-pill.amber {
+    background: rgba(255, 190, 92, 0.16);
+    color: var(--accent-amber);
+    border-color: rgba(255, 190, 92, 0.42);
+  }
+  .status-pill.cyan {
+    background: rgba(88, 220, 255, 0.16);
+    color: var(--accent-cyan);
+    border-color: rgba(88, 220, 255, 0.42);
+  }
+  .status-pill.rose {
+    background: rgba(255, 96, 131, 0.18);
+    color: var(--accent-rose);
+    border-color: rgba(255, 96, 131, 0.45);
+  }
+
+  .telemetry-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+  }
+
+  .tele-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(148, 179, 255, 0.1);
+    border-radius: var(--radius-sm);
+    padding: 6px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .tele-label {
+    font-size: 9px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .tele-val {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--text-main);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .tele-val.amber { color: var(--accent-amber); }
+  .tele-val.cyan { color: var(--accent-cyan); }
+  .tele-val.mint { color: var(--accent-mint); }
+  .tele-val.rose { color: var(--accent-rose); }
+  .tele-val.violet { color: var(--accent-violet); }
+
+  .formula-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding-top: 6px;
+    border-top: 1px solid rgba(148, 179, 255, 0.1);
+    font-size: 10.5px;
+    color: var(--text-dim);
+    font-family: var(--mono);
+  }
+  .formula-row strong {
+    color: var(--accent-cyan);
+    font-weight: 600;
+  }
+
+  /* Right Collapsible 330px Drawer */
+  .drawer {
+    position: fixed;
+    top: 14px;
+    right: 14px;
+    bottom: 14px;
+    width: 330px;
+    max-width: calc(100vw - 28px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: transform 0.25s ease, opacity 0.25s ease;
+  }
+  .drawer.collapsed {
+    transform: translateX(calc(100% + 24px));
+    pointer-events: none;
+  }
+
+  .drawer-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+    padding: 8px 8px 6px;
+    border-bottom: 1px solid var(--panel-border);
+    background: rgba(4, 7, 15, 0.45);
+  }
+
+  .tab-btn {
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    padding: 7px 5px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .tab-btn:hover {
+    color: var(--text-main);
+    background: rgba(255, 255, 255, 0.04);
+  }
+  .tab-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.16);
+    border-color: rgba(88, 220, 255, 0.4);
+  }
+
+  .drawer-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 11px 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .drawer-body::-webkit-scrollbar {
+    width: 5px;
+  }
+  .drawer-body::-webkit-scrollbar-thumb {
+    background: rgba(148, 179, 255, 0.22);
+    border-radius: 999px;
+  }
+
+  .tab-pane {
+    display: none;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .tab-pane.active {
+    display: flex;
+  }
+
+  .section {
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(148, 179, 255, 0.11);
+    border-radius: var(--radius-md);
+    padding: 10px 11px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .section-title {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  /* Mechanism Selector List */
+  .mech-list {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .mech-btn {
+    text-align: left;
+    padding: 7px 9px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(148, 179, 255, 0.14);
+    background: rgba(255, 255, 255, 0.028);
+    color: var(--text-main);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .mech-btn:hover {
+    border-color: rgba(255, 190, 92, 0.45);
+    background: rgba(255, 190, 92, 0.07);
+  }
+  .mech-btn.active {
+    border-color: var(--accent-amber);
+    background: linear-gradient(135deg, rgba(255, 190, 92, 0.16), rgba(88, 220, 255, 0.07));
+    box-shadow: inset 0 0 0 1px rgba(255, 190, 92, 0.2);
+  }
+  .mech-btn-main {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+  .mech-name {
+    font-size: 11.5px;
+    font-weight: 700;
+  }
+  .mech-sub {
+    font-size: 9.5px;
+    color: var(--text-muted);
+  }
+  .mech-num {
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--text-muted);
+    padding: 2px 5px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.05);
+  }
+  .mech-btn.active .mech-num {
+    color: var(--accent-amber);
+    background: rgba(255, 190, 92, 0.16);
+  }
+
+  /* Preset Grid */
+  .preset-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 5px;
+  }
+  .preset-btn {
+    text-align: left;
+    padding: 6px 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(148, 179, 255, 0.14);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-main);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .preset-btn:hover {
+    border-color: rgba(88, 220, 255, 0.45);
+    background: rgba(88, 220, 255, 0.08);
+  }
+  .preset-btn.active {
+    border-color: var(--accent-cyan);
+    background: rgba(88, 220, 255, 0.16);
+  }
+  .preset-btn.wide {
+    grid-column: span 2;
+  }
+  .preset-name {
+    font-size: 11px;
+    font-weight: 700;
+  }
+  .preset-sub {
+    font-size: 9.2px;
+    color: var(--text-muted);
+    line-height: 1.25;
+  }
+
+  /* Sliders */
+  .control-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .control-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+  .control-head .val {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-main);
+    font-weight: 600;
+  }
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 5px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.18);
+    outline: none;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 13px;
+    height: 13px;
+    border-radius: 50%;
+    background: var(--accent-cyan);
+    border: 2px solid #08101f;
+    box-shadow: 0 0 9px rgba(88, 220, 255, 0.65);
+    cursor: pointer;
+  }
+  input[type="range"].amber::-webkit-slider-thumb {
+    background: var(--accent-amber);
+    box-shadow: 0 0 9px rgba(255, 190, 92, 0.65);
+  }
+  input[type="range"].mint::-webkit-slider-thumb {
+    background: var(--accent-mint);
+    box-shadow: 0 0 9px rgba(74, 242, 178, 0.65);
+  }
+
+  /* Segmented Buttons */
+  .seg-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(56px, 1fr));
+    gap: 4px;
+  }
+  .seg-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-dim);
+    font-size: 10.5px;
+    font-weight: 650;
+    padding: 6px 5px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    text-align: center;
+  }
+  .seg-btn:hover {
+    color: #fff;
+    border-color: rgba(148, 179, 255, 0.35);
+  }
+  .seg-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.18);
+    border-color: var(--accent-cyan);
+  }
+  .seg-btn.active.amber {
+    background: rgba(255, 190, 92, 0.18);
+    border-color: var(--accent-amber);
+    color: #ffdfaa;
+  }
+  .seg-btn.active.rose {
+    background: rgba(255, 96, 131, 0.2);
+    border-color: var(--accent-rose);
+    color: #ffd1dc;
+  }
+
+  /* Action Buttons */
+  .btn-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .btn {
+    border: 1px solid rgba(148, 179, 255, 0.22);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-main);
+    font-size: 11px;
+    font-weight: 700;
+    padding: 7px 9px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+  }
+  .btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 179, 255, 0.45);
+  }
+  .btn:active {
+    transform: scale(0.98);
+  }
+  .btn.amber {
+    background: linear-gradient(135deg, rgba(255, 190, 92, 0.24), rgba(255, 120, 60, 0.18));
+    border-color: rgba(255, 190, 92, 0.5);
+    color: #fff2d6;
+  }
+
+  /* Toggle Switches */
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11.2px;
+    color: var(--text-dim);
+    cursor: pointer;
+  }
+  .toggle-row input {
+    display: none;
+  }
+  .switch {
+    width: 34px;
+    height: 18px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.2);
+    border: 1px solid rgba(148, 179, 255, 0.25);
+    position: relative;
+    transition: all 0.18s ease;
+    flex-shrink: 0;
+  }
+  .switch::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #c8d7f5;
+    transition: transform 0.18s ease, background 0.18s ease;
+  }
+  .toggle-row input:checked + .switch {
+    background: rgba(88, 220, 255, 0.32);
+    border-color: var(--accent-cyan);
+  }
+  .toggle-row input:checked + .switch::after {
+    transform: translateX(16px);
+    background: #fff;
+  }
+
+  .mech-config {
+    display: none;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .mech-config.active {
+    display: flex;
+  }
+
+  .note-small {
+    font-size: 10px;
+    color: var(--text-muted);
+    line-height: 1.4;
+  }
+
+  /* Bottom Transport Bar */
+  .bottom-bar {
+    position: fixed;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 7px 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: nowrap;
+  }
+
+  .bar-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-main);
+    font-size: 11.5px;
+    font-weight: 650;
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    white-space: nowrap;
+  }
+  .bar-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 179, 255, 0.4);
+  }
+  .bar-btn.active {
+    background: rgba(88, 220, 255, 0.2);
+    border-color: var(--accent-cyan);
+    color: #fff;
+  }
+  .bar-btn.amber-active {
+    background: rgba(255, 190, 92, 0.2);
+    border-color: var(--accent-amber);
+    color: #ffe2b0;
+  }
+
+  .bar-divider {
+    width: 1px;
+    height: 20px;
+    background: rgba(148, 179, 255, 0.16);
+    margin: 0 2px;
+  }
+
+  /* Bottom-left Hints */
+  .hint-pill {
+    position: fixed;
+    bottom: 14px;
+    left: 14px;
+    padding: 7px 11px;
+    font-size: 10.5px;
+    color: var(--text-dim);
+    max-width: 320px;
+    line-height: 1.45;
+  }
+  .hint-pill kbd {
+    font-family: var(--mono);
+    font-size: 9.5px;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #fff;
+  }
+
+  .zen-restore {
+    position: fixed;
+    bottom: 14px;
+    right: 14px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+  }
+  body.zen-mode .zen-restore {
+    opacity: 0.9;
+    pointer-events: auto;
+  }
+
+  .grashof-box {
+    background: rgba(88, 220, 255, 0.06);
+    border: 1px solid rgba(88, 220, 255, 0.2);
+    border-radius: var(--radius-sm);
+    padding: 7px 9px;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--text-dim);
+    line-height: 1.45;
+  }
+  .grashof-box strong {
+    color: var(--accent-cyan);
+  }
+
+  @media (max-width: 960px) {
+    .top-left {
+      width: calc(100vw - 28px);
+      max-width: none;
+    }
+    .hint-pill {
+      display: none;
+    }
+    .drawer {
+      top: auto;
+      height: 56vh;
+    }
+  }
+</style>
+</head>
+<body>
+<canvas id="sim-canvas"></canvas>
+
+<div class="hud">
+  <!-- Top-Left Telemetry Card -->
+  <div class="top-left panel" id="telemetry-panel">
+    <div class="brand-row">
+      <div class="brand-title-wrap">
+        <span class="brand-title">Clockwork</span>
+        <span class="mode-badge" id="mech-badge">Compound Spur</span>
+      </div>
+      <span class="status-pill" id="status-pill">Reduction</span>
+    </div>
+
+    <div class="telemetry-grid">
+      <div class="tele-card">
+        <span class="tele-label" id="lbl-ratio">Gear Ratio</span>
+        <span class="tele-val amber" id="val-ratio">5.33 : 1</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label" id="lbl-in-rpm">Input Speed</span>
+        <span class="tele-val cyan" id="val-in-rpm">+36.0 RPM</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label" id="lbl-out-rpm">Output Speed</span>
+        <span class="tele-val mint" id="val-out-rpm">+6.75 RPM</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label" id="lbl-torque">Torque Mult</span>
+        <span class="tele-val amber" id="val-torque">5.12× (51.2 Nm)</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label" id="lbl-eff">Efficiency η</span>
+        <span class="tele-val mint" id="val-eff">96.0%</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label" id="lbl-extra">Mesh Freq</span>
+        <span class="tele-val violet" id="val-extra">7.20 Hz</span>
+      </div>
+    </div>
+
+    <div class="formula-row">
+      <span id="formula-text">τ_out = τ_in · GR · η</span>
+      <span id="contact-ratio-text"><strong>ε_α = 1.62</strong></span>
+    </div>
+  </div>
+
+  <!-- Collapsible 330px Right Drawer -->
+  <aside class="drawer panel" id="control-drawer">
+    <div class="drawer-tabs">
+      <button class="tab-btn active" data-tab="tab-mech" id="btn-tab-mech">Mechanism</button>
+      <button class="tab-btn" data-tab="tab-drive" id="btn-tab-drive">Drive & Load</button>
+      <button class="tab-btn" data-tab="tab-display" id="btn-tab-display">Display</button>
+    </div>
+
+    <div class="drawer-body">
+      <!-- TAB 1: MECHANISM -->
+      <div class="tab-pane active" id="tab-mech">
+        <div class="section">
+          <div class="section-title">
+            <span>Select Mechanism</span>
+            <span style="font-family:var(--mono);color:var(--accent-amber);">5 Labs</span>
+          </div>
+          <div class="mech-list" id="mech-list">
+            <button class="mech-btn active" data-mech="spur">
+              <div class="mech-btn-main">
+                <span class="mech-name">Compound Spur Gear Train</span>
+                <span class="mech-sub">2-stage involute Z₁–Z₂–Z₃–Z₄ & line of action</span>
+              </div>
+              <span class="mech-num">01</span>
+            </button>
+            <button class="mech-btn" data-mech="planetary">
+              <div class="mech-btn-main">
+                <span class="mech-name">Epicyclic Planetary Gearbox</span>
+                <span class="mech-sub">Sun, planets, carrier & internal ring brake</span>
+              </div>
+              <span class="mech-num">02</span>
+            </button>
+            <button class="mech-btn" data-mech="fourbar">
+              <div class="mech-btn-main">
+                <span class="mech-name">Four-Bar Linkage & Coupler</span>
+                <span class="mech-sub">Grashof law, Watt straight-line & Jansen leg</span>
+              </div>
+              <span class="mech-num">03</span>
+            </button>
+            <button class="mech-btn" data-mech="geneva">
+              <div class="mech-btn-main">
+                <span class="mech-name">Geneva Drive Indexing</span>
+                <span class="mech-sub">4 / 6 / 8-slot Maltese cross & locking crescent</span>
+              </div>
+              <span class="mech-num">04</span>
+            </button>
+            <button class="mech-btn" data-mech="escapement">
+              <div class="mech-btn-main">
+                <span class="mech-name">Anchor Clock Escapement</span>
+                <span class="mech-sub">Ruby pallet fork, weighted escape wheel & bob</span>
+              </div>
+              <span class="mech-num">05</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Mech 1: Compound Spur Controls -->
+        <div class="mech-config active" id="cfg-spur">
+          <div class="section">
+            <div class="section-title"><span>Tooth Counts (ISO 20° Involute)</span></div>
+            <div class="control-row">
+              <div class="control-head"><span>Z₁ Input Pinion (Brass)</span><span class="val" id="out-z1">12 T</span></div>
+              <input type="range" class="amber" id="sl-z1" min="10" max="28" step="1" value="12" />
+            </div>
+            <div class="control-row">
+              <div class="control-head"><span>Z₂ Stage-1 Gear (Steel)</span><span class="val" id="out-z2">28 T</span></div>
+              <input type="range" id="sl-z2" min="14" max="42" step="1" value="28" />
+            </div>
+            <div class="control-row">
+              <div class="control-head"><span>Z₃ Stage-2 Pinion (Copper)</span><span class="val" id="out-z3">14 T</span></div>
+              <input type="range" class="amber" id="sl-z3" min="10" max="26" step="1" value="14" />
+            </div>
+            <div class="control-row">
+              <div class="control-head"><span>Z₄ Output Bull Gear (Ti)</span><span class="val" id="out-z4">32 T</span></div>
+              <input type="range" id="sl-z4" min="16" max="44" step="1" value="32" />
+            </div>
+            <div class="preset-grid">
+              <button class="preset-btn" data-spur-preset="torque">
+                <span class="preset-name">Heavy Torque</span>
+                <span class="preset-sub">10:36 × 10:40 (14.4:1)</span>
+              </button>
+              <button class="preset-btn" data-spur-preset="speed">
+                <span class="preset-name">Overdrive</span>
+                <span class="preset-sub">26:14 × 24:16 (1:2.8)</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Mech 2: Planetary Gearbox Controls -->
+        <div class="mech-config" id="cfg-planetary">
+          <div class="section">
+            <div class="section-title"><span>Transmission Clutch / Brake Lock</span></div>
+            <div class="preset-grid" id="plan-mode-grid">
+              <button class="preset-btn active" data-plan-mode="ring_hold_red">
+                <span class="preset-name">Lock Ring (Low)</span>
+                <span class="preset-sub">In: Sun → Out: Carrier</span>
+              </button>
+              <button class="preset-btn" data-plan-mode="ring_hold_od">
+                <span class="preset-name">Lock Ring (OD)</span>
+                <span class="preset-sub">In: Carrier → Out: Sun</span>
+              </button>
+              <button class="preset-btn" data-plan-mode="carrier_hold_rev">
+                <span class="preset-name">Lock Carrier (Rev)</span>
+                <span class="preset-sub">In: Sun → Out: Ring (−)</span>
+              </button>
+              <button class="preset-btn" data-plan-mode="sun_hold">
+                <span class="preset-name">Lock Sun (Mid)</span>
+                <span class="preset-sub">In: Ring → Out: Carrier</span>
+              </button>
+            </div>
+          </div>
+          <div class="section">
+            <div class="section-title">
+              <span>Planetary Geometry</span>
+              <span style="font-family:var(--mono);color:var(--accent-mint);" id="out-plan-ring">Z_R = 42 T</span>
+            </div>
+            <div class="control-row">
+              <div class="control-head"><span>Z_S Sun Gear Teeth</span><span class="val" id="out-zs">18 T</span></div>
+              <input type="range" class="amber" id="sl-zs" min="12" max="27" step="3" value="18" />
+            </div>
+            <div class="control-row">
+              <div class="control-head"><span>Z_P Planet Gear Teeth</span><span class="val" id="out-zp">12 T</span></div>
+              <input type="range" id="sl-zp" min="9" max="18" step="3" value="12" />
+            </div>
+            <div class="control-row">
+              <div class="control-head"><span>Planet Count N_p</span><span class="val" id="out-np">3 Planets</span></div>
+              <div class="seg-row" id="seg-np">
+                <button class="seg-btn active" data-np="3">3 Planets</button>
+                <button class="seg-btn" data-np="4">4 Planets</button>
+              </div>
+            </div>
+            <div class="note-small" id="plan-assembly-note">
+              Assembly check: Z_R = Z_S + 2·Z_P = 42, (Z_S + Z_R) / 3 = 20 (exact).
+            </div>
+          </div>
+        </div>
+
+        <!-- Mech 3: Four-Bar Linkage Controls -->
+        <div class="mech-config" id="cfg-fourbar">
+          <div class="section">
+            <div class="section-title"><span>Linkage Presets</span></div>
+            <div class="preset-grid" id="fourbar-presets">
+              <button class="preset-btn active" data-fb="crank_rocker">
+                <span class="preset-name">Crank-Rocker</span>
+                <span class="preset-sub">Grashof S = L₂</span>
+              </button>
+              <button class="preset-btn" data-fb="double_crank">
+                <span class="preset-name">Double-Crank</span>
+                <span class="preset-sub">Drag-link S = L₁</span>
+              </button>
+              <button class="preset-btn" data-fb="double_rocker">
+                <span class="preset-name">Double-Rocker</span>
+                <span class="preset-sub">Non-Grashof oscill.</span>
+              </button>
+              <button class="preset-btn" data-fb="watt">
+                <span class="preset-name">Watt Straight-Line</span>
+                <span class="preset-sub">Lemniscate linear path</span>
+              </button>
+              <button class="preset-btn wide" data-fb="jansen">
+                <span class="preset-name">Theo Jansen Walking Leg (Strandbeest)</span>
+                <span class="preset-sub">11 Holy Numbers kinetic sculpture walking D-curve</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="section" id="fourbar-sliders-sec">
+            <div class="section-title">
+              <span>Link Lengths</span>
+              <button class="bar-btn" id="btn-fb-branch" style="padding:2px 7px;font-size:10px;">Flip Branch</button>
+            </div>
+            <div class="control-row">
+              <div class="control-head"><span>L₁ Ground Frame</span><span class="val" id="out-l1">220</span></div>
+              <input type="range" id="sl-l1" min="70" max="320" step="1" value="220" />
+            </div>
+            <div class="control-row">
+              <div class="control-head"><span>L₂ Input Crank</span><span class="val" id="out-l2">80</span></div>
+              <input type="range" class="amber" id="sl-l2" min="35" max="220" step="1" value="80" />
+            </div>
+            <div class="control-row">
+              <div class="control-head"><span>L₃ Coupler Link</span><span class="val" id="out-l3">195</span></div>
+              <input type="range" id="sl-l3" min="60" max="290" step="1" value="195" />
+            </div>
+            <div class="control-row">
+              <div class="control-head"><span>L₄ Output Rocker</span><span class="val" id="out-l4">155</span></div>
+              <input type="range" class="mint" id="sl-l4" min="60" max="260" step="1" value="155" />
+            </div>
+            <div class="grashof-box" id="grashof-info">
+              S + L = 300 &lt; P + Q = 350 → <strong>Grashof Crank-Rocker</strong>
+            </div>
+          </div>
+        </div>
+
+        <!-- Mech 4: Geneva Drive Controls -->
+        <div class="mech-config" id="cfg-geneva">
+          <div class="section">
+            <div class="section-title"><span>Maltese Cross Slots</span></div>
+            <div class="seg-row" id="seg-geneva-slots">
+              <button class="seg-btn" data-slots="4">4-Slot</button>
+              <button class="seg-btn active" data-slots="6">6-Slot</button>
+              <button class="seg-btn" data-slots="8">8-Slot</button>
+            </div>
+            <div class="grashof-box" id="geneva-info">
+              Index: <strong>60.0°</strong> · Motion: <strong>33.3%</strong> · Dwell: <strong>66.7%</strong>
+            </div>
+            <div class="note-small">
+              The crescent locking disc holds the driven wheel motionless during dwell, while the drive pin enters each slot tangentially at zero impact velocity.
+            </div>
+          </div>
+        </div>
+
+        <!-- Mech 5: Anchor Escapement Controls -->
+        <div class="mech-config" id="cfg-escapement">
+          <div class="section">
+            <div class="section-title"><span>Horological Regulation</span></div>
+            <div class="control-row">
+              <div class="control-head"><span>Pendulum Length L</span><span class="val" id="out-pend-len">0.99 m</span></div>
+              <input type="range" class="amber" id="sl-pend-len" min="0.25" max="2.20" step="0.01" value="0.99" />
+            </div>
+            <div class="control-row">
+              <div class="control-head"><span>Escape Wheel Teeth Z_e</span><span class="val" id="out-esc-teeth">15 T</span></div>
+              <input type="range" id="sl-esc-teeth" min="12" max="24" step="1" value="15" />
+            </div>
+            <div class="control-row">
+              <div class="control-head"><span>Drive Weight Torque</span><span class="val" id="out-esc-weight">1.00×</span></div>
+              <input type="range" class="mint" id="sl-esc-weight" min="0.4" max="2.0" step="0.05" value="1.0" />
+            </div>
+            <div class="btn-row">
+              <button class="btn amber" id="btn-nudge-pend">Impulse Pendulum</button>
+              <button class="btn" id="btn-seconds-pend">1 Hz Seconds</button>
+            </div>
+            <div class="note-small">
+              Drag the brass pendulum bob directly to change swing amplitude, or toggle Audio to hear the ruby pallet fork tick-tock!
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 2: DRIVE & LOAD -->
+      <div class="tab-pane" id="tab-drive">
+        <div class="section">
+          <div class="section-title">
+            <span>Motorized Input Drive</span>
+            <span style="font-family:var(--mono);color:var(--accent-cyan);" id="out-rpm-badge">36 RPM</span>
+          </div>
+          <div class="control-row">
+            <div class="control-head"><span>Drive Speed (RPM)</span><span class="val" id="out-rpm">+36 RPM</span></div>
+            <input type="range" class="amber" id="sl-rpm" min="-120" max="120" step="1" value="36" />
+          </div>
+          <div class="seg-row" id="seg-rpm-quick">
+            <button class="seg-btn" data-rpm="-60">−60</button>
+            <button class="seg-btn" data-rpm="-24">−24</button>
+            <button class="seg-btn" data-rpm="0">0 Stop</button>
+            <button class="seg-btn active" data-rpm="36">+36</button>
+            <button class="seg-btn" data-rpm="90">+90</button>
+          </div>
+          <div class="note-small">
+            You can also grab and drag the input gear or crank directly on the canvas to hand-crank forward or backward at any time.
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Torque & Mechanical Loss</span></div>
+          <div class="control-row">
+            <div class="control-head"><span>Input Torque τ_in</span><span class="val" id="out-torque-in">10.0 N·m</span></div>
+            <input type="range" id="sl-torque-in" min="1" max="50" step="0.5" value="10" />
+          </div>
+          <div class="control-row">
+            <div class="control-head"><span>Per-Mesh Efficiency η_m</span><span class="val" id="out-mesh-eff">98.0%</span></div>
+            <input type="range" class="mint" id="sl-mesh-eff" min="85" max="100" step="0.5" value="98" />
+          </div>
+          <div class="control-row">
+            <div class="control-head"><span>Pressure Angle α (Involute)</span><span class="val" id="out-alpha">20.0°</span></div>
+            <div class="seg-row" id="seg-alpha">
+              <button class="seg-btn" data-alpha="14.5">14.5°</button>
+              <button class="seg-btn active amber" data-alpha="20">20° ISO</button>
+              <button class="seg-btn" data-alpha="25">25°</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 3: DISPLAY & OVERLAYS -->
+      <div class="tab-pane" id="tab-display">
+        <div class="section">
+          <div class="section-title"><span>Engineering Overlays</span></div>
+          <label class="toggle-row">
+            <span>Pitch & Base Circles</span>
+            <input type="checkbox" id="chk-pitch" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Line of Action & Contact Flashes</span>
+            <input type="checkbox" id="chk-loa" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Rotation & Torque Vectors</span>
+            <input type="checkbox" id="chk-vectors" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Motion Trails / Coupler Path</span>
+            <input type="checkbox" id="chk-trails" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Blueprint Drafting Grid</span>
+            <input type="checkbox" id="chk-grid" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Part Labels & Dimensions</span>
+            <input type="checkbox" id="chk-labels" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Technical Wireframe X-Ray</span>
+            <input type="checkbox" id="chk-xray" />
+            <span class="switch"></span>
+          </label>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Camera</span></div>
+          <div class="btn-row">
+            <button class="btn" id="btn-cam-reset">Center & Fit</button>
+            <button class="btn" id="btn-clear-trails">Clear Trails</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Bottom-Center Transport Bar -->
+  <div class="bottom-bar panel" id="bottom-bar">
+    <button class="bar-btn active" id="btn-play">Pause</button>
+    <button class="bar-btn" id="btn-step" title="Single step / tick">Step ▸</button>
+    <button class="bar-btn" id="btn-reset">Reset</button>
+    <div class="bar-divider"></div>
+    <button class="bar-btn" id="btn-audio" title="Toggle mechanical clockwork audio">Audio: Off</button>
+    <button class="bar-btn active" id="btn-drawer">Controls</button>
+    <button class="bar-btn" id="btn-zen" title="Cinema Mode (H)">Cinema</button>
+  </div>
+
+  <!-- Bottom-Left Hints -->
+  <div class="hint-pill panel" id="hint-pill">
+    Drag input gear or crank to <strong>hand-crank</strong> · Scroll to zoom · Drag backdrop to pan · <kbd>Space</kbd> pause · <kbd>H</kbd> cinema · <kbd>1–5</kbd> labs
+  </div>
+
+  <!-- Cinema Mode Restore Button -->
+  <button class="bar-btn panel zen-restore" id="btn-zen-restore">Exit Cinema (H)</button>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // =========================================================================
+  // CANVAS & DPR SETUP
+  // =========================================================================
+  const canvas = document.getElementById('sim-canvas');
+  const ctx = canvas.getContext('2d');
+  let W = window.innerWidth;
+  let H = window.innerHeight;
+  let DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+  function resizeCanvas() {
+    W = window.innerWidth;
+    H = window.innerHeight;
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.round(W * DPR);
+    canvas.height = Math.round(H * DPR);
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+  }
+  window.addEventListener('resize', resizeCanvas);
+  resizeCanvas();
+
+  // =========================================================================
+  // MECHANICAL WEB AUDIO SYNTHESIZER (Muted by Default)
+  // =========================================================================
+  const SoundEngine = {
+    ctx: null,
+    enabled: false,
+    whirGain: null,
+    whirOsc1: null,
+    whirOsc2: null,
+    whirFilter: null,
+    noiseBuf: null,
+
+    init() {
+      if (this.ctx) return;
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      this.ctx = new AC();
+
+      // Short white noise buffer for metallic mechanical clicks
+      const len = Math.floor(this.ctx.sampleRate * 0.08);
+      this.noiseBuf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+      const data = this.noiseBuf.getChannelData(0);
+      for (let i = 0; i < len; i++) {
+        data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (len * 0.22));
+      }
+
+      // Continuous subtle gear-mesh whir
+      this.whirFilter = this.ctx.createBiquadFilter();
+      this.whirFilter.type = 'bandpass';
+      this.whirFilter.frequency.value = 320;
+      this.whirFilter.Q.value = 2.6;
+
+      this.whirGain = this.ctx.createGain();
+      this.whirGain.gain.value = 0.0;
+
+      this.whirOsc1 = this.ctx.createOscillator();
+      this.whirOsc1.type = 'triangle';
+      this.whirOsc1.frequency.value = 90;
+
+      this.whirOsc2 = this.ctx.createOscillator();
+      this.whirOsc2.type = 'sawtooth';
+      this.whirOsc2.frequency.value = 180;
+
+      const osc2Gain = this.ctx.createGain();
+      osc2Gain.gain.value = 0.28;
+
+      this.whirOsc1.connect(this.whirFilter);
+      this.whirOsc2.connect(osc2Gain);
+      osc2Gain.connect(this.whirFilter);
+      this.whirFilter.connect(this.whirGain);
+      this.whirGain.connect(this.ctx.destination);
+
+      this.whirOsc1.start();
+      this.whirOsc2.start();
+    },
+
+    setEnabled(on) {
+      this.enabled = on;
+      if (on) {
+        this.init();
+        if (this.ctx && this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+      } else if (this.whirGain && this.ctx) {
+        this.whirGain.gain.setTargetAtTime(0, this.ctx.currentTime, 0.04);
+      }
+    },
+
+    updateWhir(meshFreqHz, speedNorm) {
+      if (!this.enabled || !this.ctx || !this.whirGain) return;
+      const now = this.ctx.currentTime;
+      const clampedFreq = Math.max(35, Math.min(820, meshFreqHz * 4.2 + 45));
+      this.whirOsc1.frequency.setTargetAtTime(clampedFreq, now, 0.05);
+      this.whirOsc2.frequency.setTargetAtTime(clampedFreq * 2.01, now, 0.05);
+      this.whirFilter.frequency.setTargetAtTime(clampedFreq * 2.4, now, 0.05);
+      const targetGain = Math.min(0.038, speedNorm * 0.032);
+      this.whirGain.gain.setTargetAtTime(targetGain, now, 0.06);
+    },
+
+    playTick(isTock = false, intensity = 1.0) {
+      if (!this.enabled || !this.ctx) return;
+      const now = this.ctx.currentTime;
+
+      // Crisp metallic ping (ruby pallet hitting brass escape tooth)
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'triangle';
+      const baseF = isTock ? 1860 : 2340;
+      osc.frequency.setValueAtTime(baseF, now);
+      osc.frequency.exponentialRampToValueAtTime(baseF * 0.42, now + 0.024);
+
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.linearRampToValueAtTime(0.14 * intensity, now + 0.0018);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.038);
+
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.042);
+
+      // Filtered click transient
+      if (this.noiseBuf) {
+        const src = this.ctx.createBufferSource();
+        src.buffer = this.noiseBuf;
+        const filt = this.ctx.createBiquadFilter();
+        filt.type = 'bandpass';
+        filt.frequency.value = isTock ? 3100 : 3900;
+        filt.Q.value = 3.2;
+        const ng = this.ctx.createGain();
+        ng.gain.setValueAtTime(0.13 * intensity, now);
+        ng.gain.exponentialRampToValueAtTime(0.0001, now + 0.028);
+        src.connect(filt);
+        filt.connect(ng);
+        ng.connect(this.ctx.destination);
+        src.start(now);
+      }
+    },
+
+    playGenevaClick(isLock = false) {
+      if (!this.enabled || !this.ctx) return;
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(isLock ? 520 : 1120, now);
+      osc.frequency.exponentialRampToValueAtTime(isLock ? 170 : 340, now + 0.045);
+
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.linearRampToValueAtTime(isLock ? 0.11 : 0.085, now + 0.003);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.055);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.06);
+    }
+  };
+
+  // =========================================================================
+  // GLOBAL SIMULATION STATE
+  // =========================================================================
+  const state = {
+    mech: 'spur', // 'spur' | 'planetary' | 'fourbar' | 'geneva' | 'escapement'
+    running: true,
+    rpm: 36,
+    torqueIn: 10.0,
+    meshEff: 0.98,
+    alphaDeg: 20,
+    time: 0,
+
+    overlays: {
+      pitch: true,
+      loa: true,
+      vectors: true,
+      trails: true,
+      grid: true,
+      labels: true,
+      xray: false
+    },
+
+    cam: {
+      x: 0,
+      y: 0,
+      zoom: 1.0
+    },
+
+    // Mechanism 1: Compound Spur Gear Train
+    spur: {
+      z1: 12,
+      z2: 28,
+      z3: 14,
+      z4: 32,
+      theta1: 0,
+      // Cached world positions for interaction
+      centers: [],
+      radii: [],
+      module: 9.5
+    },
+
+    // Mechanism 2: Epicyclic Planetary Gearbox
+    planetary: {
+      mode: 'ring_hold_red', // ring_hold_red | ring_hold_od | carrier_hold_rev | sun_hold
+      zs: 18,
+      zp: 12,
+      np: 3,
+      thetaInput: 0,
+      thetaS: 0,
+      thetaC: 0,
+      thetaR: 0,
+      module: 8.6
+    },
+
+    // Mechanism 3: Four-Bar Linkage & Coupler Studio
+    fourbar: {
+      preset: 'crank_rocker',
+      L1: 220,
+      L2: 80,
+      L3: 195,
+      L4: 155,
+      couplerRatio: 0.52,
+      couplerOffset: -68,
+      branch: 1, // +1 or -1
+      theta2: 0.6,
+      rockDir: 1,
+      o2: { x: -110, y: 25 },
+      o4: { x: 110, y: 25 },
+      trail: [],
+      jansenTrail: [],
+      fullCurveCache: null,
+      cacheKey: ''
+    },
+
+    // Mechanism 4: Geneva Drive
+    geneva: {
+      slots: 6,
+      thetaDrive: -1.3,
+      wheelAngle: 0,
+      wasEngaged: false,
+      pinTrail: [],
+      velHistory: []
+    },
+
+    // Mechanism 5: Anchor Clock Escapement
+    escapement: {
+      teeth: 15,
+      pendLen: 0.99, // meters (~1 Hz seconds pendulum)
+      weightFactor: 1.0,
+      pendAngle: 0.22,
+      pendVel: 0.0,
+      wheelAngle: 0,
+      wheelTarget: 0,
+      wheelVel: 0,
+      lockedSide: 'entry', // 'entry' (left) or 'exit' (right)
+      beatCount: 0,
+      lastBeatTime: 0,
+      lastBeatSide: 'entry',
+      flashAlpha: 0,
+      flashPos: { x: 0, y: 0 },
+      pendTrail: []
+    },
+
+    // Hand-crank / Drag interaction state
+    drag: {
+      active: false,
+      type: null, // 'pan' | 'crank' | 'fb-o2' | 'fb-o4' | 'fb-coupler' | 'pendulum'
+      lastScreenX: 0,
+      lastScreenY: 0,
+      lastAngle: 0,
+      crankCenter: { x: 0, y: 0 },
+      manualOmega: 0,
+      lastDragTime: 0
+    }
+  };
+
+  // =========================================================================
+  // PRECISION INVOLUTE GEAR GEOMETRY CACHE & RENDERER
+  // =========================================================================
+  const gearPathCache = new Map();
+
+  function invFunc(phi) {
+    return Math.tan(phi) - phi;
+  }
+
+  /**
+   * Build exact mathematical external involute gear Path2D centered at (0,0)
+   * Tooth #0 is centered at angle 0; space #0 is centered at angle pi/Z.
+   */
+  function getExternalGearPath(Z, m, alphaDeg) {
+    const key = `E:${Z}:${m.toFixed(2)}:${alphaDeg}`;
+    if (gearPathCache.has(key)) return gearPathCache.get(key);
+
+    const alpha = alphaDeg * Math.PI / 180;
+    const Rp = 0.5 * m * Z;
+    const Rb = Rp * Math.cos(alpha);
+    const RaRaw = Rp + 1.0 * m;
+    const Rf = Math.max(m * 1.4, Rp - 1.25 * m);
+
+    const invA = invFunc(alpha);
+    const backlash = 0.016 * (2 * Math.PI / Z);
+    const psiP = Math.PI / (2 * Z) - backlash * 0.5;
+    const psiB = psiP + invA;
+
+    // Clamp tip radius if involute flanks would cross (pointed tooth prevention)
+    let Ra = RaRaw;
+    const maxPhi = Math.acos(Math.min(1, Rb / Ra));
+    if (psiB - invFunc(maxPhi) < 0.004) {
+      // Binary search safe Ra
+      let lo = Rp, hi = RaRaw;
+      for (let i = 0; i < 14; i++) {
+        const mid = 0.5 * (lo + hi);
+        const phi = Math.acos(Math.min(1, Rb / mid));
+        if (psiB - invFunc(phi) > 0.006) lo = mid; else hi = mid;
+      }
+      Ra = lo;
+    }
+
+    const rStart = Math.max(Rb, Rf);
+    const steps = 7;
+    const path = new Path2D();
+    const dTheta = (2 * Math.PI) / Z;
+
+    for (let k = 0; k < Z; k++) {
+      const thK = k * dTheta;
+      const thNext = (k + 1) * dTheta;
+
+      // Root start angle before right flank (actually left flank of tooth k)
+      const rootLeft = thK - psiB - (Rf < Rb ? 0.08 * dTheta : 0);
+      const rootRight = thK + psiB + (Rf < Rb ? 0.08 * dTheta : 0);
+
+      // Move or arc to left root of tooth k
+      if (k === 0) {
+        path.moveTo(Rf * Math.cos(rootLeft), Rf * Math.sin(rootLeft));
+      } else {
+        path.arc(0, 0, Rf, thK - dTheta + psiB + (Rf < Rb ? 0.08 * dTheta : 0), rootLeft, false);
+      }
+
+      // If Rf < Rb, smooth radial/fillet segment to base circle
+      if (Rf < Rb) {
+        const bAngL = thK - psiB;
+        const midR = 0.5 * (Rf + Rb);
+        const midAng = 0.5 * (rootLeft + bAngL);
+        path.quadraticCurveTo(
+          midR * Math.cos(midAng), midR * Math.sin(midAng),
+          Rb * Math.cos(bAngL), Rb * Math.sin(bAngL)
+        );
+      }
+
+      // Left flank: r from rStart -> Ra (angle increases from thK - psiB toward thK)
+      for (let s = 0; s <= steps; s++) {
+        const t = s / steps;
+        const r = rStart + (Ra - rStart) * t;
+        const phi = Math.acos(Math.min(1, Rb / r));
+        const ang = thK - psiB + invFunc(phi);
+        path.lineTo(r * Math.cos(ang), r * Math.sin(ang));
+      }
+
+      // Tip arc
+      const tipPhi = Math.acos(Math.min(1, Rb / Ra));
+      const tipAngL = thK - psiB + invFunc(tipPhi);
+      const tipAngR = thK + psiB - invFunc(tipPhi);
+      if (tipAngR > tipAngL) {
+        path.arc(0, 0, Ra, tipAngL, tipAngR, false);
+      }
+
+      // Right flank: r from Ra -> rStart (angle increases toward thK + psiB)
+      for (let s = steps; s >= 0; s--) {
+        const t = s / steps;
+        const r = rStart + (Ra - rStart) * t;
+        const phi = Math.acos(Math.min(1, Rb / r));
+        const ang = thK + psiB - invFunc(phi);
+        path.lineTo(r * Math.cos(ang), r * Math.sin(ang));
+      }
+
+      // Fillet down to Rf if Rf < Rb
+      if (Rf < Rb) {
+        const bAngR = thK + psiB;
+        const midR = 0.5 * (Rf + Rb);
+        const midAng = 0.5 * (bAngR + rootRight);
+        path.quadraticCurveTo(
+          midR * Math.cos(midAng), midR * Math.sin(midAng),
+          Rf * Math.cos(rootRight), Rf * Math.sin(rootRight)
+        );
+      }
+    }
+    // Close final root arc to tooth 0 left root
+    const lastRootR = (Z - 1) * dTheta + psiB + (Rf < Rb ? 0.08 * dTheta : 0);
+    const firstRootL = 2 * Math.PI - psiB - (Rf < Rb ? 0.08 * dTheta : 0);
+    path.arc(0, 0, Rf, lastRootR, firstRootL, false);
+    path.closePath();
+
+    const result = { path, Rp, Rb, Ra, Rf };
+    gearPathCache.set(key, result);
+    return result;
+  }
+
+  /**
+   * Build exact mathematical internal ring gear Path2D centered at (0,0).
+   * Space #0 (recess into ring) is centered at angle 0, matching external tooth #0!
+   */
+  function getInternalRingPath(Z, m, alphaDeg) {
+    const key = `I:${Z}:${m.toFixed(2)}:${alphaDeg}`;
+    if (gearPathCache.has(key)) return gearPathCache.get(key);
+
+    const alpha = alphaDeg * Math.PI / 180;
+    const Rp = 0.5 * m * Z;
+    const Rb = Rp * Math.cos(alpha);
+    const Ra = Math.max(Rb + 0.05 * m, Rp - 0.85 * m); // Innermost tooth tip radius
+    const Rf = Rp + 1.25 * m; // Outer tooth root radius
+    const ROuter = Rf + 2.5 * m;
+
+    const invA = invFunc(alpha);
+    const backlash = 0.018 * (2 * Math.PI / Z);
+    // Space half-width at pitch circle (slightly wider by backlash for crisp meshing)
+    const psiSpaceP = Math.PI / (2 * Z) + backlash * 0.5;
+    const psiSpaceB = psiSpaceP + invA;
+
+    const steps = 6;
+    const path = new Path2D();
+    const dTheta = (2 * Math.PI) / Z;
+
+    // Outer solid circle (CCW or CW, we'll fill with evenodd)
+    path.arc(0, 0, ROuter, 0, Math.PI * 2, false);
+    path.closePath();
+
+    // Inner gear cutout contour (drawn CCW for evenodd clarity)
+    for (let k = 0; k < Z; k++) {
+      const thK = k * dTheta;
+      const phiTip = Math.acos(Math.min(1, Rb / Ra));
+      const phiRoot = Math.acos(Math.min(1, Rb / Rf));
+
+      // Space k centered at thK:
+      // Left edge of space (at r=Ra -> r=Rf): angle = thK - psiSpaceB + inv(phi(r))
+      // Right edge of space (at r=Rf -> r=Ra): angle = thK + psiSpaceB - inv(phi(r))
+      const angTipL = thK - psiSpaceB + invFunc(phiTip);
+      const angTipR = thK + psiSpaceB - invFunc(phiTip);
+
+      if (k === 0) {
+        path.moveTo(Ra * Math.cos(angTipL), Ra * Math.sin(angTipL));
+      } else {
+        const prevTipR = (k - 1) * dTheta + psiSpaceB - invFunc(phiTip);
+        path.arc(0, 0, Ra, prevTipR, angTipL, false);
+      }
+
+      // Left flank of space going outward Ra -> Rf
+      for (let s = 0; s <= steps; s++) {
+        const r = Ra + (Rf - Ra) * (s / steps);
+        const phi = Math.acos(Math.min(1, Rb / r));
+        const ang = thK - psiSpaceB + invFunc(phi);
+        path.lineTo(r * Math.cos(ang), r * Math.sin(ang));
+      }
+
+      // Root arc at Rf
+      const angRootL = thK - psiSpaceB + invFunc(phiRoot);
+      const angRootR = thK + psiSpaceB - invFunc(phiRoot);
+      if (angRootR > angRootL) {
+        path.arc(0, 0, Rf, angRootL, angRootR, false);
+      }
+
+      // Right flank of space coming inward Rf -> Ra
+      for (let s = steps; s >= 0; s--) {
+        const r = Ra + (Rf - Ra) * (s / steps);
+        const phi = Math.acos(Math.min(1, Rb / r));
+        const ang = thK + psiSpaceB - invFunc(phi);
+        path.lineTo(r * Math.cos(ang), r * Math.sin(ang));
+      }
+    }
+    const phiTip0 = Math.acos(Math.min(1, Rb / Ra));
+    const lastTipR = (Z - 1) * dTheta + psiSpaceB - invFunc(phiTip0);
+    const firstTipL = 2 * Math.PI - psiSpaceB + invFunc(phiTip0);
+    path.arc(0, 0, Ra, lastTipR, firstTipL, false);
+    path.closePath();
+
+    const result = { path, Rp, Rb, Ra, Rf, ROuter };
+    gearPathCache.set(key, result);
+    return result;
+  }
+
+  // Metallic Alloy Palettes
+  const ALLOYS = {
+    brass: {
+      hi: '#ffe8a3',
+      mid: '#d99e3e',
+      lo: '#6e4914',
+      stroke: '#ffd982',
+      rim: '#b57d26',
+      glow: 'rgba(255, 190, 92, 0.35)'
+    },
+    steel: {
+      hi: '#e2ecff',
+      mid: '#879ab8',
+      lo: '#364359',
+      stroke: '#c9daf5',
+      rim: '#627491',
+      glow: 'rgba(148, 179, 255, 0.25)'
+    },
+    copper: {
+      hi: '#ffd1b3',
+      mid: '#cf7446',
+      lo: '#632c14',
+      stroke: '#ffba8f',
+      rim: '#9c4e2a',
+      glow: 'rgba(255, 140, 88, 0.32)'
+    },
+    titanium: {
+      hi: '#bfe8ff',
+      mid: '#52789e',
+      lo: '#1f334a',
+      stroke: '#8cd8ff',
+      rim: '#365678',
+      glow: 'rgba(88, 220, 255, 0.32)'
+    },
+    gunmetal: {
+      hi: '#9eb4d4',
+      mid: '#445570',
+      lo: '#1a2333',
+      stroke: '#84a2cc',
+      rim: '#2d3b52',
+      glow: 'rgba(88, 220, 255, 0.2)'
+    }
+  };
+
+  /**
+   * Render a museum-grade metallic external involute gear with machined spokes,
+   * brushed sheen, hub keyway, and ball-bearing race.
+   */
+  function drawExternalGear(cx, cy, Z, m, angle, alloyKey, opts = {}) {
+    const alloy = ALLOYS[alloyKey] || ALLOYS.steel;
+    const g = getExternalGearPath(Z, m, state.alphaDeg);
+    const xray = state.overlays.xray;
+
+    ctx.save();
+    ctx.translate(cx, cy);
+
+    // Subtle drop shadow for 3D depth
+    if (!xray && !opts.noShadow) {
+      ctx.save();
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.65)';
+      ctx.shadowBlur = 18;
+      ctx.shadowOffsetX = 0;
+      ctx.shadowOffsetY = 7;
+      ctx.rotate(angle);
+      ctx.fillStyle = alloy.lo;
+      ctx.fill(g.path);
+      ctx.restore();
+    }
+
+    ctx.rotate(angle);
+
+    if (xray) {
+      ctx.fillStyle = alloy.glow.replace(/0\.\d+/, '0.09');
+      ctx.fill(g.path);
+      ctx.strokeStyle = alloy.stroke;
+      ctx.lineWidth = 1.25 / state.cam.zoom;
+      ctx.stroke(g.path);
+    } else {
+      // Metallic radial + directional sheen
+      const grad = ctx.createLinearGradient(-g.Ra, -g.Ra, g.Ra, g.Ra);
+      grad.addColorStop(0.0, alloy.hi);
+      grad.addColorStop(0.28, alloy.mid);
+      grad.addColorStop(0.55, alloy.lo);
+      grad.addColorStop(0.82, alloy.mid);
+      grad.addColorStop(1.0, alloy.hi);
+      ctx.fillStyle = grad;
+      ctx.fill(g.path);
+
+      // Tooth bevel edge
+      ctx.strokeStyle = alloy.stroke;
+      ctx.lineWidth = 0.9;
+      ctx.globalAlpha = 0.65;
+      ctx.stroke(g.path);
+      ctx.globalAlpha = 1;
+
+      // Recessed machined web & spokes if large enough
+      const rimInner = g.Rf - m * 1.15;
+      const hubOuter = Math.max(m * 1.45, Math.min(rimInner * 0.42, m * 2.5));
+
+      if (rimInner > hubOuter + m * 0.95) {
+        // Dark machined recess ring
+        ctx.beginPath();
+        ctx.arc(0, 0, rimInner, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(6, 10, 20, 0.62)';
+        ctx.fill();
+        ctx.strokeStyle = alloy.hi;
+        ctx.globalAlpha = 0.3;
+        ctx.lineWidth = 1.1;
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+
+        // Cut out spokes (5 or 6) or circular lightening holes
+        const numSpokes = Z >= 24 ? 6 : 5;
+        if (rimInner > m * 6.0) {
+          // Machined tapered spokes
+          const spokeW = Math.max(4.5, m * 0.85);
+          for (let i = 0; i < numSpokes; i++) {
+            const a1 = (i * 2 * Math.PI) / numSpokes + (spokeW / rimInner) * 0.72;
+            const a2 = ((i + 1) * 2 * Math.PI) / numSpokes - (spokeW / rimInner) * 0.72;
+            const rIn = hubOuter + m * 0.45;
+            const rOut = rimInner - m * 0.32;
+            if (a2 > a1 + 0.12 && rOut > rIn + 4) {
+              ctx.beginPath();
+              ctx.arc(0, 0, rOut, a1, a2, false);
+              ctx.arc(0, 0, rIn, a2, a1, true);
+              ctx.closePath();
+              ctx.fillStyle = '#040711';
+              ctx.fill();
+              ctx.strokeStyle = alloy.stroke;
+              ctx.globalAlpha = 0.25;
+              ctx.lineWidth = 1.0;
+              ctx.stroke();
+              ctx.globalAlpha = 1;
+            }
+          }
+        } else {
+          // Circular lightening holes
+          const holeR = (rimInner - hubOuter) * 0.34;
+          const holeDist = 0.5 * (rimInner + hubOuter);
+          for (let i = 0; i < numSpokes; i++) {
+            const a = (i * 2 * Math.PI) / numSpokes;
+            ctx.beginPath();
+            ctx.arc(holeDist * Math.cos(a), holeDist * Math.sin(a), holeR, 0, Math.PI * 2);
+            ctx.fillStyle = '#040711';
+            ctx.fill();
+            ctx.strokeStyle = alloy.stroke;
+            ctx.globalAlpha = 0.28;
+            ctx.lineWidth = 0.9;
+            ctx.stroke();
+            ctx.globalAlpha = 1;
+          }
+        }
+      }
+
+      // Reference index tick mark on rim so rotation is unmistakably clear
+      ctx.beginPath();
+      ctx.moveTo(hubOuter * 0.9, 0);
+      ctx.lineTo(g.Rf - 2, 0);
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      // Hub boss & ball-bearing center
+      const hubGrad = ctx.createRadialGradient(-hubOuter * 0.3, -hubOuter * 0.3, 1, 0, 0, hubOuter);
+      hubGrad.addColorStop(0, alloy.hi);
+      hubGrad.addColorStop(0.65, alloy.mid);
+      hubGrad.addColorStop(1, alloy.lo);
+      ctx.beginPath();
+      ctx.arc(0, 0, hubOuter, 0, Math.PI * 2);
+      ctx.fillStyle = hubGrad;
+      ctx.fill();
+      ctx.strokeStyle = alloy.stroke;
+      ctx.globalAlpha = 0.55;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+
+      // Ball-bearing race & shaft bore
+      const boreR = Math.max(4.5, hubOuter * 0.44);
+      ctx.beginPath();
+      ctx.arc(0, 0, boreR * 1.45, 0, Math.PI * 2);
+      ctx.fillStyle = '#0a0f1d';
+      ctx.fill();
+
+      // Tiny bearing balls rotating at half angular rate
+      const ballR = Math.max(1.4, boreR * 0.17);
+      const raceR = boreR * 1.18;
+      for (let b = 0; b < 8; b++) {
+        const ba = (b * Math.PI) / 4 - angle * 0.5;
+        ctx.beginPath();
+        ctx.arc(raceR * Math.cos(ba), raceR * Math.sin(ba), ballR, 0, Math.PI * 2);
+        ctx.fillStyle = '#cddcf5';
+        ctx.fill();
+      }
+
+      // Steel shaft & keyway
+      ctx.beginPath();
+      ctx.arc(0, 0, boreR * 0.82, 0, Math.PI * 2);
+      ctx.fillStyle = '#475773';
+      ctx.fill();
+      ctx.strokeStyle = '#9bb2d9';
+      ctx.lineWidth = 0.8;
+      ctx.stroke();
+
+      // Keyway slot
+      const kw = boreR * 0.32;
+      ctx.fillStyle = '#ffd178';
+      ctx.fillRect(boreR * 0.55, -kw * 0.5, kw * 0.9, kw);
+    }
+
+    ctx.restore();
+
+    // Pitch & Base circle engineering overlays
+    if (state.overlays.pitch) {
+      ctx.save();
+      ctx.translate(cx, cy);
+      // Pitch circle (cyan dashed)
+      ctx.beginPath();
+      ctx.arc(0, 0, g.Rp, 0, Math.PI * 2);
+      ctx.setLineDash([6, 4]);
+      ctx.strokeStyle = 'rgba(88, 220, 255, 0.62)';
+      ctx.lineWidth = 1.25 / state.cam.zoom;
+      ctx.stroke();
+
+      // Base circle (amber dotted)
+      ctx.beginPath();
+      ctx.arc(0, 0, g.Rb, 0, Math.PI * 2);
+      ctx.setLineDash([2, 4]);
+      ctx.strokeStyle = 'rgba(255, 190, 92, 0.36)';
+      ctx.lineWidth = 1.0 / state.cam.zoom;
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
+
+    return g;
+  }
+
+  /**
+   * Draw an internal ring gear for the planetary gearbox.
+   */
+  function drawInternalRingGear(cx, cy, Z, m, angle, alloyKey, locked = false) {
+    const alloy = ALLOYS[alloyKey] || ALLOYS.gunmetal;
+    const g = getInternalRingPath(Z, m, state.alphaDeg);
+    const xray = state.overlays.xray;
+
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(angle);
+
+    if (xray) {
+      ctx.fillStyle = 'rgba(88, 220, 255, 0.06)';
+      ctx.fill(g.path, 'evenodd');
+      ctx.strokeStyle = locked ? '#ff6083' : alloy.stroke;
+      ctx.lineWidth = 1.3 / state.cam.zoom;
+      ctx.stroke(g.path);
+    } else {
+      const grad = ctx.createLinearGradient(-g.ROuter, -g.ROuter, g.ROuter, g.ROuter);
+      grad.addColorStop(0, alloy.hi);
+      grad.addColorStop(0.3, alloy.mid);
+      grad.addColorStop(0.55, alloy.lo);
+      grad.addColorStop(0.85, alloy.mid);
+      grad.addColorStop(1, alloy.hi);
+
+      ctx.save();
+      ctx.shadowColor = 'rgba(0,0,0,0.6)';
+      ctx.shadowBlur = 22;
+      ctx.fillStyle = grad;
+      ctx.fill(g.path, 'evenodd');
+      ctx.restore();
+
+      ctx.strokeStyle = locked ? 'rgba(255, 96, 131, 0.8)' : alloy.stroke;
+      ctx.lineWidth = locked ? 1.8 : 1.0;
+      ctx.stroke(g.path);
+
+      // Outer bolted housing lugs (12 radial index bolts)
+      const boltR = (g.Rf + g.ROuter) * 0.52;
+      for (let i = 0; i < 12; i++) {
+        const a = (i * Math.PI * 2) / 12;
+        const bx = boltR * Math.cos(a);
+        const by = boltR * Math.sin(a);
+        ctx.beginPath();
+        ctx.arc(bx, by, m * 0.42, 0, Math.PI * 2);
+        ctx.fillStyle = i === 0 ? '#58dcff' : '#182236';
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(200, 220, 255, 0.45)';
+        ctx.lineWidth = 0.9;
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+
+    if (state.overlays.pitch) {
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.beginPath();
+      ctx.arc(0, 0, g.Rp, 0, Math.PI * 2);
+      ctx.setLineDash([7, 5]);
+      ctx.strokeStyle = 'rgba(88, 220, 255, 0.55)';
+      ctx.lineWidth = 1.2 / state.cam.zoom;
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
+
+    return g;
+  }
+
+  /**
+   * Draw Line of Action (pressure angle alpha) and animated glowing tooth-contact flash
+   * between two meshing external gears A and B.
+   */
+  function drawMeshLineOfAction(ax, ay, gA, thetaA, zA, bx, by, gB, omegaA) {
+    if (!state.overlays.loa) return;
+
+    const dx = bx - ax;
+    const dy = by - ay;
+    const dist = Math.hypot(dx, dy);
+    if (dist < 1e-3) return;
+    const ux = dx / dist;
+    const uy = dy / dist;
+    // Pitch point
+    const px = ax + ux * gA.Rp;
+    const py = ay + uy * gA.Rp;
+
+    // Direction of line of action depends on rotation direction (or nominal +1 if stopped)
+    const dir = omegaA >= 0 ? 1 : -1;
+    const alpha = state.alphaDeg * Math.PI / 180;
+    const gamma = Math.atan2(dy, dx);
+    // Tangent at pitch point is gamma + pi/2; LOA tilts by dir * alpha from tangent
+    const loaAngle = gamma + Math.PI * 0.5 - dir * alpha;
+    const lx = Math.cos(loaAngle);
+    const ly = Math.sin(loaAngle);
+
+    // Exact path of contact bounds: intersection of LOA with addendum circles of A and B
+    const sB = Math.sqrt(Math.max(0, gB.Ra * gB.Ra - gB.Rb * gB.Rb)) - gB.Rp * Math.sin(alpha);
+    const sA = Math.sqrt(Math.max(0, gA.Ra * gA.Ra - gA.Rb * gA.Rb)) - gA.Rp * Math.sin(alpha);
+
+    const x1 = px - lx * sB;
+    const y1 = py - ly * sB;
+    const x2 = px + lx * sA;
+    const y2 = py + ly * sA;
+
+    ctx.save();
+    // Extended faint tangent line
+    ctx.beginPath();
+    ctx.moveTo(px - lx * (sB + 26), py - ly * (sB + 26));
+    ctx.lineTo(px + lx * (sA + 26), py + ly * (sA + 26));
+    ctx.strokeStyle = 'rgba(255, 190, 92, 0.25)';
+    ctx.setLineDash([4, 4]);
+    ctx.lineWidth = 1.1 / state.cam.zoom;
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Active Path of Contact segment
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.strokeStyle = '#ffbe5c';
+    ctx.lineWidth = 2.2 / state.cam.zoom;
+    ctx.shadowColor = '#ffbe5c';
+    ctx.shadowBlur = 10;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // Pitch point crosshair
+    ctx.beginPath();
+    ctx.arc(px, py, 3.2 / state.cam.zoom, 0, Math.PI * 2);
+    ctx.fillStyle = '#58dcff';
+    ctx.fill();
+
+    // Glowing tooth contact flash point(s) sliding along the Path of Contact!
+    const basePitch = (2 * Math.PI * gA.Rb) / zA;
+    // Phase along line of action synchronized to gear A rotation
+    let phase = ((gamma - thetaA) * gA.Rb) % basePitch;
+    if (phase < 0) phase += basePitch;
+    // Contact point(s) inside [-sB, +sA]
+    for (let k = -2; k <= 2; k++) {
+      const s = dir * (phase - basePitch * 0.5) + k * basePitch;
+      if (s >= -sB && s <= sA) {
+        const fx = px + lx * s;
+        const fy = py + ly * s;
+        // Brighter near pitch point
+        const closeness = 1 - Math.abs(s) / Math.max(sA, sB, 1);
+        const rGlow = (7 + 5 * closeness) / state.cam.zoom;
+        const rg = ctx.createRadialGradient(fx, fy, 0.5, fx, fy, rGlow);
+        rg.addColorStop(0, 'rgba(255, 255, 240, 0.98)');
+        rg.addColorStop(0.35, 'rgba(255, 195, 85, 0.85)');
+        rg.addColorStop(1, 'rgba(255, 140, 50, 0)');
+        ctx.beginPath();
+        ctx.arc(fx, fy, rGlow, 0, Math.PI * 2);
+        ctx.fillStyle = rg;
+        ctx.fill();
+      }
+    }
+    ctx.restore();
+
+    return { contactRatio: (sA + sB) / basePitch };
+  }
+
+  // Helper: Draw a curved rotation direction arrow around a gear or shaft
+  function drawRotationArrow(cx, cy, radius, omega, color, label) {
+    if (!state.overlays.vectors) return;
+    if (Math.abs(omega) < 0.01) return;
+    const dir = omega >= 0 ? 1 : -1;
+    const startA = -Math.PI * 0.72;
+    const span = 0.65 * dir;
+    const endA = startA + span;
+
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.beginPath();
+    ctx.arc(0, 0, radius, startA, endA, dir < 0);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2.0 / state.cam.zoom;
+    ctx.stroke();
+
+    // Arrowhead at endA
+    const tipX = radius * Math.cos(endA);
+    const tipY = radius * Math.sin(endA);
+    const tanA = endA + (dir > 0 ? Math.PI * 0.5 : -Math.PI * 0.5);
+    const ah = 7 / state.cam.zoom;
+    ctx.beginPath();
+    ctx.moveTo(tipX, tipY);
+    ctx.lineTo(tipX - ah * Math.cos(tanA - 0.45), tipY - ah * Math.sin(tanA - 0.45));
+    ctx.lineTo(tipX - ah * Math.cos(tanA + 0.45), tipY - ah * Math.sin(tanA + 0.45));
+    ctx.closePath();
+    ctx.fillStyle = color;
+    ctx.fill();
+
+    if (label && state.overlays.labels) {
+      ctx.font = `700 ${11 / state.cam.zoom}px ${getComputedStyle(document.body).getPropertyValue('--mono')}`;
+      ctx.fillStyle = color;
+      ctx.textAlign = 'center';
+      const midA = startA + span * 0.5;
+      ctx.fillText(label, (radius + 14 / state.cam.zoom) * Math.cos(midA), (radius + 14 / state.cam.zoom) * Math.sin(midA));
+    }
+    ctx.restore();
+  }
+
+  function drawTag(x, y, text, color = '#eef3ff') {
+    if (!state.overlays.labels) return;
+    ctx.save();
+    const fs = 11 / state.cam.zoom;
+    ctx.font = `700 ${fs}px ui-monospace, Consolas, monospace`;
+    const padX = 6 / state.cam.zoom;
+    const padY = 3 / state.cam.zoom;
+    const tw = ctx.measureText(text).width;
+    const bw = tw + padX * 2;
+    const bh = fs + padY * 2;
+
+    ctx.fillStyle = 'rgba(6, 10, 20, 0.78)';
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.28)';
+    ctx.lineWidth = 1 / state.cam.zoom;
+    ctx.beginPath();
+    ctx.roundRect(x - bw * 0.5, y - bh * 0.5, bw, bh, 5 / state.cam.zoom);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = color;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, x, y + 0.5 / state.cam.zoom);
+    ctx.restore();
+  }
+
+  // =========================================================================
+  // BLUEPRINT BACKDROP GRID
+  // =========================================================================
+  function drawBackdrop() {
+    // Deep studio radial illumination
+    const bgGrad = ctx.createRadialGradient(W * 0.46, H * 0.5, 40, W * 0.46, H * 0.5, Math.max(W, H) * 0.78);
+    bgGrad.addColorStop(0, '#0a1226');
+    bgGrad.addColorStop(0.55, '#050916');
+    bgGrad.addColorStop(1, '#03050d');
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, W, H);
+
+    if (!state.overlays.grid) return;
+
+    ctx.save();
+    // Apply world camera transform for drafting grid
+    const cx = W * 0.5 + state.cam.x;
+    const cy = H * 0.5 + state.cam.y;
+    const step = 40 * state.cam.zoom;
+    if (step > 10) {
+      const startX = ((cx % step) + step) % step;
+      const startY = ((cy % step) + step) % step;
+      ctx.beginPath();
+      for (let x = startX; x < W; x += step) {
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, H);
+      }
+      for (let y = startY; y < H; y += step) {
+        ctx.moveTo(0, y);
+        ctx.lineTo(W, y);
+      }
+      ctx.strokeStyle = 'rgba(110, 150, 230, 0.055)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+
+    // Subtle major drafting crosshairs at world origin
+    ctx.beginPath();
+    ctx.moveTo(cx - 28, cy);
+    ctx.lineTo(cx + 28, cy);
+    ctx.moveTo(cx, cy - 28);
+    ctx.lineTo(cx, cy + 28);
+    ctx.strokeStyle = 'rgba(88, 220, 255, 0.18)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // =========================================================================
+  // MECHANISM 1: COMPOUND SPUR GEAR TRAIN
+  // =========================================================================
+  function updateAndRenderSpur(dt) {
+    const sp = state.spur;
+    const m = sp.module;
+    const omegaIn = state.drag.active && state.drag.type === 'crank'
+      ? state.drag.manualOmega
+      : (state.running ? (state.rpm * 2 * Math.PI) / 60 : 0);
+
+    if (!(state.drag.active && state.drag.type === 'crank')) {
+      sp.theta1 += omegaIn * dt;
+    }
+
+    const r1 = 0.5 * m * sp.z1;
+    const r2 = 0.5 * m * sp.z2;
+    const r3 = 0.5 * m * sp.z3;
+    const r4 = 0.5 * m * sp.z4;
+
+    const c12 = r1 + r2;
+    const c34 = r3 + r4;
+    const totalW = c12 + c34;
+
+    // Slight graceful vertical offset for museum balance
+    const xA = -totalW * 0.5;
+    const yA = 20;
+    const xB = xA + c12;
+    const yB = -16;
+    // Keep exact center distance c12 between A and B!
+    const dyAB = -36;
+    const dxAB = Math.sqrt(Math.max(100, c12 * c12 - dyAB * dyAB));
+    const ax = -(dxAB + c34) * 0.5;
+    const ay = 18;
+    const bx = ax + dxAB;
+    const by = ay + dyAB;
+    const dyBC = 36;
+    const dxBC = Math.sqrt(Math.max(100, c34 * c34 - dyBC * dyBC));
+    const cx = bx + dxBC;
+    const cy = by + dyBC;
+
+    sp.centers = [
+      { x: ax, y: ay },
+      { x: bx, y: by },
+      { x: cx, y: cy }
+    ];
+    sp.radii = [r1, r2, r3, r4];
+
+    // Exact involute mesh phase equations (ZERO interpenetration!)
+    const gamma12 = Math.atan2(by - ay, bx - ax);
+    const theta1 = sp.theta1;
+    const theta2 = gamma12 + Math.PI - Math.PI / sp.z2 + (sp.z1 / sp.z2) * (gamma12 - theta1);
+    const theta3 = theta2; // Coaxially keyed to layshaft B!
+    const gamma34 = Math.atan2(cy - by, cx - bx);
+    const theta4 = gamma34 + Math.PI - Math.PI / sp.z4 + (sp.z3 / sp.z4) * (gamma34 - theta3);
+
+    const gr = (sp.z2 / sp.z1) * (sp.z4 / sp.z3);
+    const omega2 = -omegaIn * (sp.z1 / sp.z2);
+    const omega4 = omegaIn / gr;
+
+    // Draw machined mounting bridge / plate behind shafts
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(ax, ay);
+    ctx.lineTo(bx, by);
+    ctx.lineTo(cx, cy);
+    ctx.strokeStyle = 'rgba(110, 145, 210, 0.14)';
+    ctx.lineWidth = 26;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.25)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.restore();
+
+    // Draw back plane first: Gear 2 (Steel) & Gear 1 (Brass)
+    const g2 = drawExternalGear(bx, by, sp.z2, m, theta2, 'steel');
+    const g1 = drawExternalGear(ax, ay, sp.z1, m, theta1, 'brass');
+
+    // Draw front plane: Gear 4 (Titanium) & Gear 3 (Copper, coaxial on B)
+    const g4 = drawExternalGear(cx, cy, sp.z4, m, theta4, 'titanium');
+    const g3 = drawExternalGear(bx, by, sp.z3, m, theta3, 'copper');
+
+    // Draw crank handle knob on Gear 1 to invite direct mouse hand-cranking
+    const handleR = Math.max(14, r1 * 0.62);
+    const hx = ax + handleR * Math.cos(theta1);
+    const hy = ay + handleR * Math.sin(theta1);
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(hx, hy, 7.5, 0, Math.PI * 2);
+    ctx.fillStyle = '#ffbe5c';
+    ctx.shadowColor = '#ffbe5c';
+    ctx.shadowBlur = 12;
+    ctx.fill();
+    ctx.strokeStyle = '#08101f';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.restore();
+
+    // Lines of Action & Contact Flashes
+    const m1 = drawMeshLineOfAction(ax, ay, g1, theta1, sp.z1, bx, by, g2, omegaIn);
+    const m2 = drawMeshLineOfAction(bx, by, g3, theta3, sp.z3, cx, cy, g4, omega2);
+
+    // Rotation arrows
+    drawRotationArrow(ax, ay, r1 + 24, omegaIn, '#ffbe5c', 'IN');
+    drawRotationArrow(cx, cy, r4 + 24, omega4, '#4af2b2', 'OUT');
+
+    // Engineering tags
+    drawTag(ax, ay + r1 + 30, `Z₁ = ${sp.z1} (IN)`, '#ffbe5c');
+    drawTag(bx, by - r2 - 26, `Z₂ = ${sp.z2} / Z₃ = ${sp.z3}`, '#eef3ff');
+    drawTag(cx, cy + r4 + 30, `Z₄ = ${sp.z4} (OUT)`, '#58dcff');
+
+    // Telemetry calculation
+    const inRpm = (omegaIn * 60) / (2 * Math.PI);
+    const outRpm = (omega4 * 60) / (2 * Math.PI);
+    const totalEff = state.meshEff * state.meshEff;
+    const torqueMult = gr * totalEff;
+    const torqueOut = state.torqueIn * torqueMult;
+    const meshFreq = (Math.abs(inRpm) * sp.z1) / 60;
+    const cr = m1 && m2 ? ((m1.contactRatio + m2.contactRatio) * 0.5).toFixed(2) : '1.60';
+
+    SoundEngine.updateWhir(meshFreq, Math.min(1, Math.abs(inRpm) / 90));
+
+    return {
+      badge: 'Compound Spur',
+      status: gr > 1.05 ? 'Reduction' : gr < 0.95 ? 'Overdrive' : 'Direct 1:1',
+      statusClass: gr > 1.05 ? '' : gr < 0.95 ? 'cyan' : 'amber',
+      ratio: gr >= 1 ? `${gr.toFixed(2)} : 1` : `1 : ${(1 / gr).toFixed(2)}`,
+      inRpm: `${inRpm >= 0 ? '+' : ''}${inRpm.toFixed(1)} RPM`,
+      outRpm: `${outRpm >= 0 ? '+' : ''}${outRpm.toFixed(1)} RPM`,
+      torque: `${torqueMult.toFixed(2)}× (${torqueOut.toFixed(1)} Nm)`,
+      eff: `${(totalEff * 100).toFixed(1)}%`,
+      extraLabel: 'Mesh Freq',
+      extraVal: `${meshFreq.toFixed(1)} Hz`,
+      formula: `τ_out = τ_in · (${sp.z2}/${sp.z1}·${sp.z4}/${sp.z3}) · η`,
+      rightFormula: `ε_α = ${cr}`
+    };
+  }
+
+  // =========================================================================
+  // MECHANISM 2: EPICYCLIC PLANETARY GEARBOX
+  // =========================================================================
+  function updateAndRenderPlanetary(dt) {
+    const pl = state.planetary;
+    const Zs = pl.zs;
+    const Zp = pl.zp;
+    const Zr = Zs + 2 * Zp;
+    const Np = pl.np;
+    const m = pl.module;
+
+    const omegaIn = state.drag.active && state.drag.type === 'crank'
+      ? state.drag.manualOmega
+      : (state.running ? (state.rpm * 2 * Math.PI) / 60 : 0);
+
+    if (!(state.drag.active && state.drag.type === 'crank')) {
+      pl.thetaInput += omegaIn * dt;
+    }
+
+    // Solve Willis planetary equation: (wS - wC) / (wR - wC) = -Zr / Zs
+    // => Zs * wS + Zr * wR = (Zs + Zr) * wC
+    let thetaS = 0, thetaC = 0, thetaR = 0;
+    let omegaS = 0, omegaC = 0, omegaR = 0;
+    let gr = 1, outOmega = 0;
+    let lockedMember = 'ring';
+    let inputMember = 'sun';
+    let outputMember = 'carrier';
+    let statusText = 'High-Torque Low';
+    let statusClass = '';
+
+    // Initial ring offset for exact mesh at thetaS=thetaC=0:
+    // Zs*(gamma - thetaS) + Zr*(gamma - thetaR) = (1 - Zp)*pi (mod 2pi)
+    const thetaR0 = ((Zp - 1) * Math.PI) / Zr;
+
+    if (pl.mode === 'ring_hold_red') {
+      // Ring held, Sun input, Carrier output
+      lockedMember = 'ring'; inputMember = 'sun'; outputMember = 'carrier';
+      gr = 1 + Zr / Zs;
+      thetaS = pl.thetaInput;
+      thetaC = pl.thetaInput / gr;
+      thetaR = thetaR0;
+      omegaS = omegaIn; omegaC = omegaIn / gr; omegaR = 0;
+      outOmega = omegaC;
+      statusText = 'Reduction'; statusClass = '';
+    } else if (pl.mode === 'ring_hold_od') {
+      // Ring held, Carrier input, Sun output (Overdrive!)
+      lockedMember = 'ring'; inputMember = 'carrier'; outputMember = 'sun';
+      gr = Zs / (Zs + Zr);
+      thetaC = pl.thetaInput;
+      thetaS = pl.thetaInput * (1 + Zr / Zs);
+      thetaR = thetaR0;
+      omegaC = omegaIn; omegaS = omegaIn * (1 + Zr / Zs); omegaR = 0;
+      outOmega = omegaS;
+      statusText = 'Overdrive'; statusClass = 'cyan';
+    } else if (pl.mode === 'carrier_hold_rev') {
+      // Carrier held, Sun input, Ring output (Reverse!)
+      lockedMember = 'carrier'; inputMember = 'sun'; outputMember = 'ring';
+      gr = -(Zr / Zs);
+      thetaC = 0;
+      thetaS = pl.thetaInput;
+      thetaR = thetaR0 - pl.thetaInput * (Zs / Zr);
+      omegaC = 0; omegaS = omegaIn; omegaR = -omegaIn * (Zs / Zr);
+      outOmega = omegaR;
+      statusText = 'Reverse Gear'; statusClass = 'rose';
+    } else {
+      // Sun held, Ring input, Carrier output (Mild Reduction)
+      lockedMember = 'sun'; inputMember = 'ring'; outputMember = 'carrier';
+      gr = 1 + Zs / Zr;
+      thetaS = 0;
+      thetaR = thetaR0 + pl.thetaInput;
+      thetaC = pl.thetaInput * (Zr / (Zs + Zr));
+      omegaS = 0; omegaR = omegaIn; omegaC = omegaIn * (Zr / (Zs + Zr));
+      outOmega = omegaC;
+      statusText = 'Mid Reduction'; statusClass = 'amber';
+    }
+
+    pl.thetaS = thetaS;
+    pl.thetaC = thetaC;
+    pl.thetaR = thetaR;
+
+    const RpS = 0.5 * m * Zs;
+    const RpP = 0.5 * m * Zp;
+    const Rc = RpS + RpP;
+    const RpR = 0.5 * m * Zr;
+
+    // 1. Draw Internal Ring Gear
+    const gRing = drawInternalRingGear(0, 0, Zr, m, thetaR, 'gunmetal', lockedMember === 'ring');
+
+    // 2. Draw Carrier Spider (behind planets so teeth pop, plus top pin caps)
+    ctx.save();
+    ctx.rotate(thetaC);
+    ctx.beginPath();
+    for (let k = 0; k < Np; k++) {
+      const a = (k * Math.PI * 2) / Np;
+      ctx.moveTo(0, 0);
+      ctx.lineTo(Rc * Math.cos(a), Rc * Math.sin(a));
+    }
+    ctx.strokeStyle = lockedMember === 'carrier' ? 'rgba(255, 96, 131, 0.35)' : 'rgba(88, 220, 255, 0.25)';
+    ctx.lineWidth = 22;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+
+    // Carrier structural ring
+    ctx.beginPath();
+    ctx.arc(0, 0, Rc, 0, Math.PI * 2);
+    ctx.strokeStyle = lockedMember === 'carrier' ? 'rgba(255, 96, 131, 0.55)' : 'rgba(88, 220, 255, 0.42)';
+    ctx.lineWidth = 4;
+    ctx.setLineDash([12, 8]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+
+    // 3. Draw Sun Gear
+    const gSun = drawExternalGear(0, 0, Zs, m, thetaS, lockedMember === 'sun' ? 'gunmetal' : 'brass');
+
+    // 4. Draw Planet Gears with exact Sun & Ring phase alignment
+    const planetObjs = [];
+    for (let k = 0; k < Np; k++) {
+      const gamma = thetaC + (k * Math.PI * 2) / Np;
+      const px = Rc * Math.cos(gamma);
+      const py = Rc * Math.sin(gamma);
+      // Exact mesh formula with Sun:
+      const thetaP = gamma + Math.PI - Math.PI / Zp + (Zs / Zp) * (gamma - thetaS);
+      const gP = drawExternalGear(px, py, Zp, m, thetaP, 'steel', { noShadow: true });
+      planetObjs.push({ px, py, gamma, thetaP, gP });
+
+      // Carrier pin cap on planet center
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(px, py, 6, 0, Math.PI * 2);
+      ctx.fillStyle = lockedMember === 'carrier' ? '#ff6083' : '#58dcff';
+      ctx.fill();
+      ctx.strokeStyle = '#07101f';
+      ctx.lineWidth = 1.6;
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // 5. Contact flashes & Lines of Action at Sun-Planet and Planet-Ring meshes
+    if (state.overlays.loa) {
+      const relSunOmega = omegaS - omegaC;
+      for (const p of planetObjs) {
+        drawMeshLineOfAction(0, 0, gSun, thetaS, Zs, p.px, p.py, p.gP, relSunOmega);
+        // Planet-Ring contact flash glow at outer pitch point
+        const rx = RpR * Math.cos(p.gamma);
+        const ry = RpR * Math.sin(p.gamma);
+        const rg = ctx.createRadialGradient(rx, ry, 0.5, rx, ry, 10 / state.cam.zoom);
+        rg.addColorStop(0, 'rgba(235, 252, 255, 0.95)');
+        rg.addColorStop(0.4, 'rgba(88, 220, 255, 0.7)');
+        rg.addColorStop(1, 'rgba(88, 220, 255, 0)');
+        ctx.beginPath();
+        ctx.arc(rx, ry, 10 / state.cam.zoom, 0, Math.PI * 2);
+        ctx.fillStyle = rg;
+        ctx.fill();
+      }
+    }
+
+    // 6. Visual Brake / Lock Caliper on the Held Member
+    if (lockedMember === 'ring') {
+      // Hydraulic brake clamp gripping top & bottom of outer ring
+      for (const side of [-1, 1]) {
+        const yB = side * (gRing.ROuter + 4);
+        ctx.save();
+        ctx.fillStyle = 'rgba(255, 70, 110, 0.28)';
+        ctx.strokeStyle = '#ff6083';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.roundRect(-24, yB - 9, 48, 18, 5);
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+      }
+      drawTag(0, -(gRing.ROuter + 26), 'RING LOCKED (ω_R = 0)', '#ff6083');
+    } else if (lockedMember === 'carrier') {
+      drawTag(0, -(gRing.ROuter + 26), 'CARRIER LOCKED (ω_C = 0)', '#ff6083');
+    } else {
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(0, 0, RpS * 0.45, 0, Math.PI * 2);
+      ctx.strokeStyle = '#ff6083';
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+      ctx.restore();
+      drawTag(0, -(gRing.ROuter + 26), 'SUN LOCKED (ω_S = 0)', '#ff6083');
+    }
+
+    // Interactive crank handle on whichever member is Input
+    let handleR = RpS * 0.65;
+    let handleAng = thetaS;
+    if (inputMember === 'carrier') { handleR = Rc; handleAng = thetaC; }
+    else if (inputMember === 'ring') { handleR = (gRing.Rf + gRing.ROuter) * 0.52; handleAng = thetaR; }
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(handleR * Math.cos(handleAng), handleR * Math.sin(handleAng), 8, 0, Math.PI * 2);
+    ctx.fillStyle = '#ffbe5c';
+    ctx.shadowColor = '#ffbe5c';
+    ctx.shadowBlur = 12;
+    ctx.fill();
+    ctx.strokeStyle = '#08101f';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.restore();
+
+    // Rotation arrows for active moving members
+    if (Math.abs(omegaS) > 0.01) drawRotationArrow(0, 0, RpS + 14, omegaS, '#ffbe5c', inputMember === 'sun' ? 'SUN (IN)' : 'SUN (OUT)');
+    if (Math.abs(omegaC) > 0.01) drawRotationArrow(0, 0, Rc + RpP + 12, omegaC, '#4af2b2', inputMember === 'carrier' ? 'CARRIER (IN)' : 'CARRIER (OUT)');
+    if (Math.abs(omegaR) > 0.01) drawRotationArrow(0, 0, gRing.ROuter + 20, omegaR, '#58dcff', inputMember === 'ring' ? 'RING (IN)' : 'RING (OUT)');
+
+    drawTag(0, gRing.ROuter + 28, `Z_S=${Zs} · Z_P=${Zp} (×${Np}) · Z_R=${Zr}`, '#eef3ff');
+
+    // Telemetry
+    const inRpm = (omegaIn * 60) / (2 * Math.PI);
+    const outRpm = (outOmega * 60) / (2 * Math.PI);
+    // Planetary efficiency (high because power splits across planets + internal mesh)
+    const eff = Math.min(0.99, state.meshEff * (pl.mode === 'carrier_hold_rev' ? 0.975 : 0.985));
+    const absGr = Math.abs(gr);
+    const torqueMult = absGr * eff;
+    const torqueOut = state.torqueIn * torqueMult;
+    const relMeshFreq = (Math.abs(omegaS - omegaC) / (2 * Math.PI)) * Zs;
+
+    SoundEngine.updateWhir(relMeshFreq, Math.min(1, Math.abs(inRpm) / 90));
+
+    return {
+      badge: 'Planetary Gearbox',
+      status: statusText,
+      statusClass,
+      ratio: absGr >= 1 ? `${gr < 0 ? '−' : ''}${absGr.toFixed(2)} : 1` : `1 : ${(1 / absGr).toFixed(2)}`,
+      inRpm: `${inRpm >= 0 ? '+' : ''}${inRpm.toFixed(1)} RPM`,
+      outRpm: `${outRpm >= 0 ? '+' : ''}${outRpm.toFixed(1)} RPM`,
+      torque: `${torqueMult.toFixed(2)}× (${torqueOut.toFixed(1)} Nm)`,
+      eff: `${(eff * 100).toFixed(1)}%`,
+      extraLabel: 'Power Path',
+      extraVal: `${inputMember.toUpperCase()}→${outputMember.toUpperCase()}`,
+      formula: `(ω_S − ω_C)/(ω_R − ω_C) = −${Zr}/${Zs}`,
+      rightFormula: `Z_R = ${Zr} T`
+    };
+  }
+
+  // =========================================================================
+  // MECHANISM 3: FOUR-BAR LINKAGE & THEO JANSEN WALKING LEG
+  // =========================================================================
+  function circleIntersect(x0, y0, r0, x1, y1, r1, side = 1) {
+    const dx = x1 - x0;
+    const dy = y1 - y0;
+    const d = Math.hypot(dx, dy);
+    if (d < 1e-6 || d > r0 + r1 - 1e-5 || d < Math.abs(r0 - r1) + 1e-5) {
+      return null;
+    }
+    const a = (r0 * r0 - r1 * r1 + d * d) / (2 * d);
+    const h2 = Math.max(0, r0 * r0 - a * a);
+    const h = Math.sqrt(h2);
+    const xm = x0 + (a * dx) / d;
+    const ym = y0 + (a * dy) / d;
+    const rx = -(dy * h) / d;
+    const ry = (dx * h) / d;
+    return {
+      x: xm + side * rx,
+      y: ym + side * ry
+    };
+  }
+
+  function classifyGrashof(L1, L2, L3, L4) {
+    const arr = [
+      { v: L1, name: 'L₁' },
+      { v: L2, name: 'L₂' },
+      { v: L3, name: 'L₃' },
+      { v: L4, name: 'L₄' }
+    ].sort((a, b) => a.v - b.v);
+    const S = arr[0].v, P = arr[1].v, Q = arr[2].v, L = arr[3].v;
+    const sl = S + L;
+    const pq = P + Q;
+    const diff = pq - sl;
+    let type = 'Non-Grashof Double-Rocker';
+    let isGrashof = false;
+    if (Math.abs(diff) < 1.5) {
+      type = 'Change-Point Linkage';
+      isGrashof = true;
+    } else if (sl < pq) {
+      isGrashof = true;
+      if (arr[0].name === 'L₂') type = 'Grashof Crank-Rocker';
+      else if (arr[0].name === 'L₁') type = 'Grashof Double-Crank';
+      else if (arr[0].name === 'L₃') type = 'Grashof Double-Rocker';
+      else type = 'Grashof Rocker-Crank';
+    }
+    return { S, P, Q, L, sl, pq, isGrashof, type };
+  }
+
+  function solveFourBarPoint(fb, th2) {
+    const o2 = fb.o2;
+    const o4 = fb.o4;
+    const ax = o2.x + fb.L2 * Math.cos(th2);
+    const ay = o2.y + fb.L2 * Math.sin(th2);
+    const B = circleIntersect(ax, ay, fb.L3, o4.x, o4.y, fb.L4, fb.branch);
+    if (!B) return null;
+    const ux = (B.x - ax) / fb.L3;
+    const uy = (B.y - ay) / fb.L3;
+    const px = ax + ux * (fb.L3 * fb.couplerRatio) - uy * fb.couplerOffset;
+    const py = ay + uy * (fb.L3 * fb.couplerRatio) + ux * fb.couplerOffset;
+    return { A: { x: ax, y: ay }, B, P: { x: px, y: py } };
+  }
+
+  function solveJansenLeg(theta, scale = 3.1) {
+    // Theo Jansen's 11 Holy Numbers!
+    const a = 38.0 * scale, b = 41.5 * scale, c = 39.3 * scale, d = 40.1 * scale;
+    const e = 55.8 * scale, f = 39.4 * scale, g = 36.7 * scale, h = 65.7 * scale;
+    const i = 49.0 * scale, j = 50.0 * scale, k = 61.9 * scale, l = 7.8 * scale, m = 15.0 * scale;
+
+    const O = { x: 65, y: -55 };
+    const P0 = { x: O.x - a, y: O.y + l };
+    const C = { x: O.x + m * Math.cos(theta), y: O.y + m * Math.sin(theta) };
+
+    const D = circleIntersect(P0.x, P0.y, b, C.x, C.y, j, -1);
+    const E = circleIntersect(P0.x, P0.y, c, C.x, C.y, k, 1);
+    if (!D || !E) return null;
+    const F = circleIntersect(P0.x, P0.y, d, D.x, D.y, e, -1);
+    if (!F) return null;
+    const G = circleIntersect(F.x, F.y, f, E.x, E.y, g, -1);
+    if (!G) return null;
+    const H = circleIntersect(G.x, G.y, h, E.x, E.y, i, -1);
+    if (!H) return null;
+    return { O, P0, C, D, E, F, G, H };
+  }
+
+  function drawMachinedLink(x1, y1, x2, y2, width, colorA, colorB) {
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const len = Math.hypot(dx, dy);
+    const ang = Math.atan2(dy, dx);
+    const xray = state.overlays.xray;
+
+    ctx.save();
+    ctx.translate(x1, y1);
+    ctx.rotate(ang);
+
+    if (xray) {
+      ctx.beginPath();
+      ctx.roundRect(-width * 0.5, -width * 0.5, len + width, width, width * 0.5);
+      ctx.strokeStyle = colorA;
+      ctx.lineWidth = 1.5 / state.cam.zoom;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(len, 0);
+      ctx.setLineDash([4, 4]);
+      ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+      ctx.stroke();
+      ctx.setLineDash([]);
+    } else {
+      ctx.shadowColor = 'rgba(0,0,0,0.55)';
+      ctx.shadowBlur = 10;
+      ctx.shadowOffsetY = 4;
+
+      const grad = ctx.createLinearGradient(0, -width * 0.5, 0, width * 0.5);
+      grad.addColorStop(0, colorA);
+      grad.addColorStop(0.5, colorB);
+      grad.addColorStop(1, '#1c2638');
+
+      ctx.beginPath();
+      ctx.roundRect(-width * 0.5, -width * 0.5, len + width, width, width * 0.5);
+      ctx.fillStyle = grad;
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(220, 236, 255, 0.45)';
+      ctx.lineWidth = 1.1;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      // Machined center slot
+      if (len > width * 2.2) {
+        ctx.beginPath();
+        ctx.moveTo(width * 0.8, 0);
+        ctx.lineTo(len - width * 0.8, 0);
+        ctx.strokeStyle = 'rgba(4, 8, 18, 0.65)';
+        ctx.lineWidth = width * 0.28;
+        ctx.lineCap = 'round';
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+
+  function drawPivotJoint(x, y, fixed = false, accent = '#58dcff', radius = 8) {
+    ctx.save();
+    if (fixed) {
+      // Ground triangular mounting pedestal
+      ctx.beginPath();
+      ctx.moveTo(x - 16, y + 18);
+      ctx.lineTo(x + 16, y + 18);
+      ctx.lineTo(x + 8, y);
+      ctx.lineTo(x - 8, y);
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(30, 44, 70, 0.88)';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(148, 179, 255, 0.45)';
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+
+      // Ground hatch marks
+      ctx.beginPath();
+      ctx.moveTo(x - 20, y + 18);
+      ctx.lineTo(x + 20, y + 18);
+      for (let hx = -16; hx <= 16; hx += 6) {
+        ctx.moveTo(x + hx, y + 18);
+        ctx.lineTo(x + hx - 4, y + 24);
+      }
+      ctx.strokeStyle = 'rgba(148, 179, 255, 0.5)';
+      ctx.lineWidth = 1.1;
+      ctx.stroke();
+    }
+
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fillStyle = '#0d1528';
+    ctx.fill();
+    ctx.strokeStyle = accent;
+    ctx.lineWidth = 2.2;
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(x, y, radius * 0.42, 0, Math.PI * 2);
+    ctx.fillStyle = accent;
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function updateAndRenderFourBar(dt) {
+    const fb = state.fourbar;
+    const isJansen = fb.preset === 'jansen';
+
+    const omegaIn = state.drag.active && state.drag.type === 'crank'
+      ? state.drag.manualOmega
+      : (state.running ? (state.rpm * 2 * Math.PI) / 60 : 0);
+
+    if (isJansen) {
+      if (!(state.drag.active && state.drag.type === 'crank')) {
+        fb.theta2 += omegaIn * dt;
+      }
+      const sol = solveJansenLeg(fb.theta2);
+      if (sol) {
+        // Precompute full closed walking curve
+        const key = 'jansen_3.1';
+        if (fb.cacheKey !== key) {
+          const pts = [];
+          for (let i = 0; i <= 180; i++) {
+            const s = solveJansenLeg((i / 180) * Math.PI * 2);
+            if (s) pts.push(s.H);
+          }
+          fb.fullCurveCache = pts;
+          fb.cacheKey = key;
+        }
+
+        // Subtle ground line under walking foot
+        const groundY = sol.O.y + 278;
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(-340, groundY);
+        ctx.lineTo(300, groundY);
+        ctx.strokeStyle = 'rgba(74, 242, 178, 0.25)';
+        ctx.setLineDash([8, 6]);
+        ctx.lineWidth = 1.4;
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.restore();
+
+        // Theoretical full walking D-curve
+        if (state.overlays.trails && fb.fullCurveCache) {
+          ctx.save();
+          ctx.beginPath();
+          fb.fullCurveCache.forEach((p, idx) => idx === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+          ctx.closePath();
+          ctx.strokeStyle = 'rgba(88, 220, 255, 0.24)';
+          ctx.setLineDash([5, 5]);
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.restore();
+        }
+
+        // Live glowing foot trail
+        if (Math.abs(omegaIn) > 0.005 || fb.jansenTrail.length === 0) {
+          fb.jansenTrail.push({ x: sol.H.x, y: sol.H.y });
+          if (fb.jansenTrail.length > 260) fb.jansenTrail.shift();
+        }
+        if (state.overlays.trails && fb.jansenTrail.length > 1) {
+          ctx.save();
+          for (let i = 1; i < fb.jansenTrail.length; i++) {
+            const t = i / fb.jansenTrail.length;
+            ctx.beginPath();
+            ctx.moveTo(fb.jansenTrail[i - 1].x, fb.jansenTrail[i - 1].y);
+            ctx.lineTo(fb.jansenTrail[i].x, fb.jansenTrail[i].y);
+            ctx.strokeStyle = `rgba(88, 220, 255, ${t * 0.92})`;
+            ctx.lineWidth = 1.5 + t * 2.5;
+            ctx.stroke();
+          }
+          ctx.restore();
+        }
+
+        // Draw triangles (P0-D-F and E-G-H) softly shaded
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(sol.P0.x, sol.P0.y);
+        ctx.lineTo(sol.D.x, sol.D.y);
+        ctx.lineTo(sol.F.x, sol.F.y);
+        ctx.closePath();
+        ctx.fillStyle = 'rgba(88, 220, 255, 0.1)';
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.moveTo(sol.E.x, sol.E.y);
+        ctx.lineTo(sol.G.x, sol.G.y);
+        ctx.lineTo(sol.H.x, sol.H.y);
+        ctx.closePath();
+        ctx.fillStyle = 'rgba(255, 190, 92, 0.1)';
+        ctx.fill();
+        ctx.restore();
+
+        // Draw all 11 links
+        drawMachinedLink(sol.O.x, sol.O.y, sol.P0.x, sol.P0.y, 10, '#62789e', '#34445e');
+        drawMachinedLink(sol.P0.x, sol.P0.y, sol.D.x, sol.D.y, 11, '#a9c0e0', '#586d8c');
+        drawMachinedLink(sol.P0.x, sol.P0.y, sol.E.x, sol.E.y, 11, '#a9c0e0', '#586d8c');
+        drawMachinedLink(sol.P0.x, sol.P0.y, sol.F.x, sol.F.y, 11, '#a9c0e0', '#586d8c');
+        drawMachinedLink(sol.D.x, sol.D.y, sol.F.x, sol.F.y, 11, '#8cd8ff', '#3a668a');
+        drawMachinedLink(sol.C.x, sol.C.y, sol.D.x, sol.D.y, 10, '#f0a678', '#8a4626');
+        drawMachinedLink(sol.C.x, sol.C.y, sol.E.x, sol.E.y, 10, '#f0a678', '#8a4626');
+        drawMachinedLink(sol.F.x, sol.F.y, sol.G.x, sol.G.y, 11, '#a9c0e0', '#586d8c');
+        drawMachinedLink(sol.E.x, sol.E.y, sol.G.x, sol.G.y, 11, '#a9c0e0', '#586d8c');
+        drawMachinedLink(sol.G.x, sol.G.y, sol.H.x, sol.H.y, 12, '#ffe099', '#a67428');
+        drawMachinedLink(sol.E.x, sol.E.y, sol.H.x, sol.H.y, 12, '#ffe099', '#a67428');
+        // Crank on top
+        drawMachinedLink(sol.O.x, sol.O.y, sol.C.x, sol.C.y, 13, '#ffe8a3', '#c78b2c');
+
+        // Joints
+        drawPivotJoint(sol.O.x, sol.O.y, true, '#ffbe5c', 9);
+        drawPivotJoint(sol.P0.x, sol.P0.y, true, '#58dcff', 8);
+        for (const pt of [sol.D, sol.E, sol.F, sol.G]) drawPivotJoint(pt.x, pt.y, false, '#b5cae8', 6);
+        drawPivotJoint(sol.C.x, sol.C.y, false, '#ffbe5c', 8);
+
+        // Glowing Foot Tip H
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(sol.H.x, sol.H.y, 8, 0, Math.PI * 2);
+        ctx.fillStyle = '#58dcff';
+        ctx.shadowColor = '#58dcff';
+        ctx.shadowBlur = 16;
+        ctx.fill();
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.restore();
+
+        drawTag(sol.O.x + 28, sol.O.y - 26, 'Crank O (m=15)', '#ffbe5c');
+        drawTag(sol.H.x, sol.H.y + 24, 'Foot Tip (Strandbeest)', '#58dcff');
+      }
+
+      const inRpm = (omegaIn * 60) / (2 * Math.PI);
+      SoundEngine.updateWhir(Math.abs(inRpm) * 0.45, Math.min(0.6, Math.abs(inRpm) / 110));
+
+      return {
+        badge: 'Theo Jansen Leg',
+        status: 'Strandbeest 8-Bar',
+        statusClass: 'cyan',
+        ratio: '1 : 1 Step',
+        inRpm: `${inRpm >= 0 ? '+' : ''}${inRpm.toFixed(1)} RPM`,
+        outRpm: `${Math.abs(inRpm / 60).toFixed(2)} Steps/s`,
+        torque: 'Flat Stance Phase',
+        eff: `${(state.meshEff * 96).toFixed(1)}%`,
+        extraLabel: 'Topology',
+        extraVal: '11 Holy Nos.',
+        formula: 'a=38 b=41.5 c=39.3 d=40.1 e=55.8 m=15',
+        rightFormula: 'DOF = 1'
+      };
+    }
+
+    // ---- STANDARD FOUR-BAR LINKAGE ----
+    // Update ground pivot positions from L1 while keeping midpoint centered
+    const midX = 0.5 * (fb.o2.x + fb.o4.x);
+    const midY = 0.5 * (fb.o2.y + fb.o4.y);
+    const gAng = Math.atan2(fb.o4.y - fb.o2.y, fb.o4.x - fb.o2.x);
+    fb.o2.x = midX - 0.5 * fb.L1 * Math.cos(gAng);
+    fb.o2.y = midY - 0.5 * fb.L1 * Math.sin(gAng);
+    fb.o4.x = midX + 0.5 * fb.L1 * Math.cos(gAng);
+    fb.o4.y = midY + 0.5 * fb.L1 * Math.sin(gAng);
+
+    const grashof = classifyGrashof(fb.L1, fb.L2, fb.L3, fb.L4);
+
+    // Advance theta2; if non-crank (hits dead-center assembly limit), smoothly bounce!
+    const prevTheta2 = fb.theta2;
+    if (!(state.drag.active && state.drag.type === 'crank')) {
+      const step = omegaIn * fb.rockDir * dt;
+      const testSol = solveFourBarPoint(fb, fb.theta2 + step);
+      if (testSol) {
+        fb.theta2 += step;
+      } else {
+        // Flip rocker direction cleanly
+        fb.rockDir *= -1;
+        const altSol = solveFourBarPoint(fb, fb.theta2 - step);
+        if (altSol) fb.theta2 -= step;
+      }
+    }
+
+    let sol = solveFourBarPoint(fb, fb.theta2);
+    if (!sol) {
+      // Recover nearest valid theta2 (e.g. after user moved slider)
+      for (let k = 0; k < 360; k++) {
+        const cand = (k * Math.PI * 2) / 360;
+        const s = solveFourBarPoint(fb, cand);
+        if (s) { fb.theta2 = cand; sol = s; break; }
+      }
+    }
+
+    // Compute full theoretical coupler curve cache
+    const cacheKey = `${fb.L1.toFixed(1)}:${fb.L2.toFixed(1)}:${fb.L3.toFixed(1)}:${fb.L4.toFixed(1)}:${fb.branch}:${fb.couplerRatio.toFixed(2)}:${fb.couplerOffset.toFixed(1)}:${gAng.toFixed(2)}`;
+    if (fb.cacheKey !== cacheKey) {
+      const segments = [];
+      let curSeg = [];
+      for (let i = 0; i <= 360; i++) {
+        const th = (i / 360) * Math.PI * 2;
+        const s = solveFourBarPoint(fb, th);
+        if (s) {
+          curSeg.push(s.P);
+        } else if (curSeg.length > 0) {
+          segments.push(curSeg);
+          curSeg = [];
+        }
+      }
+      if (curSeg.length > 0) segments.push(curSeg);
+      fb.fullCurveCache = segments;
+      fb.cacheKey = cacheKey;
+      fb.trail = [];
+    }
+
+    // Draw full theoretical coupler path (subtle dotted cyan halo)
+    if (state.overlays.trails && fb.fullCurveCache) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(88, 220, 255, 0.25)';
+      ctx.setLineDash([5, 5]);
+      ctx.lineWidth = 1.4 / state.cam.zoom;
+      for (const seg of fb.fullCurveCache) {
+        if (seg.length < 2) continue;
+        ctx.beginPath();
+        seg.forEach((p, idx) => idx === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+        ctx.stroke();
+      }
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
+
+    // Input crank circle overlay
+    if (state.overlays.pitch) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(fb.o2.x, fb.o2.y, fb.L2, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(255, 190, 92, 0.22)';
+      ctx.setLineDash([4, 4]);
+      ctx.lineWidth = 1.1 / state.cam.zoom;
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(fb.o4.x, fb.o4.y, fb.L4, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(74, 242, 178, 0.18)';
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
+
+    let outOmega = 0;
+    let transmissionDeg = 90;
+
+    if (sol) {
+      // Numerical instantaneous output angular velocity & transmission angle
+      const eps = 0.002;
+      const solNext = solveFourBarPoint(fb, fb.theta2 + eps);
+      const th4Now = Math.atan2(sol.B.y - fb.o4.y, sol.B.x - fb.o4.x);
+      if (solNext) {
+        const th4Next = Math.atan2(solNext.B.y - fb.o4.y, solNext.B.x - fb.o4.x);
+        let dTh4 = th4Next - th4Now;
+        if (dTh4 > Math.PI) dTh4 -= Math.PI * 2;
+        if (dTh4 < -Math.PI) dTh4 += Math.PI * 2;
+        outOmega = (dTh4 / eps) * (omegaIn * fb.rockDir);
+      }
+
+      // Transmission angle mu between L3 and L4 at joint B
+      const v3x = sol.A.x - sol.B.x, v3y = sol.A.y - sol.B.y;
+      const v4x = fb.o4.x - sol.B.x, v4y = fb.o4.y - sol.B.y;
+      const cosMu = Math.max(-1, Math.min(1, (v3x * v4x + v3y * v4y) / (fb.L3 * fb.L4)));
+      transmissionDeg = (Math.acos(cosMu) * 180) / Math.PI;
+      if (transmissionDeg > 90) transmissionDeg = 180 - transmissionDeg;
+
+      // Record live glowing coupler trail
+      if (Math.abs(fb.theta2 - prevTheta2) > 0.0005 || fb.trail.length === 0) {
+        fb.trail.push({ x: sol.P.x, y: sol.P.y });
+        if (fb.trail.length > 260) fb.trail.shift();
+      }
+      if (state.overlays.trails && fb.trail.length > 1) {
+        ctx.save();
+        for (let i = 1; i < fb.trail.length; i++) {
+          const t = i / fb.trail.length;
+          ctx.beginPath();
+          ctx.moveTo(fb.trail[i - 1].x, fb.trail[i - 1].y);
+          ctx.lineTo(fb.trail[i].x, fb.trail[i].y);
+          ctx.strokeStyle = `rgba(88, 220, 255, ${t * 0.95})`;
+          ctx.lineWidth = 1.6 + t * 2.6;
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+
+      // Ground frame line L1
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(fb.o2.x, fb.o2.y);
+      ctx.lineTo(fb.o4.x, fb.o4.y);
+      ctx.strokeStyle = 'rgba(148, 179, 255, 0.28)';
+      ctx.setLineDash([8, 5]);
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+
+      // Coupler triangular plate (A - B - P)
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(sol.A.x, sol.A.y);
+      ctx.lineTo(sol.B.x, sol.B.y);
+      ctx.lineTo(sol.P.x, sol.P.y);
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(88, 220, 255, 0.12)';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(88, 220, 255, 0.55)';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.restore();
+
+      // Draw Machined Links L4, L3, L2
+      drawMachinedLink(fb.o4.x, fb.o4.y, sol.B.x, sol.B.y, 14, '#7bf5c7', '#2f8a6a');
+      drawMachinedLink(sol.A.x, sol.A.y, sol.B.x, sol.B.y, 14, '#b8d0f2', '#52688a');
+      drawMachinedLink(fb.o2.x, fb.o2.y, sol.A.x, sol.A.y, 15, '#ffe8a3', '#bd8224');
+
+      // Pivot joints (O2, O4 draggable ground; A draggable crank; B follower; P draggable coupler point)
+      drawPivotJoint(fb.o2.x, fb.o2.y, true, '#ffbe5c', 9);
+      drawPivotJoint(fb.o4.x, fb.o4.y, true, '#4af2b2', 9);
+      drawPivotJoint(sol.A.x, sol.A.y, false, '#ffbe5c', 8);
+      drawPivotJoint(sol.B.x, sol.B.y, false, '#4af2b2', 8);
+
+      // Glowing Coupler Trace Stylus P
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(sol.P.x, sol.P.y, 8, 0, Math.PI * 2);
+      ctx.fillStyle = '#58dcff';
+      ctx.shadowColor = '#58dcff';
+      ctx.shadowBlur = 16;
+      ctx.fill();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.restore();
+
+      // Dimension Labels
+      drawTag(0.5 * (fb.o2.x + fb.o4.x), 0.5 * (fb.o2.y + fb.o4.y) + 22, `L₁ = ${Math.round(fb.L1)}`, '#9aa9cc');
+      drawTag(0.5 * (fb.o2.x + sol.A.x), 0.5 * (fb.o2.y + sol.A.y) - 16, `L₂ = ${Math.round(fb.L2)}`, '#ffbe5c');
+      drawTag(0.5 * (sol.A.x + sol.B.x), 0.5 * (sol.A.y + sol.B.y) - 16, `L₃ = ${Math.round(fb.L3)}`, '#eef3ff');
+      drawTag(0.5 * (fb.o4.x + sol.B.x), 0.5 * (fb.o4.y + sol.B.y) + 18, `L₄ = ${Math.round(fb.L4)}`, '#4af2b2');
+      drawTag(sol.P.x, sol.P.y - 20, 'Coupler P (Drag)', '#58dcff');
+    }
+
+    // Update Grashof box in drawer
+    const gBox = document.getElementById('grashof-info');
+    if (gBox) {
+      const sym = grashof.sl < grashof.pq ? '&lt;' : grashof.sl > grashof.pq ? '&gt;' : '=';
+      gBox.innerHTML = `S+L = ${Math.round(grashof.sl)} ${sym} P+Q = ${Math.round(grashof.pq)} → <strong>${grashof.type}</strong>`;
+    }
+
+    const inRpm = (omegaIn * fb.rockDir * 60) / (2 * Math.PI);
+    const outRpm = (outOmega * 60) / (2 * Math.PI);
+    const instRatio = Math.abs(outOmega) > 0.01 ? Math.abs(omegaIn / outOmega) : 0;
+    const eff = state.meshEff * 0.97;
+
+    SoundEngine.updateWhir(Math.abs(inRpm) * 0.35, Math.min(0.45, Math.abs(inRpm) / 110));
+
+    return {
+      badge: 'Four-Bar Linkage',
+      status: grashof.type.replace('Grashof ', ''),
+      statusClass: grashof.isGrashof ? '' : 'amber',
+      ratio: instRatio > 0 && instRatio < 99 ? `${instRatio.toFixed(2)} : 1` : 'Dead-Ctr',
+      inRpm: `${inRpm >= 0 ? '+' : ''}${inRpm.toFixed(1)} RPM`,
+      outRpm: `${outRpm >= 0 ? '+' : ''}${outRpm.toFixed(1)} RPM`,
+      torque: `μ = ${transmissionDeg.toFixed(1)}° Trans.`,
+      eff: `${(eff * 100).toFixed(1)}%`,
+      extraLabel: 'Grashof Law',
+      extraVal: grashof.isGrashof ? 'S+L ≤ P+Q' : 'S+L > P+Q',
+      formula: `S+L (${Math.round(grashof.sl)}) vs P+Q (${Math.round(grashof.pq)})`,
+      rightFormula: `μ_trans = ${transmissionDeg.toFixed(0)}°`
+    };
+  }
+
+  // =========================================================================
+  // MECHANISM 4: GENEVA DRIVE (INTERMITTENT INDEXING WHEEL)
+  // =========================================================================
+  function updateAndRenderGeneva(dt) {
+    const gv = state.geneva;
+    const N = gv.slots;
+    const beta = Math.PI / N;
+    const thetaEng = Math.PI * 0.5 - beta;
+
+    const omegaIn = state.drag.active && state.drag.type === 'crank'
+      ? state.drag.manualOmega
+      : (state.running ? (state.rpm * 2 * Math.PI) / 60 : 0);
+
+    if (!(state.drag.active && state.drag.type === 'crank')) {
+      gv.thetaDrive += omegaIn * dt;
+    }
+
+    // Geometry constants
+    const C = 215; // Center-to-center distance
+    const rd = C * Math.sin(beta); // Drive crank pin radius
+    const pinR = 11;
+    const slotHalfW = pinR + 2.2;
+    const Rw = C * Math.cos(beta); // Maltese cross outer radius
+    const slotBottomR = Math.max(26, C - rd - pinR - 6);
+    const lockR = Math.max(28, C - Rw - 4); // Crescent locking disc radius
+
+    const driveX = -C * 0.5;
+    const driveY = 0;
+    const wheelX = +C * 0.5;
+    const wheelY = 0;
+
+    // Exact multi-revolution continuous Geneva angle (supports forward AND backward!)
+    const rev = Math.floor((gv.thetaDrive + Math.PI) / (2 * Math.PI));
+    const thLocal = gv.thetaDrive - rev * 2 * Math.PI; // in [-pi, pi)
+    const engaged = Math.abs(thLocal) <= thetaEng;
+
+    let phiLocal = 0;
+    let dPhiDTh = 0;
+    if (engaged) {
+      phiLocal = -Math.atan2(rd * Math.sin(thLocal), C - rd * Math.cos(thLocal));
+      const denom = C * C + rd * rd - 2 * C * rd * Math.cos(thLocal);
+      dPhiDTh = -(rd * (C * Math.cos(thLocal) - rd)) / denom;
+    } else {
+      phiLocal = thLocal > 0 ? -beta : +beta;
+      dPhiDTh = 0;
+    }
+
+    // Trigger crisp click on engagement entry / lock exit
+    if (engaged !== gv.wasEngaged) {
+      SoundEngine.playGenevaClick(!engaged);
+      gv.wasEngaged = engaged;
+    }
+
+    // Slot k is drawn at local angle pi + k*(2*beta), so wheel rotation angle is:
+    const wheelRot = -rev * (2 * beta) + phiLocal;
+    gv.wheelAngle = wheelRot;
+
+    const omegaOut = omegaIn * dPhiDTh;
+
+    // Pin position in world space
+    const pinX = driveX + rd * Math.cos(gv.thetaDrive);
+    const pinY = driveY + rd * Math.sin(gv.thetaDrive);
+
+    // Subtle mounting base bridge
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(driveX, driveY);
+    ctx.lineTo(wheelX, wheelY);
+    ctx.strokeStyle = 'rgba(110, 145, 210, 0.14)';
+    ctx.lineWidth = 34;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+    ctx.restore();
+
+    // 1. Draw Driven Maltese Cross Wheel (at wheelX, wheelY)
+    ctx.save();
+    ctx.translate(wheelX, wheelY);
+    ctx.rotate(wheelRot);
+
+    const wPath = new Path2D();
+    const slotMouthHalfAngle = Math.asin(Math.min(0.95, slotHalfW / Rw));
+
+    for (let k = 0; k < N; k++) {
+      const slotCenter = Math.PI + k * 2 * beta;
+      const nextSlotCenter = Math.PI + (k + 1) * 2 * beta;
+
+      // Slot mouth left corner -> slot bottom semicircle -> slot mouth right corner
+      const aL = slotCenter - slotMouthHalfAngle;
+      const aR = slotCenter + slotMouthHalfAngle;
+
+      // Unit vectors along slot k
+      const ux = Math.cos(slotCenter), uy = Math.sin(slotCenter);
+      const nx = -uy, ny = ux; // perpendicular
+
+      const mLx = Rw * Math.cos(aL), mLy = Rw * Math.sin(aL);
+      const bLx = slotBottomR * ux - slotHalfW * nx;
+      const bLy = slotBottomR * uy - slotHalfW * ny;
+      const bRx = slotBottomR * ux + slotHalfW * nx;
+      const bRy = slotBottomR * uy + slotHalfW * ny;
+      const mRx = Rw * Math.cos(aR), mRy = Rw * Math.sin(aR);
+
+      if (k === 0) wPath.moveTo(mLx, mLy);
+      else wPath.lineTo(mLx, mLy);
+
+      // Down left wall, rounded bottom, up right wall
+      wPath.lineTo(bLx, bLy);
+      wPath.arc(slotBottomR * ux, slotBottomR * uy, slotHalfW, slotCenter - Math.PI * 0.5, slotCenter + Math.PI * 0.5, true);
+      wPath.lineTo(mRx, mRy);
+
+      // Concave locking scallop between slot k and slot k+1!
+      const midAngle = slotCenter + beta;
+      const nextAL = nextSlotCenter - slotMouthHalfAngle;
+      // Scallop center sits at distance C along midAngle; arc radius = lockR + 2.5
+      const scX = C * Math.cos(midAngle);
+      const scY = C * Math.sin(midAngle);
+      const scR = lockR + 3.0;
+      const scStart = Math.atan2(mRy - scY, mRx - scX);
+      const nextMx = Rw * Math.cos(nextAL), nextMy = Rw * Math.sin(nextAL);
+      const scEnd = Math.atan2(nextMy - scY, nextMx - scX);
+      // Connect smoothly with outer tip bevel + concave locking arc
+      wPath.arc(scX, scY, scR, scStart, scEnd, true);
+    }
+    wPath.closePath();
+
+    if (state.overlays.xray) {
+      ctx.fillStyle = 'rgba(88, 220, 255, 0.08)';
+      ctx.fill(wPath);
+      ctx.strokeStyle = '#8cd8ff';
+      ctx.lineWidth = 1.4 / state.cam.zoom;
+      ctx.stroke(wPath);
+    } else {
+      ctx.save();
+      ctx.shadowColor = 'rgba(0,0,0,0.65)';
+      ctx.shadowBlur = 18;
+      ctx.shadowOffsetY = 6;
+      const wg = ctx.createLinearGradient(-Rw, -Rw, Rw, Rw);
+      wg.addColorStop(0, ALLOYS.titanium.hi);
+      wg.addColorStop(0.35, ALLOYS.titanium.mid);
+      wg.addColorStop(0.65, ALLOYS.titanium.lo);
+      wg.addColorStop(1, ALLOYS.titanium.hi);
+      ctx.fillStyle = wg;
+      ctx.fill(wPath);
+      ctx.restore();
+
+      ctx.strokeStyle = engaged ? '#58dcff' : '#9bbbe0';
+      ctx.lineWidth = engaged ? 1.8 : 1.1;
+      ctx.stroke(wPath);
+
+      // Index marker on slot 0
+      ctx.beginPath();
+      ctx.arc(-slotBottomR * 0.58, 0, 4.5, 0, Math.PI * 2);
+      ctx.fillStyle = '#4af2b2';
+      ctx.fill();
+    }
+
+    // Center bearing hub on Maltese cross
+    ctx.beginPath();
+    ctx.arc(0, 0, 18, 0, Math.PI * 2);
+    ctx.fillStyle = '#1b273d';
+    ctx.fill();
+    ctx.strokeStyle = '#8cd8ff';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(0, 0, 7, 0, Math.PI * 2);
+    ctx.fillStyle = '#8cd8ff';
+    ctx.fill();
+    ctx.restore();
+
+    // 2. Draw Drive Wheel, Crescent Locking Disc & Drive Pin (at driveX, driveY)
+    ctx.save();
+    ctx.translate(driveX, driveY);
+    ctx.rotate(gv.thetaDrive);
+
+    // Base brass drive rotor plate
+    const rotorR = rd + 20;
+    if (state.overlays.xray) {
+      ctx.beginPath();
+      ctx.arc(0, 0, rotorR, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(255, 190, 92, 0.55)';
+      ctx.lineWidth = 1.3 / state.cam.zoom;
+      ctx.stroke();
+    } else {
+      ctx.save();
+      ctx.shadowColor = 'rgba(0,0,0,0.55)';
+      ctx.shadowBlur = 16;
+      const dg = ctx.createLinearGradient(-rotorR, -rotorR, rotorR, rotorR);
+      dg.addColorStop(0, ALLOYS.brass.hi);
+      dg.addColorStop(0.45, ALLOYS.brass.mid);
+      dg.addColorStop(0.85, ALLOYS.brass.lo);
+      dg.addColorStop(1, ALLOYS.brass.hi);
+      ctx.beginPath();
+      ctx.arc(0, 0, rotorR, 0, Math.PI * 2);
+      ctx.fillStyle = dg;
+      ctx.globalAlpha = 0.28;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = 'rgba(255, 200, 110, 0.55)';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Crescent Locking Disc (radius = lockR, cut away on the pin side [-thetaEng, +thetaEng])
+    const cutSpan = thetaEng + 0.14;
+    ctx.beginPath();
+    ctx.arc(0, 0, lockR, cutSpan, Math.PI * 2 - cutSpan, false);
+    // Smooth concave clearance cutout around the pin side
+    const cx1 = lockR * Math.cos(Math.PI * 2 - cutSpan);
+    const cy1 = lockR * Math.sin(Math.PI * 2 - cutSpan);
+    const cx2 = lockR * Math.cos(cutSpan);
+    const cy2 = lockR * Math.sin(cutSpan);
+    ctx.quadraticCurveTo(lockR * 0.12, 0, cx2, cy2);
+    ctx.closePath();
+
+    if (state.overlays.xray) {
+      ctx.fillStyle = 'rgba(255, 190, 92, 0.14)';
+      ctx.fill();
+      ctx.strokeStyle = '#ffbe5c';
+      ctx.lineWidth = 1.4 / state.cam.zoom;
+      ctx.stroke();
+    } else {
+      const lg = ctx.createLinearGradient(-lockR, -lockR, lockR, lockR);
+      lg.addColorStop(0, '#ffe39c');
+      lg.addColorStop(0.5, '#c7882c');
+      lg.addColorStop(1, '#5e3c10');
+      ctx.fillStyle = lg;
+      ctx.fill();
+      ctx.strokeStyle = !engaged ? '#ffbe5c' : 'rgba(255, 210, 130, 0.55)';
+      ctx.lineWidth = !engaged ? 2.0 : 1.1;
+      ctx.stroke();
+    }
+
+    // Crank arm from center to drive pin
+    drawMachinedLink(0, 0, rd, 0, 18, '#ffd4ad', '#b85b2c');
+
+    // Drive hub
+    ctx.beginPath();
+    ctx.arc(0, 0, 15, 0, Math.PI * 2);
+    ctx.fillStyle = '#182133';
+    ctx.fill();
+    ctx.strokeStyle = '#ffbe5c';
+    ctx.lineWidth = 1.8;
+    ctx.stroke();
+
+    // Glowing hardened steel Drive Pin
+    ctx.beginPath();
+    ctx.arc(rd, 0, pinR, 0, Math.PI * 2);
+    ctx.fillStyle = engaged ? '#ff6083' : '#ffbe5c';
+    ctx.shadowColor = engaged ? '#ff6083' : '#ffbe5c';
+    ctx.shadowBlur = engaged ? 16 : 8;
+    ctx.fill();
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1.8;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    ctx.restore();
+
+    // Engineering overlays: Pin circle + Engagement arc sector
+    if (state.overlays.pitch) {
+      ctx.save();
+      ctx.translate(driveX, driveY);
+      ctx.beginPath();
+      ctx.arc(0, 0, rd, -thetaEng, thetaEng, false);
+      ctx.strokeStyle = 'rgba(255, 96, 131, 0.65)';
+      ctx.lineWidth = 2.4 / state.cam.zoom;
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(0, 0, rd, thetaEng, Math.PI * 2 - thetaEng, false);
+      ctx.strokeStyle = 'rgba(88, 220, 255, 0.25)';
+      ctx.setLineDash([5, 5]);
+      ctx.lineWidth = 1.3 / state.cam.zoom;
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
+
+    // Glowing contact flash when pin slides inside slot
+    if (engaged && state.overlays.loa) {
+      const rg = ctx.createRadialGradient(pinX, pinY, 2, pinX, pinY, 24);
+      rg.addColorStop(0, 'rgba(255, 220, 230, 0.75)');
+      rg.addColorStop(0.5, 'rgba(255, 96, 131, 0.35)');
+      rg.addColorStop(1, 'rgba(255, 96, 131, 0)');
+      ctx.beginPath();
+      ctx.arc(pinX, pinY, 24, 0, Math.PI * 2);
+      ctx.fillStyle = rg;
+      ctx.fill();
+    }
+
+    // Live angular velocity pulse waveform right below the mechanism!
+    if (state.overlays.trails) {
+      gv.velHistory.push(Math.abs(dPhiDTh));
+      if (gv.velHistory.length > 180) gv.velHistory.shift();
+
+      const gx = -130, gy = Rw + 78, gw = 260, gh = 44;
+      ctx.save();
+      ctx.fillStyle = 'rgba(8, 13, 24, 0.72)';
+      ctx.strokeStyle = 'rgba(148, 179, 255, 0.2)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(gx, gy - gh, gw, gh + 8, 7);
+      ctx.fill();
+      ctx.stroke();
+
+      const peakRatio = Math.sin(beta) / (1 - Math.sin(beta));
+      ctx.beginPath();
+      for (let i = 0; i < gv.velHistory.length; i++) {
+        const px = gx + 8 + (i / 180) * (gw - 16);
+        const py = gy - 2 - (gv.velHistory[i] / Math.max(peakRatio, 0.5)) * (gh - 12);
+        if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      }
+      ctx.strokeStyle = '#58dcff';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      if (state.overlays.labels) {
+        ctx.font = '600 9.5px ui-monospace, Consolas, monospace';
+        ctx.fillStyle = '#9aa9cc';
+        ctx.fillText('INDEXING PULSE |ω_out / ω_in|', gx + 10, gy - gh + 12);
+      }
+      ctx.restore();
+    }
+
+    drawRotationArrow(driveX, driveY, rd + 34, omegaIn, '#ffbe5c', 'DRIVE');
+    if (engaged) drawRotationArrow(wheelX, wheelY, Rw + 22, omegaOut, '#58dcff', 'INDEX');
+
+    drawTag(driveX, -Rw - 24, `Drive Crank (${engaged ? 'ENGAGED' : 'DWELL'})`, engaged ? '#ff6083' : '#ffbe5c');
+    drawTag(wheelX, -Rw - 24, `${N}-Slot Maltese Cross`, '#58dcff');
+
+    const motionFrac = (0.5 - 1 / N);
+    const dwellFrac = 1 - motionFrac;
+    const gInfo = document.getElementById('geneva-info');
+    if (gInfo) {
+      gInfo.innerHTML = `Index: <strong>${(360 / N).toFixed(1)}°</strong> · Motion: <strong>${(motionFrac * 100).toFixed(1)}%</strong> · Dwell: <strong>${(dwellFrac * 100).toFixed(1)}%</strong>`;
+    }
+
+    const inRpm = (omegaIn * 60) / (2 * Math.PI);
+    const outRpm = (omegaOut * 60) / (2 * Math.PI);
+    const peakRatio = Math.sin(beta) / (1 - Math.sin(beta));
+    const eff = state.meshEff * 0.94;
+
+    SoundEngine.updateWhir(Math.abs(inRpm) * 0.5, engaged ? Math.min(0.65, Math.abs(inRpm) / 90) : 0.08 * Math.min(1, Math.abs(inRpm) / 90));
+
+    return {
+      badge: `Geneva ${N}-Slot`,
+      status: engaged ? 'Indexing' : 'Locked Dwell',
+      statusClass: engaged ? 'rose' : 'cyan',
+      ratio: `${N} : 1 Avg`,
+      inRpm: `${inRpm >= 0 ? '+' : ''}${inRpm.toFixed(1)} RPM`,
+      outRpm: engaged ? `${outRpm >= 0 ? '+' : ''}${outRpm.toFixed(1)} RPM` : '0.0 RPM (Lock)',
+      torque: `Peak ${peakRatio.toFixed(2)}× ω`,
+      eff: `${(eff * 100).toFixed(1)}%`,
+      extraLabel: 'Dwell Ratio',
+      extraVal: `${(dwellFrac * 100).toFixed(1)}%`,
+      formula: `r_d = C·sin(π/${N}) · α_dwell = ${Math.round(dwellFrac * 360)}°`,
+      rightFormula: engaged ? 'PIN IN SLOT' : 'CRESCENT LOCK'
+    };
+  }
+
+  // =========================================================================
+  // MECHANISM 5: ANCHOR CLOCK ESCAPEMENT & PENDULUM
+  // =========================================================================
+  function updateAndRenderEscapement(dt) {
+    const esc = state.escapement;
+    const Z = esc.teeth;
+    const dPsi = (2 * Math.PI) / Z;
+    const gAcc = 9.80665;
+    const omega0 = Math.sqrt(gAcc / esc.pendLen);
+    const period = (2 * Math.PI) / omega0;
+    const beatHz = 2 / period; // 2 beats (tick + tock) per full period!
+
+    // Geometry: Escape wheel centered at (0, 20), Anchor arbor directly above at (0, -H)
+    const wheelX = 0;
+    const wheelY = 45;
+    const Re = 112; // Escape wheel tip radius
+    // Span 3.5 tooth pitches (or 2.5 if Z <= 12) so entry & exit pallets alternate cleanly by 0.5 tooth!
+    const spanPitches = Z >= 18 ? 4.5 : (Z >= 14 ? 3.5 : 2.5);
+    const alphaSpan = 0.5 * spanPitches * dPsi;
+    const anchorH = Re / Math.cos(alphaSpan);
+    const anchorX = 0;
+    const anchorY = wheelY - anchorH;
+
+    // Pendulum integration (unless user is dragging the bob!)
+    const targetAmp = 0.21 + 0.06 * esc.weightFactor;
+    const releaseAngle = 0.075; // angle at which pallet lifts clear of locked tooth
+
+    if (state.running && !(state.drag.active && state.drag.type === 'pendulum')) {
+      const sub = 6;
+      const h = dt / sub;
+      for (let i = 0; i < sub; i++) {
+        // Real pendulum gravity + subtle air damping + escapement impulse maintenance
+        const damping = 0.14;
+        const accel = -(gAcc / esc.pendLen) * Math.sin(esc.pendAngle) - damping * esc.pendVel;
+        esc.pendVel += accel * h;
+        esc.pendAngle += esc.pendVel * h;
+      }
+
+      // Check Escapement Release & Impulse!
+      // When pendAngle swings RIGHT (> +releaseAngle), exit (right) pallet lifts outward & releases tooth;
+      // entry (left) pallet dips inward to catch the next tooth half a pitch later!
+      if (esc.lockedSide === 'exit' && esc.pendAngle > releaseAngle && esc.pendVel > 0) {
+        esc.lockedSide = 'entry';
+        esc.wheelTarget += 0.5 * dPsi; // Advance exactly half a tooth!
+        esc.beatCount++;
+        esc.lastBeatSide = 'entry';
+        esc.flashAlpha = 1.0;
+        const deficit = Math.max(0.02, targetAmp - Math.abs(esc.pendAngle));
+        esc.pendVel += esc.weightFactor * 0.34 * omega0 * deficit;
+        SoundEngine.playTick(false, Math.min(1.2, 0.75 + 0.3 * esc.weightFactor));
+      } else if (esc.lockedSide === 'entry' && esc.pendAngle < -releaseAngle && esc.pendVel < 0) {
+        esc.lockedSide = 'exit';
+        esc.wheelTarget += 0.5 * dPsi; // Advance second half tooth!
+        esc.beatCount++;
+        esc.lastBeatSide = 'exit';
+        esc.flashAlpha = 1.0;
+        const deficit = Math.max(0.02, targetAmp - Math.abs(esc.pendAngle));
+        esc.pendVel -= esc.weightFactor * 0.34 * omega0 * deficit;
+        SoundEngine.playTick(true, Math.min(1.2, 0.75 + 0.3 * esc.weightFactor));
+      }
+
+      // Spring-damped rapid drop of weighted escape wheel to its next pallet lock stop
+      const diff = esc.wheelTarget - esc.wheelAngle;
+      const kDrop = 420 * esc.weightFactor;
+      const cDrop = 34;
+      esc.wheelVel += (kDrop * diff - cDrop * esc.wheelVel) * dt;
+      esc.wheelAngle += esc.wheelVel * dt;
+      if (Math.abs(diff) < 0.0005 && Math.abs(esc.wheelVel) < 0.01) {
+        esc.wheelAngle = esc.wheelTarget;
+        esc.wheelVel = 0;
+      }
+    }
+
+    esc.flashAlpha = Math.max(0, esc.flashAlpha - dt * 3.8);
+
+    // Align escape wheel angle so at wheelAngle=0 a tooth tip rests squarely on the Entry (left) pallet!
+    const entryContactAngle = -Math.PI * 0.5 - alphaSpan;
+    const exitContactAngle = -Math.PI * 0.5 + alphaSpan;
+    const visualWheelAngle = entryContactAngle + esc.wheelAngle;
+
+    // 1. Draw Clock Frame Plates & Hanging Drive Weight
+    ctx.save();
+    // Subtle horological weight cord hanging off drum on escape wheel
+    const drumR = 26;
+    const cordX = wheelX + drumR;
+    const weightY = wheelY + 125 + ((esc.wheelAngle * 16) % 70);
+    ctx.beginPath();
+    ctx.moveTo(cordX, wheelY);
+    ctx.lineTo(cordX, weightY);
+    ctx.strokeStyle = 'rgba(255, 210, 130, 0.45)';
+    ctx.lineWidth = 1.6;
+    ctx.stroke();
+
+    // Brass cylindrical drive weight
+    const wg = ctx.createLinearGradient(cordX - 11, weightY, cordX + 11, weightY);
+    wg.addColorStop(0, '#ffe39c');
+    wg.addColorStop(0.5, '#b87c24');
+    wg.addColorStop(1, '#5e3c10');
+    ctx.fillStyle = wg;
+    ctx.beginPath();
+    ctx.roundRect(cordX - 10, weightY, 20, 38, 4);
+    ctx.fill();
+    ctx.strokeStyle = '#ffd982';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.restore();
+
+    // 2. Draw Horological Ratchet Escape Wheel
+    ctx.save();
+    ctx.translate(wheelX, wheelY);
+    ctx.rotate(visualWheelAngle);
+
+    const rRoot = Re - 22;
+    const rRim = rRoot - 11;
+    const ePath = new Path2D();
+    for (let k = 0; k < Z; k++) {
+      const aTip = k * dPsi;
+      // Forward-raked horological club tooth!
+      const aLeadRoot = aTip - dPsi * 0.12;
+      const aBackTip = aTip - dPsi * 0.06;
+      const aTrailRoot = aTip - dPsi * 0.55;
+
+      const lx = rRoot * Math.cos(aLeadRoot), ly = rRoot * Math.sin(aLeadRoot);
+      const tx = Re * Math.cos(aTip), ty = Re * Math.sin(aTip);
+      const btx = (Re - 3) * Math.cos(aBackTip), bty = (Re - 3) * Math.sin(aBackTip);
+      const rx = rRoot * Math.cos(aTrailRoot), ry = rRoot * Math.sin(aTrailRoot);
+
+      if (k === 0) ePath.moveTo(rx, ry);
+      else ePath.lineTo(rx, ry);
+      ePath.lineTo(btx, bty);
+      ePath.lineTo(tx, ty);
+      ePath.lineTo(lx, ly);
+      // Concave gullet to next tooth
+      const nextTrail = (k + 1) * dPsi - dPsi * 0.55;
+      ePath.arc(0, 0, rRoot, aLeadRoot, nextTrail, false);
+    }
+    ePath.closePath();
+
+    // Cut out hollow horological 5-spoke interior
+    const innerHole = new Path2D();
+    innerHole.addPath(ePath);
+    const spokeN = 5;
+    for (let s = 0; s < spokeN; s++) {
+      const sa1 = (s * Math.PI * 2) / spokeN + 0.14;
+      const sa2 = ((s + 1) * Math.PI * 2) / spokeN - 0.14;
+      innerHole.moveTo(rRim * Math.cos(sa1), rRim * Math.sin(sa1));
+      innerHole.arc(0, 0, rRim, sa1, sa2, false);
+      innerHole.arc(0, 0, drumR + 4, sa2, sa1, true);
+      innerHole.closePath();
+    }
+
+    if (state.overlays.xray) {
+      ctx.fillStyle = 'rgba(255, 190, 92, 0.08)';
+      ctx.fill(innerHole, 'evenodd');
+      ctx.strokeStyle = '#ffbe5c';
+      ctx.lineWidth = 1.3 / state.cam.zoom;
+      ctx.stroke(innerHole);
+    } else {
+      ctx.save();
+      ctx.shadowColor = 'rgba(0,0,0,0.65)';
+      ctx.shadowBlur = 18;
+      const eg = ctx.createLinearGradient(-Re, -Re, Re, Re);
+      eg.addColorStop(0, ALLOYS.brass.hi);
+      eg.addColorStop(0.4, ALLOYS.brass.mid);
+      eg.addColorStop(0.75, ALLOYS.brass.lo);
+      eg.addColorStop(1, ALLOYS.brass.hi);
+      ctx.fillStyle = eg;
+      ctx.fill(innerHole, 'evenodd');
+      ctx.restore();
+      ctx.strokeStyle = '#ffe29c';
+      ctx.lineWidth = 1.0;
+      ctx.stroke(innerHole);
+
+      // Ruby jewel bearing at escape wheel hub
+      ctx.beginPath();
+      ctx.arc(0, 0, 12, 0, Math.PI * 2);
+      ctx.fillStyle = '#331120';
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(0, 0, 7, 0, Math.PI * 2);
+      ctx.fillStyle = '#ff3b6b';
+      ctx.shadowColor = '#ff3b6b';
+      ctx.shadowBlur = 8;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+    ctx.restore();
+
+    // Escape wheel pitch circle overlay
+    if (state.overlays.pitch) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(wheelX, wheelY, Re, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(255, 190, 92, 0.28)';
+      ctx.setLineDash([5, 5]);
+      ctx.lineWidth = 1.1 / state.cam.zoom;
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
+
+    // 3. Draw Oscillating Pendulum Rod, Brass Bob & Anchor Pallet Fork (pivoted at anchorX, anchorY)
+    const visualPendLen = 195 + esc.pendLen * 95; // scales gracefully on screen
+    const bobX = anchorX + visualPendLen * Math.sin(esc.pendAngle);
+    const bobY = anchorY + visualPendLen * Math.cos(esc.pendAngle);
+
+    // Record pendulum arc trail
+    if (state.overlays.trails) {
+      esc.pendTrail.push({ x: bobX, y: bobY });
+      if (esc.pendTrail.length > 75) esc.pendTrail.shift();
+      if (esc.pendTrail.length > 1) {
+        ctx.save();
+        for (let i = 1; i < esc.pendTrail.length; i++) {
+          const t = i / esc.pendTrail.length;
+          ctx.beginPath();
+          ctx.moveTo(esc.pendTrail[i - 1].x, esc.pendTrail[i - 1].y);
+          ctx.lineTo(esc.pendTrail[i].x, esc.pendTrail[i].y);
+          ctx.strokeStyle = `rgba(255, 190, 92, ${t * 0.55})`;
+          ctx.lineWidth = 1.5 + t * 2.0;
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+    }
+
+    // Pendulum rod (behind wheel or cleanly translucent)
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(anchorX, anchorY);
+    ctx.lineTo(bobX, bobY);
+    ctx.strokeStyle = 'rgba(200, 218, 245, 0.72)';
+    ctx.lineWidth = 4.2;
+    ctx.stroke();
+    ctx.strokeStyle = '#eef5ff';
+    ctx.lineWidth = 1.4;
+    ctx.stroke();
+
+    // Heavy lenticular brass Pendulum Bob (draggable!)
+    const bobR = 26;
+    const bg = ctx.createRadialGradient(bobX - 7, bobY - 7, 3, bobX, bobY, bobR);
+    bg.addColorStop(0, '#fff3cc');
+    bg.addColorStop(0.42, '#e3a542');
+    bg.addColorStop(0.85, '#7a4e12');
+    bg.addColorStop(1, '#3b2407');
+    ctx.shadowColor = 'rgba(0,0,0,0.6)';
+    ctx.shadowBlur = 16;
+    ctx.beginPath();
+    ctx.arc(bobX, bobY, bobR, 0, Math.PI * 2);
+    ctx.fillStyle = bg;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = '#ffe099';
+    ctx.lineWidth = 1.6;
+    ctx.stroke();
+
+    // Inner lathe rings on bob
+    ctx.beginPath();
+    ctx.arc(bobX, bobY, bobR * 0.65, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(255, 240, 200, 0.35)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.restore();
+
+    // Anchor Pallet Fork geometry (rigidly attached to pendulum angle!)
+    // Tangent arm length from anchor arbor to wheel contact points:
+    const armLen = Re * Math.tan(alphaSpan);
+    // In anchor local coordinates (angle 0 = hanging straight down, rotated by -esc.pendAngle in canvas):
+    ctx.save();
+    ctx.translate(anchorX, anchorY);
+    ctx.rotate(-esc.pendAngle);
+
+    // Local coordinates of entry (left) and exit (right) pallet tips at neutral angle:
+    const pLeftX = -Re * Math.sin(alphaSpan);
+    const pLeftY = anchorH - Re * Math.cos(alphaSpan);
+    const pRightX = +Re * Math.sin(alphaSpan);
+    const pRightY = anchorH - Re * Math.cos(alphaSpan);
+
+    // Curved steel anchor bridge
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.6)';
+    ctx.shadowBlur = 14;
+    ctx.beginPath();
+    ctx.moveTo(0, -10);
+    ctx.quadraticCurveTo(pLeftX * 0.92, pLeftY * 0.45, pLeftX - 8, pLeftY + 12);
+    ctx.lineTo(pLeftX + 7, pLeftY + 5);
+    ctx.quadraticCurveTo(pLeftX * 0.62, pLeftY * 0.42, 0, 14);
+    ctx.quadraticCurveTo(pRightX * 0.62, pRightY * 0.42, pRightX - 7, pRightY + 5);
+    ctx.lineTo(pRightX + 8, pRightY + 12);
+    ctx.quadraticCurveTo(pRightX * 0.92, pRightY * 0.45, 0, -10);
+    ctx.closePath();
+
+    const ag = ctx.createLinearGradient(-armLen, 0, armLen, pLeftY);
+    ag.addColorStop(0, '#eef5ff');
+    ag.addColorStop(0.5, '#7e93b5');
+    ag.addColorStop(1, '#314059');
+    ctx.fillStyle = state.overlays.xray ? 'rgba(148, 179, 255, 0.14)' : ag;
+    ctx.fill();
+    ctx.strokeStyle = '#cfe0fa';
+    ctx.lineWidth = 1.3;
+    ctx.stroke();
+    ctx.restore();
+
+    // Glowing Ruby Pallet Jewels (Entry = Left, Exit = Right)
+    function drawRubyStone(px, py, side, active) {
+      ctx.save();
+      ctx.translate(px, py);
+      ctx.rotate(side * 0.35);
+      ctx.beginPath();
+      ctx.roundRect(-5, -8, 10, 20, 2.5);
+      ctx.fillStyle = active ? '#ff4d7d' : '#b8254c';
+      ctx.shadowColor = '#ff3b6b';
+      ctx.shadowBlur = active ? 16 : 6;
+      ctx.fill();
+      ctx.strokeStyle = '#ffb8cb';
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+      ctx.restore();
+    }
+    drawRubyStone(pLeftX, pLeftY, -1, esc.lockedSide === 'entry');
+    drawRubyStone(pRightX, pRightY, +1, esc.lockedSide === 'exit');
+
+    // Anchor pivot jewel
+    ctx.beginPath();
+    ctx.arc(0, 0, 11, 0, Math.PI * 2);
+    ctx.fillStyle = '#182236';
+    ctx.fill();
+    ctx.strokeStyle = '#58dcff';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(0, 0, 5, 0, Math.PI * 2);
+    ctx.fillStyle = '#ff3b6b';
+    ctx.fill();
+    ctx.restore();
+
+    // Impulse flash burst on ruby contact point!
+    if (esc.flashAlpha > 0.02 && state.overlays.loa) {
+      const fx = wheelX + Re * Math.cos(esc.lastBeatSide === 'entry' ? entryContactAngle : exitContactAngle);
+      const fy = wheelY + Re * Math.sin(esc.lastBeatSide === 'entry' ? entryContactAngle : exitContactAngle);
+      const rg = ctx.createRadialGradient(fx, fy, 1, fx, fy, 26);
+      rg.addColorStop(0, `rgba(255, 235, 245, ${esc.flashAlpha})`);
+      rg.addColorStop(0.45, `rgba(255, 80, 125, ${esc.flashAlpha * 0.7})`);
+      rg.addColorStop(1, 'rgba(255, 80, 125, 0)');
+      ctx.beginPath();
+      ctx.arc(fx, fy, 26, 0, Math.PI * 2);
+      ctx.fillStyle = rg;
+      ctx.fill();
+    }
+
+    drawTag(anchorX, anchorY - 26, 'Anchor Pallet Fork (Ruby Jewels)', '#ff6083');
+    drawTag(bobX, bobY + 38, `Pendulum Bob (L = ${esc.pendLen.toFixed(2)} m · Drag)`, '#ffbe5c');
+
+    // Store bob coords for direct dragging
+    esc._bobWorld = { x: bobX, y: bobY, r: bobR + 10 };
+    esc._anchorWorld = { x: anchorX, y: anchorY };
+
+    // Escape wheel RPM = (beatHz / 2) / Z * 60 = 30 * beatHz / Z
+    const wheelRpm = (30 * beatHz) / Z;
+    SoundEngine.updateWhir(0, 0); // Pure crisp tick-tock without motor hum!
+
+    return {
+      badge: 'Anchor Escapement',
+      status: esc.lockedSide === 'entry' ? 'TOCK · Entry Lock' : 'TICK · Exit Lock',
+      statusClass: esc.lockedSide === 'entry' ? 'cyan' : 'amber',
+      ratio: `${Z} T Ratchet`,
+      inRpm: `Weight ${esc.weightFactor.toFixed(2)}×`,
+      outRpm: `${wheelRpm.toFixed(2)} RPM`,
+      torque: `Beats: ${esc.beatCount}`,
+      eff: `${(state.meshEff * 92).toFixed(1)}%`,
+      extraLabel: 'Beat Freq',
+      extraVal: `${beatHz.toFixed(2)} Hz`,
+      formula: `T = 2π√(L/g) = ${period.toFixed(2)} s`,
+      rightFormula: `${(beatHz * 3600).toFixed(0)} vph`
+    };
+  }
+
+  // =========================================================================
+  // TELEMETRY HUD UPDATER
+  // =========================================================================
+  const ui = {
+    mechBadge: document.getElementById('mech-badge'),
+    statusPill: document.getElementById('status-pill'),
+    valRatio: document.getElementById('val-ratio'),
+    valInRpm: document.getElementById('val-in-rpm'),
+    valOutRpm: document.getElementById('val-out-rpm'),
+    valTorque: document.getElementById('val-torque'),
+    valEff: document.getElementById('val-eff'),
+    lblExtra: document.getElementById('lbl-extra'),
+    valExtra: document.getElementById('val-extra'),
+    formulaText: document.getElementById('formula-text'),
+    contactRatioText: document.getElementById('contact-ratio-text')
+  };
+
+  function updateTelemetryHUD(t) {
+    if (!t) return;
+    ui.mechBadge.textContent = t.badge;
+    ui.statusPill.textContent = t.status;
+    ui.statusPill.className = 'status-pill' + (t.statusClass ? ' ' + t.statusClass : '');
+    ui.valRatio.textContent = t.ratio;
+    ui.valInRpm.textContent = t.inRpm;
+    ui.valOutRpm.textContent = t.outRpm;
+    ui.valTorque.textContent = t.torque;
+    ui.valEff.textContent = t.eff;
+    ui.lblExtra.textContent = t.extraLabel;
+    ui.valExtra.textContent = t.extraVal;
+    ui.formulaText.textContent = t.formula;
+    ui.contactRatioText.innerHTML = `<strong>${t.rightFormula}</strong>`;
+  }
+
+  // =========================================================================
+  // MAIN ANIMATION LOOP
+  // =========================================================================
+  let lastTime = performance.now();
+
+  function frame(now) {
+    const rawDt = (now - lastTime) / 1000;
+    lastTime = now;
+    const dt = Math.min(0.05, Math.max(0.0001, rawDt));
+    if (state.running) state.time += dt;
+
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    drawBackdrop();
+
+    // Shift center slightly left when right drawer is open on wide screens so nothing overlaps!
+    const drawerOpen = !document.getElementById('control-drawer').classList.contains('collapsed');
+    const zen = document.body.classList.contains('zen-mode');
+    const offsetX = (!zen && drawerOpen && W > 960) ? -145 : 0;
+
+    ctx.save();
+    ctx.translate(W * 0.5 + offsetX + state.cam.x, H * 0.5 + 14 + state.cam.y);
+    ctx.scale(state.cam.zoom, state.cam.zoom);
+
+    let tele = null;
+    if (state.mech === 'spur') tele = updateAndRenderSpur(dt);
+    else if (state.mech === 'planetary') tele = updateAndRenderPlanetary(dt);
+    else if (state.mech === 'fourbar') tele = updateAndRenderFourBar(dt);
+    else if (state.mech === 'geneva') tele = updateAndRenderGeneva(dt);
+    else if (state.mech === 'escapement') tele = updateAndRenderEscapement(dt);
+
+    ctx.restore();
+    updateTelemetryHUD(tele);
+
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  // =========================================================================
+  // DIRECT CANVAS INTERACTION (Hand-Cranking, Pivot Dragging, Pan & Zoom)
+  // =========================================================================
+  function screenToWorld(sx, sy) {
+    const drawerOpen = !document.getElementById('control-drawer').classList.contains('collapsed');
+    const zen = document.body.classList.contains('zen-mode');
+    const offsetX = (!zen && drawerOpen && W > 960) ? -145 : 0;
+    return {
+      x: (sx - (W * 0.5 + offsetX + state.cam.x)) / state.cam.zoom,
+      y: (sy - (H * 0.5 + 14 + state.cam.y)) / state.cam.zoom
+    };
+  }
+
+  function hitTestInteractive(wx, wy) {
+    if (state.mech === 'spur') {
+      const c0 = state.spur.centers[0];
+      const r0 = state.spur.radii[0] || 60;
+      if (c0 && Math.hypot(wx - c0.x, wy - c0.y) <= r0 + 24) {
+        return { type: 'crank', center: c0 };
+      }
+    } else if (state.mech === 'planetary') {
+      const pl = state.planetary;
+      const rMax = 0.5 * pl.module * (pl.zs + 2 * pl.zp) + 36;
+      if (Math.hypot(wx, wy) <= rMax) {
+        return { type: 'crank', center: { x: 0, y: 0 } };
+      }
+    } else if (state.mech === 'fourbar') {
+      const fb = state.fourbar;
+      if (fb.preset === 'jansen') {
+        const O = { x: 65, y: -55 };
+        if (Math.hypot(wx - O.x, wy - O.y) <= 75) {
+          return { type: 'crank', center: O };
+        }
+      } else {
+        const sol = solveFourBarPoint(fb, fb.theta2);
+        if (sol && Math.hypot(wx - sol.P.x, wy - sol.P.y) <= 22) {
+          return { type: 'fb-coupler' };
+        }
+        if (Math.hypot(wx - fb.o2.x, wy - fb.o2.y) <= 20) {
+          return { type: 'fb-o2' };
+        }
+        if (Math.hypot(wx - fb.o4.x, wy - fb.o4.y) <= 20) {
+          return { type: 'fb-o4' };
+        }
+        if (sol && Math.hypot(wx - sol.A.x, wy - sol.A.y) <= 32) {
+          return { type: 'crank', center: { x: fb.o2.x, y: fb.o2.y } };
+        }
+      }
+    } else if (state.mech === 'geneva') {
+      const driveX = -215 * 0.5;
+      if (Math.hypot(wx - driveX, wy) <= 135) {
+        return { type: 'crank', center: { x: driveX, y: 0 } };
+      }
+    } else if (state.mech === 'escapement') {
+      const bob = state.escapement._bobWorld;
+      if (bob && Math.hypot(wx - bob.x, wy - bob.y) <= bob.r + 16) {
+        return { type: 'pendulum' };
+      }
+    }
+    return null;
+  }
+
+  canvas.addEventListener('pointerdown', (e) => {
+    canvas.setPointerCapture(e.pointerId);
+    const w = screenToWorld(e.clientX, e.clientY);
+    const hit = hitTestInteractive(w.x, w.y);
+
+    state.drag.active = true;
+    state.drag.lastScreenX = e.clientX;
+    state.drag.lastScreenY = e.clientY;
+    state.drag.lastDragTime = performance.now();
+    state.drag.manualOmega = 0;
+    canvas.classList.add('grabbing');
+
+    if (hit) {
+      state.drag.type = hit.type;
+      if (hit.center) {
+        state.drag.crankCenter = hit.center;
+        state.drag.lastAngle = Math.atan2(w.y - hit.center.y, w.x - hit.center.x);
+      }
+    } else {
+      state.drag.type = 'pan';
+    }
+  });
+
+  canvas.addEventListener('pointermove', (e) => {
+    const w = screenToWorld(e.clientX, e.clientY);
+    if (!state.drag.active) {
+      const hit = hitTestInteractive(w.x, w.y);
+      canvas.classList.toggle('hover-interactive', !!hit);
+      return;
+    }
+
+    const now = performance.now();
+    const dt = Math.max(0.004, (now - state.drag.lastDragTime) / 1000);
+    state.drag.lastDragTime = now;
+
+    if (state.drag.type === 'pan') {
+      state.cam.x += e.clientX - state.drag.lastScreenX;
+      state.cam.y += e.clientY - state.drag.lastScreenY;
+      state.drag.lastScreenX = e.clientX;
+      state.drag.lastScreenY = e.clientY;
+    } else if (state.drag.type === 'crank') {
+      const c = state.drag.crankCenter;
+      const ang = Math.atan2(w.y - c.y, w.x - c.x);
+      let dAng = ang - state.drag.lastAngle;
+      if (dAng > Math.PI) dAng -= Math.PI * 2;
+      if (dAng < -Math.PI) dAng += Math.PI * 2;
+      state.drag.lastAngle = ang;
+      state.drag.manualOmega = dAng / dt;
+
+      if (state.mech === 'spur') state.spur.theta1 += dAng;
+      else if (state.mech === 'planetary') state.planetary.thetaInput += dAng;
+      else if (state.mech === 'geneva') state.geneva.thetaDrive += dAng;
+      else if (state.mech === 'fourbar') {
+        if (state.fourbar.preset === 'jansen') {
+          state.fourbar.theta2 += dAng;
+        } else {
+          const test = solveFourBarPoint(state.fourbar, state.fourbar.theta2 + dAng);
+          if (test) state.fourbar.theta2 += dAng;
+        }
+      }
+    } else if (state.drag.type === 'fb-o2' || state.drag.type === 'fb-o4') {
+      const fb = state.fourbar;
+      if (state.drag.type === 'fb-o2') { fb.o2.x = w.x; fb.o2.y = w.y; }
+      else { fb.o4.x = w.x; fb.o4.y = w.y; }
+      const newL1 = Math.max(70, Math.min(320, Math.hypot(fb.o4.x - fb.o2.x, fb.o4.y - fb.o2.y)));
+      fb.L1 = newL1;
+      document.getElementById('sl-l1').value = Math.round(newL1);
+      document.getElementById('out-l1').textContent = Math.round(newL1);
+    } else if (state.drag.type === 'fb-coupler') {
+      const fb = state.fourbar;
+      const sol = solveFourBarPoint(fb, fb.theta2);
+      if (sol) {
+        const ux = (sol.B.x - sol.A.x) / fb.L3;
+        const uy = (sol.B.y - sol.A.y) / fb.L3;
+        const rx = w.x - sol.A.x;
+        const ry = w.y - sol.A.y;
+        const proj = rx * ux + ry * uy;
+        const perp = -rx * uy + ry * ux;
+        fb.couplerRatio = Math.max(-0.5, Math.min(1.5, proj / fb.L3));
+        fb.couplerOffset = Math.max(-180, Math.min(180, perp));
+      }
+    } else if (state.drag.type === 'pendulum') {
+      const anc = state.escapement._anchorWorld || { x: 0, y: -100 };
+      const ang = Math.atan2(w.x - anc.x, w.y - anc.y);
+      state.escapement.pendAngle = Math.max(-0.62, Math.min(0.62, ang));
+      state.escapement.pendVel = 0;
+    }
+  });
+
+  function endDrag() {
+    state.drag.active = false;
+    state.drag.type = null;
+    state.drag.manualOmega = 0;
+    canvas.classList.remove('grabbing');
+  }
+  canvas.addEventListener('pointerup', endDrag);
+  canvas.addEventListener('pointercancel', endDrag);
+
+  canvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+    state.cam.zoom = Math.max(0.42, Math.min(2.6, state.cam.zoom * factor));
+  }, { passive: false });
+
+  // =========================================================================
+  // UI WIRING & PRESETS
+  // =========================================================================
+  function fitCameraForMech(mech) {
+    state.cam.x = 0;
+    state.cam.y = 0;
+    const minDim = Math.min(W, H);
+    if (mech === 'spur') state.cam.zoom = Math.min(1.02, minDim / 780);
+    else if (mech === 'planetary') state.cam.zoom = Math.min(1.06, minDim / 640);
+    else if (mech === 'fourbar') state.cam.zoom = Math.min(1.04, minDim / 640);
+    else if (mech === 'geneva') state.cam.zoom = Math.min(1.02, minDim / 660);
+    else if (mech === 'escapement') state.cam.zoom = Math.min(0.95, minDim / 700);
+  }
+
+  function setMechanism(mech) {
+    state.mech = mech;
+    document.querySelectorAll('#mech-list .mech-btn').forEach((b) => {
+      b.classList.toggle('active', b.dataset.mech === mech);
+    });
+    document.querySelectorAll('.mech-config').forEach((c) => {
+      c.classList.toggle('active', c.id === 'cfg-' + mech);
+    });
+    fitCameraForMech(mech);
+    updateHintText();
+  }
+
+  function updateHintText() {
+    const el = document.getElementById('hint-pill');
+    const hints = {
+      spur: 'Drag <strong>brass input pinion</strong> to hand-crank · Scroll zoom · <kbd>Space</kbd> pause · <kbd>H</kbd> cinema',
+      planetary: 'Drag gears to <strong>hand-crank</strong> · Switch clutch locks in drawer · <kbd>Space</kbd> pause · <kbd>H</kbd> cinema',
+      fourbar: 'Drag <strong>cyan coupler P</strong>, <strong>pivots O₂/O₄</strong>, or crank A directly · <kbd>Space</kbd> pause · <kbd>H</kbd> cinema',
+      geneva: 'Drag <strong>drive crank</strong> to hand-index Maltese cross · <kbd>Space</kbd> pause · <kbd>H</kbd> cinema',
+      escapement: 'Drag <strong>brass pendulum bob</strong> to swing · Toggle Audio for tick-tock · <kbd>Space</kbd> pause · <kbd>H</kbd> cinema'
+    };
+    el.innerHTML = hints[state.mech] || hints.spur;
+  }
+
+  // Mechanism list clicks
+  document.querySelectorAll('#mech-list .mech-btn').forEach((btn) => {
+    btn.addEventListener('click', () => setMechanism(btn.dataset.mech));
+  });
+
+  // Drawer tabs
+  document.querySelectorAll('.drawer-tabs .tab-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.drawer-tabs .tab-btn').forEach((b) => b.classList.remove('active'));
+      document.querySelectorAll('.tab-pane').forEach((p) => p.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById(btn.dataset.tab).classList.add('active');
+    });
+  });
+
+  // Spur sliders & presets
+  function syncSpurUI() {
+    const sp = state.spur;
+    document.getElementById('sl-z1').value = sp.z1;
+    document.getElementById('sl-z2').value = sp.z2;
+    document.getElementById('sl-z3').value = sp.z3;
+    document.getElementById('sl-z4').value = sp.z4;
+    document.getElementById('out-z1').textContent = sp.z1 + ' T';
+    document.getElementById('out-z2').textContent = sp.z2 + ' T';
+    document.getElementById('out-z3').textContent = sp.z3 + ' T';
+    document.getElementById('out-z4').textContent = sp.z4 + ' T';
+  }
+  ['z1', 'z2', 'z3', 'z4'].forEach((k) => {
+    document.getElementById('sl-' + k).addEventListener('input', (e) => {
+      state.spur[k] = parseInt(e.target.value, 10);
+      syncSpurUI();
+    });
+  });
+  document.querySelectorAll('[data-spur-preset]').forEach((b) => {
+    b.addEventListener('click', () => {
+      if (b.dataset.spurPreset === 'torque') {
+        state.spur.z1 = 10; state.spur.z2 = 36; state.spur.z3 = 10; state.spur.z4 = 40;
+      } else {
+        state.spur.z1 = 26; state.spur.z2 = 14; state.spur.z3 = 24; state.spur.z4 = 16;
+      }
+      syncSpurUI();
+    });
+  });
+
+  // Planetary controls (auto-keep valid assembly (Zs + Zr) % Np === 0)
+  function enforcePlanetaryAssembly() {
+    const pl = state.planetary;
+    // Since Zr = Zs + 2*Zp, Zs + Zr = 2*(Zs + Zp).
+    // For Np=3: need (Zs + Zp) % 3 === 0. For Np=4: need (Zs + Zp) % 2 === 0.
+    const mod = pl.np === 3 ? 3 : 2;
+    while ((pl.zs + pl.zp) % mod !== 0) {
+      pl.zp++;
+      if (pl.zp > 20) pl.zp = 9;
+    }
+    const Zr = pl.zs + 2 * pl.zp;
+    document.getElementById('sl-zs').value = pl.zs;
+    document.getElementById('sl-zp').value = pl.zp;
+    document.getElementById('out-zs').textContent = pl.zs + ' T';
+    document.getElementById('out-zp').textContent = pl.zp + ' T';
+    document.getElementById('out-np').textContent = pl.np + ' Planets';
+    document.getElementById('out-plan-ring').textContent = `Z_R = ${Zr} T`;
+    document.getElementById('plan-assembly-note').textContent =
+      `Assembly check: Z_R = Z_S + 2·Z_P = ${Zr}, (Z_S + Z_R) / ${pl.np} = ${(pl.zs + Zr) / pl.np} (exact).`;
+  }
+  document.getElementById('sl-zs').addEventListener('input', (e) => {
+    state.planetary.zs = parseInt(e.target.value, 10);
+    enforcePlanetaryAssembly();
+  });
+  document.getElementById('sl-zp').addEventListener('input', (e) => {
+    state.planetary.zp = parseInt(e.target.value, 10);
+    enforcePlanetaryAssembly();
+  });
+  document.querySelectorAll('#seg-np .seg-btn').forEach((b) => {
+    b.addEventListener('click', () => {
+      document.querySelectorAll('#seg-np .seg-btn').forEach((x) => x.classList.remove('active'));
+      b.classList.add('active');
+      state.planetary.np = parseInt(b.dataset.np, 10);
+      enforcePlanetaryAssembly();
+    });
+  });
+  document.querySelectorAll('#plan-mode-grid .preset-btn').forEach((b) => {
+    b.addEventListener('click', () => {
+      document.querySelectorAll('#plan-mode-grid .preset-btn').forEach((x) => x.classList.remove('active'));
+      b.classList.add('active');
+      state.planetary.mode = b.dataset.planMode;
+    });
+  });
+
+  // Four-bar controls & presets
+  function applyFourBarPreset(name) {
+    const fb = state.fourbar;
+    fb.preset = name;
+    fb.trail = [];
+    fb.jansenTrail = [];
+    fb.cacheKey = '';
+    fb.rockDir = 1;
+    fb.o2 = { x: -110, y: 25 };
+    fb.o4 = { x: 110, y: 25 };
+
+    if (name === 'crank_rocker') {
+      fb.L1 = 220; fb.L2 = 80; fb.L3 = 195; fb.L4 = 155;
+      fb.couplerRatio = 0.52; fb.couplerOffset = -68; fb.branch = 1;
+    } else if (name === 'double_crank') {
+      fb.L1 = 88; fb.L2 = 150; fb.L3 = 180; fb.L4 = 165;
+      fb.couplerRatio = 0.5; fb.couplerOffset = -55; fb.branch = 1;
+    } else if (name === 'double_rocker') {
+      fb.L1 = 205; fb.L2 = 138; fb.L3 = 108; fb.L4 = 162;
+      fb.couplerRatio = 0.5; fb.couplerOffset = -58; fb.branch = 1;
+    } else if (name === 'watt') {
+      fb.L1 = 246; fb.L2 = 128; fb.L3 = 82; fb.L4 = 128;
+      fb.couplerRatio = 0.5; fb.couplerOffset = 0; fb.branch = -1;
+      fb.theta2 = 0.1;
+    }
+
+    document.querySelectorAll('#fourbar-presets .preset-btn').forEach((b) => {
+      b.classList.toggle('active', b.dataset.fb === name);
+    });
+    document.getElementById('fourbar-sliders-sec').style.display = name === 'jansen' ? 'none' : 'flex';
+    syncFourBarSliders();
+  }
+  function syncFourBarSliders() {
+    const fb = state.fourbar;
+    ['L1', 'L2', 'L3', 'L4'].forEach((k) => {
+      const id = k.toLowerCase();
+      document.getElementById('sl-' + id).value = Math.round(fb[k]);
+      document.getElementById('out-' + id).textContent = Math.round(fb[k]);
+    });
+  }
+  document.querySelectorAll('#fourbar-presets .preset-btn').forEach((b) => {
+    b.addEventListener('click', () => applyFourBarPreset(b.dataset.fb));
+  });
+  ['l1', 'l2', 'l3', 'l4'].forEach((k) => {
+    const key = k.toUpperCase();
+    document.getElementById('sl-' + k).addEventListener('input', (e) => {
+      state.fourbar[key] = parseFloat(e.target.value);
+      document.getElementById('out-' + k).textContent = Math.round(state.fourbar[key]);
+      state.fourbar.trail = [];
+    });
+  });
+  document.getElementById('btn-fb-branch').addEventListener('click', () => {
+    state.fourbar.branch *= -1;
+    state.fourbar.trail = [];
+    state.fourbar.cacheKey = '';
+  });
+
+  // Geneva slot selector
+  document.querySelectorAll('#seg-geneva-slots .seg-btn').forEach((b) => {
+    b.addEventListener('click', () => {
+      document.querySelectorAll('#seg-geneva-slots .seg-btn').forEach((x) => x.classList.remove('active'));
+      b.classList.add('active');
+      state.geneva.slots = parseInt(b.dataset.slots, 10);
+      state.geneva.velHistory = [];
+    });
+  });
+
+  // Escapement sliders & actions
+  document.getElementById('sl-pend-len').addEventListener('input', (e) => {
+    state.escapement.pendLen = parseFloat(e.target.value);
+    document.getElementById('out-pend-len').textContent = state.escapement.pendLen.toFixed(2) + ' m';
+    state.escapement.pendTrail = [];
+  });
+  document.getElementById('sl-esc-teeth').addEventListener('input', (e) => {
+    state.escapement.teeth = parseInt(e.target.value, 10);
+    document.getElementById('out-esc-teeth').textContent = state.escapement.teeth + ' T';
+    state.escapement.wheelAngle = 0;
+    state.escapement.wheelTarget = 0;
+  });
+  document.getElementById('sl-esc-weight').addEventListener('input', (e) => {
+    state.escapement.weightFactor = parseFloat(e.target.value);
+    document.getElementById('out-esc-weight').textContent = state.escapement.weightFactor.toFixed(2) + '×';
+  });
+  document.getElementById('btn-nudge-pend').addEventListener('click', () => {
+    state.escapement.pendVel += state.escapement.pendVel >= 0 ? 0.65 : -0.65;
+  });
+  document.getElementById('btn-seconds-pend').addEventListener('click', () => {
+    state.escapement.pendLen = 0.994;
+    document.getElementById('sl-pend-len').value = 0.99;
+    document.getElementById('out-pend-len').textContent = '0.99 m';
+  });
+
+  // Drive & Load sliders
+  function syncRpmUI(val) {
+    state.rpm = val;
+    document.getElementById('sl-rpm').value = val;
+    document.getElementById('out-rpm').textContent = (val > 0 ? '+' : '') + val + ' RPM';
+    document.getElementById('out-rpm-badge').textContent = val + ' RPM';
+    document.querySelectorAll('#seg-rpm-quick .seg-btn').forEach((b) => {
+      b.classList.toggle('active', parseInt(b.dataset.rpm, 10) === val);
+    });
+  }
+  document.getElementById('sl-rpm').addEventListener('input', (e) => syncRpmUI(parseInt(e.target.value, 10)));
+  document.querySelectorAll('#seg-rpm-quick .seg-btn').forEach((b) => {
+    b.addEventListener('click', () => syncRpmUI(parseInt(b.dataset.rpm, 10)));
+  });
+
+  document.getElementById('sl-torque-in').addEventListener('input', (e) => {
+    state.torqueIn = parseFloat(e.target.value);
+    document.getElementById('out-torque-in').textContent = state.torqueIn.toFixed(1) + ' N·m';
+  });
+  document.getElementById('sl-mesh-eff').addEventListener('input', (e) => {
+    state.meshEff = parseFloat(e.target.value) / 100;
+    document.getElementById('out-mesh-eff').textContent = (state.meshEff * 100).toFixed(1) + '%';
+  });
+  document.querySelectorAll('#seg-alpha .seg-btn').forEach((b) => {
+    b.addEventListener('click', () => {
+      document.querySelectorAll('#seg-alpha .seg-btn').forEach((x) => x.classList.remove('active', 'amber'));
+      b.classList.add('active', 'amber');
+      state.alphaDeg = parseFloat(b.dataset.alpha);
+      document.getElementById('out-alpha').textContent = state.alphaDeg.toFixed(1) + '°';
+      gearPathCache.clear();
+    });
+  });
+
+  // Display Overlay checkboxes
+  const overlayMap = {
+    'chk-pitch': 'pitch',
+    'chk-loa': 'loa',
+    'chk-vectors': 'vectors',
+    'chk-trails': 'trails',
+    'chk-grid': 'grid',
+    'chk-labels': 'labels',
+    'chk-xray': 'xray'
+  };
+  Object.entries(overlayMap).forEach(([id, key]) => {
+    document.getElementById(id).addEventListener('change', (e) => {
+      state.overlays[key] = e.target.checked;
+    });
+  });
+
+  document.getElementById('btn-cam-reset').addEventListener('click', () => fitCameraForMech(state.mech));
+  document.getElementById('btn-clear-trails').addEventListener('click', () => {
+    state.fourbar.trail = [];
+    state.fourbar.jansenTrail = [];
+    state.geneva.velHistory = [];
+    state.escapement.pendTrail = [];
+  });
+
+  // Transport Bar Controls
+  const btnPlay = document.getElementById('btn-play');
+  const btnStep = document.getElementById('btn-step');
+  const btnReset = document.getElementById('btn-reset');
+  const btnAudio = document.getElementById('btn-audio');
+  const btnDrawer = document.getElementById('btn-drawer');
+  const btnZen = document.getElementById('btn-zen');
+  const btnZenRestore = document.getElementById('btn-zen-restore');
+  const drawerEl = document.getElementById('control-drawer');
+
+  function setRunning(on) {
+    state.running = on;
+    btnPlay.textContent = on ? 'Pause' : 'Play';
+    btnPlay.classList.toggle('active', on);
+    if (!on) SoundEngine.updateWhir(0, 0);
+  }
+  btnPlay.addEventListener('click', () => setRunning(!state.running));
+
+  btnStep.addEventListener('click', () => {
+    setRunning(false);
+    if (state.mech === 'spur') state.spur.theta1 += (Math.PI * 2) / state.spur.z1;
+    else if (state.mech === 'planetary') state.planetary.thetaInput += (Math.PI * 2) / state.planetary.zs;
+    else if (state.mech === 'fourbar') state.fourbar.theta2 += 0.22;
+    else if (state.mech === 'geneva') state.geneva.thetaDrive += 0.24;
+    else if (state.mech === 'escapement') {
+      const esc = state.escapement;
+      const dPsi = (2 * Math.PI) / esc.teeth;
+      esc.lockedSide = esc.lockedSide === 'entry' ? 'exit' : 'entry';
+      esc.pendAngle = esc.lockedSide === 'exit' ? 0.22 : -0.22;
+      esc.wheelTarget += 0.5 * dPsi;
+      esc.wheelAngle = esc.wheelTarget;
+      esc.beatCount++;
+      esc.lastBeatSide = esc.lockedSide;
+      esc.flashAlpha = 1.0;
+      SoundEngine.playTick(esc.lockedSide === 'entry', 1.0);
+    }
+  });
+
+  btnReset.addEventListener('click', () => {
+    state.spur.theta1 = 0;
+    state.planetary.thetaInput = 0;
+    state.fourbar.theta2 = 0.6;
+    state.fourbar.trail = [];
+    state.fourbar.jansenTrail = [];
+    state.geneva.thetaDrive = -1.3;
+    state.geneva.velHistory = [];
+    state.escapement.pendAngle = 0.24;
+    state.escapement.pendVel = 0;
+    state.escapement.wheelAngle = 0;
+    state.escapement.wheelTarget = 0;
+    state.escapement.wheelVel = 0;
+    state.escapement.lockedSide = 'entry';
+    state.escapement.beatCount = 0;
+    state.escapement.pendTrail = [];
+    fitCameraForMech(state.mech);
+  });
+
+  btnAudio.addEventListener('click', () => {
+    const next = !SoundEngine.enabled;
+    SoundEngine.setEnabled(next);
+    btnAudio.textContent = next ? 'Audio: On' : 'Audio: Off';
+    btnAudio.classList.toggle('amber-active', next);
+  });
+
+  btnDrawer.addEventListener('click', () => {
+    const collapsed = drawerEl.classList.toggle('collapsed');
+    btnDrawer.classList.toggle('active', !collapsed);
+  });
+
+  function toggleZen() {
+    const zen = document.body.classList.toggle('zen-mode');
+    btnZen.classList.toggle('active', zen);
+  }
+  btnZen.addEventListener('click', toggleZen);
+  btnZenRestore.addEventListener('click', toggleZen);
+
+  // Keyboard shortcuts
+  window.addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'INPUT') return;
+    if (e.code === 'Space') {
+      e.preventDefault();
+      setRunning(!state.running);
+    } else if (e.key === 'h' || e.key === 'H') {
+      toggleZen();
+    } else if (e.key === 'r' || e.key === 'R') {
+      btnReset.click();
+    } else if (e.key === 'm' || e.key === 'M') {
+      btnAudio.click();
+    } else if (e.key === 'ArrowRight') {
+      btnStep.click();
+    } else if (e.key === '1') setMechanism('spur');
+    else if (e.key === '2') setMechanism('planetary');
+    else if (e.key === '3') setMechanism('fourbar');
+    else if (e.key === '4') setMechanism('geneva');
+    else if (e.key === '5') setMechanism('escapement');
+  });
+
+  // Initial sync
+  syncSpurUI();
+  enforcePlanetaryAssembly();
+  applyFourBarPreset('crank_rocker');
+  syncRpmUI(36);
+  fitCameraForMech('spur');
+  updateHintText();
+})();
+</script>
+</body>
+</html>

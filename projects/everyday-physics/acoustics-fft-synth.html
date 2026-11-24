@@ -1,0 +1,4149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Harmonics — String/Pipe Acoustics, Synthesizers & Live FFT Spectrogram</title>
+<style>
+  :root {
+    --bg-deep: #040711;
+    --panel-bg: rgba(9, 13, 24, 0.80);
+    --panel-bg-strong: rgba(8, 12, 22, 0.94);
+    --panel-border: rgba(148, 179, 255, 0.16);
+    --panel-border-hi: rgba(148, 179, 255, 0.36);
+    --text-main: #eef3ff;
+    --text-dim: #9aa9cc;
+    --text-muted: #68789c;
+    --accent-amber: #ffbe5c;
+    --accent-cyan: #58dcff;
+    --accent-mint: #4af2b2;
+    --accent-rose: #ff6083;
+    --accent-violet: #a78bfa;
+    --radius-lg: 14px;
+    --radius-md: 10px;
+    --radius-sm: 7px;
+    --mono: ui-monospace, "Cascadia Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Inter, Helvetica, Arial, sans-serif;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg-deep);
+    color: var(--text-main);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    touch-action: none;
+  }
+
+  #sim-canvas {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    cursor: default;
+  }
+  #sim-canvas.grab { cursor: grab; }
+  #sim-canvas.grabbing { cursor: grabbing; }
+  #sim-canvas.pointer { cursor: pointer; }
+
+  /* HUD Layer */
+  .hud {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 10;
+  }
+  body.zen-mode .hud > :not(.zen-restore) {
+    opacity: 0;
+    pointer-events: none !important;
+  }
+
+  .panel {
+    pointer-events: auto;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-lg);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.52), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    transition: opacity 0.25s ease, transform 0.25s ease;
+  }
+
+  /* Top-Left Telemetry Card */
+  .top-left {
+    position: fixed;
+    top: 14px;
+    left: 14px;
+    width: min(440px, calc(100vw - 368px));
+    min-width: 295px;
+    padding: 11px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .brand-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .brand-title-wrap {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .brand-title {
+    font-size: 16px;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    background: linear-gradient(120deg, #fff5dc 0%, #ffbe5c 42%, #58dcff 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .mode-badge {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 999px;
+    border: 1px solid rgba(88, 220, 255, 0.42);
+    background: rgba(88, 220, 255, 0.13);
+    color: var(--accent-cyan);
+  }
+  .mode-badge.amber {
+    border-color: rgba(255, 190, 92, 0.44);
+    background: rgba(255, 190, 92, 0.13);
+    color: var(--accent-amber);
+  }
+  .mode-badge.violet {
+    border-color: rgba(167, 139, 250, 0.45);
+    background: rgba(167, 139, 250, 0.14);
+    color: var(--accent-violet);
+  }
+
+  .status-pill {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: rgba(74, 242, 178, 0.14);
+    color: var(--accent-mint);
+    border: 1px solid rgba(74, 242, 178, 0.35);
+    white-space: nowrap;
+  }
+  .status-pill.odd {
+    background: rgba(255, 190, 92, 0.15);
+    color: var(--accent-amber);
+    border-color: rgba(255, 190, 92, 0.42);
+  }
+  .status-pill.beats {
+    background: rgba(255, 96, 131, 0.16);
+    color: var(--accent-rose);
+    border-color: rgba(255, 96, 131, 0.44);
+  }
+
+  .telemetry-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+  }
+
+  .tele-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(148, 179, 255, 0.1);
+    border-radius: var(--radius-sm);
+    padding: 5px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .tele-label {
+    font-size: 9px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .tele-val {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--text-main);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .tele-val.amber { color: var(--accent-amber); }
+  .tele-val.cyan { color: var(--accent-cyan); }
+  .tele-val.mint { color: var(--accent-mint); }
+  .tele-val.rose { color: var(--accent-rose); }
+  .tele-val.violet { color: var(--accent-violet); }
+
+  .clock-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding-top: 4px;
+    border-top: 1px solid rgba(148, 179, 255, 0.1);
+    font-size: 10.5px;
+    color: var(--text-dim);
+    font-family: var(--mono);
+  }
+  .clock-row span strong {
+    color: var(--text-main);
+    font-weight: 600;
+  }
+
+  /* Right Control Drawer */
+  .drawer {
+    position: fixed;
+    top: 14px;
+    right: 14px;
+    bottom: 14px;
+    width: 330px;
+    max-width: calc(100vw - 28px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: transform 0.25s ease, opacity 0.25s ease;
+  }
+  .drawer.collapsed {
+    transform: translateX(calc(100% + 24px));
+    pointer-events: none;
+  }
+
+  .drawer-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+    padding: 8px 8px 6px;
+    border-bottom: 1px solid var(--panel-border);
+    background: rgba(4, 7, 15, 0.42);
+  }
+
+  .tab-btn {
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    padding: 7px 5px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .tab-btn:hover {
+    color: var(--text-main);
+    background: rgba(255, 255, 255, 0.04);
+  }
+  .tab-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.16);
+    border-color: rgba(88, 220, 255, 0.42);
+  }
+
+  .drawer-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 11px 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .drawer-body::-webkit-scrollbar { width: 5px; }
+  .drawer-body::-webkit-scrollbar-thumb {
+    background: rgba(148, 179, 255, 0.22);
+    border-radius: 999px;
+  }
+
+  .tab-pane {
+    display: none;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .tab-pane.active { display: flex; }
+
+  .section {
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(148, 179, 255, 0.11);
+    border-radius: var(--radius-md);
+    padding: 10px 11px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .section-title {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .mode-group { display: none; flex-direction: column; gap: 11px; }
+  .mode-group.active { display: flex; }
+
+  /* Presets grid */
+  .preset-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .preset-grid.three {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .preset-btn {
+    text-align: left;
+    padding: 6px 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(148, 179, 255, 0.14);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-main);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .preset-btn:hover {
+    border-color: rgba(255, 190, 92, 0.45);
+    background: rgba(255, 190, 92, 0.08);
+  }
+  .preset-btn.active {
+    border-color: var(--accent-amber);
+    background: rgba(255, 190, 92, 0.15);
+  }
+  .preset-name { font-size: 11px; font-weight: 700; }
+  .preset-sub { font-size: 9.5px; color: var(--text-muted); line-height: 1.2; }
+
+  /* Sliders */
+  .control-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .control-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+  .control-head .val {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-main);
+    font-weight: 600;
+  }
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 5px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.18);
+    outline: none;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 13px;
+    height: 13px;
+    border-radius: 50%;
+    background: var(--accent-cyan);
+    border: 2px solid #08101f;
+    box-shadow: 0 0 9px rgba(88, 220, 255, 0.65);
+    cursor: pointer;
+  }
+  input[type="range"].amber::-webkit-slider-thumb {
+    background: var(--accent-amber);
+    box-shadow: 0 0 9px rgba(255, 190, 92, 0.65);
+  }
+  input[type="range"].violet::-webkit-slider-thumb {
+    background: var(--accent-violet);
+    box-shadow: 0 0 9px rgba(167, 139, 250, 0.65);
+  }
+  input[type="range"].rose::-webkit-slider-thumb {
+    background: var(--accent-rose);
+    box-shadow: 0 0 9px rgba(255, 96, 131, 0.65);
+  }
+
+  /* Drawbars */
+  .drawbar-grid {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    gap: 4px;
+    align-items: end;
+    padding: 6px 2px 2px;
+  }
+  .drawbar-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+  }
+  .drawbar-track {
+    position: relative;
+    width: 24px;
+    height: 82px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(148, 179, 255, 0.14);
+    overflow: hidden;
+    cursor: ns-resize;
+  }
+  .drawbar-fill {
+    position: absolute;
+    left: 2px;
+    right: 2px;
+    bottom: 2px;
+    border-radius: 4px;
+    background: linear-gradient(180deg, #58dcff, #3b82f6);
+    pointer-events: none;
+  }
+  .drawbar-label {
+    font-family: var(--mono);
+    font-size: 9.5px;
+    color: var(--text-dim);
+  }
+  .drawbar-val {
+    font-family: var(--mono);
+    font-size: 8.5px;
+    color: var(--text-muted);
+  }
+
+  /* Segmented pills */
+  .seg-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(52px, 1fr));
+    gap: 4px;
+  }
+  .seg-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-dim);
+    font-size: 10.5px;
+    font-weight: 650;
+    padding: 6px 4px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-align: center;
+  }
+  .seg-btn:hover {
+    color: #fff;
+    border-color: rgba(148, 179, 255, 0.35);
+  }
+  .seg-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.18);
+    border-color: var(--accent-cyan);
+  }
+  .seg-btn.active.amber {
+    background: rgba(255, 190, 92, 0.18);
+    border-color: var(--accent-amber);
+    color: #ffdfaa;
+  }
+  .seg-btn.active.violet {
+    background: rgba(167, 139, 250, 0.2);
+    border-color: var(--accent-violet);
+    color: #ede6ff;
+  }
+
+  /* Action Buttons */
+  .btn-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .btn {
+    border: 1px solid rgba(148, 179, 255, 0.22);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-main);
+    font-size: 11px;
+    font-weight: 700;
+    padding: 7px 9px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+  .btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 179, 255, 0.45);
+  }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary {
+    background: linear-gradient(135deg, rgba(88, 220, 255, 0.28), rgba(56, 140, 255, 0.24));
+    border-color: rgba(88, 220, 255, 0.55);
+    color: #e6f9ff;
+  }
+  .btn.amber {
+    background: linear-gradient(135deg, rgba(255, 190, 92, 0.26), rgba(255, 120, 60, 0.22));
+    border-color: rgba(255, 190, 92, 0.55);
+    color: #fff3db;
+  }
+  .btn.mint {
+    background: linear-gradient(135deg, rgba(74, 242, 178, 0.26), rgba(40, 190, 145, 0.22));
+    border-color: rgba(74, 242, 178, 0.58);
+    color: #e2fff3;
+    box-shadow: 0 0 16px rgba(74, 242, 178, 0.2);
+  }
+
+  /* Toggle switches */
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11px;
+    color: var(--text-dim);
+    cursor: pointer;
+  }
+  .toggle-row input { display: none; }
+  .switch {
+    width: 34px;
+    height: 18px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.2);
+    border: 1px solid rgba(148, 179, 255, 0.25);
+    position: relative;
+    transition: all 0.18s ease;
+    flex-shrink: 0;
+  }
+  .switch::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #c8d7f5;
+    transition: transform 0.18s ease, background 0.18s ease;
+  }
+  .toggle-row input:checked + .switch {
+    background: rgba(88, 220, 255, 0.32);
+    border-color: var(--accent-cyan);
+  }
+  .toggle-row input:checked + .switch::after {
+    transform: translateX(16px);
+    background: #fff;
+  }
+
+  /* Floating Mini Piano Keyboard */
+  .piano-dock {
+    position: fixed;
+    bottom: 62px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 6px 9px 7px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    z-index: 12;
+  }
+  .piano-head {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    font-size: 9.5px;
+    color: var(--text-dim);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  .piano-note-readout {
+    font-family: var(--mono);
+    color: var(--accent-cyan);
+    font-weight: 700;
+  }
+  .piano-keys {
+    position: relative;
+    display: flex;
+    height: 52px;
+    user-select: none;
+  }
+  .p-key-white {
+    position: relative;
+    width: 34px;
+    height: 52px;
+    background: linear-gradient(180deg, rgba(228, 238, 255, 0.92), rgba(188, 206, 235, 0.88));
+    border: 1px solid rgba(15, 24, 46, 0.72);
+    border-radius: 0 0 5px 5px;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    align-items: center;
+    padding-bottom: 3px;
+    transition: background 0.06s ease, transform 0.06s ease;
+    color: #162238;
+  }
+  .p-key-white:hover {
+    background: linear-gradient(180deg, #ffffff, #d7e8ff);
+  }
+  .p-key-white.active {
+    background: linear-gradient(180deg, #7be6ff, #42b8e8);
+    transform: translateY(1.5px);
+    box-shadow: 0 0 14px rgba(88, 220, 255, 0.7);
+    color: #031320;
+  }
+  .p-key-black {
+    position: absolute;
+    top: 0;
+    width: 22px;
+    height: 32px;
+    background: linear-gradient(180deg, #1b243b, #0a0f1e);
+    border: 1px solid rgba(148, 179, 255, 0.28);
+    border-radius: 0 0 4px 4px;
+    z-index: 3;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    align-items: center;
+    padding-bottom: 2px;
+    color: #a9bae0;
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.65);
+    transition: background 0.06s ease, transform 0.06s ease;
+  }
+  .p-key-black:hover {
+    background: linear-gradient(180deg, #273659, #131c33);
+  }
+  .p-key-black.active {
+    background: linear-gradient(180deg, #ffbe5c, #d97a28);
+    color: #160c02;
+    transform: translateY(1px);
+    box-shadow: 0 0 14px rgba(255, 190, 92, 0.75);
+  }
+  .k-note { font-size: 8.5px; font-weight: 800; line-height: 1; }
+  .k-bind { font-family: var(--mono); font-size: 8px; opacity: 0.72; line-height: 1.1; }
+
+  /* Bottom Transport Bar */
+  .bottom-bar {
+    position: fixed;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 6px 9px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    flex-wrap: nowrap;
+  }
+
+  .bar-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-main);
+    font-size: 11px;
+    font-weight: 650;
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    white-space: nowrap;
+  }
+  .bar-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 179, 255, 0.4);
+  }
+  .bar-btn.active {
+    background: rgba(88, 220, 255, 0.2);
+    border-color: var(--accent-cyan);
+    color: #fff;
+  }
+  .bar-btn.audio-on {
+    background: linear-gradient(135deg, rgba(74, 242, 178, 0.26), rgba(45, 190, 140, 0.22));
+    border-color: var(--accent-mint);
+    color: #e6fff5;
+    box-shadow: 0 0 14px rgba(74, 242, 178, 0.28);
+  }
+  .bar-btn.audio-off {
+    background: rgba(255, 190, 92, 0.12);
+    border-color: rgba(255, 190, 92, 0.42);
+    color: #ffe2b3;
+  }
+
+  .bar-divider {
+    width: 1px;
+    height: 19px;
+    background: rgba(148, 179, 255, 0.16);
+    margin: 0 2px;
+  }
+
+  /* Bottom-left hint */
+  .hint-pill {
+    position: fixed;
+    bottom: 14px;
+    left: 14px;
+    padding: 7px 11px;
+    font-size: 10.5px;
+    color: var(--text-dim);
+    max-width: 290px;
+    line-height: 1.4;
+  }
+  .hint-pill kbd {
+    font-family: var(--mono);
+    font-size: 9.5px;
+    padding: 1px 4px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #fff;
+  }
+
+  .zen-restore {
+    position: fixed;
+    bottom: 14px;
+    right: 14px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+  }
+  body.zen-mode .zen-restore {
+    opacity: 0.9;
+    pointer-events: auto;
+  }
+
+  .note-small {
+    font-size: 10.5px;
+    color: var(--text-muted);
+    line-height: 1.4;
+  }
+  .formula-box {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: #cfe8ff;
+    background: rgba(88, 220, 255, 0.06);
+    border: 1px solid rgba(88, 220, 255, 0.18);
+    border-radius: var(--radius-sm);
+    padding: 6px 8px;
+    line-height: 1.45;
+  }
+
+  @media (max-width: 960px) {
+    .top-left {
+      width: calc(100vw - 28px);
+      max-width: none;
+    }
+    .drawer {
+      top: auto;
+      bottom: 62px;
+      height: 50vh;
+      width: calc(100vw - 28px);
+    }
+    .hint-pill { display: none; }
+    .piano-dock { display: none; }
+  }
+</style>
+</head>
+<body>
+<canvas id="sim-canvas"></canvas>
+
+<div class="hud">
+  <!-- Top-Left Telemetry Card -->
+  <div class="panel top-left">
+    <div class="brand-row">
+      <div class="brand-title-wrap">
+        <div class="brand-title">Harmonics</div>
+        <span id="mode-badge" class="mode-badge">Plucked String</span>
+      </div>
+      <span id="series-pill" class="status-pill">All Harmonics</span>
+    </div>
+
+    <div class="telemetry-grid">
+      <div class="tele-card">
+        <span class="tele-label">Fundamental f₀</span>
+        <span id="tel-f0" class="tele-val cyan">261.6 Hz · C4</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Harmonic Series</span>
+        <span id="tel-series" class="tele-val mint">All (1,2,3…)</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Spectral Centroid</span>
+        <span id="tel-centroid" class="tele-val amber">612 Hz</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Beat Freq |f₂−f₁|</span>
+        <span id="tel-beat" class="tele-val rose">0.00 Hz</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Length L</span>
+        <span id="tel-length" class="tele-val">65.0 cm</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Wave Speed v</span>
+        <span id="tel-speed" class="tele-val violet">340.1 m/s</span>
+      </div>
+    </div>
+
+    <div class="clock-row">
+      <span>FFT Peak: <strong id="tel-peak">262 Hz (C4)</strong></span>
+      <span>Radix-2: <strong id="tel-fft-info">1024-pt Hann</strong></span>
+      <span>Audio: <strong id="tel-audio-state">Muted</strong></span>
+    </div>
+  </div>
+
+  <!-- Right Collapsible Controls Drawer -->
+  <div id="drawer" class="panel drawer">
+    <div class="drawer-tabs">
+      <button class="tab-btn active" data-tab="instrument">Instrument</button>
+      <button class="tab-btn" data-tab="analyzer">FFT & Scope</button>
+      <button class="tab-btn" data-tab="audio">Audio & Lab</button>
+    </div>
+
+    <div class="drawer-body">
+      <!-- TAB 1: INSTRUMENT -->
+      <div id="tab-instrument" class="tab-pane active">
+        <div class="section">
+          <div class="section-title">
+            <span>Acoustic Instrument Mode</span>
+            <span style="color:var(--accent-cyan)">3 Labs</span>
+          </div>
+          <div class="seg-row">
+            <button id="mode-btn-string" class="seg-btn active" data-mode="string">A: String</button>
+            <button id="mode-btn-pipe" class="seg-btn" data-mode="pipe">B: Air Pipe</button>
+            <button id="mode-btn-synth" class="seg-btn" data-mode="synth">C: Synth</button>
+          </div>
+        </div>
+
+        <!-- MODE A: PLUCKED STRING -->
+        <div id="group-string" class="mode-group active">
+          <div class="section">
+            <div class="section-title">
+              <span>1D String Pluck & Nodes</span>
+              <span id="lbl-pluck-hint" style="color:var(--accent-amber)">Drag String!</span>
+            </div>
+
+            <div class="control-row">
+              <div class="control-head">
+                <span>Pluck Position (x₀ / L)</span>
+                <span id="val-pluck-pos" class="val">0.24 L</span>
+              </div>
+              <input id="sl-pluck-pos" class="amber" type="range" min="0.06" max="0.94" step="0.01" value="0.24" />
+            </div>
+
+            <div class="btn-row">
+              <button id="btn-pluck-now" class="btn amber">🎸 Pluck String</button>
+              <button id="btn-pluck-center" class="btn">Center (Odd n)</button>
+            </div>
+
+            <div class="control-row" style="margin-top:2px;">
+              <div class="control-head">
+                <span>Fret / Natural Harmonic Node</span>
+                <span id="val-node-finger" class="val">Open</span>
+              </div>
+              <div class="seg-row">
+                <button class="seg-btn active" data-node="1">Open</button>
+                <button class="seg-btn" data-node="2">1/2</button>
+                <button class="seg-btn" data-node="3">1/3</button>
+                <button class="seg-btn" data-node="4">1/4</button>
+                <button class="seg-btn" data-node="5">1/5</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="section">
+            <div class="section-title"><span>String Physics</span><span>v = √(T/μ)</span></div>
+
+            <div class="control-row">
+              <div class="control-head">
+                <span>Scale Length L</span>
+                <span id="val-str-len" class="val">65.0 cm</span>
+              </div>
+              <input id="sl-str-len" type="range" min="30" max="110" step="0.5" value="65" />
+            </div>
+
+            <div class="control-row">
+              <div class="control-head">
+                <span>Wave Speed v (Tension)</span>
+                <span id="val-str-speed" class="val">340 m/s</span>
+              </div>
+              <input id="sl-str-speed" type="range" min="150" max="620" step="1" value="340" />
+            </div>
+
+            <div class="control-row">
+              <div class="control-head">
+                <span>Sustain / Damping</span>
+                <span id="val-str-damp" class="val">Medium</span>
+              </div>
+              <input id="sl-str-damp" type="range" min="0.15" max="1.8" step="0.05" value="0.55" />
+            </div>
+
+            <label class="toggle-row">
+              <span>Show Standing-Wave Harmonics (f₁..f₆)</span>
+              <input id="chk-str-modes" type="checkbox" checked />
+              <span class="switch"></span>
+            </label>
+            <label class="toggle-row">
+              <span>Auto-Repluck Loop (for Live FFT)</span>
+              <input id="chk-str-auto" type="checkbox" checked />
+              <span class="switch"></span>
+            </label>
+          </div>
+        </div>
+
+        <!-- MODE B: OPEN VS CLOSED PIPE -->
+        <div id="group-pipe" class="mode-group">
+          <div class="section">
+            <div class="section-title">
+              <span>Acoustic Pipe Boundary</span>
+              <span id="lbl-pipe-type" style="color:var(--accent-cyan)">Open–Open</span>
+            </div>
+            <div class="seg-row">
+              <button id="btn-pipe-open" class="seg-btn active" data-pipe="open">Open–Open (All n)</button>
+              <button id="btn-pipe-closed" class="seg-btn amber" data-pipe="closed">Closed–Open (Odd n)</button>
+            </div>
+            <div class="note-small">
+              Flipping to <strong>Closed–Open</strong> seals the right end (displacement node, pressure antinode), dropping f₀ by an octave and erasing all even harmonics!
+            </div>
+          </div>
+
+          <div class="section">
+            <div class="section-title"><span>Air Column & Overblow</span><span>c_air</span></div>
+
+            <div class="control-row">
+              <div class="control-head">
+                <span>Pipe Length L</span>
+                <span id="val-pipe-len" class="val">65.6 cm</span>
+              </div>
+              <input id="sl-pipe-len" class="amber" type="range" min="20" max="125" step="0.5" value="65.6" />
+            </div>
+
+            <div class="control-row">
+              <div class="control-head">
+                <span>Air Temp (Speed of Sound)</span>
+                <span id="val-pipe-temp" class="val">20°C · 343.4 m/s</span>
+              </div>
+              <input id="sl-pipe-temp" type="range" min="0" max="45" step="1" value="20" />
+            </div>
+
+            <div class="control-row">
+              <div class="control-head">
+                <span>Excitation / Overblow Mode</span>
+                <span id="val-pipe-overblow" class="val">Natural Rich</span>
+              </div>
+              <div class="seg-row">
+                <button class="seg-btn active" data-overblow="0">Rich</button>
+                <button class="seg-btn" data-overblow="1">Mode 1</button>
+                <button class="seg-btn" data-overblow="2">Mode 2</button>
+                <button class="seg-btn" data-overblow="3">Mode 3</button>
+              </div>
+            </div>
+
+            <label class="toggle-row">
+              <span>Overlay Pressure Wave ΔP(x)</span>
+              <input id="chk-pipe-pressure" type="checkbox" checked />
+              <span class="switch"></span>
+            </label>
+            <label class="toggle-row">
+              <span>Overlay Displacement Wave ξ(x)</span>
+              <input id="chk-pipe-disp" type="checkbox" checked />
+              <span class="switch"></span>
+            </label>
+            <label class="toggle-row">
+              <span>Longitudinal Air Molecules</span>
+              <input id="chk-pipe-particles" type="checkbox" checked />
+              <span class="switch"></span>
+            </label>
+          </div>
+        </div>
+
+        <!-- MODE C: ADDITIVE / FM SYNTH + BEATS -->
+        <div id="group-synth" class="mode-group">
+          <div class="section">
+            <div class="section-title"><span>Waveform Presets</span><span>Fourier / FM</span></div>
+            <div class="preset-grid three">
+              <button class="preset-btn active" data-preset="sine">
+                <span class="preset-name">Sine</span>
+                <span class="preset-sub">Pure f₁</span>
+              </button>
+              <button class="preset-btn" data-preset="triangle">
+                <span class="preset-name">Triangle</span>
+                <span class="preset-sub">Odd 1/n²</span>
+              </button>
+              <button class="preset-btn" data-preset="sawtooth">
+                <span class="preset-name">Sawtooth</span>
+                <span class="preset-sub">All 1/n</span>
+              </button>
+              <button class="preset-btn" data-preset="square">
+                <span class="preset-name">Square</span>
+                <span class="preset-sub">Odd 1/n</span>
+              </button>
+              <button class="preset-btn" data-preset="clarinet">
+                <span class="preset-name">Clarinet</span>
+                <span class="preset-sub">Odd reed</span>
+              </button>
+              <button class="preset-btn" data-preset="bellfm">
+                <span class="preset-name">Bell FM</span>
+                <span class="preset-sub">Inharmonic</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="section">
+            <div class="section-title">
+              <span>8-Harmonic Drawbar Mixer</span>
+              <button id="btn-drawbar-reset" class="seg-btn" style="padding:2px 6px;font-size:9.5px;">Reset</button>
+            </div>
+            <div id="drawbar-container" class="drawbar-grid"></div>
+          </div>
+
+          <div class="section">
+            <div class="section-title"><span>FM Modulation & Beats Lab</span><span>f₁ + Δf</span></div>
+
+            <div class="control-row">
+              <div class="control-head">
+                <span>Base Pitch f₁</span>
+                <span id="val-synth-freq" class="val">261.6 Hz</span>
+              </div>
+              <input id="sl-synth-freq" type="range" min="110" max="660" step="0.5" value="261.63" />
+            </div>
+
+            <div class="control-row">
+              <div class="control-head">
+                <span>FM Index β</span>
+                <span id="val-fm-index" class="val">0.00</span>
+              </div>
+              <input id="sl-fm-index" class="violet" type="range" min="0" max="5" step="0.05" value="0" />
+            </div>
+
+            <div class="control-row">
+              <div class="control-head">
+                <span>FM Modulator Ratio (fₘ / f₁)</span>
+                <span id="val-fm-ratio" class="val">2.00×</span>
+              </div>
+              <input id="sl-fm-ratio" class="violet" type="range" min="0.5" max="4.5" step="0.01" value="2.0" />
+            </div>
+
+            <label class="toggle-row" style="margin-top:2px;">
+              <span style="color:#ffd1dc;font-weight:650;">Acoustic Beats Mode (Dual Osc)</span>
+              <input id="chk-beats-on" type="checkbox" />
+              <span class="switch"></span>
+            </label>
+
+            <div class="control-row">
+              <div class="control-head">
+                <span>Beat Detune Δf = |f₂ − f₁|</span>
+                <span id="val-beat-df" class="val">3.50 Hz</span>
+              </div>
+              <input id="sl-beat-df" class="rose" type="range" min="0" max="15" step="0.1" value="3.5" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 2: FFT & SCOPE -->
+      <div id="tab-analyzer" class="tab-pane">
+        <div class="section">
+          <div class="section-title"><span>Cooley–Tukey Radix-2 FFT</span><span>DSP</span></div>
+
+          <div class="control-row">
+            <div class="control-head"><span>FFT Frame Size N</span><span id="val-fft-size" class="val">1024</span></div>
+            <div class="seg-row">
+              <button class="seg-btn" data-fftsize="512">512 pts</button>
+              <button class="seg-btn active" data-fftsize="1024">1024 pts</button>
+            </div>
+          </div>
+
+          <div class="control-row">
+            <div class="control-head"><span>Magnitude Scale</span></div>
+            <div class="seg-row">
+              <button class="seg-btn active" data-magscale="log">Log (dB)</button>
+              <button class="seg-btn" data-magscale="linear">Linear</button>
+            </div>
+          </div>
+
+          <div class="control-row">
+            <div class="control-head"><span>Frequency Axis</span></div>
+            <div class="seg-row">
+              <button class="seg-btn active" data-freqscale="linear">Linear Hz</button>
+              <button class="seg-btn" data-freqscale="log">Log Musical</button>
+            </div>
+          </div>
+
+          <div class="control-row">
+            <div class="control-head"><span>Window Function</span></div>
+            <div class="seg-row">
+              <button class="seg-btn active" data-window="hann">Hann</button>
+              <button class="seg-btn" data-window="hamming">Hamming</button>
+              <button class="seg-btn" data-window="blackman">Blackman</button>
+              <button class="seg-btn" data-window="rect">Rect</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Spectrogram & Overlays</span><span>Visuals</span></div>
+
+          <div class="control-row">
+            <div class="control-head"><span>Waterfall Color Map</span></div>
+            <div class="seg-row">
+              <button class="seg-btn active amber" data-palette="inferno">Inferno</button>
+              <button class="seg-btn" data-palette="cyan">Cyan Glow</button>
+              <button class="seg-btn violet" data-palette="aurora">Aurora</button>
+            </div>
+          </div>
+
+          <label class="toggle-row">
+            <span>Label Musical Notes (A4 440Hz)</span>
+            <input id="chk-note-labels" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Show Harmonic Pins (f₁, 2f₁…)</span>
+            <input id="chk-harm-pins" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Peak-Hold Spectrum Envelope</span>
+            <input id="chk-peak-hold" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Freeze Analyzer Display</span>
+            <input id="chk-freeze-fft" type="checkbox" />
+            <span class="switch"></span>
+          </label>
+        </div>
+      </div>
+
+      <!-- TAB 3: AUDIO & LAB -->
+      <div id="tab-audio" class="tab-pane">
+        <div class="section">
+          <div class="section-title"><span>Live Web Audio Synthesizer</span><span>Muted Default</span></div>
+          <button id="btn-audio-big" class="btn amber" style="width:100%;padding:10px;">🔊 Enable Live Audio</button>
+          <div class="control-row">
+            <div class="control-head">
+              <span>Master Output Gain</span>
+              <span id="val-master-vol" class="val">65%</span>
+            </div>
+            <input id="sl-master-vol" type="range" min="0" max="100" step="1" value="65" />
+          </div>
+          <div class="note-small">
+            String mode triggers authentic <strong>Karplus–Strong + modal harmonic</strong> plucks; Pipe mode synthesizes continuous open/closed reed/flute harmonics + air breath; Synth mode drives a live 8-partial additive + FM + beat oscillator bank.
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Acoustics Reference</span><span>Equations</span></div>
+          <div class="formula-box">
+            String: fₙ = n·v / (2L), aₙ ∝ sin(nπx₀/L) / n²<br/>
+            Open Pipe: fₙ = n·c / (2L) &nbsp;(n = 1,2,3…)<br/>
+            Closed Pipe: fₙ = n·c / (4L) (n = 1,3,5…)<br/>
+            Beats: y = 2A cos(πΔf·t) sin(2πf̄·t)
+          </div>
+          <div class="note-small">
+            <strong>Try this:</strong> In String mode, pluck at exact center (0.50 L) to eliminate all even harmonics, or click the <strong>1/3</strong> node on the string for a pure 12th natural harmonic. In Pipe mode, toggle Closed–Open and watch every even FFT spike vanish!
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- On-Screen Mini Piano Keyboard (C4 - C5) -->
+  <div id="piano-dock" class="panel piano-dock">
+    <div class="piano-head">
+      <span>🎹 Live Keyboard (C4–C5)</span>
+      <span id="piano-active-note" class="piano-note-readout">C4 · 261.6 Hz</span>
+    </div>
+    <div id="piano-keys" class="piano-keys"></div>
+  </div>
+
+  <!-- Bottom-Center Transport Bar -->
+  <div class="panel bottom-bar">
+    <button id="btn-play" class="bar-btn active">⏸ Pause</button>
+    <button id="btn-reset" class="bar-btn">↺ Reset</button>
+    <div class="bar-divider"></div>
+    <button id="btn-audio-bar" class="bar-btn audio-off">🔇 Enable Audio</button>
+    <div class="bar-divider"></div>
+    <button id="bar-mode-string" class="bar-btn active">String</button>
+    <button id="bar-mode-pipe" class="bar-btn">Pipe</button>
+    <button id="bar-mode-synth" class="bar-btn">Synth</button>
+    <div class="bar-divider"></div>
+    <button id="btn-drawer" class="bar-btn active">Controls</button>
+    <button id="btn-cinema" class="bar-btn">Cinema</button>
+  </div>
+
+  <!-- Bottom-Left Hints -->
+  <div class="panel hint-pill">
+    <div><kbd>Drag</kbd> string to pluck · <kbd>Click</kbd> nodes · <kbd>A–K</kbd> play C4–C5</div>
+    <div><kbd>Space</kbd> Pause · <kbd>R</kbd> Reset · <kbd>Shift+H</kbd> Cinema</div>
+  </div>
+
+  <!-- Cinema Mode Restore Button -->
+  <button id="btn-zen-restore" class="panel bar-btn zen-restore">Show HUD (Shift+H)</button>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  /* ============================================================================
+     CONSTANTS & MUSICAL UTILITIES
+  ============================================================================ */
+  const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+  const PIANO_NOTES = [
+    { note: 'C4',  midi: 60, freq: 261.6256, black: false, key: 'a', label: 'A', whiteIdx: 0 },
+    { note: 'C#4', midi: 61, freq: 277.1826, black: true,  key: 'w', label: 'W', whiteIdx: 0 },
+    { note: 'D4',  midi: 62, freq: 293.6648, black: false, key: 's', label: 'S', whiteIdx: 1 },
+    { note: 'D#4', midi: 63, freq: 311.1270, black: true,  key: 'e', label: 'E', whiteIdx: 1 },
+    { note: 'E4',  midi: 64, freq: 329.6276, black: false, key: 'd', label: 'D', whiteIdx: 2 },
+    { note: 'F4',  midi: 65, freq: 349.2282, black: false, key: 'f', label: 'F', whiteIdx: 3 },
+    { note: 'F#4', midi: 66, freq: 369.9944, black: true,  key: 't', label: 'T', whiteIdx: 3 },
+    { note: 'G4',  midi: 67, freq: 391.9954, black: false, key: 'g', label: 'G', whiteIdx: 4 },
+    { note: 'G#4', midi: 68, freq: 415.3047, black: true,  key: 'y', label: 'Y', whiteIdx: 4 },
+    { note: 'A4',  midi: 69, freq: 440.0000, black: false, key: 'h', label: 'H', whiteIdx: 5 },
+    { note: 'A#4', midi: 70, freq: 466.1638, black: true,  key: 'u', label: 'U', whiteIdx: 5 },
+    { note: 'B4',  midi: 71, freq: 493.8833, black: false, key: 'j', label: 'J', whiteIdx: 6 },
+    { note: 'C5',  midi: 72, freq: 523.2511, black: false, key: 'k', label: 'K', whiteIdx: 7 }
+  ];
+
+  const HARMONIC_COLORS = [
+    '#58dcff', '#ffbe5c', '#4af2b2', '#ff6083',
+    '#a78bfa', '#38bdf8', '#fb923c', '#e879f9'
+  ];
+
+  function freqToNoteInfo(freq) {
+    if (!isFinite(freq) || freq <= 16) return { name: '—', cents: 0, midi: 0 };
+    const midiFloat = 69 + 12 * Math.log2(freq / 440);
+    const midi = Math.round(midiFloat);
+    const cents = Math.round((midiFloat - midi) * 100);
+    const oct = Math.floor(midi / 12) - 1;
+    const name = NOTE_NAMES[((midi % 12) + 12) % 12] + oct;
+    return { name, cents, midi };
+  }
+
+  /* ============================================================================
+     REAL IN-PLACE RADIX-2 COOLEY-TUKEY FFT
+  ============================================================================ */
+  const fftCache = new Map();
+
+  function getFFTTables(N) {
+    if (fftCache.has(N)) return fftCache.get(N);
+    const bits = Math.log2(N) | 0;
+    const bitRev = new Uint16Array(N);
+    for (let i = 0; i < N; i++) {
+      let x = i, r = 0;
+      for (let b = 0; b < bits; b++) {
+        r = (r << 1) | (x & 1);
+        x >>= 1;
+      }
+      bitRev[i] = r;
+    }
+    const cosT = new Float64Array(N >> 1);
+    const sinT = new Float64Array(N >> 1);
+    for (let k = 0; k < (N >> 1); k++) {
+      const ang = -2 * Math.PI * k / N;
+      cosT[k] = Math.cos(ang);
+      sinT[k] = Math.sin(ang);
+    }
+    const entry = { bitRev, cosT, sinT };
+    fftCache.set(N, entry);
+    return entry;
+  }
+
+  function buildWindow(N, type) {
+    const w = new Float64Array(N);
+    let sum = 0;
+    for (let i = 0; i < N; i++) {
+      const x = i / (N - 1);
+      let v = 1;
+      if (type === 'hann') {
+        v = 0.5 * (1 - Math.cos(2 * Math.PI * x));
+      } else if (type === 'hamming') {
+        v = 0.54 - 0.46 * Math.cos(2 * Math.PI * x);
+      } else if (type === 'blackman') {
+        v = 0.42 - 0.5 * Math.cos(2 * Math.PI * x) + 0.08 * Math.cos(4 * Math.PI * x);
+      }
+      w[i] = v;
+      sum += v;
+    }
+    const gain = N / Math.max(sum, 1e-6);
+    for (let i = 0; i < N; i++) w[i] *= gain;
+    return w;
+  }
+
+  function radix2FFT(re, im) {
+    const N = re.length;
+    const { bitRev, cosT, sinT } = getFFTTables(N);
+    for (let i = 0; i < N; i++) {
+      const j = bitRev[i];
+      if (j > i) {
+        let tr = re[i]; re[i] = re[j]; re[j] = tr;
+        let ti = im[i]; im[i] = im[j]; im[j] = ti;
+      }
+    }
+    for (let size = 2; size <= N; size <<= 1) {
+      const half = size >> 1;
+      const step = N / size;
+      for (let i = 0; i < N; i += size) {
+        let k = 0;
+        for (let j = i; j < i + half; j++) {
+          const wr = cosT[k];
+          const wi = sinT[k];
+          const l = j + half;
+          const tr = wr * re[l] - wi * im[l];
+          const ti = wr * im[l] + wi * re[l];
+          re[l] = re[j] - tr;
+          im[l] = im[j] - ti;
+          re[j] += tr;
+          im[j] += ti;
+          k += step;
+        }
+      }
+    }
+  }
+
+  /* ============================================================================
+     SIMULATION STATE
+  ============================================================================ */
+  const SAMPLE_RATE = 16384; // Nyquist 8192 Hz -> crisp harmonics up to 6 kHz
+  const MAX_MODES = 12;
+
+  const state = {
+    mode: 'string', // 'string' | 'pipe' | 'synth'
+    paused: false,
+    drawerOpen: true,
+    zenMode: false,
+    simTime: 0,
+    audioPhase: 0,
+    masterVol: 0.65,
+    audioEnabled: false,
+
+    // Mode A: Plucked String
+    string: {
+      lengthCm: 65.0,
+      waveSpeed: 340.1, // f0 = 340.1 / (2 * 0.65) = 261.6 Hz (C4)
+      pluckPos: 0.24,
+      pluckAmp: 1.0,
+      damping: 0.55,
+      nodeFinger: 1, // 1 = open, 2 = 1/2, 3 = 1/3, 4 = 1/4, 5 = 1/5
+      showModes: true,
+      autoPluck: true,
+      autoTimer: 0,
+      dragging: false,
+      dragXNorm: 0.24,
+      dragYDisp: 0,
+      hoverXNorm: -1,
+      modeAmp: new Float64Array(MAX_MODES),
+      modeInit: new Float64Array(MAX_MODES),
+      modePhase: new Float64Array(MAX_MODES),
+      energy: 0
+    },
+
+    // Mode B: Open vs Closed Pipe
+    pipe: {
+      type: 'open', // 'open' | 'closed'
+      lengthCm: 65.6, // 343.4 / (2 * 0.656) = 261.7 Hz (C4)
+      tempC: 20,
+      overblow: 0, // 0 = natural rich, 1,2,3 = isolate mode
+      showPressure: true,
+      showDisp: true,
+      showParticles: true,
+      blowing: 1.0,
+      draggingEnd: false,
+      particles: []
+    },
+
+    // Mode C: Additive & FM Synth + Beats
+    synth: {
+      preset: 'sine',
+      freq: 261.6256,
+      drawbars: [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+      phases: [0, 0, 0, 0, 0, 0, 0, 0],
+      fmIndex: 0.0,
+      fmRatio: 2.0,
+      beatsOn: false,
+      beatDf: 3.5
+    },
+
+    // Analyzer
+    fft: {
+      size: 1024,
+      magScale: 'log', // 'log' | 'linear'
+      freqScale: 'linear', // 'linear' | 'log'
+      windowType: 'hann',
+      palette: 'inferno', // 'inferno' | 'cyan' | 'aurora'
+      noteLabels: true,
+      harmPins: true,
+      peakHold: true,
+      frozen: false,
+      windowBuf: null,
+      waveBuf: new Float64Array(1024),
+      re: new Float64Array(1024),
+      im: new Float64Array(1024),
+      mag: new Float64Array(512),
+      magDb: new Float64Array(512),
+      peakBuf: new Float64Array(512),
+      centroidHz: 0,
+      peakFreqHz: 261.6,
+      peakNote: 'C4'
+    },
+
+    // Active piano key tracking
+    activeKeyNote: 'C4',
+    pressedKeys: new Set(),
+
+    // Smoothly animated UI layout offset
+    drawerWidthAnim: 344
+  };
+
+  // Initialize air column particles (380 particles)
+  function initPipeParticles() {
+    const arr = [];
+    const cols = 38;
+    const rows = 10;
+    for (let c = 0; c < cols; c++) {
+      for (let r = 0; r < rows; r++) {
+        arr.push({
+          x0: (c + 0.5 + (Math.random() - 0.5) * 0.65) / cols,
+          y0: (r + 0.5 + (Math.random() - 0.5) * 0.55) / rows,
+          r: 1.55 + Math.random() * 1.15
+        });
+      }
+    }
+    state.pipe.particles = arr;
+  }
+  initPipeParticles();
+
+  /* ============================================================================
+     PHYSICS HELPERS
+  ============================================================================ */
+  function getAirSpeed() {
+    return 331.3 + 0.606 * state.pipe.tempC;
+  }
+
+  function getStringF0() {
+    const L = state.string.lengthCm / 100;
+    return state.string.waveSpeed / (2 * L);
+  }
+
+  function getPipeF0() {
+    const c = getAirSpeed();
+    const L = state.pipe.lengthCm / 100;
+    return state.pipe.type === 'open' ? c / (2 * L) : c / (4 * L);
+  }
+
+  function getCurrentF0() {
+    if (state.mode === 'string') return getStringF0() * state.string.nodeFinger;
+    if (state.mode === 'pipe') return getPipeF0();
+    return state.synth.freq;
+  }
+
+  function pluckString(posNorm = state.string.pluckPos, amp = 1.0, triggerAudio = true) {
+    const s = state.string;
+    const p = Math.max(0.05, Math.min(0.95, posNorm));
+    s.pluckPos = p;
+    s.pluckAmp = Math.max(0.2, Math.min(1.3, amp));
+    s.autoTimer = 0;
+
+    // Ideal triangular pluck Fourier series:
+    // a_n = (2h / (n^2 * pi^2 * p * (1 - p))) * sin(n * pi * p)
+    const kNode = s.nodeFinger;
+    let maxA = 0;
+    for (let n = 1; n <= MAX_MODES; n++) {
+      let a = (2 * s.pluckAmp / (n * n * Math.PI * Math.PI * p * (1 - p))) * Math.sin(n * Math.PI * p);
+      // If a harmonic node finger is placed at 1/k, damp all harmonics not divisible by k
+      if (kNode > 1) {
+        if (n % kNode !== 0) {
+          a *= 0.015;
+        } else {
+          // Boost the isolated natural harmonic slightly for visual & acoustic clarity
+          a *= Math.min(2.6, 1.0 + 0.45 * kNode);
+        }
+      }
+      s.modeInit[n - 1] = a;
+      s.modeAmp[n - 1] = a;
+      s.modePhase[n - 1] = 0;
+      if (Math.abs(a) > maxA) maxA = Math.abs(a);
+    }
+    // Normalize gently so extreme bridge plucks don't clip
+    if (maxA > 1.15) {
+      const sc = 1.15 / maxA;
+      for (let i = 0; i < MAX_MODES; i++) {
+        s.modeInit[i] *= sc;
+        s.modeAmp[i] *= sc;
+      }
+    }
+    s.energy = 1.0;
+
+    if (triggerAudio && state.audioEnabled) {
+      audioEngine.pluckString(getStringF0(), p, kNode, s.damping, s.pluckAmp);
+    }
+  }
+
+  function getPipeHarmonicWeights() {
+    const p = state.pipe;
+    const weights = new Float64Array(MAX_MODES);
+    const isClosed = p.type === 'closed';
+    for (let n = 1; n <= MAX_MODES; n++) {
+      if (isClosed && n % 2 === 0) {
+        weights[n - 1] = 0;
+        continue;
+      }
+      if (p.overblow === 0) {
+        // Natural acoustic pipe spectrum (flute/organ/clarinet rolloff)
+        if (!isClosed) {
+          // Open flute/organ pipe: strong f1, f2, f3, smooth rolloff
+          weights[n - 1] = (1 / Math.pow(n, 1.12)) * (n === 2 ? 0.92 : 1.0);
+        } else {
+          // Closed clarinet-like pipe: strong odd harmonics 1, 3, 5, 7
+          const k = (n + 1) / 2;
+          weights[n - 1] = (1 / Math.pow(k, 0.95)) * (n === 3 ? 0.88 : 1.0);
+        }
+      } else {
+        // Isolated overblow mode
+        const targetN = isClosed ? (2 * p.overblow - 1) : p.overblow;
+        if (n === targetN) weights[n - 1] = 1.0;
+        else if (n === targetN * (isClosed ? 3 : 2)) weights[n - 1] = 0.16;
+        else weights[n - 1] = 0.0;
+      }
+    }
+    return weights;
+  }
+
+  /* ============================================================================
+     WEB AUDIO ENGINE (MUTED BY DEFAULT)
+  ============================================================================ */
+  const audioEngine = {
+    ctx: null,
+    masterGain: null,
+    limiter: null,
+    // Continuous engines for Pipe & Synth
+    contGain: null,
+    pipeOscs: [],
+    pipeGains: [],
+    breathGain: null,
+    breathFilter: null,
+    // Synth continuous engine
+    synthGain: null,
+    synthOscs: [],
+    synthGains: [],
+    fmCarrier: null,
+    fmMod: null,
+    fmModGain: null,
+    fmOutGain: null,
+    beatOscs: [],
+    beatGains: [],
+    beatGroupGain: null,
+    initialized: false,
+
+    init() {
+      if (this.initialized) return;
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      const ctx = new AC();
+      this.ctx = ctx;
+
+      const limiter = ctx.createDynamicsCompressor();
+      limiter.threshold.value = -8;
+      limiter.knee.value = 12;
+      limiter.ratio.value = 8;
+      limiter.attack.value = 0.003;
+      limiter.release.value = 0.12;
+
+      const masterGain = ctx.createGain();
+      masterGain.gain.value = state.masterVol * 0.32;
+      masterGain.connect(limiter);
+      limiter.connect(ctx.destination);
+      this.masterGain = masterGain;
+      this.limiter = limiter;
+
+      // Pipe continuous harmonic bank (8 partials + breath noise)
+      const pipeBus = ctx.createGain();
+      pipeBus.gain.value = 0;
+      pipeBus.connect(masterGain);
+      this.contGain = pipeBus;
+
+      for (let i = 0; i < 8; i++) {
+        const osc = ctx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.value = 261.6 * (i + 1);
+        const g = ctx.createGain();
+        g.gain.value = 0;
+        osc.connect(g);
+        g.connect(pipeBus);
+        osc.start();
+        this.pipeOscs.push(osc);
+        this.pipeGains.push(g);
+      }
+
+      // Soft breath noise for pipe
+      const nLen = ctx.sampleRate * 2;
+      const nBuf = ctx.createBuffer(1, nLen, ctx.sampleRate);
+      const nd = nBuf.getChannelData(0);
+      let b0 = 0, b1 = 0, b2 = 0;
+      for (let i = 0; i < nLen; i++) {
+        const w = Math.random() * 2 - 1;
+        b0 = 0.997 * b0 + w * 0.029;
+        b1 = 0.985 * b1 + w * 0.032;
+        b2 = 0.950 * b2 + w * 0.048;
+        nd[i] = (b0 + b1 + b2 + w * 0.02) * 1.4;
+      }
+      const noiseSrc = ctx.createBufferSource();
+      noiseSrc.buffer = nBuf;
+      noiseSrc.loop = true;
+      const bFilt = ctx.createBiquadFilter();
+      bFilt.type = 'bandpass';
+      bFilt.frequency.value = 520;
+      bFilt.Q.value = 3.2;
+      const bGain = ctx.createGain();
+      bGain.gain.value = 0.05;
+      noiseSrc.connect(bFilt);
+      bFilt.connect(bGain);
+      bGain.connect(pipeBus);
+      noiseSrc.start();
+      this.breathFilter = bFilt;
+      this.breathGain = bGain;
+
+      // Synth continuous bank: 8 additive partials + FM voice + Beats detuned bank
+      const synthBus = ctx.createGain();
+      synthBus.gain.value = 0;
+      synthBus.connect(masterGain);
+      this.synthGain = synthBus;
+
+      for (let i = 0; i < 8; i++) {
+        const osc = ctx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.value = 261.6 * (i + 1);
+        const g = ctx.createGain();
+        g.gain.value = 0;
+        osc.connect(g);
+        g.connect(synthBus);
+        osc.start();
+        this.synthOscs.push(osc);
+        this.synthGains.push(g);
+      }
+
+      // True FM voice
+      const fmCarrier = ctx.createOscillator();
+      const fmMod = ctx.createOscillator();
+      const fmModGain = ctx.createGain();
+      const fmOutGain = ctx.createGain();
+      fmCarrier.type = 'sine';
+      fmMod.type = 'sine';
+      fmModGain.gain.value = 0;
+      fmOutGain.gain.value = 0;
+      fmMod.connect(fmModGain);
+      fmModGain.connect(fmCarrier.frequency);
+      fmCarrier.connect(fmOutGain);
+      fmOutGain.connect(synthBus);
+      fmCarrier.start();
+      fmMod.start();
+      this.fmCarrier = fmCarrier;
+      this.fmMod = fmMod;
+      this.fmModGain = fmModGain;
+      this.fmOutGain = fmOutGain;
+
+      // Beats second voice (4 primary partials detuned by Δf)
+      const beatGroup = ctx.createGain();
+      beatGroup.gain.value = 0;
+      beatGroup.connect(synthBus);
+      this.beatGroupGain = beatGroup;
+      for (let i = 0; i < 4; i++) {
+        const osc = ctx.createOscillator();
+        osc.type = 'sine';
+        const g = ctx.createGain();
+        g.gain.value = 0;
+        osc.connect(g);
+        g.connect(beatGroup);
+        osc.start();
+        this.beatOscs.push(osc);
+        this.beatGains.push(g);
+      }
+
+      this.initialized = true;
+    },
+
+    setEnabled(on) {
+      state.audioEnabled = on;
+      if (on) {
+        this.init();
+        if (this.ctx && this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+        this.updateContinuous();
+        if (state.mode === 'string') {
+          this.pluckString(getStringF0(), state.string.pluckPos, state.string.nodeFinger, state.string.damping, state.string.pluckAmp);
+        }
+      } else if (this.initialized) {
+        const now = this.ctx.currentTime;
+        this.contGain.gain.setTargetAtTime(0, now, 0.03);
+        this.synthGain.gain.setTargetAtTime(0, now, 0.03);
+      }
+      updateAudioButtons();
+    },
+
+    setVolume(v) {
+      state.masterVol = v;
+      if (this.initialized && this.masterGain) {
+        this.masterGain.gain.setTargetAtTime(v * 0.34, this.ctx.currentTime, 0.02);
+      }
+    },
+
+    // Authentic Karplus-Strong + pluck-position comb + harmonic node filter
+    pluckString(f0, pluckPos, nodeFinger, damping, amp) {
+      if (!state.audioEnabled) return;
+      this.init();
+      if (!this.ctx) return;
+      if (this.ctx.state === 'suspended') this.ctx.resume();
+
+      const ctx = this.ctx;
+      const sr = ctx.sampleRate;
+      const effFreq = Math.max(55, Math.min(2600, f0 * nodeFinger));
+      const dur = Math.min(3.6, 1.35 / Math.max(0.2, damping * 0.72));
+      const numSamples = Math.floor(sr * dur);
+      const buf = ctx.createBuffer(1, numSamples, sr);
+      const out = buf.getChannelData(0);
+
+      const period = Math.max(8, Math.round(sr / effFreq));
+      const ring = new Float32Array(period);
+
+      // Excitation: band-limited burst shaped by pluck position comb
+      const pluckDelay = Math.max(1, Math.min(period - 1, Math.round(period * pluckPos)));
+      const raw = new Float32Array(period);
+      for (let i = 0; i < period; i++) {
+        // Combine soft noise + smooth triangle impulse for warm acoustic guitar/harp body
+        const t = i / period;
+        const tri = t < pluckPos ? (t / pluckPos) : ((1 - t) / (1 - pluckPos));
+        const noise = (Math.random() * 2 - 1) * (nodeFinger > 1 ? 0.35 : 0.75);
+        raw[i] = (tri - 0.5) * 1.15 + noise * 0.55;
+      }
+      // Apply pluck-position comb filter (models wave splitting left/right at x0)
+      for (let i = 0; i < period; i++) {
+        ring[i] = raw[i] - 0.78 * raw[(i + period - pluckDelay) % period];
+      }
+      // Remove DC
+      let mean = 0;
+      for (let i = 0; i < period; i++) mean += ring[i];
+      mean /= period;
+      for (let i = 0; i < period; i++) ring[i] -= mean;
+
+      // Karplus-Strong low-pass feedback loop
+      const decayFactor = Math.pow(0.0025, period / (sr * dur));
+      const brightness = nodeFinger > 1 ? 0.52 : (0.5 - 0.14 * Math.min(1, damping * 0.5));
+      let ptr = 0;
+      let prev = ring[period - 1];
+      let peak = 0;
+      for (let i = 0; i < numSamples; i++) {
+        const cur = ring[ptr];
+        out[i] = cur;
+        if (Math.abs(cur) > peak) peak = Math.abs(cur);
+        const filt = decayFactor * (brightness * cur + (1 - brightness) * prev);
+        prev = cur;
+        ring[ptr] = filt;
+        ptr = (ptr + 1) % period;
+      }
+      const norm = peak > 1e-5 ? (0.85 * Math.min(1.1, amp) / peak) : 1;
+      for (let i = 0; i < numSamples; i++) {
+        // Gentle attack & tail fade
+        const env = (i < 48 ? i / 48 : 1) * (i > numSamples - 600 ? (numSamples - i) / 600 : 1);
+        out[i] *= norm * env;
+      }
+
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+
+      // Subtle warm acoustic guitar body resonance
+      const body = ctx.createBiquadFilter();
+      body.type = 'peaking';
+      body.frequency.value = 195;
+      body.Q.value = 1.4;
+      body.gain.value = 3.5;
+
+      src.connect(body);
+      body.connect(this.masterGain);
+      src.start();
+    },
+
+    updateContinuous() {
+      if (!this.initialized || !this.ctx) return;
+      const now = this.ctx.currentTime;
+      const active = state.audioEnabled && !state.paused;
+
+      // Pipe continuous voice
+      if (active && state.mode === 'pipe') {
+        this.contGain.gain.setTargetAtTime(0.46, now, 0.04);
+        const f0 = getPipeF0();
+        const weights = getPipeHarmonicWeights();
+        let wSum = 0;
+        for (let i = 0; i < 8; i++) wSum += weights[i];
+        const norm = wSum > 0.01 ? 1 / Math.max(1.2, wSum) : 1;
+        for (let i = 0; i < 8; i++) {
+          const fn = f0 * (i + 1);
+          this.pipeOscs[i].frequency.setTargetAtTime(Math.min(7200, fn), now, 0.025);
+          this.pipeGains[i].gain.setTargetAtTime(weights[i] * norm, now, 0.03);
+        }
+        this.breathFilter.frequency.setTargetAtTime(Math.min(3500, f0 * 2.1), now, 0.04);
+        this.breathGain.gain.setTargetAtTime(0.045, now, 0.04);
+      } else {
+        this.contGain.gain.setTargetAtTime(0, now, 0.035);
+      }
+
+      // Synth continuous voice
+      if (active && state.mode === 'synth') {
+        const sy = state.synth;
+        this.synthGain.gain.setTargetAtTime(0.42, now, 0.035);
+
+        const useFM = sy.fmIndex > 0.02;
+        if (useFM) {
+          this.fmCarrier.frequency.setTargetAtTime(sy.freq, now, 0.02);
+          this.fmMod.frequency.setTargetAtTime(sy.freq * sy.fmRatio, now, 0.02);
+          this.fmModGain.gain.setTargetAtTime(sy.fmIndex * sy.freq * sy.fmRatio, now, 0.025);
+          this.fmOutGain.gain.setTargetAtTime(sy.beatsOn ? 0.5 : 0.72, now, 0.03);
+          for (let i = 0; i < 8; i++) {
+            this.synthGains[i].gain.setTargetAtTime(0, now, 0.025);
+          }
+        } else {
+          this.fmOutGain.gain.setTargetAtTime(0, now, 0.025);
+          let sum = 0;
+          for (let i = 0; i < 8; i++) sum += sy.drawbars[i];
+          const norm = sum > 0.01 ? (sy.beatsOn ? 0.5 : 0.82) / Math.max(1.0, sum) : 0;
+          for (let i = 0; i < 8; i++) {
+            this.synthOscs[i].frequency.setTargetAtTime(Math.min(7400, sy.freq * (i + 1)), now, 0.02);
+            this.synthGains[i].gain.setTargetAtTime(sy.drawbars[i] * norm, now, 0.025);
+          }
+        }
+
+        if (sy.beatsOn) {
+          this.beatGroupGain.gain.setTargetAtTime(1.0, now, 0.03);
+          const f2 = sy.freq + sy.beatDf;
+          if (useFM) {
+            this.beatOscs[0].frequency.setTargetAtTime(f2, now, 0.02);
+            this.beatGains[0].gain.setTargetAtTime(0.45, now, 0.025);
+            for (let i = 1; i < 4; i++) this.beatGains[i].gain.setTargetAtTime(0, now, 0.025);
+          } else {
+            let sum = 0;
+            for (let i = 0; i < 4; i++) sum += sy.drawbars[i];
+            const norm = sum > 0.01 ? 0.5 / Math.max(1.0, sum) : 0;
+            for (let i = 0; i < 4; i++) {
+              this.beatOscs[i].frequency.setTargetAtTime(Math.min(7400, f2 * (i + 1)), now, 0.02);
+              this.beatGains[i].gain.setTargetAtTime(sy.drawbars[i] * norm, now, 0.025);
+            }
+          }
+        } else {
+          this.beatGroupGain.gain.setTargetAtTime(0, now, 0.03);
+        }
+      } else {
+        this.synthGain.gain.setTargetAtTime(0, now, 0.035);
+      }
+    }
+  };
+
+  /* ============================================================================
+     DETERMINISTIC REAL-TIME WAVEFORM SYNTHESIS FOR SCOPE, FFT & SPECTROGRAM
+  ============================================================================ */
+  function ensureFFTBuffers() {
+    const N = state.fft.size;
+    if (state.fft.waveBuf.length !== N) {
+      state.fft.waveBuf = new Float64Array(N);
+      state.fft.re = new Float64Array(N);
+      state.fft.im = new Float64Array(N);
+      state.fft.mag = new Float64Array(N >> 1);
+      state.fft.magDb = new Float64Array(N >> 1);
+      state.fft.peakBuf = new Float64Array(N >> 1);
+      state.fft.windowBuf = null;
+    }
+    if (!state.fft.windowBuf || state.fft.windowBuf.length !== N) {
+      state.fft.windowBuf = buildWindow(N, state.fft.windowType);
+    }
+  }
+
+  function synthesizeSignalAndFFT() {
+    ensureFFTBuffers();
+    const f = state.fft;
+    const N = f.size;
+    const wave = f.waveBuf;
+    const t0 = state.simTime;
+
+    if (state.mode === 'string') {
+      const s = state.string;
+      const f0 = getStringF0();
+      const twoPi = 2 * Math.PI;
+      for (let i = 0; i < N; i++) {
+        const t = t0 + i / SAMPLE_RATE;
+        let y = 0;
+        for (let m = 0; m < MAX_MODES; m++) {
+          const a = s.modeAmp[m];
+          if (Math.abs(a) < 1e-4) continue;
+          const n = m + 1;
+          y += a * Math.sin(twoPi * f0 * n * t + s.modePhase[m]);
+        }
+        // Subtle acoustic pickup noise floor so waterfall looks alive
+        wave[i] = y * 0.72 + (Math.random() - 0.5) * 0.0025;
+      }
+    } else if (state.mode === 'pipe') {
+      const f0 = getPipeF0();
+      const weights = getPipeHarmonicWeights();
+      let wSum = 0;
+      for (let m = 0; m < MAX_MODES; m++) wSum += weights[m];
+      const norm = wSum > 0.01 ? 0.85 / Math.max(1.1, wSum) : 0;
+      const twoPi = 2 * Math.PI;
+      for (let i = 0; i < N; i++) {
+        const t = t0 + i / SAMPLE_RATE;
+        let y = 0;
+        for (let m = 0; m < MAX_MODES; m++) {
+          const w = weights[m];
+          if (w < 1e-4) continue;
+          y += w * Math.sin(twoPi * f0 * (m + 1) * t);
+        }
+        wave[i] = y * norm + (Math.random() - 0.5) * 0.014;
+      }
+    } else {
+      // Mode C: Additive + FM + Beats
+      const sy = state.synth;
+      const f1 = sy.freq;
+      const f2 = f1 + sy.beatDf;
+      const twoPi = 2 * Math.PI;
+      const useFM = sy.fmIndex > 0.02;
+
+      if (useFM) {
+        const fmFreq = f1 * sy.fmRatio;
+        const beta = sy.fmIndex;
+        for (let i = 0; i < N; i++) {
+          const t = t0 + i / SAMPLE_RATE;
+          let y = Math.sin(twoPi * f1 * t + beta * Math.sin(twoPi * fmFreq * t));
+          if (sy.beatsOn) {
+            y = 0.5 * (y + Math.sin(twoPi * f2 * t));
+          }
+          wave[i] = y * 0.82 + (Math.random() - 0.5) * 0.002;
+        }
+      } else {
+        let sum = 0;
+        for (let m = 0; m < 8; m++) sum += sy.drawbars[m];
+        const norm = sum > 0.01 ? 0.85 / Math.max(1.0, sum) : 0;
+        for (let i = 0; i < N; i++) {
+          const t = t0 + i / SAMPLE_RATE;
+          let y = 0;
+          for (let m = 0; m < 8; m++) {
+            const amp = sy.drawbars[m];
+            if (amp < 1e-4) continue;
+            const n = m + 1;
+            y += amp * Math.sin(twoPi * f1 * n * t + sy.phases[m]);
+          }
+          if (sy.beatsOn) {
+            let y2 = 0;
+            for (let m = 0; m < 4; m++) {
+              const amp = sy.drawbars[m];
+              if (amp < 1e-4) continue;
+              y2 += amp * Math.sin(twoPi * f2 * (m + 1) * t + sy.phases[m]);
+            }
+            y = 0.5 * (y + y2);
+          }
+          wave[i] = y * norm + (Math.random() - 0.5) * 0.002;
+        }
+      }
+    }
+
+    // Apply window & execute Radix-2 Cooley-Tukey FFT
+    const win = f.windowBuf;
+    const re = f.re;
+    const im = f.im;
+    for (let i = 0; i < N; i++) {
+      re[i] = wave[i] * win[i];
+      im[i] = 0;
+    }
+    radix2FFT(re, im);
+
+    const half = N >> 1;
+    const binHz = SAMPLE_RATE / N;
+    let numCentroid = 0;
+    let denCentroid = 0;
+    let maxMag = 0;
+    let maxBin = 1;
+
+    for (let k = 0; k < half; k++) {
+      const m = (2 / N) * Math.hypot(re[k], im[k]);
+      f.mag[k] = m;
+      const db = 20 * Math.log10(Math.max(m, 1e-5));
+      f.magDb[k] = db;
+      if (m > f.peakBuf[k]) f.peakBuf[k] = m;
+      else f.peakBuf[k] *= 0.985;
+
+      if (k >= 2) {
+        if (m > maxMag) {
+          maxMag = m;
+          maxBin = k;
+        }
+        if (m > 0.006) {
+          numCentroid += (k * binHz) * m;
+          denCentroid += m;
+        }
+      }
+    }
+
+    // Parabolic interpolation around peak bin for crisp sub-bin frequency readout
+    let peakBinInterp = maxBin;
+    if (maxBin > 1 && maxBin < half - 1) {
+      const a = Math.log(Math.max(f.mag[maxBin - 1], 1e-6));
+      const b = Math.log(Math.max(f.mag[maxBin], 1e-6));
+      const c = Math.log(Math.max(f.mag[maxBin + 1], 1e-6));
+      const denom = (a - 2 * b + c);
+      if (Math.abs(denom) > 1e-9) {
+        const delta = 0.5 * (a - c) / denom;
+        if (Math.abs(delta) < 1) peakBinInterp = maxBin + delta;
+      }
+    }
+
+    f.peakFreqHz = maxMag > 0.01 ? peakBinInterp * binHz : 0;
+    f.peakNote = maxMag > 0.01 ? freqToNoteInfo(f.peakFreqHz).name : '—';
+    f.centroidHz = denCentroid > 1e-5 ? numCentroid / denCentroid : 0;
+  }
+
+  /* ============================================================================
+     OFFSCREEN WATERFALL SPECTROGRAM BUFFER
+  ============================================================================ */
+  const wfCanvas = document.createElement('canvas');
+  const wfW = 300;
+  const wfH = 220;
+  wfCanvas.width = wfW;
+  wfCanvas.height = wfH;
+  const wfCtx = wfCanvas.getContext('2d');
+  wfCtx.fillStyle = '#040814';
+  wfCtx.fillRect(0, 0, wfW, wfH);
+
+  // Build 256-entry LUTs for Inferno / Cyan / Aurora palettes
+  function buildPaletteLUT(name) {
+    const lut = new Uint8ClampedArray(256 * 3);
+    for (let i = 0; i < 256; i++) {
+      const t = i / 255;
+      let r = 0, g = 0, b = 0;
+      if (name === 'inferno') {
+        // Deep midnight -> violet -> crimson -> amber -> white-gold
+        if (t < 0.25) {
+          const u = t / 0.25;
+          r = 4 + u * 66; g = 7 + u * 10; b = 18 + u * 92;
+        } else if (t < 0.55) {
+          const u = (t - 0.25) / 0.30;
+          r = 70 + u * 138; g = 17 + u * 35; b = 110 - u * 38;
+        } else if (t < 0.82) {
+          const u = (t - 0.55) / 0.27;
+          r = 208 + u * 47; g = 52 + u * 145; b = 72 - u * 48;
+        } else {
+          const u = (t - 0.82) / 0.18;
+          r = 255; g = 197 + u * 55; b = 24 + u * 185;
+        }
+      } else if (name === 'cyan') {
+        if (t < 0.35) {
+          const u = t / 0.35;
+          r = 4 + u * 10; g = 9 + u * 48; b = 22 + u * 96;
+        } else if (t < 0.72) {
+          const u = (t - 0.35) / 0.37;
+          r = 14 + u * 78; g = 57 + u * 165; b = 118 + u * 137;
+        } else {
+          const u = (t - 0.72) / 0.28;
+          r = 92 + u * 163; g = 222 + u * 33; b = 255;
+        }
+      } else {
+        // Aurora: deep navy -> emerald -> cyan -> rose-violet
+        if (t < 0.33) {
+          const u = t / 0.33;
+          r = 5 + u * 14; g = 10 + u * 95; b = 24 + u * 86;
+        } else if (t < 0.68) {
+          const u = (t - 0.33) / 0.35;
+          r = 19 + u * 140; g = 105 + u * 120; b = 110 + u * 130;
+        } else {
+          const u = (t - 0.68) / 0.32;
+          r = 159 + u * 96; g = 225 - u * 40; b = 240 + u * 15;
+        }
+      }
+      lut[i * 3] = Math.max(0, Math.min(255, r));
+      lut[i * 3 + 1] = Math.max(0, Math.min(255, g));
+      lut[i * 3 + 2] = Math.max(0, Math.min(255, b));
+    }
+    return lut;
+  }
+
+  const PALETTES = {
+    inferno: buildPaletteLUT('inferno'),
+    cyan: buildPaletteLUT('cyan'),
+    aurora: buildPaletteLUT('aurora')
+  };
+  const wfSliceImg = wfCtx.createImageData(2, wfH);
+
+  function pushWaterfallSlice() {
+    if (state.fft.frozen || state.paused) return;
+    // Scroll left by 2 px
+    wfCtx.drawImage(wfCanvas, 2, 0, wfW - 2, wfH, 0, 0, wfW - 2, wfH);
+
+    const f = state.fft;
+    const half = f.size >> 1;
+    const binHz = SAMPLE_RATE / f.size;
+    const maxDisplayHz = 4400;
+    const lut = PALETTES[f.palette] || PALETTES.inferno;
+    const data = wfSliceImg.data;
+
+    for (let y = 0; y < wfH; y++) {
+      const frac = 1 - y / (wfH - 1); // bottom = 0 Hz, top = maxDisplayHz
+      let freqHz;
+      if (f.freqScale === 'log') {
+        freqHz = 60 * Math.pow(maxDisplayHz / 60, frac);
+      } else {
+        freqHz = frac * maxDisplayHz;
+      }
+      const binF = freqHz / binHz;
+      const b0 = Math.max(0, Math.min(half - 2, Math.floor(binF)));
+      const alpha = binF - b0;
+
+      let normVal;
+      if (f.magScale === 'log') {
+        const db = f.magDb[b0] * (1 - alpha) + f.magDb[b0 + 1] * alpha;
+        normVal = (db + 74) / 72; // -74 dB .. -2 dB
+      } else {
+        const m = f.mag[b0] * (1 - alpha) + f.mag[b0 + 1] * alpha;
+        normVal = Math.pow(m * 1.45, 0.72);
+      }
+      const idx = Math.max(0, Math.min(255, Math.floor(normVal * 255))) * 3;
+      const r = lut[idx], g = lut[idx + 1], b = lut[idx + 2];
+
+      const rowOff = y * 2 * 4;
+      data[rowOff] = r;     data[rowOff + 1] = g; data[rowOff + 2] = b; data[rowOff + 3] = 255;
+      data[rowOff + 4] = r; data[rowOff + 5] = g; data[rowOff + 6] = b; data[rowOff + 7] = 255;
+    }
+    wfCtx.putImageData(wfSliceImg, wfW - 2, 0);
+  }
+
+  /* ============================================================================
+     CANVAS SETUP & LAYOUT GEOMETRY
+  ============================================================================ */
+  const canvas = document.getElementById('sim-canvas');
+  const ctx = canvas.getContext('2d');
+  let W = window.innerWidth;
+  let H = window.innerHeight;
+  let DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+  function resize() {
+    W = window.innerWidth;
+    H = window.innerHeight;
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.floor(W * DPR);
+    canvas.height = Math.floor(H * DPR);
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  // Compute responsive Stage Bounding Box that respects HUD panels
+  function getStageRect() {
+    const zen = state.zenMode;
+    const isNarrow = W <= 960;
+    const rightMargin = zen ? 16 : (isNarrow ? 16 : state.drawerWidthAnim + 14);
+    const topMargin = zen ? 16 : 162; // Clears top-left telemetry card cleanly
+    const bottomMargin = zen ? 18 : (isNarrow ? 74 : 152); // Clears piano dock + bottom bar
+    const leftMargin = 16;
+
+    const w = Math.max(320, W - leftMargin - rightMargin);
+    const h = Math.max(260, H - topMargin - bottomMargin);
+    return { x: leftMargin, y: topMargin, w, h };
+  }
+
+  // Geometry cache for mouse hit-testing on string/pipe
+  const geom = {
+    stringX0: 0, stringX1: 0, stringY: 0, stringSpan: 1,
+    nodeButtons: [],
+    pipeX0: 0, pipeX1: 0, pipeY0: 0, pipeY1: 0
+  };
+
+  /* ============================================================================
+     DRAWING HELPERS
+  ============================================================================ */
+  function roundRect(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  function drawGlassBox(x, y, w, h, title, rightBadge = '') {
+    ctx.save();
+    roundRect(x, y, w, h, 12);
+    const bg = ctx.createLinearGradient(x, y, x, y + h);
+    bg.addColorStop(0, 'rgba(10, 16, 30, 0.72)');
+    bg.addColorStop(1, 'rgba(6, 10, 20, 0.84)');
+    ctx.fillStyle = bg;
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.16)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Subtle header rule
+    ctx.fillStyle = 'rgba(148, 179, 255, 0.04)';
+    ctx.beginPath();
+    ctx.roundRect ? ctx.roundRect(x + 1, y + 1, w - 2, 24, [11, 11, 0, 0]) : ctx.rect(x + 1, y + 1, w - 2, 24);
+    ctx.fill();
+
+    ctx.font = '700 10px system-ui, -apple-system, sans-serif';
+    ctx.fillStyle = 'rgba(170, 192, 232, 0.82)';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(title.toUpperCase(), x + 11, y + 13);
+
+    if (rightBadge) {
+      ctx.font = '600 10px ui-monospace, Consolas, monospace';
+      ctx.fillStyle = 'rgba(88, 220, 255, 0.85)';
+      ctx.textAlign = 'right';
+      ctx.fillText(rightBadge, x + w - 11, y + 13);
+    }
+    ctx.restore();
+  }
+
+  /* ============================================================================
+     RENDER: BACKGROUND
+  ============================================================================ */
+  function drawBackdrop() {
+    ctx.fillStyle = '#040711';
+    ctx.fillRect(0, 0, W, H);
+
+    // Subtle ambient acoustic nebula glow
+    const gx = W * 0.38;
+    const gy = H * 0.34;
+    const rad = Math.max(W, H) * 0.65;
+    const grad = ctx.createRadialGradient(gx, gy, 10, gx, gy, rad);
+    if (state.mode === 'string') {
+      grad.addColorStop(0, 'rgba(255, 170, 72, 0.065)');
+      grad.addColorStop(0.45, 'rgba(42, 110, 195, 0.04)');
+    } else if (state.mode === 'pipe') {
+      grad.addColorStop(0, 'rgba(65, 200, 255, 0.075)');
+      grad.addColorStop(0.45, 'rgba(74, 242, 178, 0.03)');
+    } else {
+      grad.addColorStop(0, 'rgba(155, 115, 255, 0.075)');
+      grad.addColorStop(0.45, 'rgba(255, 96, 131, 0.035)');
+    }
+    grad.addColorStop(1, 'rgba(4, 7, 17, 0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+
+    // Subtle engineering dot/line grid
+    ctx.strokeStyle = 'rgba(120, 155, 230, 0.035)';
+    ctx.lineWidth = 1;
+    const step = 44;
+    ctx.beginPath();
+    for (let x = 0; x < W; x += step) {
+      ctx.moveTo(x + 0.5, 0);
+      ctx.lineTo(x + 0.5, H);
+    }
+    for (let y = 0; y < H; y += step) {
+      ctx.moveTo(0, y + 0.5);
+      ctx.lineTo(W, y + 0.5);
+    }
+    ctx.stroke();
+  }
+
+  /* ============================================================================
+     RENDER: MODE A — PLUCKED STRING + MODAL HARMONICS
+  ============================================================================ */
+  function drawStringStage(box) {
+    const s = state.string;
+    const f0 = getStringF0();
+    const effNote = freqToNoteInfo(f0 * s.nodeFinger).name;
+    const rightLabel = `f₀ = ${(f0 * s.nodeFinger).toFixed(1)} Hz (${effNote}) · Pluck x₀ = ${(s.pluckPos * 100).toFixed(0)}%`;
+    drawGlassBox(box.x, box.y, box.w, box.h, 'Mode A · 1D Plucked String & Standing-Wave Decomposition', rightLabel);
+
+    const padX = Math.max(44, box.w * 0.065);
+    const x0 = box.x + padX;
+    const x1 = box.x + box.w - padX - (s.showModes ? 72 : 0);
+    const span = Math.max(120, x1 - x0);
+    const mainY = box.y + 24 + (s.showModes ? (box.h - 24) * 0.34 : (box.h - 24) * 0.50);
+    const maxAmpPx = Math.min(54, (box.h - 24) * (s.showModes ? 0.21 : 0.34));
+
+    geom.stringX0 = x0;
+    geom.stringX1 = x1;
+    geom.stringY = mainY;
+    geom.stringSpan = span;
+
+    // Subtle acoustic soundhole rosette behind string
+    ctx.save();
+    const holeX = x0 + span * 0.34;
+    const holeR = Math.min(72, (box.h - 40) * 0.28);
+    const rg = ctx.createRadialGradient(holeX, mainY, holeR * 0.15, holeX, mainY, holeR * 1.15);
+    rg.addColorStop(0, 'rgba(3, 5, 12, 0.65)');
+    rg.addColorStop(0.76, 'rgba(18, 28, 52, 0.28)');
+    rg.addColorStop(0.84, 'rgba(255, 190, 92, 0.14)');
+    rg.addColorStop(0.92, 'rgba(88, 220, 255, 0.08)');
+    rg.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = rg;
+    ctx.beginPath();
+    ctx.arc(holeX, mainY, holeR * 1.15, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // Fractional Node Markers along top of string (clickable!)
+    const nodeFracs = [
+      { k: 1, frac: 0.0, label: 'Open' },
+      { k: 5, frac: 1 / 5, label: '1/5' },
+      { k: 4, frac: 1 / 4, label: '1/4' },
+      { k: 3, frac: 1 / 3, label: '1/3' },
+      { k: 2, frac: 1 / 2, label: '1/2' }
+    ];
+    geom.nodeButtons = [];
+    const rulerY = mainY - maxAmpPx - 16;
+
+    // Fret/position reference ticks
+    ctx.save();
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.14)';
+    ctx.setLineDash([3, 4]);
+    ctx.beginPath();
+    ctx.moveTo(x0, mainY);
+    ctx.lineTo(x1, mainY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    for (const nf of nodeFracs) {
+      if (nf.k === 1) continue;
+      const nx = x0 + span * nf.frac;
+      const isSelected = s.nodeFinger === nf.k;
+      geom.nodeButtons.push({ k: nf.k, x: nx, y: rulerY, r: 15 });
+
+      // Vertical faint node line across string
+      ctx.strokeStyle = isSelected ? 'rgba(88, 220, 255, 0.45)' : 'rgba(148, 179, 255, 0.12)';
+      ctx.lineWidth = isSelected ? 1.5 : 1;
+      ctx.beginPath();
+      ctx.moveTo(nx, rulerY + 9);
+      ctx.lineTo(nx, mainY + maxAmpPx * 0.72);
+      ctx.stroke();
+
+      // Node pill badge
+      roundRect(nx - 14, rulerY - 9, 28, 17, 8);
+      ctx.fillStyle = isSelected ? 'rgba(88, 220, 255, 0.26)' : 'rgba(16, 24, 44, 0.75)';
+      ctx.fill();
+      ctx.strokeStyle = isSelected ? '#58dcff' : 'rgba(148, 179, 255, 0.28)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      ctx.font = '700 9.5px ui-monospace, Consolas, monospace';
+      ctx.fillStyle = isSelected ? '#ffffff' : '#9fb4dc';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(nf.label, nx, rulerY);
+    }
+
+    // Visual finger-touch halo directly on the string if harmonic node > 1
+    if (s.nodeFinger > 1) {
+      const fx = x0 + span / s.nodeFinger;
+      const fg = ctx.createRadialGradient(fx, mainY, 2, fx, mainY, 20);
+      fg.addColorStop(0, 'rgba(88, 220, 255, 0.85)');
+      fg.addColorStop(0.5, 'rgba(88, 220, 255, 0.24)');
+      fg.addColorStop(1, 'rgba(88, 220, 255, 0)');
+      ctx.fillStyle = fg;
+      ctx.beginPath();
+      ctx.arc(fx, mainY, 20, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#e8fbff';
+      ctx.beginPath();
+      ctx.arc(fx, mainY, 4.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Hover reticle when user hovers over string
+    if (s.hoverXNorm >= 0 && !s.dragging) {
+      const hx = x0 + span * s.hoverXNorm;
+      ctx.strokeStyle = 'rgba(255, 190, 92, 0.55)';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.arc(hx, mainY, 9, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.font = '600 9.5px ui-monospace, Consolas, monospace';
+      ctx.fillStyle = '#ffbe5c';
+      ctx.textAlign = 'center';
+      ctx.fillText(`pluck ${(s.hoverXNorm * 100).toFixed(0)}%`, hx, mainY + 21);
+    }
+
+    // Compute vibrating string points (visual slow-mo angular speed so standing waves are gorgeous!)
+    const segs = 140;
+    const visualOmegaBase = 2 * Math.PI * 3.1; // ~3.1 visual cycles/sec for fundamental
+    const pts = new Float64Array(segs + 1);
+
+    if (s.dragging) {
+      const p = s.dragXNorm;
+      const h = s.dragYDisp;
+      for (let i = 0; i <= segs; i++) {
+        const u = i / segs;
+        pts[i] = u <= p ? (u / Math.max(p, 0.01)) * h : ((1 - u) / Math.max(1 - p, 0.01)) * h;
+      }
+    } else {
+      for (let i = 0; i <= segs; i++) {
+        const u = i / segs;
+        let y = 0;
+        for (let m = 0; m < MAX_MODES; m++) {
+          const a = s.modeAmp[m];
+          if (Math.abs(a) < 1e-4) continue;
+          const n = m + 1;
+          y += a * Math.sin(n * Math.PI * u) * Math.cos(visualOmegaBase * n * state.simTime + s.modePhase[m]);
+        }
+        pts[i] = y * maxAmpPx;
+      }
+    }
+
+    // Motion blur envelope trail (when vibrating)
+    if (!s.dragging && s.energy > 0.02) {
+      ctx.beginPath();
+      for (let i = 0; i <= segs; i++) {
+        const px = x0 + (i / segs) * span;
+        let env = 0;
+        for (let m = 0; m < 8; m++) {
+          env += Math.abs(s.modeAmp[m] * Math.sin((m + 1) * Math.PI * (i / segs)));
+        }
+        const py = mainY - Math.min(maxAmpPx * 1.15, env * maxAmpPx * 0.72);
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      for (let i = segs; i >= 0; i--) {
+        const px = x0 + (i / segs) * span;
+        let env = 0;
+        for (let m = 0; m < 8; m++) {
+          env += Math.abs(s.modeAmp[m] * Math.sin((m + 1) * Math.PI * (i / segs)));
+        }
+        const py = mainY + Math.min(maxAmpPx * 1.15, env * maxAmpPx * 0.72);
+        ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      const envGrad = ctx.createLinearGradient(0, mainY - maxAmpPx, 0, mainY + maxAmpPx);
+      envGrad.addColorStop(0, 'rgba(88, 220, 255, 0.04)');
+      envGrad.addColorStop(0.5, 'rgba(255, 190, 92, 0.13)');
+      envGrad.addColorStop(1, 'rgba(88, 220, 255, 0.04)');
+      ctx.fillStyle = envGrad;
+      ctx.fill();
+    }
+
+    // Main luminous vibrating string (outer bloom + core wire)
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    for (let i = 0; i <= segs; i++) {
+      const px = x0 + (i / segs) * span;
+      const py = mainY + pts[i];
+      if (i === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.shadowColor = s.dragging ? '#ffbe5c' : '#58dcff';
+    ctx.shadowBlur = 16;
+    ctx.strokeStyle = s.dragging ? 'rgba(255, 195, 100, 0.95)' : 'rgba(120, 232, 255, 0.95)';
+    ctx.lineWidth = 3.2;
+    ctx.stroke();
+
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1.25;
+    ctx.stroke();
+
+    // Drag pluck finger indicator
+    if (s.dragging) {
+      const dx = x0 + s.dragXNorm * span;
+      const dy = mainY + s.dragYDisp;
+      ctx.fillStyle = '#ffbe5c';
+      ctx.shadowColor = '#ffbe5c';
+      ctx.shadowBlur = 14;
+      ctx.beginPath();
+      ctx.arc(dx, dy, 6.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+
+    // Nut (left) and Bridge (right) precision posts
+    const drawPost = (px, label) => {
+      const g = ctx.createLinearGradient(px - 6, mainY - 22, px + 6, mainY + 22);
+      g.addColorStop(0, '#9fb6de');
+      g.addColorStop(0.5, '#eef5ff');
+      g.addColorStop(1, '#55688f');
+      roundRect(px - 4.5, mainY - 19, 9, 38, 3);
+      ctx.fillStyle = g;
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.45)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      ctx.font = '700 9px ui-monospace, Consolas, monospace';
+      ctx.fillStyle = '#7b8eb6';
+      ctx.textAlign = 'center';
+      ctx.fillText(label, px, mainY + 30);
+    };
+    drawPost(x0, 'NUT');
+    drawPost(x1, 'BRIDGE');
+
+    // Standing-Wave Harmonic Decomposition Ribbons (f1..f6)
+    if (s.showModes) {
+      const decompTop = mainY + maxAmpPx + 24;
+      const decompH = Math.max(54, box.y + box.h - decompTop - 10);
+      const numShow = 6;
+      const laneH = decompH / numShow;
+
+      ctx.font = '600 9.5px ui-monospace, Consolas, monospace';
+      for (let m = 0; m < numShow; m++) {
+        const n = m + 1;
+        const cy = decompTop + (m + 0.5) * laneH;
+        const amp = Math.abs(s.modeAmp[m]);
+        const col = HARMONIC_COLORS[m];
+
+        // Baseline
+        ctx.strokeStyle = 'rgba(148, 179, 255, 0.08)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(x0, cy);
+        ctx.lineTo(x1, cy);
+        ctx.stroke();
+
+        // Standing wave envelope + live phase
+        const visA = Math.min(laneH * 0.44, amp * laneH * 0.52);
+        const phaseCos = Math.cos(visualOmegaBase * n * state.simTime + s.modePhase[m]);
+
+        // Ghost envelope
+        if (visA > 0.6) {
+          ctx.strokeStyle = col + '36';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          for (let i = 0; i <= 90; i++) {
+            const u = i / 90;
+            const py = cy - Math.sin(n * Math.PI * u) * visA;
+            if (i === 0) ctx.moveTo(x0 + u * span, py);
+            else ctx.lineTo(x0 + u * span, py);
+          }
+          ctx.stroke();
+        }
+
+        // Active standing mode wave
+        ctx.strokeStyle = amp > 0.015 ? col : 'rgba(120, 140, 180, 0.22)';
+        ctx.lineWidth = amp > 0.02 ? 1.85 : 1;
+        ctx.beginPath();
+        for (let i = 0; i <= 90; i++) {
+          const u = i / 90;
+          const py = cy + Math.sin(n * Math.PI * u) * visA * phaseCos;
+          if (i === 0) ctx.moveTo(x0 + u * span, py);
+          else ctx.lineTo(x0 + u * span, py);
+        }
+        ctx.stroke();
+
+        // Left label f_n
+        ctx.fillStyle = amp > 0.015 ? col : 'rgba(120, 140, 180, 0.45)';
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(`n=${n}`, x0 - 10, cy);
+
+        // Right energy meter bar
+        const barX = x1 + 14;
+        const barW = 50;
+        ctx.fillStyle = 'rgba(255,255,255,0.06)';
+        roundRect(barX, cy - 3.5, barW, 7, 3);
+        ctx.fill();
+        const fillW = Math.min(barW, amp * barW * 1.15);
+        if (fillW > 0.5) {
+          ctx.fillStyle = col;
+          roundRect(barX, cy - 3.5, fillW, 7, 3);
+          ctx.fill();
+        }
+      }
+    }
+    ctx.restore();
+  }
+
+  /* ============================================================================
+     RENDER: MODE B — OPEN VS CLOSED ACOUSTIC PIPE
+  ============================================================================ */
+  function drawPipeStage(box) {
+    const p = state.pipe;
+    const f0 = getPipeF0();
+    const note = freqToNoteInfo(f0).name;
+    const isClosed = p.type === 'closed';
+    const rightBadge = `${isClosed ? 'CLOSED–OPEN (ODD n=1,3,5…)' : 'OPEN–OPEN (ALL n=1,2,3…)'} · f₀ = ${f0.toFixed(1)} Hz (${note})`;
+    drawGlassBox(box.x, box.y, box.w, box.h, 'Mode B · Longitudinal Air-Column Pipe — Pressure ΔP(x) vs Displacement ξ(x)', rightBadge);
+
+    const padL = Math.max(58, box.w * 0.09);
+    const padR = Math.max(54, box.w * 0.08);
+    const maxTubeW = box.w - padL - padR;
+    // Scale visible pipe length smoothly with physical L (20..125 cm)
+    const lenFrac = 0.42 + 0.58 * ((p.lengthCm - 20) / 105);
+    const tubeW = maxTubeW * lenFrac;
+    const x0 = box.x + padL;
+    const x1 = x0 + tubeW;
+    const tubeH = Math.min(138, (box.h - 68) * 0.62);
+    const cy = box.y + 24 + (box.h - 24) * 0.52;
+    const y0 = cy - tubeH / 2;
+    const y1 = cy + tubeH / 2;
+
+    geom.pipeX0 = x0; geom.pipeX1 = x1; geom.pipeY0 = y0; geom.pipeY1 = y1;
+
+    const weights = getPipeHarmonicWeights();
+    const visOmega = 2 * Math.PI * 1.85;
+    const t = state.simTime;
+
+    // Helper functions for normalized ΔP(u, t) and ξ(u, t), u in [0, 1]
+    const evalPipe = (u) => {
+      let dP = 0, xi = 0;
+      for (let m = 0; m < 8; m++) {
+        const w = weights[m];
+        if (w < 1e-4) continue;
+        const n = m + 1;
+        const k = isClosed ? (n * Math.PI * 0.5) : (n * Math.PI);
+        const phase = visOmega * (isClosed ? n * 0.6 : n) * t;
+        dP += w * Math.sin(k * u) * Math.cos(phase);
+        xi += w * Math.cos(k * u) * Math.sin(phase);
+      }
+      return { dP: dP * 0.68, xi: xi * 0.68 };
+    };
+
+    ctx.save();
+
+    // Embouchure / Air Jet entering left open mouthpiece
+    for (let j = 0; j < 5; j++) {
+      const jy = cy + (j - 2) * 8;
+      const wobble = Math.sin(t * 14 + j * 1.3) * 3;
+      const jetG = ctx.createLinearGradient(x0 - 44, jy, x0 + 18, jy);
+      jetG.addColorStop(0, 'rgba(88, 220, 255, 0)');
+      jetG.addColorStop(0.55, 'rgba(88, 220, 255, 0.35)');
+      jetG.addColorStop(1, 'rgba(88, 220, 255, 0)');
+      ctx.strokeStyle = jetG;
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(x0 - 42, jy);
+      ctx.quadraticCurveTo(x0 - 14, jy + wobble, x0 + 16, jy - wobble * 0.6);
+      ctx.stroke();
+    }
+
+    // Heat-map pressure shading inside tube
+    const slices = 72;
+    const sw = tubeW / slices;
+    for (let i = 0; i < slices; i++) {
+      const u = (i + 0.5) / slices;
+      const { dP } = evalPipe(u);
+      const intensity = Math.min(1, Math.abs(dP) * 0.85);
+      if (dP >= 0) {
+        ctx.fillStyle = `rgba(255, 140, 72, ${intensity * 0.24})`;
+      } else {
+        ctx.fillStyle = `rgba(56, 178, 255, ${intensity * 0.22})`;
+      }
+      ctx.fillRect(x0 + i * sw, y0 + 2, sw + 0.6, tubeH - 4);
+    }
+
+    // Oscillating Longitudinal Air Molecules
+    if (p.showParticles) {
+      const maxDispPx = Math.min(28, tubeW * 0.055);
+      for (let i = 0; i < p.particles.length; i++) {
+        const pt = p.particles[i];
+        const { dP, xi } = evalPipe(pt.x0);
+        const px = x0 + pt.x0 * tubeW + xi * maxDispPx;
+        const py = y0 + 8 + pt.y0 * (tubeH - 16);
+        if (px < x0 - 4 || px > x1 - (isClosed ? 3 : -4)) continue;
+
+        const pNorm = Math.max(-1, Math.min(1, dP * 1.1));
+        if (pNorm > 0.12) {
+          ctx.fillStyle = `rgba(255, ${Math.round(210 - pNorm * 85)}, ${Math.round(135 - pNorm * 65)}, ${0.58 + pNorm * 0.38})`;
+        } else if (pNorm < -0.12) {
+          const an = -pNorm;
+          ctx.fillStyle = `rgba(${Math.round(115 - an * 40)}, ${Math.round(215 + an * 25)}, 255, ${0.5 + an * 0.35})`;
+        } else {
+          ctx.fillStyle = 'rgba(195, 215, 250, 0.52)';
+        }
+        ctx.beginPath();
+        ctx.arc(px, py, pt.r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // Translucent glass acoustic tube walls
+    const wallGrad = ctx.createLinearGradient(0, y0, 0, y1);
+    wallGrad.addColorStop(0, 'rgba(180, 220, 255, 0.18)');
+    wallGrad.addColorStop(0.14, 'rgba(148, 179, 255, 0.03)');
+    wallGrad.addColorStop(0.86, 'rgba(148, 179, 255, 0.03)');
+    wallGrad.addColorStop(1, 'rgba(180, 220, 255, 0.14)');
+    ctx.fillStyle = wallGrad;
+    ctx.fillRect(x0, y0, tubeW, tubeH);
+
+    // Top & bottom glass rims
+    ctx.strokeStyle = 'rgba(180, 224, 255, 0.55)';
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    ctx.moveTo(x0, y0); ctx.lineTo(x1, y0);
+    ctx.moveTo(x0, y1); ctx.lineTo(x1, y1);
+    ctx.stroke();
+
+    // Left flared mouthpiece collar
+    ctx.strokeStyle = 'rgba(255, 190, 92, 0.65)';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(x0 - 6, y0 - 7); ctx.lineTo(x0, y0);
+    ctx.moveTo(x0 - 6, y1 + 7); ctx.lineTo(x0, y1);
+    ctx.stroke();
+
+    // Right end: Open Bell OR Sealed Brass Piston Cap (draggable!)
+    if (isClosed) {
+      const capG = ctx.createLinearGradient(x1 - 2, y0, x1 + 14, y0);
+      capG.addColorStop(0, '#ffd480');
+      capG.addColorStop(0.5, '#d48d3b');
+      capG.addColorStop(1, '#70451a');
+      roundRect(x1 - 2, y0 - 5, 15, tubeH + 10, 4);
+      ctx.fillStyle = capG;
+      ctx.fill();
+      ctx.strokeStyle = '#ffdf9e';
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+    } else {
+      // Open bell flare
+      ctx.strokeStyle = 'rgba(88, 220, 255, 0.72)';
+      ctx.lineWidth = 2.6;
+      ctx.beginPath();
+      ctx.moveTo(x1, y0); ctx.quadraticCurveTo(x1 + 8, y0 - 2, x1 + 13, y0 - 11);
+      ctx.moveTo(x1, y1); ctx.quadraticCurveTo(x1 + 8, y1 + 2, x1 + 13, y1 + 11);
+      ctx.stroke();
+    }
+
+    // Overlaid Standing Waves: Pressure ΔP(x) and Displacement ξ(x)
+    const waveAmp = tubeH * 0.42;
+    const ptsN = 120;
+
+    if (p.showDisp) {
+      ctx.save();
+      ctx.setLineDash([6, 4]);
+      ctx.strokeStyle = '#58dcff';
+      ctx.shadowColor = '#58dcff';
+      ctx.shadowBlur = 10;
+      ctx.lineWidth = 2.1;
+      ctx.beginPath();
+      for (let i = 0; i <= ptsN; i++) {
+        const u = i / ptsN;
+        const { xi } = evalPipe(u);
+        const px = x0 + u * tubeW;
+        const py = cy - xi * waveAmp;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    if (p.showPressure) {
+      ctx.save();
+      ctx.strokeStyle = '#ff9d5c';
+      ctx.shadowColor = '#ff7b47';
+      ctx.shadowBlur = 12;
+      ctx.lineWidth = 2.6;
+      ctx.beginPath();
+      for (let i = 0; i <= ptsN; i++) {
+        const u = i / ptsN;
+        const { dP } = evalPipe(u);
+        const px = x0 + u * tubeW;
+        const py = cy - dP * waveAmp;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Boundary Annotations (Node / Antinode markers + Legend)
+    ctx.font = '700 9.5px ui-monospace, Consolas, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#58dcff';
+    ctx.fillText('OPEN END', x0, y0 - 19);
+    ctx.fillStyle = '#9aa9cc';
+    ctx.fillText('ΔP=0 (Node) · ξ=Max', x0, y1 + 18);
+
+    ctx.fillStyle = isClosed ? '#ffbe5c' : '#58dcff';
+    ctx.fillText(isClosed ? 'CLOSED WALL (DRAG L)' : 'OPEN END (DRAG L)', x1, y0 - 19);
+    ctx.fillStyle = '#9aa9cc';
+    ctx.fillText(isClosed ? 'ΔP=Max (Antinode) · ξ=0' : 'ΔP=0 (Node) · ξ=Max', x1, y1 + 18);
+
+    // Dimension line for L
+    ctx.fillStyle = 'rgba(238, 243, 255, 0.85)';
+    ctx.fillText(`L = ${p.lengthCm.toFixed(1)} cm  ·  c = ${getAirSpeed().toFixed(1)} m/s`, (x0 + x1) * 0.5, y0 - 19);
+
+    // Legend pills bottom-right inside pipe box
+    const legY = box.y + box.h - 14;
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#ff9d5c';
+    ctx.fillText('━━ Pressure ΔP(x)', box.x + 14, legY);
+    ctx.fillStyle = '#58dcff';
+    ctx.fillText('╌╌ Displacement ξ(x)', box.x + 145, legY);
+
+    ctx.restore();
+  }
+
+  /* ============================================================================
+     RENDER: MODE C — ADDITIVE & FM SYNTH + ACOUSTIC BEATS LAB
+  ============================================================================ */
+  function drawSynthStage(box) {
+    const sy = state.synth;
+    const note = freqToNoteInfo(sy.freq).name;
+    const rightBadge = sy.beatsOn
+      ? `f₁ = ${sy.freq.toFixed(1)} Hz · f₂ = ${(sy.freq + sy.beatDf).toFixed(1)} Hz · f_beat = ${sy.beatDf.toFixed(2)} Hz`
+      : (sy.fmIndex > 0.02
+          ? `FM c:m = 1:${sy.fmRatio.toFixed(2)} · β = ${sy.fmIndex.toFixed(2)} · ${note}`
+          : `Additive 8-Harmonic · ${sy.preset.toUpperCase()} · ${sy.freq.toFixed(1)} Hz (${note})`);
+    drawGlassBox(box.x, box.y, box.w, box.h,
+      sy.beatsOn ? 'Mode C · Dual-Oscillator Acoustic Beats Lab' : 'Mode C · Additive Fourier & FM Waveform Synthesizer',
+      rightBadge);
+
+    const padX = 22;
+    const innerX = box.x + padX;
+    const innerY = box.y + 34;
+    const innerW = box.w - padX * 2;
+    const innerH = box.h - 46;
+
+    ctx.save();
+    // Subtle oscilloscope reticle
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.08)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let i = 1; i < 8; i++) {
+      const gx = innerX + (i / 8) * innerW;
+      ctx.moveTo(gx, innerY); ctx.lineTo(gx, innerY + innerH);
+    }
+    ctx.moveTo(innerX, innerY + innerH * 0.5);
+    ctx.lineTo(innerX + innerW, innerY + innerH * 0.5);
+    ctx.stroke();
+
+    if (sy.beatsOn) {
+      // ACOUSTIC BEATS DISPLAY: Show ~1.15 s window so beat envelope breathes visibly!
+      const windowSec = sy.beatDf > 6 ? 0.65 : 1.15;
+      const df = sy.beatDf;
+      // Display carrier slightly visually scaled so carrier fringes look clean & unmistakable inside the beat envelope!
+      const visCarrierHz = 28 + (sy.freq - 110) * 0.06;
+      const cy = innerY + innerH * 0.54;
+      const amp = innerH * 0.37;
+      const tScroll = state.simTime * 0.45;
+      const pts = 340;
+
+      // Upper & Lower Beat Envelope: ±cos(pi * df * t)
+      ctx.setLineDash([5, 4]);
+      ctx.strokeStyle = 'rgba(255, 96, 131, 0.85)';
+      ctx.lineWidth = 1.6;
+      for (const sign of [-1, 1]) {
+        ctx.beginPath();
+        for (let i = 0; i <= pts; i++) {
+          const u = i / pts;
+          const tt = tScroll + u * windowSec;
+          const env = Math.abs(Math.cos(Math.PI * df * tt));
+          const px = innerX + u * innerW;
+          const py = cy + sign * env * amp;
+          if (i === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.stroke();
+      }
+      ctx.setLineDash([]);
+
+      // Superposed beating wave: 0.5*(sin(2pi*f1*t) + sin(2pi*(f1+df)*t))
+      ctx.beginPath();
+      for (let i = 0; i <= pts * 2; i++) {
+        const u = i / (pts * 2);
+        const tt = tScroll + u * windowSec;
+        const y = 0.5 * (
+          Math.sin(2 * Math.PI * visCarrierHz * tt) +
+          Math.sin(2 * Math.PI * (visCarrierHz + df) * tt)
+        );
+        const px = innerX + u * innerW;
+        const py = cy - y * amp;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      const bGrad = ctx.createLinearGradient(innerX, 0, innerX + innerW, 0);
+      bGrad.addColorStop(0, '#58dcff');
+      bGrad.addColorStop(0.5, '#c4b5fd');
+      bGrad.addColorStop(1, '#ff6083');
+      ctx.strokeStyle = bGrad;
+      ctx.shadowColor = '#a78bfa';
+      ctx.shadowBlur = 10;
+      ctx.lineWidth = 2.0;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      // Live pulsing beat meter indicator in top-left of inner box
+      const beatNow = Math.abs(Math.cos(Math.PI * df * state.simTime));
+      const bx = innerX + 18;
+      const by = innerY + 14;
+      ctx.fillStyle = `rgba(255, 96, 131, ${0.25 + beatNow * 0.75})`;
+      ctx.beginPath();
+      ctx.arc(bx, by, 5 + beatNow * 5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.font = '700 10px ui-monospace, Consolas, monospace';
+      ctx.fillStyle = '#ffd0dc';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`BEAT ENVELOPE: ${df.toFixed(2)} Hz (${df > 0.05 ? (1 / df).toFixed(2) + 's period' : 'Unison — No Beats'})`, bx + 16, by);
+    } else {
+      // ADDITIVE & FM COMPOSITE WAVEFORM + CONSTITUENT PARTIALS
+      const cy = innerY + innerH * 0.50;
+      const amp = innerH * 0.38;
+      const cycles = 3.0;
+      const pts = 260;
+      const useFM = sy.fmIndex > 0.02;
+      const phaseScroll = state.simTime * 3.8;
+
+      if (!useFM) {
+        // Draw faint constituent harmonics f1..f8 behind the composite sum
+        let sumW = 0;
+        for (let m = 0; m < 8; m++) sumW += sy.drawbars[m];
+        const norm = sumW > 0.01 ? 1 / Math.max(1.0, sumW) : 1;
+
+        for (let m = 0; m < 8; m++) {
+          const a = sy.drawbars[m];
+          if (a < 0.02) continue;
+          const n = m + 1;
+          ctx.strokeStyle = HARMONIC_COLORS[m] + '55';
+          ctx.lineWidth = 1.25;
+          ctx.beginPath();
+          for (let i = 0; i <= pts; i++) {
+            const u = i / pts;
+            const ang = 2 * Math.PI * cycles * u * n - phaseScroll * n + sy.phases[m];
+            const py = cy - Math.sin(ang) * a * norm * amp;
+            if (i === 0) ctx.moveTo(innerX + u * innerW, py);
+            else ctx.lineTo(innerX + u * innerW, py);
+          }
+          ctx.stroke();
+        }
+
+        // Composite sum wave
+        ctx.beginPath();
+        for (let i = 0; i <= pts; i++) {
+          const u = i / pts;
+          let y = 0;
+          for (let m = 0; m < 8; m++) {
+            const a = sy.drawbars[m];
+            if (a < 1e-4) continue;
+            const n = m + 1;
+            y += a * Math.sin(2 * Math.PI * cycles * u * n - phaseScroll * n + sy.phases[m]);
+          }
+          const py = cy - y * norm * amp;
+          if (i === 0) ctx.moveTo(innerX + u * innerW, py);
+          else ctx.lineTo(innerX + u * innerW, py);
+        }
+        ctx.strokeStyle = '#6fe6ff';
+        ctx.shadowColor = '#58dcff';
+        ctx.shadowBlur = 14;
+        ctx.lineWidth = 2.8;
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.1;
+        ctx.stroke();
+      } else {
+        // FM carrier + modulator visualization
+        // Faint modulator wave
+        ctx.strokeStyle = 'rgba(167, 139, 250, 0.34)';
+        ctx.setLineDash([4, 4]);
+        ctx.lineWidth = 1.3;
+        ctx.beginPath();
+        for (let i = 0; i <= pts; i++) {
+          const u = i / pts;
+          const py = cy - Math.sin(2 * Math.PI * cycles * u * sy.fmRatio - phaseScroll * sy.fmRatio) * amp * 0.55;
+          if (i === 0) ctx.moveTo(innerX + u * innerW, py);
+          else ctx.lineTo(innerX + u * innerW, py);
+        }
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // FM modulated output wave
+        ctx.beginPath();
+        for (let i = 0; i <= pts * 2; i++) {
+          const u = i / (pts * 2);
+          const cAng = 2 * Math.PI * cycles * u - phaseScroll;
+          const mAng = 2 * Math.PI * cycles * u * sy.fmRatio - phaseScroll * sy.fmRatio;
+          const y = Math.sin(cAng + sy.fmIndex * Math.sin(mAng));
+          const py = cy - y * amp;
+          if (i === 0) ctx.moveTo(innerX + u * innerW, py);
+          else ctx.lineTo(innerX + u * innerW, py);
+        }
+        ctx.strokeStyle = '#d8b4fe';
+        ctx.shadowColor = '#a78bfa';
+        ctx.shadowBlur = 14;
+        ctx.lineWidth = 2.6;
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.0;
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+
+  /* ============================================================================
+     RENDER: LOWER TIER — OSCILLOSCOPE, RADIX-2 FFT & WATERFALL SPECTROGRAM
+  ============================================================================ */
+  function drawOscilloscope(box) {
+    const f0 = getCurrentF0();
+    const periodMs = f0 > 1 ? (1000 / f0).toFixed(2) + ' ms' : '—';
+    drawGlassBox(box.x, box.y, box.w, box.h, 'Time-Domain Oscilloscope', `T = ${periodMs}`);
+
+    const px = box.x + 10;
+    const py = box.y + 30;
+    const pw = box.w - 20;
+    const ph = box.h - 40;
+    const cy = py + ph * 0.5;
+
+    ctx.save();
+    // Graticule
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.09)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let i = 1; i < 4; i++) {
+      ctx.moveTo(px, py + (i / 4) * ph);
+      ctx.lineTo(px + pw, py + (i / 4) * ph);
+    }
+    for (let i = 1; i < 6; i++) {
+      ctx.moveTo(px + (i / 6) * pw, py);
+      ctx.lineTo(px + (i / 6) * pw, py + ph);
+    }
+    ctx.stroke();
+
+    // Rising zero-crossing trigger for rock-steady waveform lock
+    const wave = state.fft.waveBuf;
+    const N = wave.length;
+    const spanSamples = Math.min(N - 64, Math.max(96, Math.round((SAMPLE_RATE / Math.max(80, f0)) * 3.0)));
+    let trig = 0;
+    const searchEnd = Math.min(N - spanSamples - 1, 280);
+    for (let i = 1; i < searchEnd; i++) {
+      if (wave[i - 1] <= 0 && wave[i] > 0) {
+        trig = i;
+        break;
+      }
+    }
+
+    // Oscilloscope phosphor curve
+    ctx.beginPath();
+    const scaleY = ph * 0.42;
+    for (let i = 0; i < spanSamples; i++) {
+      const x = px + (i / (spanSamples - 1)) * pw;
+      const y = cy - Math.max(-1.05, Math.min(1.05, wave[trig + i])) * scaleY;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.strokeStyle = '#4af2b2';
+    ctx.shadowColor = '#4af2b2';
+    ctx.shadowBlur = 10;
+    ctx.lineWidth = 2.0;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = '#eafff6';
+    ctx.lineWidth = 0.85;
+    ctx.stroke();
+
+    // Time span label
+    ctx.font = '600 9px ui-monospace, Consolas, monospace';
+    ctx.fillStyle = 'rgba(154, 169, 204, 0.78)';
+    ctx.textAlign = 'right';
+    ctx.fillText(`${((spanSamples / SAMPLE_RATE) * 1000).toFixed(1)} ms window`, px + pw - 2, py + ph - 3);
+    ctx.restore();
+  }
+
+  function drawFFTSpectrum(box) {
+    const f = state.fft;
+    const badge = `${f.magScale === 'log' ? 'Log dB' : 'Linear'} · ${f.size}-pt`;
+    drawGlassBox(box.x, box.y, box.w, box.h, 'Live Radix-2 Cooley–Tukey FFT Spectrum', badge);
+
+    const px = box.x + 34;
+    const py = box.y + 32;
+    const pw = box.w - 46;
+    const ph = box.h - 54;
+    const baseY = py + ph;
+
+    const half = f.size >> 1;
+    const binHz = SAMPLE_RATE / f.size;
+    const minHz = 60;
+    const maxHz = 4400;
+
+    const freqToX = (hz) => {
+      if (f.freqScale === 'log') {
+        const u = Math.log(Math.max(minHz, hz) / minHz) / Math.log(maxHz / minHz);
+        return px + Math.max(0, Math.min(1, u)) * pw;
+      }
+      return px + Math.max(0, Math.min(1, hz / maxHz)) * pw;
+    };
+
+    const valToY = (magVal, dbVal) => {
+      let norm;
+      if (f.magScale === 'log') {
+        norm = Math.max(0, Math.min(1, (dbVal + 74) / 74));
+      } else {
+        norm = Math.max(0, Math.min(1, magVal * 1.25));
+      }
+      return baseY - norm * ph;
+    };
+
+    ctx.save();
+    // Grid lines
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.08)';
+    ctx.lineWidth = 1;
+    ctx.font = '600 9px ui-monospace, Consolas, monospace';
+    ctx.fillStyle = 'rgba(140, 158, 196, 0.72)';
+
+    // Horizontal dB / linear ticks
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    for (let i = 0; i <= 4; i++) {
+      const gy = py + (i / 4) * ph;
+      ctx.beginPath();
+      ctx.moveTo(px, gy); ctx.lineTo(px + pw, gy);
+      ctx.stroke();
+      const lbl = f.magScale === 'log' ? `${Math.round(-i * 18.5)}dB` : `${(1 - i * 0.25).toFixed(2)}`;
+      ctx.fillText(lbl, px - 5, gy);
+    }
+
+    // Frequency axis ticks
+    const ticks = f.freqScale === 'log' ? [110, 220, 440, 880, 1760, 3520] : [500, 1000, 2000, 3000, 4000];
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    for (const hz of ticks) {
+      const tx = freqToX(hz);
+      ctx.beginPath();
+      ctx.moveTo(tx, py); ctx.lineTo(tx, baseY);
+      ctx.stroke();
+      ctx.fillText(hz >= 1000 ? `${(hz / 1000).toFixed(hz % 1000 === 0 ? 0 : 1)}k` : `${hz}`, tx, baseY + 5);
+    }
+
+    // Harmonic guide pins (f1, 2f1, 3f1...)
+    const baseF0 = state.mode === 'string' ? getStringF0() : getCurrentF0();
+    if (f.harmPins && baseF0 > 40) {
+      for (let n = 1; n <= 10; n++) {
+        const hn = baseF0 * n;
+        if (hn > maxHz) break;
+        const hx = freqToX(hn);
+        const isSuppressed = (state.mode === 'pipe' && state.pipe.type === 'closed' && n % 2 === 0) ||
+                             (state.mode === 'string' && state.string.nodeFinger > 1 && n % state.string.nodeFinger !== 0);
+        ctx.strokeStyle = isSuppressed ? 'rgba(255, 96, 131, 0.14)' : 'rgba(255, 190, 92, 0.22)';
+        ctx.setLineDash(isSuppressed ? [2, 4] : [3, 3]);
+        ctx.beginPath();
+        ctx.moveTo(hx, py);
+        ctx.lineTo(hx, baseY);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        if (!isSuppressed && n <= 6) {
+          ctx.fillStyle = 'rgba(255, 200, 115, 0.65)';
+          ctx.fillText(`${n}f`, hx, py - 1);
+        }
+      }
+    }
+
+    // Peak-hold ghost envelope
+    if (f.peakHold) {
+      ctx.beginPath();
+      for (let k = 1; k < half; k++) {
+        const hz = k * binHz;
+        if (hz > maxHz) break;
+        const x = freqToX(hz);
+        const pk = f.peakBuf[k];
+        const y = valToY(pk, 20 * Math.log10(Math.max(pk, 1e-5)));
+        if (k === 1) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.strokeStyle = 'rgba(255, 190, 92, 0.34)';
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+    }
+
+    // Filled live FFT spectrum curve
+    ctx.beginPath();
+    ctx.moveTo(px, baseY);
+    let lastX = px;
+    for (let k = 1; k < half; k++) {
+      const hz = k * binHz;
+      if (hz > maxHz) break;
+      const x = freqToX(hz);
+      const y = valToY(f.mag[k], f.magDb[k]);
+      ctx.lineTo(x, y);
+      lastX = x;
+    }
+    ctx.lineTo(lastX, baseY);
+    ctx.closePath();
+
+    const fillGrad = ctx.createLinearGradient(0, py, 0, baseY);
+    fillGrad.addColorStop(0, 'rgba(88, 220, 255, 0.48)');
+    fillGrad.addColorStop(0.55, 'rgba(130, 120, 255, 0.24)');
+    fillGrad.addColorStop(1, 'rgba(255, 96, 131, 0.04)');
+    ctx.fillStyle = fillGrad;
+    ctx.fill();
+
+    // Luminous top stroke
+    ctx.beginPath();
+    for (let k = 1; k < half; k++) {
+      const hz = k * binHz;
+      if (hz > maxHz) break;
+      const x = freqToX(hz);
+      const y = valToY(f.mag[k], f.magDb[k]);
+      if (k === 1) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.strokeStyle = '#6fe6ff';
+    ctx.shadowColor = '#58dcff';
+    ctx.shadowBlur = 9;
+    ctx.lineWidth = 1.85;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // Spectral Centroid vertical dashed line
+    if (f.centroidHz > minHz && f.centroidHz < maxHz) {
+      const cx = freqToX(f.centroidHz);
+      ctx.strokeStyle = 'rgba(255, 190, 92, 0.78)';
+      ctx.setLineDash([4, 3]);
+      ctx.lineWidth = 1.3;
+      ctx.beginPath();
+      ctx.moveTo(cx, py + 8);
+      ctx.lineTo(cx, baseY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#ffbe5c';
+      ctx.textAlign = cx > px + pw - 55 ? 'right' : 'left';
+      ctx.textBaseline = 'top';
+      ctx.fillText(`C ${Math.round(f.centroidHz)}Hz`, cx + (cx > px + pw - 55 ? -4 : 4), py + 9);
+    }
+
+    // Annotate top 3 prominent peaks with Musical Note + Hz
+    if (f.noteLabels) {
+      const peaks = [];
+      for (let k = 2; k < half - 2; k++) {
+        const hz = k * binHz;
+        if (hz > maxHz) break;
+        const m = f.mag[k];
+        if (m > 0.035 && m > f.mag[k - 1] && m >= f.mag[k + 1]) {
+          peaks.push({ k, hz, m, db: f.magDb[k] });
+        }
+      }
+      peaks.sort((a, b) => b.m - a.m);
+      const placedX = [];
+      let count = 0;
+      for (const pk of peaks) {
+        if (count >= 4) break;
+        const x = freqToX(pk.hz);
+        if (placedX.some(ox => Math.abs(ox - x) < 42)) continue;
+        placedX.push(x);
+        const y = valToY(pk.m, pk.db);
+        const ni = freqToNoteInfo(pk.hz);
+
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(x, y, 2.8, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.font = '700 9px ui-monospace, Consolas, monospace';
+        ctx.fillStyle = count === 0 ? '#ffffff' : '#bfefff';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        ctx.fillText(`${ni.name} ${Math.round(pk.hz)}`, Math.max(px + 24, Math.min(px + pw - 24, x)), Math.max(py + 12, y - 5));
+        count++;
+      }
+    }
+
+    ctx.restore();
+  }
+
+  function drawWaterfallSpectrogram(box) {
+    drawGlassBox(box.x, box.y, box.w, box.h, 'Scrolling Waterfall Spectrogram', state.fft.palette.toUpperCase());
+
+    const px = box.x + 30;
+    const py = box.y + 30;
+    const pw = box.w - 40;
+    const ph = box.h - 42;
+
+    ctx.save();
+    // Draw live scrolling spectrogram image
+    roundRect(px, py, pw, ph, 6);
+    ctx.clip();
+    ctx.drawImage(wfCanvas, px, py, pw, ph);
+
+    // Faint frequency reference hairlines
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.11)';
+    ctx.lineWidth = 1;
+    const maxHz = 4400;
+    const yTicks = state.fft.freqScale === 'log' ? [220, 440, 880, 1760, 3520] : [1000, 2000, 3000, 4000];
+    for (const hz of yTicks) {
+      const frac = state.fft.freqScale === 'log'
+        ? Math.log(hz / 60) / Math.log(maxHz / 60)
+        : hz / maxHz;
+      const ty = py + (1 - frac) * ph;
+      ctx.beginPath();
+      ctx.moveTo(px, ty); ctx.lineTo(px + pw, ty);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // Border & Y-axis labels
+    ctx.save();
+    roundRect(px, py, pw, ph, 6);
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.2)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    ctx.font = '600 8.5px ui-monospace, Consolas, monospace';
+    ctx.fillStyle = 'rgba(150, 168, 206, 0.78)';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    for (const hz of yTicks) {
+      const frac = state.fft.freqScale === 'log'
+        ? Math.log(hz / 60) / Math.log(maxHz / 60)
+        : hz / maxHz;
+      const ty = py + (1 - frac) * ph;
+      ctx.fillText(hz >= 1000 ? `${(hz / 1000).toFixed(hz % 1000 === 0 ? 0 : 1)}k` : `${hz}`, px - 4, ty);
+    }
+
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'bottom';
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+    ctx.fillText('NOW →', px + pw - 5, py + ph - 3);
+    ctx.restore();
+  }
+
+  /* ============================================================================
+     MAIN PHYSICS & RENDER LOOP
+  ============================================================================ */
+  let lastTS = performance.now();
+  let uiTick = 0;
+
+  function stepPhysics(dt) {
+    if (state.paused) return;
+    state.simTime += dt;
+
+    if (state.mode === 'string') {
+      const s = state.string;
+      if (!s.dragging) {
+        let eSum = 0;
+        for (let m = 0; m < MAX_MODES; m++) {
+          const n = m + 1;
+          // Higher harmonics decay faster (frequency-dependent internal string friction)
+          const dampRate = s.damping * (1.0 + 0.16 * Math.pow(n - 1, 1.32));
+          s.modeAmp[m] *= Math.exp(-dampRate * dt);
+          eSum += Math.abs(s.modeAmp[m]);
+        }
+        s.energy = Math.min(1, eSum * 0.45);
+        if (s.autoPluck) {
+          s.autoTimer += dt;
+          if (s.autoTimer > 2.85 && s.energy < 0.16) {
+            pluckString(s.pluckPos, 0.95, true);
+          }
+        }
+      }
+    }
+  }
+
+  function updateTelemetryDOM() {
+    const f0 = getCurrentF0();
+    const ni = freqToNoteInfo(f0);
+
+    document.getElementById('tel-f0').textContent = `${f0.toFixed(1)} Hz · ${ni.name}`;
+    document.getElementById('tel-centroid').textContent = `${Math.round(state.fft.centroidHz)} Hz`;
+
+    const badge = document.getElementById('mode-badge');
+    const pill = document.getElementById('series-pill');
+    const telSeries = document.getElementById('tel-series');
+    const telBeat = document.getElementById('tel-beat');
+    const telLen = document.getElementById('tel-length');
+    const telSpeed = document.getElementById('tel-speed');
+
+    if (state.mode === 'string') {
+      badge.textContent = 'Plucked String';
+      badge.className = 'mode-badge amber';
+      const k = state.string.nodeFinger;
+      const isCenter = Math.abs(state.string.pluckPos - 0.5) < 0.025 && k === 1;
+      if (k > 1) {
+        pill.textContent = `Node 1/${k} (${k}n)`;
+        pill.className = 'status-pill odd';
+        telSeries.textContent = `Multiples ${k}n`;
+      } else if (isCenter) {
+        pill.textContent = 'Center Odd (1,3,5)';
+        pill.className = 'status-pill odd';
+        telSeries.textContent = 'Odd (1,3,5…)';
+      } else {
+        pill.textContent = 'All Harmonics';
+        pill.className = 'status-pill';
+        telSeries.textContent = 'All (1,2,3…)';
+      }
+      telBeat.textContent = '0.00 Hz';
+      telLen.textContent = `${state.string.lengthCm.toFixed(1)} cm`;
+      telSpeed.textContent = `${state.string.waveSpeed.toFixed(1)} m/s`;
+    } else if (state.mode === 'pipe') {
+      badge.textContent = state.pipe.type === 'open' ? 'Open–Open Pipe' : 'Closed–Open Pipe';
+      badge.className = 'mode-badge';
+      if (state.pipe.type === 'closed') {
+        pill.textContent = 'Odd Only (1,3,5)';
+        pill.className = 'status-pill odd';
+        telSeries.textContent = 'Odd (1,3,5…)';
+      } else {
+        pill.textContent = 'All Harmonics';
+        pill.className = 'status-pill';
+        telSeries.textContent = 'All (1,2,3…)';
+      }
+      telBeat.textContent = '0.00 Hz';
+      telLen.textContent = `${state.pipe.lengthCm.toFixed(1)} cm`;
+      telSpeed.textContent = `${getAirSpeed().toFixed(1)} m/s`;
+    } else {
+      badge.textContent = state.synth.fmIndex > 0.02 ? 'FM Synthesizer' : 'Additive Synth';
+      badge.className = 'mode-badge violet';
+      if (state.synth.beatsOn) {
+        pill.textContent = `Beats ${state.synth.beatDf.toFixed(1)} Hz`;
+        pill.className = 'status-pill beats';
+        telSeries.textContent = 'Dual Osc Beat';
+        telBeat.textContent = `${state.synth.beatDf.toFixed(2)} Hz`;
+      } else if (state.synth.fmIndex > 0.02) {
+        pill.textContent = 'FM Sidebands';
+        pill.className = 'status-pill odd';
+        telSeries.textContent = `f₁ ± k·${state.synth.fmRatio.toFixed(2)}f₁`;
+        telBeat.textContent = '0.00 Hz';
+      } else {
+        const oddOnly = state.synth.drawbars[1] < 0.05 && state.synth.drawbars[3] < 0.05 && state.synth.drawbars[5] < 0.05 && state.synth.drawbars[2] > 0.05;
+        pill.textContent = oddOnly ? 'Odd Harmonics' : 'Custom Drawbar';
+        pill.className = oddOnly ? 'status-pill odd' : 'status-pill';
+        telSeries.textContent = oddOnly ? 'Odd (1,3,5…)' : '8-Partial Mix';
+        telBeat.textContent = '0.00 Hz';
+      }
+      const eqLen = (343.4 / (2 * Math.max(20, state.synth.freq))) * 100;
+      telLen.textContent = `${eqLen.toFixed(1)} cm (λ/2)`;
+      telSpeed.textContent = '343.4 m/s';
+    }
+
+    const pkHz = state.fft.peakFreqHz;
+    document.getElementById('tel-peak').textContent = pkHz > 20 ? `${pkHz.toFixed(0)} Hz (${state.fft.peakNote})` : '—';
+    const wCap = state.fft.windowType.charAt(0).toUpperCase() + state.fft.windowType.slice(1);
+    document.getElementById('tel-fft-info').textContent = `${state.fft.size}-pt ${wCap}`;
+    document.getElementById('tel-audio-state').textContent = state.audioEnabled ? 'Live On' : 'Muted';
+  }
+
+  function frame(now) {
+    const dt = Math.min(0.05, (now - lastTS) / 1000);
+    lastTS = now;
+
+    // Smoothly animate drawer offset
+    const targetDrawerW = state.drawerOpen ? 344 : 0;
+    state.drawerWidthAnim += (targetDrawerW - state.drawerWidthAnim) * Math.min(1, dt * 12);
+
+    stepPhysics(dt);
+    if (!state.fft.frozen) {
+      synthesizeSignalAndFFT();
+      pushWaterfallSlice();
+    }
+
+    drawBackdrop();
+
+    const stage = getStageRect();
+    const gap = 10;
+    const topH = Math.round((stage.h - gap) * 0.53);
+    const botH = stage.h - gap - topH;
+
+    const upperBox = { x: stage.x, y: stage.y, w: stage.w, h: topH };
+    if (state.mode === 'string') drawStringStage(upperBox);
+    else if (state.mode === 'pipe') drawPipeStage(upperBox);
+    else drawSynthStage(upperBox);
+
+    // Lower Triple Analyzer Row
+    const botY = stage.y + topH + gap;
+    const scopeW = Math.round((stage.w - gap * 2) * 0.27);
+    const fftW = Math.round((stage.w - gap * 2) * 0.40);
+    const wfPanelW = stage.w - gap * 2 - scopeW - fftW;
+
+    drawOscilloscope({ x: stage.x, y: botY, w: scopeW, h: botH });
+    drawFFTSpectrum({ x: stage.x + scopeW + gap, y: botY, w: fftW, h: botH });
+    drawWaterfallSpectrogram({ x: stage.x + scopeW + fftW + gap * 2, y: botY, w: wfPanelW, h: botH });
+
+    uiTick++;
+    if (uiTick % 5 === 0) updateTelemetryDOM();
+
+    requestAnimationFrame(frame);
+  }
+
+  /* ============================================================================
+     CANVAS DIRECT INTERACTION (PLUCK STRING, CLICK NODES, DRAG PIPE LENGTH)
+  ============================================================================ */
+  function getCanvasPos(e) {
+    const rect = canvas.getBoundingClientRect();
+    const cx = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+    const cy = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
+    return { x: cx, y: cy };
+  }
+
+  function onPointerDown(e) {
+    const { x, y } = getCanvasPos(e);
+
+    if (state.mode === 'string') {
+      // Check node finger badges first
+      for (const nb of geom.nodeButtons) {
+        if (Math.hypot(x - nb.x, y - nb.y) <= nb.r + 4) {
+          const nextK = state.string.nodeFinger === nb.k ? 1 : nb.k;
+          setNodeFinger(nextK);
+          pluckString(state.string.pluckPos, 1.0, true);
+          return;
+        }
+      }
+      // Check direct drag on the string
+      if (x >= geom.stringX0 - 10 && x <= geom.stringX1 + 10 && Math.abs(y - geom.stringY) <= 58) {
+        const s = state.string;
+        s.dragging = true;
+        s.dragXNorm = Math.max(0.06, Math.min(0.94, (x - geom.stringX0) / geom.stringSpan));
+        s.dragYDisp = Math.max(-52, Math.min(52, y - geom.stringY));
+        canvas.className = 'grabbing';
+      }
+    } else if (state.mode === 'pipe') {
+      // Allow dragging the right pipe end to change pipe length smoothly
+      if (Math.abs(x - geom.pipeX1) <= 28 && y >= geom.pipeY0 - 20 && y <= geom.pipeY1 + 20) {
+        state.pipe.draggingEnd = true;
+        canvas.className = 'grabbing';
+      }
+    }
+  }
+
+  function onPointerMove(e) {
+    const { x, y } = getCanvasPos(e);
+
+    if (state.mode === 'string') {
+      const s = state.string;
+      if (s.dragging) {
+        s.dragXNorm = Math.max(0.06, Math.min(0.94, (x - geom.stringX0) / geom.stringSpan));
+        s.dragYDisp = Math.max(-54, Math.min(54, y - geom.stringY));
+        s.pluckPos = s.dragXNorm;
+        document.getElementById('sl-pluck-pos').value = s.pluckPos.toFixed(2);
+        document.getElementById('val-pluck-pos').textContent = `${s.pluckPos.toFixed(2)} L`;
+        return;
+      }
+      // Hover feedback
+      let overNode = false;
+      for (const nb of geom.nodeButtons) {
+        if (Math.hypot(x - nb.x, y - nb.y) <= nb.r + 3) {
+          overNode = true; break;
+        }
+      }
+      if (overNode) {
+        s.hoverXNorm = -1;
+        canvas.className = 'pointer';
+      } else if (x >= geom.stringX0 && x <= geom.stringX1 && Math.abs(y - geom.stringY) <= 44) {
+        s.hoverXNorm = (x - geom.stringX0) / geom.stringSpan;
+        canvas.className = 'grab';
+      } else {
+        s.hoverXNorm = -1;
+        canvas.className = '';
+      }
+    } else if (state.mode === 'pipe') {
+      if (state.pipe.draggingEnd) {
+        const stage = getStageRect();
+        const padL = Math.max(58, stage.w * 0.09);
+        const padR = Math.max(54, stage.w * 0.08);
+        const maxTubeW = stage.w - padL - padR;
+        const frac = Math.max(0.42, Math.min(1.0, (x - geom.pipeX0) / Math.max(100, maxTubeW)));
+        const newL = 20 + ((frac - 0.42) / 0.58) * 105;
+        state.pipe.lengthCm = Math.max(20, Math.min(125, newL));
+        document.getElementById('sl-pipe-len').value = state.pipe.lengthCm.toFixed(1);
+        document.getElementById('val-pipe-len').textContent = `${state.pipe.lengthCm.toFixed(1)} cm`;
+        audioEngine.updateContinuous();
+        return;
+      }
+      if (Math.abs(x - geom.pipeX1) <= 24 && y >= geom.pipeY0 - 15 && y <= geom.pipeY1 + 15) {
+        canvas.className = 'grab';
+      } else {
+        canvas.className = '';
+      }
+    } else {
+      canvas.className = '';
+    }
+  }
+
+  function onPointerUp() {
+    if (state.string.dragging) {
+      const s = state.string;
+      s.dragging = false;
+      const pullAmp = Math.max(0.35, Math.min(1.25, Math.abs(s.dragYDisp) / 34));
+      pluckString(s.dragXNorm, pullAmp, true);
+      canvas.className = '';
+    }
+    if (state.pipe.draggingEnd) {
+      state.pipe.draggingEnd = false;
+      canvas.className = '';
+    }
+  }
+
+  canvas.addEventListener('mousedown', onPointerDown);
+  window.addEventListener('mousemove', onPointerMove);
+  window.addEventListener('mouseup', onPointerUp);
+  canvas.addEventListener('touchstart', (e) => { onPointerDown(e); }, { passive: true });
+  window.addEventListener('touchmove', (e) => { if (state.string.dragging || state.pipe.draggingEnd) onPointerMove(e); }, { passive: true });
+  window.addEventListener('touchend', onPointerUp);
+
+  /* ============================================================================
+     PLAYING NOTES VIA ON-SCREEN PIANO & KEYBOARD (C4 - C5)
+  ============================================================================ */
+  function playNote(noteObj) {
+    state.activeKeyNote = noteObj.note;
+    document.getElementById('piano-active-note').textContent = `${noteObj.note} · ${noteObj.freq.toFixed(1)} Hz`;
+
+    if (state.mode === 'string') {
+      // Tune effective scale length L = v / (2 * f0) to match guitar fretting physics!
+      const newLcm = (state.string.waveSpeed / (2 * noteObj.freq)) * 100;
+      if (newLcm >= 30 && newLcm <= 110) {
+        state.string.lengthCm = newLcm;
+      } else {
+        state.string.waveSpeed = 2 * (state.string.lengthCm / 100) * noteObj.freq;
+        document.getElementById('sl-str-speed').value = Math.round(state.string.waveSpeed);
+        document.getElementById('val-str-speed').textContent = `${Math.round(state.string.waveSpeed)} m/s`;
+      }
+      document.getElementById('sl-str-len').value = state.string.lengthCm.toFixed(1);
+      document.getElementById('val-str-len').textContent = `${state.string.lengthCm.toFixed(1)} cm`;
+      pluckString(state.string.pluckPos, 1.0, true);
+    } else if (state.mode === 'pipe') {
+      const c = getAirSpeed();
+      const mult = state.pipe.type === 'open' ? 2 : 4;
+      const newLcm = Math.max(20, Math.min(125, (c / (mult * noteObj.freq)) * 100));
+      state.pipe.lengthCm = newLcm;
+      document.getElementById('sl-pipe-len').value = newLcm.toFixed(1);
+      document.getElementById('val-pipe-len').textContent = `${newLcm.toFixed(1)} cm`;
+      audioEngine.updateContinuous();
+    } else {
+      state.synth.freq = noteObj.freq;
+      document.getElementById('sl-synth-freq').value = noteObj.freq.toFixed(1);
+      document.getElementById('val-synth-freq').textContent = `${noteObj.freq.toFixed(1)} Hz`;
+      audioEngine.updateContinuous();
+    }
+  }
+
+  function buildPianoUI() {
+    const wrap = document.getElementById('piano-keys');
+    wrap.innerHTML = '';
+    const whiteW = 34;
+
+    // White keys first
+    for (const n of PIANO_NOTES) {
+      if (n.black) continue;
+      const el = document.createElement('div');
+      el.className = 'p-key-white';
+      el.dataset.note = n.note;
+      el.innerHTML = `<span class="k-note">${n.note}</span><span class="k-bind">${n.label}</span>`;
+      el.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        el.classList.add('active');
+        playNote(n);
+      });
+      el.addEventListener('mouseup', () => el.classList.remove('active'));
+      el.addEventListener('mouseleave', () => el.classList.remove('active'));
+      el.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        el.classList.add('active');
+        playNote(n);
+      });
+      el.addEventListener('touchend', () => el.classList.remove('active'));
+      wrap.appendChild(el);
+    }
+    // Black keys overlaid
+    for (const n of PIANO_NOTES) {
+      if (!n.black) continue;
+      const el = document.createElement('div');
+      el.className = 'p-key-black';
+      el.dataset.note = n.note;
+      el.style.left = `${(n.whiteIdx + 1) * whiteW - 11}px`;
+      el.innerHTML = `<span class="k-bind">${n.label}</span>`;
+      el.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        el.classList.add('active');
+        playNote(n);
+      });
+      el.addEventListener('mouseup', () => el.classList.remove('active'));
+      el.addEventListener('mouseleave', () => el.classList.remove('active'));
+      el.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        el.classList.add('active');
+        playNote(n);
+      });
+      el.addEventListener('touchend', () => el.classList.remove('active'));
+      wrap.appendChild(el);
+    }
+  }
+  buildPianoUI();
+
+  /* ============================================================================
+     8-HARMONIC INTERACTIVE DRAWBAR MIXER UI
+  ============================================================================ */
+  const drawbarEls = [];
+
+  function buildDrawbarUI() {
+    const wrap = document.getElementById('drawbar-container');
+    wrap.innerHTML = '';
+    for (let i = 0; i < 8; i++) {
+      const col = document.createElement('div');
+      col.className = 'drawbar-col';
+
+      const track = document.createElement('div');
+      track.className = 'drawbar-track';
+      const fill = document.createElement('div');
+      fill.className = 'drawbar-fill';
+      fill.style.background = `linear-gradient(180deg, ${HARMONIC_COLORS[i]}, ${HARMONIC_COLORS[i]}66)`;
+      track.appendChild(fill);
+
+      const lbl = document.createElement('span');
+      lbl.className = 'drawbar-label';
+      lbl.textContent = `${i + 1}f`;
+
+      const valEl = document.createElement('span');
+      valEl.className = 'drawbar-val';
+      valEl.textContent = '0%';
+
+      col.appendChild(track);
+      col.appendChild(lbl);
+      col.appendChild(valEl);
+      wrap.appendChild(col);
+      drawbarEls.push({ track, fill, valEl });
+
+      const updateFromPointer = (ev) => {
+        const rect = track.getBoundingClientRect();
+        const clientY = ev.touches ? ev.touches[0].clientY : ev.clientY;
+        const frac = 1 - (clientY - rect.top) / rect.height;
+        const clamped = Math.max(0, Math.min(1, frac));
+        state.synth.drawbars[i] = clamped;
+        state.synth.phases[i] = 0;
+        if (state.synth.fmIndex > 0) {
+          state.synth.fmIndex = 0;
+          document.getElementById('sl-fm-index').value = '0';
+          document.getElementById('val-fm-index').textContent = '0.00';
+        }
+        state.synth.preset = 'custom';
+        document.querySelectorAll('[data-preset]').forEach(b => b.classList.remove('active'));
+        syncDrawbarUI();
+        audioEngine.updateContinuous();
+      };
+
+      track.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        updateFromPointer(e);
+        const onMove = (me) => updateFromPointer(me);
+        const onUp = () => {
+          window.removeEventListener('mousemove', onMove);
+          window.removeEventListener('mouseup', onUp);
+        };
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', onUp);
+      });
+      track.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        updateFromPointer(e);
+      });
+      track.addEventListener('touchmove', (e) => {
+        e.preventDefault();
+        updateFromPointer(e);
+      });
+    }
+    syncDrawbarUI();
+  }
+
+  function syncDrawbarUI() {
+    for (let i = 0; i < 8; i++) {
+      const v = state.synth.drawbars[i];
+      drawbarEls[i].fill.style.height = `${Math.round(v * 76)}px`;
+      drawbarEls[i].valEl.textContent = `${Math.round(v * 100)}`;
+    }
+  }
+  buildDrawbarUI();
+
+  function applySynthPreset(name) {
+    const sy = state.synth;
+    sy.preset = name;
+    sy.fmIndex = 0;
+    sy.fmRatio = 2.0;
+    sy.phases = [0, 0, 0, 0, 0, 0, 0, 0];
+
+    if (name === 'sine') {
+      sy.drawbars = [1, 0, 0, 0, 0, 0, 0, 0];
+    } else if (name === 'triangle') {
+      sy.drawbars = [1, 0, 1 / 9, 0, 1 / 25, 0, 1 / 49, 0];
+      sy.phases = [0, 0, Math.PI, 0, 0, 0, Math.PI, 0];
+    } else if (name === 'sawtooth') {
+      sy.drawbars = [1, 0.5, 0.333, 0.25, 0.2, 0.167, 0.143, 0.125];
+    } else if (name === 'square') {
+      sy.drawbars = [1, 0, 0.333, 0, 0.2, 0, 0.143, 0];
+    } else if (name === 'clarinet') {
+      sy.drawbars = [1, 0.05, 0.74, 0.06, 0.48, 0.04, 0.26, 0.03];
+    } else if (name === 'bellfm') {
+      sy.drawbars = [1, 0, 0, 0, 0, 0, 0, 0];
+      sy.fmRatio = 2.76;
+      sy.fmIndex = 2.65;
+    }
+
+    document.getElementById('sl-fm-index').value = sy.fmIndex.toFixed(2);
+    document.getElementById('val-fm-index').textContent = sy.fmIndex.toFixed(2);
+    document.getElementById('sl-fm-ratio').value = sy.fmRatio.toFixed(2);
+    document.getElementById('val-fm-ratio').textContent = `${sy.fmRatio.toFixed(2)}×`;
+    document.querySelectorAll('[data-preset]').forEach(b => b.classList.toggle('active', b.dataset.preset === name));
+    syncDrawbarUI();
+    audioEngine.updateContinuous();
+  }
+
+  /* ============================================================================
+     UI BINDINGS & MODE SWITCHING
+  ============================================================================ */
+  function setMode(mode) {
+    state.mode = mode;
+    ['string', 'pipe', 'synth'].forEach(m => {
+      document.getElementById(`mode-btn-${m}`).classList.toggle('active', m === mode);
+      document.getElementById(`bar-mode-${m}`).classList.toggle('active', m === mode);
+      document.getElementById(`group-${m}`).classList.toggle('active', m === mode);
+    });
+    // Reset FFT peak hold on mode switch for instant clarity
+    state.fft.peakBuf.fill(0);
+    if (mode === 'string') pluckString(state.string.pluckPos, 1.0, true);
+    audioEngine.updateContinuous();
+    updateTelemetryDOM();
+  }
+
+  function setNodeFinger(k) {
+    state.string.nodeFinger = k;
+    document.querySelectorAll('[data-node]').forEach(b => b.classList.toggle('active', Number(b.dataset.node) === k));
+    const labels = { 1: 'Open', 2: '1/2 (2f₀)', 3: '1/3 (3f₀)', 4: '1/4 (4f₀)', 5: '1/5 (5f₀)' };
+    document.getElementById('val-node-finger').textContent = labels[k] || 'Open';
+  }
+
+  function updateAudioButtons() {
+    const on = state.audioEnabled;
+    const barBtn = document.getElementById('btn-audio-bar');
+    const bigBtn = document.getElementById('btn-audio-big');
+    barBtn.textContent = on ? '🔊 Live Audio' : '🔇 Enable Audio';
+    barBtn.className = `bar-btn ${on ? 'audio-on' : 'audio-off'}`;
+    bigBtn.textContent = on ? '🔊 Audio Enabled (Click to Mute)' : '🔊 Enable Live Audio';
+    bigBtn.className = `btn ${on ? 'mint' : 'amber'}`;
+  }
+
+  // Drawer tabs
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const t = btn.dataset.tab;
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b === btn));
+      document.querySelectorAll('.tab-pane').forEach(p => p.classList.toggle('active', p.id === `tab-${t}`));
+    });
+  });
+
+  // Mode buttons (drawer + bottom bar)
+  document.querySelectorAll('[data-mode]').forEach(btn => {
+    btn.addEventListener('click', () => setMode(btn.dataset.mode));
+  });
+  document.getElementById('bar-mode-string').addEventListener('click', () => setMode('string'));
+  document.getElementById('bar-mode-pipe').addEventListener('click', () => setMode('pipe'));
+  document.getElementById('bar-mode-synth').addEventListener('click', () => setMode('synth'));
+
+  // String controls
+  document.getElementById('sl-pluck-pos').addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    state.string.pluckPos = v;
+    document.getElementById('val-pluck-pos').textContent = `${v.toFixed(2)} L`;
+    pluckString(v, 1.0, true);
+  });
+  document.getElementById('btn-pluck-now').addEventListener('click', () => pluckString(state.string.pluckPos, 1.0, true));
+  document.getElementById('btn-pluck-center').addEventListener('click', () => {
+    setNodeFinger(1);
+    state.string.pluckPos = 0.50;
+    document.getElementById('sl-pluck-pos').value = '0.50';
+    document.getElementById('val-pluck-pos').textContent = '0.50 L';
+    pluckString(0.50, 1.0, true);
+  });
+  document.querySelectorAll('[data-node]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      setNodeFinger(Number(btn.dataset.node));
+      pluckString(state.string.pluckPos, 1.0, true);
+    });
+  });
+  document.getElementById('sl-str-len').addEventListener('input', (e) => {
+    state.string.lengthCm = parseFloat(e.target.value);
+    document.getElementById('val-str-len').textContent = `${state.string.lengthCm.toFixed(1)} cm`;
+    pluckString(state.string.pluckPos, 0.95, true);
+  });
+  document.getElementById('sl-str-speed').addEventListener('input', (e) => {
+    state.string.waveSpeed = parseFloat(e.target.value);
+    document.getElementById('val-str-speed').textContent = `${Math.round(state.string.waveSpeed)} m/s`;
+    pluckString(state.string.pluckPos, 0.95, true);
+  });
+  document.getElementById('sl-str-damp').addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    state.string.damping = v;
+    document.getElementById('val-str-damp').textContent = v < 0.4 ? 'Long' : (v < 0.9 ? 'Medium' : 'Short');
+  });
+  document.getElementById('chk-str-modes').addEventListener('change', (e) => { state.string.showModes = e.target.checked; });
+  document.getElementById('chk-str-auto').addEventListener('change', (e) => { state.string.autoPluck = e.target.checked; });
+
+  // Pipe controls
+  document.getElementById('btn-pipe-open').addEventListener('click', () => {
+    state.pipe.type = 'open';
+    document.getElementById('btn-pipe-open').classList.add('active');
+    document.getElementById('btn-pipe-closed').classList.remove('active');
+    document.getElementById('lbl-pipe-type').textContent = 'Open–Open';
+    state.fft.peakBuf.fill(0);
+    audioEngine.updateContinuous();
+  });
+  document.getElementById('btn-pipe-closed').addEventListener('click', () => {
+    state.pipe.type = 'closed';
+    document.getElementById('btn-pipe-closed').classList.add('active');
+    document.getElementById('btn-pipe-open').classList.remove('active');
+    document.getElementById('lbl-pipe-type').textContent = 'Closed–Open';
+    state.fft.peakBuf.fill(0);
+    audioEngine.updateContinuous();
+  });
+  document.getElementById('sl-pipe-len').addEventListener('input', (e) => {
+    state.pipe.lengthCm = parseFloat(e.target.value);
+    document.getElementById('val-pipe-len').textContent = `${state.pipe.lengthCm.toFixed(1)} cm`;
+    audioEngine.updateContinuous();
+  });
+  document.getElementById('sl-pipe-temp').addEventListener('input', (e) => {
+    state.pipe.tempC = parseFloat(e.target.value);
+    document.getElementById('val-pipe-temp').textContent = `${state.pipe.tempC}°C · ${getAirSpeed().toFixed(1)} m/s`;
+    audioEngine.updateContinuous();
+  });
+  document.querySelectorAll('[data-overblow]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const ov = Number(btn.dataset.overblow);
+      state.pipe.overblow = ov;
+      document.querySelectorAll('[data-overblow]').forEach(b => b.classList.toggle('active', b === btn));
+      document.getElementById('val-pipe-overblow').textContent = ov === 0 ? 'Natural Rich' : `Overblow #${ov}`;
+      state.fft.peakBuf.fill(0);
+      audioEngine.updateContinuous();
+    });
+  });
+  document.getElementById('chk-pipe-pressure').addEventListener('change', (e) => { state.pipe.showPressure = e.target.checked; });
+  document.getElementById('chk-pipe-disp').addEventListener('change', (e) => { state.pipe.showDisp = e.target.checked; });
+  document.getElementById('chk-pipe-particles').addEventListener('change', (e) => { state.pipe.showParticles = e.target.checked; });
+
+  // Synth controls
+  document.querySelectorAll('[data-preset]').forEach(btn => {
+    btn.addEventListener('click', () => applySynthPreset(btn.dataset.preset));
+  });
+  document.getElementById('btn-drawbar-reset').addEventListener('click', () => applySynthPreset('sine'));
+  document.getElementById('sl-synth-freq').addEventListener('input', (e) => {
+    state.synth.freq = parseFloat(e.target.value);
+    document.getElementById('val-synth-freq').textContent = `${state.synth.freq.toFixed(1)} Hz`;
+    audioEngine.updateContinuous();
+  });
+  document.getElementById('sl-fm-index').addEventListener('input', (e) => {
+    state.synth.fmIndex = parseFloat(e.target.value);
+    document.getElementById('val-fm-index').textContent = state.synth.fmIndex.toFixed(2);
+    audioEngine.updateContinuous();
+  });
+  document.getElementById('sl-fm-ratio').addEventListener('input', (e) => {
+    state.synth.fmRatio = parseFloat(e.target.value);
+    document.getElementById('val-fm-ratio').textContent = `${state.synth.fmRatio.toFixed(2)}×`;
+    audioEngine.updateContinuous();
+  });
+  document.getElementById('chk-beats-on').addEventListener('change', (e) => {
+    state.synth.beatsOn = e.target.checked;
+    audioEngine.updateContinuous();
+  });
+  document.getElementById('sl-beat-df').addEventListener('input', (e) => {
+    state.synth.beatDf = parseFloat(e.target.value);
+    document.getElementById('val-beat-df').textContent = `${state.synth.beatDf.toFixed(2)} Hz`;
+    audioEngine.updateContinuous();
+  });
+
+  // Analyzer controls
+  document.querySelectorAll('[data-fftsize]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.fft.size = Number(btn.dataset.fftsize);
+      document.getElementById('val-fft-size').textContent = String(state.fft.size);
+      document.querySelectorAll('[data-fftsize]').forEach(b => b.classList.toggle('active', b === btn));
+      ensureFFTBuffers();
+    });
+  });
+  document.querySelectorAll('[data-magscale]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.fft.magScale = btn.dataset.magscale;
+      document.querySelectorAll('[data-magscale]').forEach(b => b.classList.toggle('active', b === btn));
+    });
+  });
+  document.querySelectorAll('[data-freqscale]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.fft.freqScale = btn.dataset.freqscale;
+      document.querySelectorAll('[data-freqscale]').forEach(b => b.classList.toggle('active', b === btn));
+    });
+  });
+  document.querySelectorAll('[data-window]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.fft.windowType = btn.dataset.window;
+      state.fft.windowBuf = buildWindow(state.fft.size, state.fft.windowType);
+      document.querySelectorAll('[data-window]').forEach(b => b.classList.toggle('active', b === btn));
+    });
+  });
+  document.querySelectorAll('[data-palette]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.fft.palette = btn.dataset.palette;
+      document.querySelectorAll('[data-palette]').forEach(b => b.classList.toggle('active', b === btn));
+    });
+  });
+  document.getElementById('chk-note-labels').addEventListener('change', (e) => { state.fft.noteLabels = e.target.checked; });
+  document.getElementById('chk-harm-pins').addEventListener('change', (e) => { state.fft.harmPins = e.target.checked; });
+  document.getElementById('chk-peak-hold').addEventListener('change', (e) => { state.fft.peakHold = e.target.checked; });
+  document.getElementById('chk-freeze-fft').addEventListener('change', (e) => { state.fft.frozen = e.target.checked; });
+
+  // Audio controls
+  document.getElementById('btn-audio-bar').addEventListener('click', () => audioEngine.setEnabled(!state.audioEnabled));
+  document.getElementById('btn-audio-big').addEventListener('click', () => audioEngine.setEnabled(!state.audioEnabled));
+  document.getElementById('sl-master-vol').addEventListener('input', (e) => {
+    const v = parseInt(e.target.value, 10);
+    document.getElementById('val-master-vol').textContent = `${v}%`;
+    audioEngine.setVolume(v / 100);
+  });
+
+  // Transport controls
+  function togglePause() {
+    state.paused = !state.paused;
+    const btn = document.getElementById('btn-play');
+    btn.textContent = state.paused ? '▶ Play' : '⏸ Pause';
+    btn.classList.toggle('active', !state.paused);
+    audioEngine.updateContinuous();
+  }
+
+  function toggleDrawer() {
+    state.drawerOpen = !state.drawerOpen;
+    document.getElementById('drawer').classList.toggle('collapsed', !state.drawerOpen);
+    document.getElementById('btn-drawer').classList.toggle('active', state.drawerOpen);
+  }
+
+  function toggleCinema() {
+    state.zenMode = !state.zenMode;
+    document.body.classList.toggle('zen-mode', state.zenMode);
+    document.getElementById('btn-cinema').classList.toggle('active', state.zenMode);
+  }
+
+  function resetAll() {
+    state.string.lengthCm = 65.0;
+    state.string.waveSpeed = 340.1;
+    state.string.pluckPos = 0.24;
+    state.string.damping = 0.55;
+    setNodeFinger(1);
+    document.getElementById('sl-str-len').value = '65';
+    document.getElementById('val-str-len').textContent = '65.0 cm';
+    document.getElementById('sl-str-speed').value = '340';
+    document.getElementById('val-str-speed').textContent = '340 m/s';
+    document.getElementById('sl-pluck-pos').value = '0.24';
+    document.getElementById('val-pluck-pos').textContent = '0.24 L';
+    document.getElementById('sl-str-damp').value = '0.55';
+    document.getElementById('val-str-damp').textContent = 'Medium';
+
+    state.pipe.type = 'open';
+    state.pipe.lengthCm = 65.6;
+    state.pipe.tempC = 20;
+    state.pipe.overblow = 0;
+    document.getElementById('btn-pipe-open').classList.add('active');
+    document.getElementById('btn-pipe-closed').classList.remove('active');
+    document.getElementById('lbl-pipe-type').textContent = 'Open–Open';
+    document.getElementById('sl-pipe-len').value = '65.6';
+    document.getElementById('val-pipe-len').textContent = '65.6 cm';
+    document.getElementById('sl-pipe-temp').value = '20';
+    document.getElementById('val-pipe-temp').textContent = '20°C · 343.4 m/s';
+    document.querySelectorAll('[data-overblow]').forEach(b => b.classList.toggle('active', b.dataset.overblow === '0'));
+    document.getElementById('val-pipe-overblow').textContent = 'Natural Rich';
+
+    state.synth.freq = 261.6256;
+    state.synth.beatsOn = false;
+    state.synth.beatDf = 3.5;
+    document.getElementById('sl-synth-freq').value = '261.6';
+    document.getElementById('val-synth-freq').textContent = '261.6 Hz';
+    document.getElementById('chk-beats-on').checked = false;
+    document.getElementById('sl-beat-df').value = '3.5';
+    document.getElementById('val-beat-df').textContent = '3.50 Hz';
+    applySynthPreset('sawtooth');
+
+    state.fft.peakBuf.fill(0);
+    wfCtx.fillStyle = '#040814';
+    wfCtx.fillRect(0, 0, wfW, wfH);
+
+    if (state.mode === 'string') pluckString(0.24, 1.0, true);
+    audioEngine.updateContinuous();
+  }
+
+  document.getElementById('btn-play').addEventListener('click', togglePause);
+  document.getElementById('btn-reset').addEventListener('click', resetAll);
+  document.getElementById('btn-drawer').addEventListener('click', toggleDrawer);
+  document.getElementById('btn-cinema').addEventListener('click', toggleCinema);
+  document.getElementById('btn-zen-restore').addEventListener('click', toggleCinema);
+
+  // Keyboard shortcuts & Piano playing (A W S E D F T G Y H U J K)
+  const keyToNote = new Map(PIANO_NOTES.map(n => [n.key, n]));
+
+  window.addEventListener('keydown', (e) => {
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+    const k = e.key.toLowerCase();
+
+    if (e.code === 'Space') {
+      e.preventDefault();
+      togglePause();
+      return;
+    }
+    if (k === 'r' && !e.ctrlKey && !e.metaKey) {
+      resetAll();
+      return;
+    }
+    if (k === 'h' && e.shiftKey) {
+      e.preventDefault();
+      toggleCinema();
+      return;
+    }
+    if (k === 'escape' && state.zenMode) {
+      toggleCinema();
+      return;
+    }
+    if (k === '1' && !e.repeat) { setMode('string'); return; }
+    if (k === '2' && !e.repeat) { setMode('pipe'); return; }
+    if (k === '3' && !e.repeat) { setMode('synth'); return; }
+
+    // Piano keys A W S E D F T G Y H U J K
+    if (!e.ctrlKey && !e.metaKey && !e.altKey && !e.repeat && keyToNote.has(k)) {
+      const noteObj = keyToNote.get(k);
+      state.pressedKeys.add(k);
+      const keyEl = document.querySelector(`.piano-keys [data-note="${noteObj.note}"]`);
+      if (keyEl) keyEl.classList.add('active');
+      playNote(noteObj);
+    }
+  });
+
+  window.addEventListener('keyup', (e) => {
+    const k = e.key.toLowerCase();
+    if (keyToNote.has(k)) {
+      state.pressedKeys.delete(k);
+      const noteObj = keyToNote.get(k);
+      const keyEl = document.querySelector(`.piano-keys [data-note="${noteObj.note}"]`);
+      if (keyEl) keyEl.classList.remove('active');
+    }
+  });
+
+  /* ============================================================================
+     BOOTSTRAP
+  ============================================================================ */
+  applySynthPreset('sawtooth');
+  pluckString(0.24, 1.0, false);
+  updateAudioButtons();
+  updateTelemetryDOM();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

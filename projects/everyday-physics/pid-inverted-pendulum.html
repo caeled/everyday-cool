@@ -1,0 +1,3949 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Stabilizer — PID Control, Inverted Pendulum &amp; Quadcopter Balancing</title>
+<style>
+  :root {
+    --bg-deep: #040711;
+    --panel-bg: rgba(9, 14, 26, 0.80);
+    --panel-bg-strong: rgba(8, 12, 22, 0.93);
+    --panel-border: rgba(148, 179, 255, 0.16);
+    --panel-border-hi: rgba(148, 179, 255, 0.36);
+    --text-main: #eef3ff;
+    --text-dim: #9aa9cc;
+    --text-muted: #68789c;
+    --accent-amber: #ffbe5c;
+    --accent-cyan: #58dcff;
+    --accent-mint: #4af2b2;
+    --accent-rose: #ff6083;
+    --accent-violet: #a78bfa;
+    --radius-lg: 14px;
+    --radius-md: 10px;
+    --radius-sm: 7px;
+    --mono: ui-monospace, "Cascadia Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Inter, Helvetica, Arial, sans-serif;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg-deep);
+    color: var(--text-main);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    touch-action: none;
+  }
+
+  #sim-canvas {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    cursor: crosshair;
+  }
+  #sim-canvas.grab { cursor: grab; }
+  #sim-canvas.grabbing { cursor: grabbing; }
+
+  /* HUD Layer */
+  .hud {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 10;
+  }
+  body.zen-mode .hud > :not(.zen-restore) {
+    opacity: 0;
+    pointer-events: none !important;
+  }
+
+  .panel {
+    pointer-events: auto;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-lg);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.52), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    transition: opacity 0.25s ease, transform 0.25s ease;
+  }
+
+  /* Top-Left Telemetry + Oscilloscope */
+  .top-left {
+    position: fixed;
+    top: 14px;
+    left: 14px;
+    width: min(418px, calc(100vw - 360px));
+    min-width: 295px;
+    padding: 11px 13px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .brand-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .brand-title-wrap {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .brand-title {
+    font-size: 16px;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    background: linear-gradient(120deg, #e8fbff 0%, #58dcff 48%, #ffbe5c 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .mode-badge {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 999px;
+    border: 1px solid rgba(88, 220, 255, 0.42);
+    background: rgba(88, 220, 255, 0.12);
+    color: var(--accent-cyan);
+  }
+  .mode-badge.amber {
+    border-color: rgba(255, 190, 92, 0.42);
+    background: rgba(255, 190, 92, 0.12);
+    color: var(--accent-amber);
+  }
+  .mode-badge.violet {
+    border-color: rgba(167, 139, 250, 0.45);
+    background: rgba(167, 139, 250, 0.14);
+    color: var(--accent-violet);
+  }
+
+  .status-pill {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: rgba(74, 242, 178, 0.14);
+    color: var(--accent-mint);
+    border: 1px solid rgba(74, 242, 178, 0.36);
+    white-space: nowrap;
+  }
+  .status-pill.warn {
+    background: rgba(255, 190, 92, 0.16);
+    color: var(--accent-amber);
+    border-color: rgba(255, 190, 92, 0.42);
+  }
+  .status-pill.danger {
+    background: rgba(255, 96, 131, 0.18);
+    color: var(--accent-rose);
+    border-color: rgba(255, 96, 131, 0.45);
+  }
+  .status-pill.info {
+    background: rgba(88, 220, 255, 0.16);
+    color: var(--accent-cyan);
+    border-color: rgba(88, 220, 255, 0.42);
+  }
+
+  .telemetry-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 5px;
+  }
+
+  .tele-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(148, 179, 255, 0.1);
+    border-radius: var(--radius-sm);
+    padding: 5px 7px;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+
+  .tele-label {
+    font-size: 9px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .tele-val {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--text-main);
+  }
+  .tele-val.amber { color: var(--accent-amber); }
+  .tele-val.cyan { color: var(--accent-cyan); }
+  .tele-val.mint { color: var(--accent-mint); }
+  .tele-val.rose { color: var(--accent-rose); }
+  .tele-val.violet { color: var(--accent-violet); }
+
+  /* Embedded Step-Response Oscilloscope */
+  .scope-box {
+    background: rgba(3, 6, 15, 0.72);
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    border-radius: var(--radius-md);
+    padding: 6px 7px 5px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .scope-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 9.5px;
+    color: var(--text-dim);
+    letter-spacing: 0.04em;
+  }
+  .scope-legend {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--mono);
+    font-size: 9.5px;
+  }
+  .leg-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .leg-swatch {
+    width: 10px;
+    height: 2px;
+    border-radius: 1px;
+  }
+  .leg-swatch.dashed {
+    background: repeating-linear-gradient(90deg, #fff 0 4px, transparent 4px 7px);
+  }
+  #scope-canvas {
+    width: 100%;
+    height: 104px;
+    display: block;
+    border-radius: 5px;
+  }
+
+  /* P / I / D Live Force Component Bars */
+  .pid-bars {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding-top: 4px;
+    border-top: 1px solid rgba(148, 179, 255, 0.1);
+  }
+  .pid-bar-row {
+    display: grid;
+    grid-template-columns: 36px 1fr 56px;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--mono);
+    font-size: 10px;
+  }
+  .pid-tag {
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+  }
+  .pid-tag.p { color: var(--accent-cyan); }
+  .pid-tag.i { color: var(--accent-violet); }
+  .pid-tag.d { color: var(--accent-amber); }
+  .pid-tag.u { color: var(--accent-mint); }
+
+  .sat-mini {
+    font-size: 8px;
+    padding: 0 3px;
+    border-radius: 3px;
+    background: rgba(255, 96, 131, 0.24);
+    color: var(--accent-rose);
+    border: 1px solid rgba(255, 96, 131, 0.45);
+    display: none;
+  }
+  .sat-mini.on { display: inline-block; }
+
+  .bi-track {
+    position: relative;
+    height: 7px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.06);
+    overflow: hidden;
+  }
+  .bi-track::before {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: rgba(255, 255, 255, 0.22);
+    z-index: 2;
+  }
+  .bi-fill {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    border-radius: 999px;
+    left: 50%;
+    width: 0%;
+  }
+  .bi-fill.p { background: linear-gradient(90deg, #32b8ff, #58dcff); box-shadow: 0 0 8px rgba(88, 220, 255, 0.5); }
+  .bi-fill.i { background: linear-gradient(90deg, #8b5cf6, #c084fc); box-shadow: 0 0 8px rgba(167, 139, 250, 0.5); }
+  .bi-fill.d { background: linear-gradient(90deg, #f59e0b, #ffbe5c); box-shadow: 0 0 8px rgba(255, 190, 92, 0.5); }
+  .bi-fill.u { background: linear-gradient(90deg, #10b981, #4af2b2); box-shadow: 0 0 8px rgba(74, 242, 178, 0.5); }
+  .bi-fill.u.sat { background: linear-gradient(90deg, #ff6083, #ffbe5c); }
+
+  .pid-num {
+    text-align: right;
+    color: var(--text-dim);
+    font-size: 10px;
+  }
+
+  .clock-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding-top: 4px;
+    border-top: 1px solid rgba(148, 179, 255, 0.1);
+    font-size: 10.5px;
+    color: var(--text-dim);
+    font-family: var(--mono);
+  }
+  .clock-row span strong {
+    color: var(--text-main);
+    font-weight: 600;
+  }
+
+  /* Right Control Drawer */
+  .drawer {
+    position: fixed;
+    top: 14px;
+    right: 14px;
+    bottom: 14px;
+    width: 330px;
+    max-width: calc(100vw - 28px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: transform 0.25s ease, opacity 0.25s ease;
+  }
+  .drawer.collapsed {
+    transform: translateX(calc(100% + 24px));
+    pointer-events: none;
+  }
+
+  .drawer-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+    padding: 8px 8px 6px;
+    border-bottom: 1px solid var(--panel-border);
+    background: rgba(4, 7, 17, 0.45);
+  }
+
+  .tab-btn {
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 11.5px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    padding: 7px 6px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .tab-btn:hover {
+    color: var(--text-main);
+    background: rgba(255, 255, 255, 0.04);
+  }
+  .tab-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.16);
+    border-color: rgba(88, 220, 255, 0.4);
+  }
+
+  .drawer-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 11px 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .drawer-body::-webkit-scrollbar { width: 5px; }
+  .drawer-body::-webkit-scrollbar-thumb {
+    background: rgba(148, 179, 255, 0.22);
+    border-radius: 999px;
+  }
+
+  .tab-pane {
+    display: none;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .tab-pane.active { display: flex; }
+
+  .section {
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(148, 179, 255, 0.11);
+    border-radius: var(--radius-md);
+    padding: 10px 11px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .section-title {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  /* Plant Selector */
+  .plant-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 5px;
+  }
+  .plant-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-dim);
+    font-size: 11px;
+    font-weight: 700;
+    padding: 7px 5px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    text-align: center;
+  }
+  .plant-btn .plant-ico { font-size: 14px; line-height: 1.1; }
+  .plant-btn .plant-sub { font-size: 9px; color: var(--text-muted); font-weight: 500; }
+  .plant-btn:hover {
+    color: #fff;
+    border-color: rgba(88, 220, 255, 0.38);
+    background: rgba(88, 220, 255, 0.07);
+  }
+  .plant-btn.active {
+    color: #fff;
+    border-color: var(--accent-cyan);
+    background: rgba(88, 220, 255, 0.18);
+    box-shadow: 0 0 14px rgba(88, 220, 255, 0.15);
+  }
+  .plant-btn.active .plant-sub { color: #b8ecff; }
+
+  /* Presets grid */
+  .preset-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 5px;
+  }
+  .preset-btn {
+    text-align: left;
+    padding: 6px 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(148, 179, 255, 0.14);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-main);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .preset-btn:hover {
+    border-color: rgba(255, 190, 92, 0.45);
+    background: rgba(255, 190, 92, 0.08);
+  }
+  .preset-btn.active {
+    border-color: var(--accent-amber);
+    background: rgba(255, 190, 92, 0.15);
+  }
+  .preset-name { font-size: 11px; font-weight: 700; line-height: 1.2; }
+  .preset-sub { font-size: 9.2px; color: var(--text-muted); line-height: 1.22; }
+
+  /* Sliders */
+  .control-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .control-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11.2px;
+    color: var(--text-dim);
+  }
+  .control-head .val {
+    font-family: var(--mono);
+    font-size: 11.2px;
+    color: var(--text-main);
+    font-weight: 600;
+  }
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 5px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.18);
+    outline: none;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent-cyan);
+    border: 2px solid #08101f;
+    box-shadow: 0 0 10px rgba(88, 220, 255, 0.65);
+    cursor: pointer;
+  }
+  input[type="range"].violet::-webkit-slider-thumb {
+    background: var(--accent-violet);
+    box-shadow: 0 0 10px rgba(167, 139, 250, 0.65);
+  }
+  input[type="range"].amber::-webkit-slider-thumb {
+    background: var(--accent-amber);
+    box-shadow: 0 0 10px rgba(255, 190, 92, 0.65);
+  }
+  input[type="range"].rose::-webkit-slider-thumb {
+    background: var(--accent-rose);
+    box-shadow: 0 0 10px rgba(255, 96, 131, 0.65);
+  }
+
+  /* Segmented & Action Buttons */
+  .seg-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(56px, 1fr));
+    gap: 4px;
+  }
+  .seg-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-dim);
+    font-size: 10.2px;
+    font-weight: 650;
+    padding: 5px 4px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-align: center;
+  }
+  .seg-btn:hover {
+    color: #fff;
+    border-color: rgba(148, 179, 255, 0.35);
+    background: rgba(255, 255, 255, 0.07);
+  }
+  .seg-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.18);
+    border-color: var(--accent-cyan);
+  }
+
+  .btn-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .btn {
+    border: 1px solid rgba(148, 179, 255, 0.22);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-main);
+    font-size: 11.2px;
+    font-weight: 700;
+    padding: 8px 9px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+  }
+  .btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 179, 255, 0.45);
+  }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary {
+    background: linear-gradient(135deg, rgba(88, 220, 255, 0.26), rgba(56, 140, 255, 0.22));
+    border-color: rgba(88, 220, 255, 0.55);
+    color: #e6f9ff;
+  }
+  .btn.amber {
+    background: linear-gradient(135deg, rgba(255, 190, 92, 0.24), rgba(255, 120, 60, 0.2));
+    border-color: rgba(255, 190, 92, 0.55);
+    color: #fff3db;
+  }
+  .btn.danger {
+    background: rgba(255, 96, 131, 0.15);
+    border-color: rgba(255, 96, 131, 0.42);
+    color: #ffc2d0;
+  }
+
+  /* Toggle switches */
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11.2px;
+    color: var(--text-dim);
+    cursor: pointer;
+    gap: 8px;
+  }
+  .toggle-row input { display: none; }
+  .switch {
+    width: 34px;
+    height: 18px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.2);
+    border: 1px solid rgba(148, 179, 255, 0.25);
+    position: relative;
+    transition: all 0.18s ease;
+    flex-shrink: 0;
+  }
+  .switch::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #c8d7f5;
+    transition: transform 0.18s ease, background 0.18s ease;
+  }
+  .toggle-row input:checked + .switch {
+    background: rgba(88, 220, 255, 0.32);
+    border-color: var(--accent-cyan);
+  }
+  .toggle-row input:checked + .switch::after {
+    transform: translateX(16px);
+    background: #fff;
+  }
+
+  /* Bottom Transport Bar */
+  .bottom-bar {
+    position: fixed;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 7px 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: nowrap;
+  }
+  .bar-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-main);
+    font-size: 11.5px;
+    font-weight: 650;
+    padding: 6px 9px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    white-space: nowrap;
+  }
+  .bar-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 179, 255, 0.4);
+  }
+  .bar-btn.active {
+    background: rgba(88, 220, 255, 0.2);
+    border-color: var(--accent-cyan);
+    color: #fff;
+  }
+  .bar-btn.amber-hi:hover {
+    border-color: rgba(255, 190, 92, 0.55);
+    background: rgba(255, 190, 92, 0.14);
+  }
+  .bar-divider {
+    width: 1px;
+    height: 20px;
+    background: rgba(148, 179, 255, 0.16);
+    margin: 0 2px;
+  }
+
+  /* Bottom-Left Interaction Hints */
+  .hint-pill {
+    position: fixed;
+    bottom: 14px;
+    left: 14px;
+    padding: 7px 11px;
+    font-size: 10.8px;
+    color: var(--text-dim);
+    max-width: 315px;
+    line-height: 1.42;
+  }
+  .hint-pill kbd {
+    font-family: var(--mono);
+    font-size: 9.8px;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #fff;
+  }
+
+  /* Event Banner */
+  .event-banner {
+    position: fixed;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%) translateY(-10px);
+    padding: 8px 15px;
+    border-radius: var(--radius-md);
+    background: rgba(8, 16, 30, 0.9);
+    border: 1px solid rgba(88, 220, 255, 0.5);
+    color: #daf5ff;
+    font-size: 12px;
+    font-weight: 650;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.22s ease, transform 0.22s ease;
+    z-index: 25;
+    backdrop-filter: blur(12px);
+    white-space: nowrap;
+  }
+  .event-banner.visible {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+  .event-banner.warn {
+    background: rgba(24, 15, 6, 0.9);
+    border-color: rgba(255, 190, 92, 0.55);
+    color: #ffe6bc;
+  }
+
+  .zen-restore {
+    position: fixed;
+    bottom: 14px;
+    right: 14px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+  }
+  body.zen-mode .zen-restore {
+    opacity: 0.9;
+    pointer-events: auto;
+  }
+
+  .note-small {
+    font-size: 10px;
+    color: var(--text-muted);
+    line-height: 1.35;
+  }
+
+  @media (max-width: 960px) {
+    .top-left {
+      width: calc(100vw - 28px);
+      max-width: none;
+    }
+    .drawer {
+      top: auto;
+      bottom: 62px;
+      height: 52vh;
+      width: calc(100vw - 28px);
+    }
+    .hint-pill { display: none; }
+  }
+</style>
+</head>
+<body>
+<canvas id="sim-canvas"></canvas>
+
+<div class="hud">
+  <!-- Top-Left Telemetry & Live Step-Response Oscilloscope -->
+  <div class="panel top-left">
+    <div class="brand-row">
+      <div class="brand-title-wrap">
+        <div class="brand-title">Stabilizer</div>
+        <span id="mode-badge" class="mode-badge">Cart–Pole RK4</span>
+      </div>
+      <span id="status-pill" class="status-pill">Balanced</span>
+    </div>
+
+    <div class="telemetry-grid">
+      <div class="tele-card">
+        <span id="tel-lbl-1" class="tele-label">Pole Angle θ</span>
+        <span id="tel-val-1" class="tele-val cyan">0.0°</span>
+      </div>
+      <div class="tele-card">
+        <span id="tel-lbl-2" class="tele-label">Error e(t)</span>
+        <span id="tel-val-2" class="tele-val">0.00</span>
+      </div>
+      <div class="tele-card">
+        <span id="tel-lbl-3" class="tele-label">Effort u(t)</span>
+        <span id="tel-val-3" class="tele-val amber">0.0 N</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Rise Time tᵣ</span>
+        <span id="tel-tr" class="tele-val mint">—</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Overshoot %OS</span>
+        <span id="tel-os" class="tele-val amber">0.0%</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-label">Settling tₛ</span>
+        <span id="tel-ts" class="tele-val">—</span>
+      </div>
+    </div>
+
+    <!-- High-DPI Step-Response Oscilloscope -->
+    <div id="scope-wrap" class="scope-box">
+      <div class="scope-head">
+        <span>STEP-RESPONSE OSCILLOSCOPE</span>
+        <div class="scope-legend">
+          <span class="leg-item"><span class="leg-swatch dashed"></span>r(t)</span>
+          <span class="leg-item" style="color:var(--accent-cyan)"><span class="leg-swatch" style="background:var(--accent-cyan)"></span><span id="scope-legend-y">y(t)</span></span>
+          <span class="leg-item" style="color:var(--accent-amber)"><span class="leg-swatch" style="background:var(--accent-amber)"></span>u(t)</span>
+        </div>
+      </div>
+      <canvas id="scope-canvas"></canvas>
+    </div>
+
+    <!-- Toggleable P / I / D Individual Force Component Bars -->
+    <div id="pid-bars-wrap" class="pid-bars">
+      <div class="pid-bar-row">
+        <span class="pid-tag p">P</span>
+        <div class="bi-track"><div id="bar-p-fill" class="bi-fill p"></div></div>
+        <span id="bar-p-val" class="pid-num">0.0 N</span>
+      </div>
+      <div class="pid-bar-row">
+        <span class="pid-tag i">I <span id="bar-i-sat" class="sat-mini">WND</span></span>
+        <div class="bi-track"><div id="bar-i-fill" class="bi-fill i"></div></div>
+        <span id="bar-i-val" class="pid-num">0.0 N</span>
+      </div>
+      <div class="pid-bar-row">
+        <span class="pid-tag d">D</span>
+        <div class="bi-track"><div id="bar-d-fill" class="bi-fill d"></div></div>
+        <span id="bar-d-val" class="pid-num">0.0 N</span>
+      </div>
+      <div class="pid-bar-row">
+        <span class="pid-tag u">u <span id="bar-u-sat" class="sat-mini">SAT</span></span>
+        <div class="bi-track"><div id="bar-u-fill" class="bi-fill u"></div></div>
+        <span id="bar-u-val" class="pid-num">0.0 N</span>
+      </div>
+    </div>
+
+    <div class="clock-row">
+      <span>SS Error eₛₛ: <strong id="tel-ess" style="color:var(--accent-cyan)">0.00</strong></span>
+      <span>Clock: <strong id="tel-sim-t">0.0 s</strong></span>
+    </div>
+  </div>
+
+  <!-- Right Control Drawer (330px) -->
+  <aside id="drawer" class="panel drawer">
+    <div class="drawer-tabs">
+      <button class="tab-btn active" data-tab="pid">PID &amp; Plant</button>
+      <button class="tab-btn" data-tab="env">Disturbance</button>
+      <button class="tab-btn" data-tab="vis">Display</button>
+    </div>
+
+    <div class="drawer-body">
+      <!-- TAB 1: PID & PLANT -->
+      <div id="tab-pid" class="tab-pane active">
+        <div class="section">
+          <div class="section-title"><span>Control-Theory Plant (RK4)</span></div>
+          <div class="plant-grid">
+            <button class="plant-btn active" data-plant="cartpole">
+              <span class="plant-ico">⚖️</span>
+              <span>Cart–Pole</span>
+              <span class="plant-sub">Pendulum</span>
+            </button>
+            <button class="plant-btn" data-plant="quadcopter">
+              <span class="plant-ico">🚁</span>
+              <span>Quadcopter</span>
+              <span class="plant-sub">Twin-Rotor</span>
+            </button>
+            <button class="plant-btn" data-plant="stepbench">
+              <span class="plant-ico">📈</span>
+              <span>Step Bench</span>
+              <span class="plant-sub">Spring–Mass</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Curated Presets</span></div>
+          <div class="preset-grid">
+            <button class="preset-btn active" data-preset="tuned_cart">
+              <span class="preset-name">Tuned Cart–Pole</span>
+              <span class="preset-sub">Crisp balance &amp; rail tracking</span>
+            </button>
+            <button class="preset-btn" data-preset="p_osc">
+              <span class="preset-name">P-Only Wild Osc</span>
+              <span class="preset-sub">K_d = 0 sustained ringing</span>
+            </button>
+            <button class="preset-btn" data-preset="crit_quad">
+              <span class="preset-name">Crit. Damped Drone</span>
+              <span class="preset-sub">Cascaded 2D waypoint snap</span>
+            </button>
+            <button class="preset-btn" data-preset="storm_quad">
+              <span class="preset-name">Stormy Wind Hover</span>
+              <span class="preset-sub">Drone leans into heavy gusts</span>
+            </button>
+            <button class="preset-btn" data-preset="windup">
+              <span class="preset-name">Integral Windup</span>
+              <span class="preset-sub">Saturated actuator overshoot</span>
+            </button>
+            <button class="preset-btn" data-preset="swingup">
+              <span class="preset-name">Swing-Up &amp; Catch</span>
+              <span class="preset-sub">Energy pump → PID balance</span>
+            </button>
+          </div>
+        </div>
+
+        <div id="bench-quick-wrap" class="section" style="display:none;">
+          <div class="section-title"><span>Step-Response Regimes</span></div>
+          <div class="seg-row">
+            <button class="seg-btn bench-btn" data-bench="underdamped">Underdamp</button>
+            <button class="seg-btn bench-btn" data-bench="critical">Critical</button>
+            <button class="seg-btn bench-btn" data-bench="overdamped">Overdamp</button>
+            <button class="seg-btn bench-btn" data-bench="no_ki">No-Kᵢ Err</button>
+            <button class="seg-btn bench-btn" data-bench="deriv_kick">Deriv Kick</button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Real-Time PID Gains</span></div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Proportional <strong style="color:var(--accent-cyan)">Kₚ</strong></span>
+              <span id="val-kp" class="val">62.0</span>
+            </div>
+            <input id="sl-kp" type="range" min="0" max="150" step="0.5" value="62" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Integral <strong style="color:var(--accent-violet)">Kᵢ</strong></span>
+              <span id="val-ki" class="val">10.0</span>
+            </div>
+            <input id="sl-ki" class="violet" type="range" min="0" max="60" step="0.5" value="10" />
+          </div>
+
+          <div class="control-row">
+            <div class="control-head">
+              <span>Derivative <strong style="color:var(--accent-amber)">K_d</strong></span>
+              <span id="val-kd" class="val">15.0</span>
+            </div>
+            <input id="sl-kd" class="amber" type="range" min="0" max="40" step="0.2" value="15" />
+          </div>
+
+          <label class="toggle-row">
+            <span>Integral Anti-Windup Clamping</span>
+            <input id="chk-antiwindup" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+
+          <label class="toggle-row">
+            <span>Derivative on Error (Show Kick)</span>
+            <input id="chk-deriv-kick" type="checkbox" />
+            <span class="switch"></span>
+          </label>
+
+          <label id="swingup-row" class="toggle-row">
+            <span>Auto Swing-Up &amp; Catch Assist</span>
+            <input id="chk-swingup" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+        </div>
+      </div>
+
+      <!-- TAB 2: DISTURBANCE & ENVIRONMENT -->
+      <div id="tab-env" class="tab-pane">
+        <div class="section">
+          <div class="section-title"><span>Direct Disturbance Injection</span></div>
+          <div class="btn-row">
+            <button id="btn-gust" class="btn primary">💨 Wind Gust</button>
+            <button id="btn-poke" class="btn amber">👊 Poke Impulse</button>
+          </div>
+          <div class="btn-row">
+            <button id="btn-step" class="btn">⚡ Step Jump</button>
+            <button id="btn-drop" class="btn danger">🔄 Drop / Invert</button>
+          </div>
+          <p class="note-small">Tip: Click &amp; drag the pendulum bob, quadcopter, or mass block directly on the canvas to knock it off balance!</p>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>External Wind &amp; Impulse</span></div>
+          <div class="control-row">
+            <div class="control-head">
+              <span>Steady Wind / Load</span>
+              <span id="val-wind" class="val">0.0 N</span>
+            </div>
+            <input id="sl-wind" class="rose" type="range" min="-14" max="14" step="0.2" value="0" />
+          </div>
+          <div class="control-row">
+            <div class="control-head">
+              <span>Gust / Poke Strength</span>
+              <span id="val-gust-str" class="val">1.0×</span>
+            </div>
+            <input id="sl-gust-str" class="amber" type="range" min="0.3" max="2.5" step="0.1" value="1.0" />
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Plant Physical Parameters</span></div>
+          <div class="control-row">
+            <div class="control-head">
+              <span>Payload / Bob Mass m</span>
+              <span id="val-mass" class="val">0.35 kg</span>
+            </div>
+            <input id="sl-mass" type="range" min="0.15" max="1.5" step="0.05" value="0.35" />
+          </div>
+          <div class="control-row">
+            <div class="control-head">
+              <span>Gravity g</span>
+              <span id="val-grav" class="val">9.81 m/s²</span>
+            </div>
+            <input id="sl-grav" type="range" min="1.6" max="24.0" step="0.1" value="9.81" />
+          </div>
+          <div class="control-row">
+            <div class="control-head">
+              <span>Actuator Limit u_max</span>
+              <span id="val-umax" class="val">55 N</span>
+            </div>
+            <input id="sl-umax" class="amber" type="range" min="8" max="90" step="1" value="55" />
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 3: DISPLAY -->
+      <div id="tab-vis" class="tab-pane">
+        <div class="section">
+          <div class="section-title"><span>Telemetry &amp; Overlays</span></div>
+          <label class="toggle-row">
+            <span>P / I / D Force Component Bars</span>
+            <input id="chk-pid-bars" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Live Step-Response Oscilloscope</span>
+            <input id="chk-scope" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>On-Canvas Force &amp; Thrust Vectors</span>
+            <input id="chk-vectors" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Motion / Flight Path Trail</span>
+            <input id="chk-trail" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Wind &amp; Thrust Plume Particles</span>
+            <input id="chk-wind-fx" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <button id="btn-clear-scope" class="btn">Clear Scope &amp; Trails</button>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Control Architecture</span></div>
+          <p class="note-small">
+            • <strong>Cart–Pole</strong>: Exact nonlinear Lagrangian RK4 dynamics with cascaded rail-tracking outer loop, inner angle PID, and Åström–Furuta energy swing-up.<br/>
+            • <strong>Quadcopter</strong>: 2D nonlinear rigid-body RK4 with twin rotor mixing, altitude PID, horizontal-to-pitch cascaded PID, and crosswind compensation.<br/>
+            • <strong>Step Bench</strong>: Precision mass–spring–damper plant with actuator saturation, anti-windup, steady-state load, and optional derivative kick.
+          </p>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Event Notification Toast -->
+  <div id="event-banner" class="event-banner">
+    <span id="event-text">Swing-Up caught! PID balance engaged.</span>
+  </div>
+
+  <!-- Bottom-Left Interaction Hints -->
+  <div class="panel hint-pill">
+    <div id="hint-line-1"><strong>Drag bob</strong> to disturb · <strong>Drag cyan flag</strong> to move setpoint</div>
+    <div id="hint-line-2"><kbd>Space</kbd> Pause · <kbd>G</kbd> Gust · <kbd>P</kbd> Poke · <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> Plants · <kbd>H</kbd> Cinema</div>
+  </div>
+
+  <!-- Bottom Transport Bar -->
+  <div class="panel bottom-bar">
+    <button id="btn-play" class="bar-btn active">⏸ Pause</button>
+    <button id="btn-reset" class="bar-btn">↺ Reset</button>
+    <div class="bar-divider"></div>
+    <button class="bar-btn speed-btn" data-speed="0.25">0.25×</button>
+    <button class="bar-btn speed-btn" data-speed="0.5">0.5×</button>
+    <button class="bar-btn speed-btn active" data-speed="1">1×</button>
+    <button class="bar-btn speed-btn" data-speed="2">2×</button>
+    <div class="bar-divider"></div>
+    <button id="btn-bar-gust" class="bar-btn amber-hi" title="Wind Gust (G)">💨 Gust</button>
+    <button id="btn-bar-poke" class="bar-btn amber-hi" title="Poke Impulse (P)">👊 Poke</button>
+    <div class="bar-divider"></div>
+    <button id="btn-sound" class="bar-btn">🔇 Audio</button>
+    <button id="btn-toggle-drawer" class="bar-btn active">Controls</button>
+    <button id="btn-zen" class="bar-btn" title="Cinema Mode (H)">Cinema</button>
+  </div>
+
+  <button id="btn-zen-restore" class="panel bar-btn zen-restore">Show HUD (H)</button>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // =========================================================================
+  // DOM REFERENCES
+  // =========================================================================
+  const $ = (id) => document.getElementById(id);
+
+  const canvas = $('sim-canvas');
+  const ctx = canvas.getContext('2d');
+  const scopeCanvas = $('scope-canvas');
+  const sctx = scopeCanvas.getContext('2d');
+
+  const ui = {
+    modeBadge: $('mode-badge'),
+    statusPill: $('status-pill'),
+    telLbl1: $('tel-lbl-1'),
+    telVal1: $('tel-val-1'),
+    telLbl2: $('tel-lbl-2'),
+    telVal2: $('tel-val-2'),
+    telLbl3: $('tel-lbl-3'),
+    telVal3: $('tel-val-3'),
+    telTr: $('tel-tr'),
+    telOs: $('tel-os'),
+    telTs: $('tel-ts'),
+    telEss: $('tel-ess'),
+    telSimT: $('tel-sim-t'),
+    scopeWrap: $('scope-wrap'),
+    scopeLegendY: $('scope-legend-y'),
+    pidBarsWrap: $('pid-bars-wrap'),
+    barPFill: $('bar-p-fill'),
+    barPVal: $('bar-p-val'),
+    barIFill: $('bar-i-fill'),
+    barIVal: $('bar-i-val'),
+    barISat: $('bar-i-sat'),
+    barDFill: $('bar-d-fill'),
+    barDVal: $('bar-d-val'),
+    barUFill: $('bar-u-fill'),
+    barUVal: $('bar-u-val'),
+    barUSat: $('bar-u-sat'),
+    drawer: $('drawer'),
+    benchQuickWrap: $('bench-quick-wrap'),
+    swingupRow: $('swingup-row'),
+    slKp: $('sl-kp'),
+    valKp: $('val-kp'),
+    slKi: $('sl-ki'),
+    valKi: $('val-ki'),
+    slKd: $('sl-kd'),
+    valKd: $('val-kd'),
+    chkAntiWindup: $('chk-antiwindup'),
+    chkDerivKick: $('chk-deriv-kick'),
+    chkSwingUp: $('chk-swingup'),
+    slWind: $('sl-wind'),
+    valWind: $('val-wind'),
+    slGustStr: $('sl-gust-str'),
+    valGustStr: $('val-gust-str'),
+    slMass: $('sl-mass'),
+    valMass: $('val-mass'),
+    slGrav: $('sl-grav'),
+    valGrav: $('val-grav'),
+    slUmax: $('sl-umax'),
+    valUmax: $('val-umax'),
+    btnGust: $('btn-gust'),
+    btnPoke: $('btn-poke'),
+    btnStep: $('btn-step'),
+    btnDrop: $('btn-drop'),
+    chkPidBars: $('chk-pid-bars'),
+    chkScope: $('chk-scope'),
+    chkVectors: $('chk-vectors'),
+    chkTrail: $('chk-trail'),
+    chkWindFx: $('chk-wind-fx'),
+    btnClearScope: $('btn-clear-scope'),
+    eventBanner: $('event-banner'),
+    eventText: $('event-text'),
+    hintLine1: $('hint-line-1'),
+    hintLine2: $('hint-line-2'),
+    btnPlay: $('btn-play'),
+    btnReset: $('btn-reset'),
+    btnBarGust: $('btn-bar-gust'),
+    btnBarPoke: $('btn-bar-poke'),
+    btnSound: $('btn-sound'),
+    btnToggleDrawer: $('btn-toggle-drawer'),
+    btnZen: $('btn-zen'),
+    btnZenRestore: $('btn-zen-restore')
+  };
+
+  // =========================================================================
+  // HELPERS
+  // =========================================================================
+  const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const wrapAngle = (a) => {
+    let r = (a + Math.PI) % (2 * Math.PI);
+    if (r < 0) r += 2 * Math.PI;
+    return r - Math.PI;
+  };
+  const radToDeg = (r) => r * (180 / Math.PI);
+
+  let toastTimer = null;
+  function showToast(msg, warn = false) {
+    ui.eventText.textContent = msg;
+    ui.eventBanner.classList.toggle('warn', warn);
+    ui.eventBanner.classList.add('visible');
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => ui.eventBanner.classList.remove('visible'), 2500);
+  }
+
+  // =========================================================================
+  // PLANT CONFIGURATIONS & SIMULATION STATE
+  // =========================================================================
+  const PLANT_META = {
+    cartpole: {
+      badge: 'Cart–Pole RK4',
+      badgeClass: '',
+      kpRange: [0, 150, 0.5],
+      kiRange: [0, 60, 0.5],
+      kdRange: [0, 40, 0.2],
+      massRange: [0.15, 1.5, 0.05],
+      umaxRange: [15, 90, 1],
+      hint1: '<strong>Drag bob</strong> to disturb · <strong>Drag cyan flag</strong> on rail for setpoint',
+      scopeY: 'x / θ'
+    },
+    quadcopter: {
+      badge: 'Twin-Rotor 2D',
+      badgeClass: 'amber',
+      kpRange: [0, 40, 0.2],
+      kiRange: [0, 20, 0.1],
+      kdRange: [0, 20, 0.1],
+      massRange: [0.5, 3.0, 0.05],
+      umaxRange: [18, 90, 1],
+      hint1: '<strong>Drag drone</strong> to disturb · <strong>Drag cyan reticle</strong> (or click sky) for 2D waypoint',
+      scopeY: 'y(t)'
+    },
+    stepbench: {
+      badge: 'Step Bench RK4',
+      badgeClass: 'violet',
+      kpRange: [0, 80, 0.5],
+      kiRange: [0, 50, 0.2],
+      kdRange: [0, 30, 0.1],
+      massRange: [0.3, 4.0, 0.05],
+      umaxRange: [6, 65, 1],
+      hint1: '<strong>Drag mass block</strong> to disturb · <strong>Drag cyan flag</strong> on rail for step target',
+      scopeY: 'y(t)'
+    }
+  };
+
+  const sim = {
+    plant: 'cartpole',
+    activePreset: 'tuned_cart',
+    running: true,
+    speed: 1.0,
+    t: 0,
+    // Controller params
+    kp: 62,
+    ki: 10,
+    kd: 15,
+    antiWindup: true,
+    derivKick: false,
+    swingUpAssist: true,
+    // Environment params
+    windSteady: 0,
+    gustStrength: 1.0,
+    mass: 0.35,
+    gravity: 9.81,
+    uMax: 55,
+    // Active disturbance waveforms
+    gustTimer: 0,
+    gustDuration: 2.2,
+    gustDir: 1,
+    stormMode: false,
+    stormPhase: 0,
+    // Display options
+    showPidBars: true,
+    showScope: true,
+    showVectors: true,
+    showTrail: true,
+    showWindFx: true,
+
+    // Live PID component breakdown (in Newtons)
+    terms: {
+      p: 0,
+      i: 0,
+      d: 0,
+      uRaw: 0,
+      u: 0,
+      saturated: false,
+      windupFlag: false,
+      windForce: 0
+    },
+
+    // Plant A: Cart-Pole state
+    cart: {
+      M: 1.0,
+      L: 1.15,
+      railHalf: 3.4,
+      x: 0,
+      vx: 0,
+      theta: 0.09,
+      omega: 0,
+      xRef: 0,
+      wheelAngle: 0,
+      intTheta: 0,
+      prevErrTheta: 0,
+      dFilt: 0,
+      mode: 'PID', // 'PID' | 'SWINGUP' | 'FALLEN'
+      swingKickDone: false
+    },
+
+    // Plant B: 2D Twin-Rotor Quadcopter state
+    quad: {
+      armL: 0.42,
+      x: -1.4,
+      vx: 0,
+      y: 1.8,
+      vy: 0,
+      phi: 0,
+      omega: 0,
+      xRef: 0.8,
+      yRef: 2.8,
+      intY: 0,
+      intX: 0,
+      prevEy: 0,
+      prevEx: 0,
+      dFiltY: 0,
+      dFiltX: 0,
+      tL: 6,
+      tR: 6,
+      rotorPhaseL: 0,
+      rotorPhaseR: 0,
+      phiRef: 0
+    },
+
+    // Plant C: Mass-Spring-Damper Step-Response Bench
+    bench: {
+      y: 0,
+      v: 0,
+      yRef: 1.4,
+      kSpring: 2.0,
+      cDamper: 0.35,
+      intE: 0,
+      prevE: 0,
+      dFilt: 0
+    },
+
+    // Step-Response Metrics
+    metrics: {
+      stepStartT: 0,
+      y0: 0,
+      target: 1.4,
+      stepMag: 1.4,
+      t10: null,
+      t90: null,
+      riseTime: null,
+      peakOvershoot: 0,
+      lastOutsideSettleT: 0,
+      settlingTime: null,
+      settled: false,
+      ssError: 0,
+      active: false
+    },
+
+    // Rolling Oscilloscope ring buffer
+    scope: [],
+    scopeMaxPts: 420,
+    scopeSampleAccum: 0,
+
+    // Visual trails & FX
+    trail: [],
+    particles: [],
+    windStreaks: [],
+    impacts: [],
+
+    // Pointer interaction
+    drag: {
+      active: false,
+      target: null, // 'bob' | 'cart_ref' | 'drone' | 'quad_ref' | 'bench_mass' | 'bench_ref'
+      wx: 0,
+      wy: 0,
+      prevWx: 0,
+      prevWy: 0,
+      vx: 0,
+      vy: 0
+    }
+  };
+
+  // =========================================================================
+  // STEP-RESPONSE METRICS TRACKING
+  // =========================================================================
+  function getPrimaryTraceValues() {
+    if (sim.plant === 'cartpole') {
+      // Plot pole angle (in degrees, scaled) if rail setpoint is near x, or cart x vs xRef!
+      // Actually: in Cart-Pole, plotting cart position x vs xRef when balanced, OR pole angle when swinging/disturbed?
+      // Better: plot Pole Angle θ (deg) vs 0° if |xRef - x| is small? No — a consistent axis is cleaner!
+      // Let's plot:
+      // - Cart-Pole: if |xRef| > 0.05 or user moved rail target, plot Cart Position x vs xRef; otherwise plot Pole Angle θ (deg) vs 0°?
+      // Wait: switching axis mid-run makes the trace jump! Let's check what's clearest:
+      // In Cart-Pole, show Pole Angle θ (rad -> deg) as primary y(t) vs 0° setpoint when xRef==0? Even better:
+      // Let's track Cart Position x vs xRef when xRef changed, OR track Pole Angle θ (deg) consistently in Cart-Pole!
+      // Wait: in Cart-Pole, the classic PID stabilization target is θ = 0° (upright) AND cart x = xRef.
+      // Let's plot θ (degrees) vs 0°? What if user drags rail setpoint? Then θ tilts intentionally to move the cart, and returns to 0°, AND we can draw a faint mint trace of cart x too!
+      // Let's check: in Tuned Cart-Pole, dragging the setpoint flag moves x -> xRef; in Swing-Up, θ swings from 180° to 0°!
+      // Plotting θ (in degrees, ±45° range or auto-expanded for swing-up) vs 0° setpoint makes swing-up, poke recovery, and oscillation look INCREDIBLE!
+      // And when user drags rail setpoint xRef, we show cart position x in the telemetry or plot x vs xRef?
+      // Let's plot:
+      //   Cart-Pole: y = radToDeg(wrapAngle(sim.cart.theta)), r = 0 (angle target), unit = '°'
+      //   Quadcopter: y = sim.quad.y (altitude), r = sim.quad.yRef (or combined 2D tracking error? Altitude y vs yRef is super clean & intuitive when dragging waypoint up/down; if horizontal step is bigger, let's check!)
+      //   Wait: in Quadcopter, if user drags waypoint horizontally, altitude might not change much! What if we track whichever axis had the larger step, OR track Altitude y(t) AND show 2D distance error in telemetry? Let's make Quadcopter scope track Altitude y(t) vs yRef (and in horizontal storm, pitch/x offset is visible in telemetry and on canvas) — wait: in Stormy Wind Hover, plotting Horizontal Position x(t) vs xRef shows the wind push and integral recovery dramatically!
+      //   Let's have a clean `scopeChannel` property:
+      //   - Cart-Pole: 'angle' (θ deg vs 0°) unless rail step triggered -> 'cart_x' (x vs xRef)
+      //   - Quadcopter: 'quad_y' (Altitude y vs yRef) or 'quad_x' (Horizontal x vs xRef, used for Stormy Wind Hover!)
+      //   - Step Bench: 'bench_y' (Position y vs yRef)
+      if (sim.scopeChannel === 'cart_x') {
+        return { r: sim.cart.xRef, y: sim.cart.x, unit: 'm', range: 3.5, label: 'x(t)' };
+      }
+      return { r: 0, y: radToDeg(wrapAngle(sim.cart.theta)), unit: '°', range: 40, label: 'θ(t)' };
+    }
+    if (sim.plant === 'quadcopter') {
+      if (sim.scopeChannel === 'quad_x') {
+        return { r: sim.quad.xRef, y: sim.quad.x, unit: 'm', range: 3.5, label: 'x(t)' };
+      }
+      return { r: sim.quad.yRef, y: sim.quad.y, unit: 'm', range: 5.0, label: 'y(t)' };
+    }
+    return { r: sim.bench.yRef, y: sim.bench.y, unit: 'm', range: 2.5, label: 'y(t)' };
+  }
+
+  sim.scopeChannel = 'angle';
+
+  function beginStepMetrics(newTarget, currentY) {
+    const m = sim.metrics;
+    m.stepStartT = sim.t;
+    m.y0 = currentY;
+    m.target = newTarget;
+    m.stepMag = Math.abs(newTarget - currentY);
+    m.t10 = null;
+    m.t90 = null;
+    m.riseTime = null;
+    m.peakOvershoot = 0;
+    m.lastOutsideSettleT = sim.t;
+    m.settlingTime = null;
+    m.settled = false;
+    m.active = m.stepMag > 0.04;
+  }
+
+  function updateStepMetrics(r, y) {
+    const m = sim.metrics;
+    m.ssError = r - y;
+    if (!m.active) return;
+
+    const dtSince = sim.t - m.stepStartT;
+    const dir = m.target >= m.y0 ? 1 : -1;
+    const progress = ((y - m.y0) * dir) / Math.max(1e-5, m.stepMag);
+
+    if (m.t10 === null && progress >= 0.10) m.t10 = dtSince;
+    if (m.t90 === null && progress >= 0.90) {
+      m.t90 = dtSince;
+      if (m.t10 !== null) m.riseTime = Math.max(0.01, m.t90 - m.t10);
+    }
+
+    if (progress > 1.0) {
+      const os = (progress - 1.0) * 100;
+      if (os > m.peakOvershoot) m.peakOvershoot = Math.min(999, os);
+    }
+
+    const tol = Math.max(0.02 * m.stepMag, sim.scopeChannel === 'angle' ? 1.0 : 0.025);
+    if (Math.abs(r - y) > tol) {
+      m.lastOutsideSettleT = sim.t;
+      m.settled = false;
+      m.settlingTime = null;
+    } else if (!m.settled && (sim.t - m.lastOutsideSettleT) >= 0.45) {
+      m.settled = true;
+      m.settlingTime = Math.max(0.01, m.lastOutsideSettleT - m.stepStartT);
+    }
+  }
+
+  // =========================================================================
+  // AUDIO ENGINE (Web Audio API — muted by default)
+  // =========================================================================
+  const audio = {
+    enabled: false,
+    ctx: null,
+    masterGain: null,
+    osc1: null,
+    osc2: null,
+    humGain: null,
+    noiseNode: null,
+    windFilter: null,
+    windGain: null,
+    init() {
+      if (this.ctx) return;
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      this.ctx = new AC();
+      this.masterGain = this.ctx.createGain();
+      this.masterGain.gain.value = 0.0;
+      this.masterGain.connect(this.ctx.destination);
+
+      // Servo / Rotor dual oscillators
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = 620;
+
+      this.humGain = this.ctx.createGain();
+      this.humGain.gain.value = 0.04;
+      filter.connect(this.humGain);
+      this.humGain.connect(this.masterGain);
+
+      this.osc1 = this.ctx.createOscillator();
+      this.osc1.type = 'triangle';
+      this.osc1.frequency.value = 135;
+      this.osc1.connect(filter);
+      this.osc1.start();
+
+      this.osc2 = this.ctx.createOscillator();
+      this.osc2.type = 'sine';
+      this.osc2.frequency.value = 270;
+      const g2 = this.ctx.createGain();
+      g2.gain.value = 0.35;
+      this.osc2.connect(g2);
+      g2.connect(filter);
+      this.osc2.start();
+
+      // Filtered noise for wind gusts
+      const bufSize = this.ctx.sampleRate * 2;
+      const noiseBuf = this.ctx.createBuffer(1, bufSize, this.ctx.sampleRate);
+      const data = noiseBuf.getChannelData(0);
+      for (let i = 0; i < bufSize; i++) data[i] = Math.random() * 2 - 1;
+      this.noiseNode = this.ctx.createBufferSource();
+      this.noiseNode.buffer = noiseBuf;
+      this.noiseNode.loop = true;
+
+      this.windFilter = this.ctx.createBiquadFilter();
+      this.windFilter.type = 'bandpass';
+      this.windFilter.frequency.value = 380;
+      this.windFilter.Q.value = 1.6;
+
+      this.windGain = this.ctx.createGain();
+      this.windGain.gain.value = 0.0;
+      this.noiseNode.connect(this.windFilter);
+      this.windFilter.connect(this.windGain);
+      this.windGain.connect(this.masterGain);
+      this.noiseNode.start();
+    },
+    setEnabled(on) {
+      this.enabled = on;
+      if (on) {
+        this.init();
+        if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
+      }
+      if (this.masterGain && this.ctx) {
+        this.masterGain.gain.setTargetAtTime(on ? 0.22 : 0.0, this.ctx.currentTime, 0.05);
+      }
+      ui.btnSound.textContent = on ? '🔊 Audio' : '🔇 Audio';
+      ui.btnSound.classList.toggle('active', on);
+    },
+    update() {
+      if (!this.enabled || !this.ctx || !sim.running) {
+        if (this.humGain && this.ctx && !sim.running) {
+          this.humGain.gain.setTargetAtTime(0.0, this.ctx.currentTime, 0.06);
+          this.windGain.gain.setTargetAtTime(0.0, this.ctx.currentTime, 0.06);
+        }
+        return;
+      }
+      const now = this.ctx.currentTime;
+      const eff = clamp(Math.abs(sim.terms.u) / Math.max(1, sim.uMax), 0, 1.2);
+      if (sim.plant === 'quadcopter') {
+        const thrustNorm = clamp((sim.quad.tL + sim.quad.tR) / Math.max(1, sim.uMax), 0, 1.3);
+        const fL = 95 + 175 * clamp(sim.quad.tL / (sim.uMax * 0.5), 0, 1.2);
+        const fR = 95 + 175 * clamp(sim.quad.tR / (sim.uMax * 0.5), 0, 1.2);
+        this.osc1.frequency.setTargetAtTime(fL, now, 0.04);
+        this.osc2.frequency.setTargetAtTime(fR * 1.98, now, 0.04);
+        this.humGain.gain.setTargetAtTime(0.025 + 0.08 * thrustNorm, now, 0.05);
+      } else {
+        const freq = 105 + 260 * eff;
+        this.osc1.frequency.setTargetAtTime(freq, now, 0.03);
+        this.osc2.frequency.setTargetAtTime(freq * 1.5, now, 0.03);
+        this.humGain.gain.setTargetAtTime(0.012 + 0.085 * eff, now, 0.04);
+      }
+      const windNorm = clamp(Math.abs(sim.terms.windForce) / 14, 0, 1.2);
+      this.windGain.gain.setTargetAtTime(windNorm * 0.14, now, 0.06);
+      this.windFilter.frequency.setTargetAtTime(260 + windNorm * 420, now, 0.06);
+    },
+    playPoke() {
+      if (!this.enabled || !this.ctx) return;
+      const now = this.ctx.currentTime;
+      const o = this.ctx.createOscillator();
+      const g = this.ctx.createGain();
+      o.type = 'sine';
+      o.frequency.setValueAtTime(160, now);
+      o.frequency.exponentialRampToValueAtTime(48, now + 0.12);
+      g.gain.setValueAtTime(0.28, now);
+      g.gain.exponentialRampToValueAtTime(0.001, now + 0.13);
+      o.connect(g);
+      g.connect(this.masterGain);
+      o.start(now);
+      o.stop(now + 0.14);
+    }
+  };
+
+  // =========================================================================
+  // WIND & DISTURBANCE CALCULATION
+  // =========================================================================
+  function getCurrentWindForce() {
+    let w = sim.windSteady;
+    if (sim.stormMode) {
+      w += 4.2 * Math.sin(sim.stormPhase * 0.85) + 2.4 * Math.sin(sim.stormPhase * 2.13 + 1.1);
+    }
+    if (sim.gustTimer > 0) {
+      const p = 1 - sim.gustTimer / sim.gustDuration;
+      const env = Math.sin(Math.PI * clamp(p, 0, 1));
+      w += sim.gustDir * 10.5 * sim.gustStrength * env * env;
+    }
+    return w;
+  }
+
+  // =========================================================================
+  // EXACT NONLINEAR RK4 DYNAMICS — PLANT A: CART-POLE
+  // =========================================================================
+  function cartPoleDerivs(s, u, Fwind, dragTorque) {
+    // s = [x, vx, theta, omega]
+    const x = s[0], vx = s[1], th = s[2], om = s[3];
+    const M = sim.cart.M;
+    const m = sim.mass;
+    const L = sim.cart.L;
+    const g = sim.gravity;
+    const sinT = Math.sin(th);
+    const cosT = Math.cos(th);
+
+    const bx = 0.10;
+    const bth = 0.012;
+
+    const Fcart = u - bx * vx + 0.25 * Fwind;
+    // Wind acts laterally on bob: horizontal force Fwind creates torque Fwind * L * cos(theta)
+    const tauExt = (0.45 * Fwind) * L * cosT + dragTorque - bth * om;
+
+    const denom = L * (M + m * sinT * sinT);
+    const alpha = ((M + m) * (g * sinT + tauExt / (m * L)) - cosT * (Fcart + m * L * sinT * om * om)) / denom;
+    const ax = (Fcart + m * L * (sinT * om * om - cosT * alpha)) / (M + m);
+
+    return [vx, ax, om, alpha];
+  }
+
+  function stepCartPole(dt) {
+    const c = sim.cart;
+    const Fwind = getCurrentWindForce();
+    sim.terms.windForce = Fwind;
+
+    const thWrap = wrapAngle(c.theta);
+    const absTh = Math.abs(thWrap);
+
+    // Determine control mode: PID balance vs Energy Swing-Up
+    if (c.mode === 'PID') {
+      if (absTh > 1.18) {
+        c.mode = sim.swingUpAssist ? 'SWINGUP' : 'FALLEN';
+        c.intTheta = 0;
+        c.swingKickDone = false;
+      }
+    } else if (c.mode === 'SWINGUP') {
+      if (!sim.swingUpAssist) {
+        c.mode = 'FALLEN';
+      } else if (absTh < 0.36 && Math.abs(c.omega) < 4.2) {
+        c.mode = 'PID';
+        c.intTheta = 0;
+        c.prevErrTheta = thWrap;
+        c.dFilt = c.omega;
+        showToast('Swing-Up Caught! PID Balance Engaged');
+        beginStepMetrics(0, radToDeg(thWrap));
+      }
+    } else if (c.mode === 'FALLEN') {
+      if (sim.swingUpAssist) {
+        c.mode = 'SWINGUP';
+        c.swingKickDone = false;
+      } else if (absTh < 0.32 && Math.abs(c.omega) < 3.0) {
+        c.mode = 'PID';
+        c.intTheta = 0;
+      }
+    }
+
+    let pTerm = 0, iTerm = 0, dTerm = 0, uRaw = 0, u = 0;
+    let windupFlag = false;
+
+    if (c.mode === 'PID') {
+      // Cascaded outer rail-tracking loop computes desired lean angle thetaRef
+      // To move right (xRef > x), pole must lean right (thetaRef > 0)
+      const posErr = c.xRef - c.x;
+      const thetaRef = clamp(0.14 * posErr - 0.14 * c.vx, -0.21, 0.21);
+
+      // Inner angle error: positive when pole leans further right than thetaRef -> push cart RIGHT (u > 0)
+      const err = wrapAngle(c.theta - thetaRef);
+      pTerm = sim.kp * err;
+
+      // Derivative term
+      if (sim.derivKick) {
+        const rawD = (err - c.prevErrTheta) / dt;
+        c.dFilt += (rawD - c.dFilt) * clamp(dt / 0.014, 0, 1);
+        dTerm = sim.kd * c.dFilt;
+      } else {
+        c.dFilt += (c.omega - c.dFilt) * clamp(dt / 0.008, 0, 1);
+        dTerm = sim.kd * c.dFilt;
+      }
+      c.prevErrTheta = err;
+
+      // Tentative integral update
+      const nextInt = c.intTheta + err * dt;
+      const trialI = sim.ki * nextInt;
+      const trialU = pTerm + trialI + dTerm;
+
+      if (sim.antiWindup) {
+        const sat = Math.abs(trialU) > sim.uMax;
+        const pushingOut = sat && Math.sign(err) === Math.sign(trialU);
+        if (!pushingOut) {
+          c.intTheta = clamp(nextInt, -sim.uMax / Math.max(0.5, sim.ki), sim.uMax / Math.max(0.5, sim.ki));
+        }
+      } else {
+        c.intTheta = clamp(nextInt, -35, 35);
+      }
+
+      iTerm = sim.ki * c.intTheta;
+      windupFlag = Math.abs(iTerm) > sim.uMax * 0.65;
+      uRaw = pTerm + iTerm + dTerm;
+      u = clamp(uRaw, -sim.uMax, sim.uMax);
+    } else if (c.mode === 'SWINGUP') {
+      // Åström–Furuta energy-based swing-up controller
+      const m = sim.mass, L = c.L, g = sim.gravity;
+      const E_up = m * g * L;
+      const E = 0.5 * m * L * L * c.omega * c.omega + m * g * L * Math.cos(c.theta);
+      const E_err = E - E_up; // negative when below upright energy
+      const cosT = Math.cos(c.theta);
+
+      // Gentle kick if nearly stationary at bottom
+      let kick = 0;
+      if (Math.abs(c.omega) < 0.25 && Math.abs(absTh - Math.PI) < 0.28) {
+        kick = 14 * (c.x >= c.xRef ? -1 : 1);
+      }
+
+      const pump = 4.6 * E_err * c.omega * cosT;
+      const center = 11.5 * (c.xRef - c.x) - 6.8 * c.vx;
+      pTerm = pump + kick;
+      dTerm = center;
+      iTerm = 0;
+      uRaw = pTerm + dTerm;
+      u = clamp(uRaw, -sim.uMax, sim.uMax);
+    } else {
+      // Fallen with swing-up disabled: gentle rail centering only
+      uRaw = -4.0 * c.vx;
+      u = clamp(uRaw, -sim.uMax, sim.uMax);
+      dTerm = u;
+    }
+
+    // If user is dragging the bob, apply spring-damper torque pulling bob toward pointer
+    let dragTorque = 0;
+    if (sim.drag.active && sim.drag.target === 'bob') {
+      const targetAngle = Math.atan2(sim.drag.wx - c.x, sim.drag.wy);
+      const diff = wrapAngle(targetAngle - c.theta);
+      dragTorque = 180 * sim.mass * diff - 14 * sim.mass * c.omega;
+      u *= 0.25; // let user easily overpower while holding
+    }
+
+    // 4th-order Runge-Kutta step
+    const s0 = [c.x, c.vx, c.theta, c.omega];
+    const k1 = cartPoleDerivs(s0, u, Fwind, dragTorque);
+    const s1 = s0.map((v, i) => v + 0.5 * dt * k1[i]);
+    const k2 = cartPoleDerivs(s1, u, Fwind, dragTorque);
+    const s2 = s0.map((v, i) => v + 0.5 * dt * k2[i]);
+    const k3 = cartPoleDerivs(s2, u, Fwind, dragTorque);
+    const s3 = s0.map((v, i) => v + dt * k3[i]);
+    const k4 = cartPoleDerivs(s3, u, Fwind, dragTorque);
+
+    c.x += (dt / 6) * (k1[0] + 2 * k2[0] + 2 * k3[0] + k4[0]);
+    c.vx += (dt / 6) * (k1[1] + 2 * k2[1] + 2 * k3[1] + k4[1]);
+    c.theta = wrapAngle(c.theta + (dt / 6) * (k1[2] + 2 * k2[2] + 2 * k3[2] + k4[2]));
+    c.omega = clamp(c.omega + (dt / 6) * (k1[3] + 2 * k2[3] + 2 * k3[3] + k4[3]), -35, 35);
+
+    // Rail end-stop bumpers
+    if (c.x > c.railHalf) {
+      c.x = c.railHalf;
+      if (c.vx > 0) c.vx = -c.vx * 0.35;
+    } else if (c.x < -c.railHalf) {
+      c.x = -c.railHalf;
+      if (c.vx < 0) c.vx = -c.vx * 0.35;
+    }
+    c.wheelAngle += (c.vx * dt) / 0.14;
+
+    sim.terms.p = pTerm;
+    sim.terms.i = iTerm;
+    sim.terms.d = dTerm;
+    sim.terms.uRaw = uRaw;
+    sim.terms.u = u;
+    sim.terms.saturated = Math.abs(uRaw) > sim.uMax + 0.05;
+    sim.terms.windupFlag = windupFlag;
+  }
+
+  // =========================================================================
+  // EXACT NONLINEAR RK4 DYNAMICS — PLANT B: 2D TWIN-ROTOR QUADCOPTER
+  // =========================================================================
+  function quadDerivs(s, tL, tR, FwindX, dragFx, dragFy) {
+    // s = [x, vx, y, vy, phi, omega]
+    const vx = s[1], vy = s[3], phi = s[4], om = s[5];
+    const m = sim.mass;
+    const g = sim.gravity;
+    const L = sim.quad.armL;
+    const I = 0.068 * m;
+
+    const T = tL + tR;
+    const tau = (tL - tR) * L;
+    const cDrag = 0.22;
+    const cRot = 0.045;
+
+    const ax = (T * Math.sin(phi) + FwindX + dragFx - cDrag * vx) / m;
+    const ay = (T * Math.cos(phi) - m * g + dragFy - cDrag * vy) / m;
+    // Slight wind gust rotational turbulence
+    const tauWind = 0.012 * FwindX * Math.sin(sim.t * 3.7);
+    const alpha = (tau + tauWind - cRot * om) / I;
+
+    return [vx, ax, vy, ay, om, alpha];
+  }
+
+  function stepQuadcopter(dt) {
+    const q = sim.quad;
+    const FwindX = getCurrentWindForce();
+    sim.terms.windForce = FwindX;
+
+    const m = sim.mass;
+    const g = sim.gravity;
+    const maxEach = sim.uMax * 0.5;
+
+    // 1) Altitude PID loop
+    const ey = q.yRef - q.y;
+    const pY = sim.kp * ey;
+    let dY = 0;
+    if (sim.derivKick) {
+      const rawDy = (ey - q.prevEy) / dt;
+      q.dFiltY += (rawDy - q.dFiltY) * clamp(dt / 0.015, 0, 1);
+      dY = sim.kd * q.dFiltY;
+    } else {
+      dY = -sim.kd * q.vy;
+    }
+    q.prevEy = ey;
+
+    const nextIntY = q.intY + ey * dt;
+    const ffThrust = m * g;
+    const trialTy = (ffThrust + pY + sim.ki * nextIntY + dY) / Math.max(0.55, Math.cos(q.phi));
+
+    if (sim.antiWindup) {
+      const satY = trialTy > sim.uMax || trialTy < 0;
+      const pushingOut = (trialTy > sim.uMax && ey > 0) || (trialTy < 0 && ey < 0);
+      if (!satY || !pushingOut) {
+        q.intY = clamp(nextIntY, -sim.uMax / Math.max(0.5, sim.ki), sim.uMax / Math.max(0.5, sim.ki));
+      }
+    } else {
+      q.intY = clamp(nextIntY, -40, 40);
+    }
+    const iY = sim.ki * q.intY;
+    const tCmdRaw = (ffThrust + pY + iY + dY) / Math.max(0.55, Math.cos(q.phi));
+    const tCmd = clamp(tCmdRaw, 0, sim.uMax);
+
+    // 2) Outer Horizontal Position PID -> Desired Pitch Angle phiRef
+    const ex = q.xRef - q.x;
+    const pX = sim.kp * ex;
+    let dX = 0;
+    if (sim.derivKick) {
+      const rawDx = (ex - q.prevEx) / dt;
+      q.dFiltX += (rawDx - q.dFiltX) * clamp(dt / 0.015, 0, 1);
+      dX = sim.kd * q.dFiltX;
+    } else {
+      dX = -sim.kd * q.vx;
+    }
+    q.prevEx = ex;
+
+    const nextIntX = q.intX + ex * dt;
+    const trialAx = (pX + sim.ki * nextIntX + dX) / Math.max(0.3, m);
+    const phiMax = 0.62;
+    const trialPhi = Math.atan2(trialAx, Math.max(2.0, g));
+
+    if (sim.antiWindup) {
+      const satX = Math.abs(trialPhi) >= phiMax;
+      const pushingOut = satX && Math.sign(ex) === Math.sign(trialPhi);
+      if (!pushingOut) {
+        q.intX = clamp(nextIntX, -18, 18);
+      }
+    } else {
+      q.intX = clamp(nextIntX, -45, 45);
+    }
+    const iX = sim.ki * q.intX;
+    const axCmd = (pX + iX + dX) / Math.max(0.3, m);
+    q.phiRef = clamp(Math.atan2(axCmd, Math.max(2.0, g)), -phiMax, phiMax);
+
+    // 3) Inner Pitch Attitude PD Loop (3.2x faster bandwidth than outer loop)
+    const I = 0.068 * m;
+    const kpPhi = I * (55 + 4.8 * sim.kp);
+    const kdPhi = I * (4.5 + 1.45 * sim.kd);
+    const ePhi = wrapAngle(q.phiRef - q.phi);
+    const tauCmd = kpPhi * ePhi - kdPhi * q.omega;
+
+    // 4) Twin-Rotor Mixing
+    const halfDiff = 0.5 * tauCmd / q.armL;
+    let tL = clamp(0.5 * tCmd + halfDiff, 0, maxEach);
+    let tR = clamp(0.5 * tCmd - halfDiff, 0, maxEach);
+
+    // User dragging drone directly
+    let dragFx = 0, dragFy = 0;
+    if (sim.drag.active && sim.drag.target === 'drone') {
+      dragFx = 120 * m * (sim.drag.wx - q.x) - 14 * m * q.vx;
+      dragFy = 120 * m * (sim.drag.wy - q.y) - 14 * m * q.vy;
+    }
+
+    // RK4 Integration
+    const s0 = [q.x, q.vx, q.y, q.vy, q.phi, q.omega];
+    const k1 = quadDerivs(s0, tL, tR, FwindX, dragFx, dragFy);
+    const s1 = s0.map((v, i) => v + 0.5 * dt * k1[i]);
+    const k2 = quadDerivs(s1, tL, tR, FwindX, dragFx, dragFy);
+    const s2 = s0.map((v, i) => v + 0.5 * dt * k2[i]);
+    const k3 = quadDerivs(s2, tL, tR, FwindX, dragFx, dragFy);
+    const s3 = s0.map((v, i) => v + dt * k3[i]);
+    const k4 = quadDerivs(s3, tL, tR, FwindX, dragFx, dragFy);
+
+    q.x += (dt / 6) * (k1[0] + 2 * k2[0] + 2 * k3[0] + k4[0]);
+    q.vx += (dt / 6) * (k1[1] + 2 * k2[1] + 2 * k3[1] + k4[1]);
+    q.y += (dt / 6) * (k1[2] + 2 * k2[2] + 2 * k3[2] + k4[2]);
+    q.vy += (dt / 6) * (k1[3] + 2 * k2[3] + 2 * k3[3] + k4[3]);
+    q.phi = wrapAngle(q.phi + (dt / 6) * (k1[4] + 2 * k2[4] + 2 * k3[4] + k4[4]));
+    q.omega = clamp(q.omega + (dt / 6) * (k1[5] + 2 * k2[5] + 2 * k3[5] + k4[5]), -22, 22);
+
+    // Arena floor & side bounds
+    if (q.y < 0.24) {
+      q.y = 0.24;
+      if (q.vy < 0) q.vy = -q.vy * 0.2;
+      q.vx *= 0.88;
+      q.omega *= 0.7;
+    } else if (q.y > 5.5) {
+      q.y = 5.5;
+      if (q.vy > 0) q.vy = -q.vy * 0.25;
+    }
+    if (q.x < -4.6) { q.x = -4.6; if (q.vx < 0) q.vx = -q.vx * 0.3; }
+    if (q.x > 4.6) { q.x = 4.6; if (q.vx > 0) q.vx = -q.vx * 0.3; }
+
+    q.tL = tL;
+    q.tR = tR;
+    q.rotorPhaseL += dt * (18 + 42 * (tL / Math.max(1, maxEach)));
+    q.rotorPhaseR += dt * (18 + 42 * (tR / Math.max(1, maxEach)));
+
+    // Report telemetry terms for the active scope axis (vertical or horizontal)
+    if (sim.scopeChannel === 'quad_x') {
+      sim.terms.p = pX;
+      sim.terms.i = iX;
+      sim.terms.d = dX;
+      sim.terms.uRaw = pX + iX + dX;
+      sim.terms.u = clamp(sim.terms.uRaw, -sim.uMax, sim.uMax);
+      sim.terms.saturated = Math.abs(trialPhi) >= phiMax || tCmdRaw > sim.uMax;
+      sim.terms.windupFlag = Math.abs(iX) > sim.uMax * 0.55;
+    } else {
+      sim.terms.p = pY;
+      sim.terms.i = iY;
+      sim.terms.d = dY;
+      sim.terms.uRaw = tCmdRaw;
+      sim.terms.u = tL + tR;
+      sim.terms.saturated = tCmdRaw > sim.uMax + 0.05 || tCmdRaw < -0.05;
+      sim.terms.windupFlag = Math.abs(iY) > sim.uMax * 0.55;
+    }
+  }
+
+  // =========================================================================
+  // EXACT RK4 DYNAMICS — PLANT C: MASS-SPRING-DAMPER STEP-RESPONSE BENCH
+  // =========================================================================
+  function benchDerivs(s, u, Fdist) {
+    const y = s[0], v = s[1];
+    const m = sim.mass;
+    const c = sim.bench.cDamper;
+    const k = sim.bench.kSpring;
+    const a = (u + Fdist - c * v - k * y) / m;
+    return [v, a];
+  }
+
+  function stepBench(dt) {
+    const b = sim.bench;
+    const Fwind = getCurrentWindForce();
+    sim.terms.windForce = Fwind;
+
+    const e = b.yRef - b.y;
+    const pTerm = sim.kp * e;
+
+    let dTerm = 0;
+    if (sim.derivKick) {
+      // Filtered derivative on error -> produces crisp textbook Derivative Kick on step changes!
+      const rawDe = (e - b.prevE) / dt;
+      b.dFilt += (rawDe - b.dFilt) * clamp(dt / 0.012, 0, 1);
+      dTerm = sim.kd * b.dFilt;
+    } else {
+      // Derivative on measurement (-Kd * v) -> zero derivative kick!
+      b.dFilt += (-b.v - b.dFilt) * clamp(dt / 0.008, 0, 1);
+      dTerm = sim.kd * b.dFilt;
+    }
+    b.prevE = e;
+
+    const nextInt = b.intE + e * dt;
+    const trialU = pTerm + sim.ki * nextInt + dTerm;
+
+    if (sim.antiWindup) {
+      const sat = Math.abs(trialU) > sim.uMax;
+      const pushingOut = sat && Math.sign(e) === Math.sign(trialU);
+      if (!pushingOut) {
+        b.intE = clamp(nextInt, -sim.uMax / Math.max(0.25, sim.ki), sim.uMax / Math.max(0.25, sim.ki));
+      }
+    } else {
+      // Allow substantial integrator windup when Anti-Windup is OFF!
+      b.intE = clamp(nextInt, -25, 25);
+    }
+
+    const iTerm = sim.ki * b.intE;
+    const uRaw = pTerm + iTerm + dTerm;
+    const u = clamp(uRaw, -sim.uMax, sim.uMax);
+
+    let dragF = 0;
+    if (sim.drag.active && sim.drag.target === 'bench_mass') {
+      dragF = 160 * sim.mass * (sim.drag.wx - b.y) - 16 * sim.mass * b.v;
+    }
+    const Fdist = Fwind + dragF;
+
+    // RK4 step
+    const s0 = [b.y, b.v];
+    const k1 = benchDerivs(s0, u, Fdist);
+    const s1 = [s0[0] + 0.5 * dt * k1[0], s0[1] + 0.5 * dt * k1[1]];
+    const k2 = benchDerivs(s1, u, Fdist);
+    const s2 = [s0[0] + 0.5 * dt * k2[0], s0[1] + 0.5 * dt * k2[1]];
+    const k3 = benchDerivs(s2, u, Fdist);
+    const s3 = [s0[0] + dt * k3[0], s0[1] + dt * k3[1]];
+    const k4 = benchDerivs(s3, u, Fdist);
+
+    b.y += (dt / 6) * (k1[0] + 2 * k2[0] + 2 * k3[0] + k4[0]);
+    b.v += (dt / 6) * (k1[1] + 2 * k2[1] + 2 * k3[1] + k4[1]);
+
+    if (b.y < -2.4) { b.y = -2.4; if (b.v < 0) b.v = -b.v * 0.3; }
+    if (b.y > 3.2) { b.y = 3.2; if (b.v > 0) b.v = -b.v * 0.3; }
+
+    sim.terms.p = pTerm;
+    sim.terms.i = iTerm;
+    sim.terms.d = dTerm;
+    sim.terms.uRaw = uRaw;
+    sim.terms.u = u;
+    sim.terms.saturated = Math.abs(uRaw) > sim.uMax + 0.05;
+    sim.terms.windupFlag = Math.abs(iTerm) > sim.uMax * 0.72;
+  }
+
+  // =========================================================================
+  // PRESETS & PLANT SWITCHING
+  // =========================================================================
+  function syncSlidersFromState() {
+    const meta = PLANT_META[sim.plant];
+    const setRange = (el, rng, val) => {
+      el.min = rng[0];
+      el.max = rng[1];
+      el.step = rng[2];
+      el.value = clamp(val, rng[0], rng[1]);
+    };
+    setRange(ui.slKp, meta.kpRange, sim.kp);
+    setRange(ui.slKi, meta.kiRange, sim.ki);
+    setRange(ui.slKd, meta.kdRange, sim.kd);
+    setRange(ui.slMass, meta.massRange, sim.mass);
+    setRange(ui.slUmax, meta.umaxRange, sim.uMax);
+
+    ui.slWind.value = sim.windSteady;
+    ui.slGustStr.value = sim.gustStrength;
+    ui.slGrav.value = sim.gravity;
+
+    ui.valKp.textContent = sim.kp.toFixed(1);
+    ui.valKi.textContent = sim.ki.toFixed(1);
+    ui.valKd.textContent = sim.kd.toFixed(1);
+    ui.valWind.textContent = `${sim.windSteady >= 0 ? '+' : ''}${sim.windSteady.toFixed(1)} N`;
+    ui.valGustStr.textContent = `${sim.gustStrength.toFixed(1)}×`;
+    ui.valMass.textContent = `${sim.mass.toFixed(2)} kg`;
+    ui.valGrav.textContent = `${sim.gravity.toFixed(2)} m/s²`;
+    ui.valUmax.textContent = `${sim.uMax.toFixed(0)} N`;
+
+    ui.chkAntiWindup.checked = sim.antiWindup;
+    ui.chkDerivKick.checked = sim.derivKick;
+    ui.chkSwingUp.checked = sim.swingUpAssist;
+
+    // Mode badge & contextual panels
+    ui.modeBadge.textContent = meta.badge;
+    ui.modeBadge.className = 'mode-badge' + (meta.badgeClass ? ' ' + meta.badgeClass : '');
+    ui.hintLine1.innerHTML = meta.hint1;
+    ui.benchQuickWrap.style.display = sim.plant === 'stepbench' ? 'flex' : 'none';
+    ui.swingupRow.style.display = sim.plant === 'cartpole' ? 'flex' : 'none';
+
+    document.querySelectorAll('.plant-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.plant === sim.plant);
+    });
+  }
+
+  function clearHistory() {
+    sim.scope = [];
+    sim.trail = [];
+    sim.particles = [];
+    sim.impacts = [];
+  }
+
+  function selectPlant(plant, keepPreset = false) {
+    sim.plant = plant;
+    if (!keepPreset) {
+      sim.activePreset = null;
+      document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+    }
+    sim.stormMode = false;
+    sim.gustTimer = 0;
+    clearHistory();
+
+    if (plant === 'cartpole') {
+      sim.kp = 62; sim.ki = 10; sim.kd = 15;
+      sim.mass = 0.35; sim.gravity = 9.81; sim.uMax = 55;
+      sim.windSteady = 0; sim.antiWindup = true; sim.derivKick = false; sim.swingUpAssist = true;
+      sim.scopeChannel = 'angle';
+      Object.assign(sim.cart, { x: 0, vx: 0, theta: 0.24, omega: 0, xRef: 0, intTheta: 0, prevErrTheta: 0.24, dFilt: 0, mode: 'PID' });
+      beginStepMetrics(0, radToDeg(0.24));
+    } else if (plant === 'quadcopter') {
+      sim.kp = 16; sim.ki = 1.6; sim.kd = 9.2;
+      sim.mass = 1.2; sim.gravity = 9.81; sim.uMax = 44;
+      sim.windSteady = 0; sim.antiWindup = true; sim.derivKick = false;
+      sim.scopeChannel = 'quad_y';
+      Object.assign(sim.quad, { x: -1.4, vx: 0, y: 1.4, vy: 0, phi: 0, omega: 0, xRef: 0.9, yRef: 3.1, intY: 0, intX: 0, prevEy: 1.7, prevEx: 2.3, dFiltY: 0, dFiltX: 0, tL: 6, tR: 6 });
+      beginStepMetrics(3.1, 1.4);
+    } else {
+      sim.kp = 25; sim.ki = 12; sim.kd = 10.5;
+      sim.mass = 1.0; sim.gravity = 9.81; sim.uMax = 40;
+      sim.windSteady = 0; sim.antiWindup = true; sim.derivKick = false;
+      sim.scopeChannel = 'bench_y';
+      Object.assign(sim.bench, { y: 0, v: 0, yRef: 1.5, kSpring: 2.0, cDamper: 0.35, intE: 0, prevE: 1.5, dFilt: 0 });
+      beginStepMetrics(1.5, 0);
+    }
+
+    syncSlidersFromState();
+  }
+
+  function applyPreset(name) {
+    sim.activePreset = name;
+    document.querySelectorAll('.preset-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.preset === name);
+    });
+    document.querySelectorAll('.bench-btn').forEach(b => b.classList.remove('active'));
+    sim.t = 0;
+    sim.gustTimer = 0;
+    sim.stormMode = false;
+    clearHistory();
+
+    if (name === 'tuned_cart') {
+      selectPlant('cartpole', true);
+      sim.kp = 62; sim.ki = 10; sim.kd = 15;
+      sim.mass = 0.35; sim.uMax = 55; sim.windSteady = 0;
+      sim.antiWindup = true; sim.derivKick = false; sim.swingUpAssist = true;
+      sim.scopeChannel = 'angle';
+      Object.assign(sim.cart, { x: -0.6, vx: 0, theta: 0.28, omega: 0, xRef: 0.6, intTheta: 0, prevErrTheta: 0.28, dFilt: 0, mode: 'PID' });
+      beginStepMetrics(0, radToDeg(0.28));
+      showToast('Tuned Cart–Pole: Balanced + Rail Tracking');
+    } else if (name === 'p_osc') {
+      selectPlant('stepbench', true);
+      sim.kp = 36; sim.ki = 0; sim.kd = 0;
+      sim.mass = 1.0; sim.uMax = 55; sim.windSteady = 0;
+      sim.antiWindup = true; sim.derivKick = false;
+      sim.scopeChannel = 'bench_y';
+      Object.assign(sim.bench, { y: 0, v: 0, yRef: 1.4, kSpring: 2.0, cDamper: 0.08, intE: 0, prevE: 1.4, dFilt: 0 });
+      beginStepMetrics(1.4, 0);
+      showToast('P-Only (Kd = 0): Undamped Wild Oscillation!', true);
+    } else if (name === 'crit_quad') {
+      selectPlant('quadcopter', true);
+      sim.kp = 16; sim.ki = 1.2; sim.kd = 9.4;
+      sim.mass = 1.2; sim.uMax = 45; sim.windSteady = 0;
+      sim.antiWindup = true; sim.derivKick = false;
+      sim.scopeChannel = 'quad_y';
+      Object.assign(sim.quad, { x: -1.8, vx: 0, y: 1.2, vy: 0, phi: 0, omega: 0, xRef: 1.2, yRef: 3.2, intY: 0, intX: 0, prevEy: 2.0, prevEx: 3.0, dFiltY: 0, dFiltX: 0, tL: 6, tR: 6 });
+      beginStepMetrics(3.2, 1.2);
+      showToast('Critically Damped Quadcopter: Smooth Waypoint Snap');
+    } else if (name === 'storm_quad') {
+      selectPlant('quadcopter', true);
+      sim.kp = 18; sim.ki = 9.0; sim.kd = 10.0;
+      sim.mass = 1.2; sim.uMax = 54; sim.windSteady = 6.2;
+      sim.stormMode = true; sim.stormPhase = 0;
+      sim.antiWindup = true; sim.derivKick = false;
+      sim.scopeChannel = 'quad_x';
+      Object.assign(sim.quad, { x: 0, vx: 0, y: 2.8, vy: 0, phi: 0, omega: 0, xRef: 0, yRef: 2.9, intY: 0, intX: 0, prevEy: 0.1, prevEx: 0, dFiltY: 0, dFiltX: 0, tL: 6, tR: 6 });
+      beginStepMetrics(0, 0);
+      showToast('Stormy Hover: Watch Kᵢ lean the drone into gusts!', true);
+    } else if (name === 'windup') {
+      selectPlant('stepbench', true);
+      sim.kp = 14; sim.ki = 22; sim.kd = 6.0;
+      sim.mass = 1.2; sim.uMax = 10; sim.windSteady = 0;
+      sim.antiWindup = false; sim.derivKick = false;
+      sim.scopeChannel = 'bench_y';
+      Object.assign(sim.bench, { y: -1.3, v: 0, yRef: 1.5, kSpring: 1.4, cDamper: 0.35, intE: 0, prevE: 2.8, dFilt: 0 });
+      beginStepMetrics(1.5, -1.3);
+      showToast('Integral Windup Demo (Anti-Windup OFF — toggle ON to fix!)', true);
+    } else if (name === 'swingup') {
+      selectPlant('cartpole', true);
+      sim.kp = 66; sim.ki = 10; sim.kd = 16;
+      sim.mass = 0.35; sim.uMax = 60; sim.windSteady = 0;
+      sim.antiWindup = true; sim.derivKick = false; sim.swingUpAssist = true;
+      sim.scopeChannel = 'angle';
+      Object.assign(sim.cart, { x: 0, vx: 0, theta: Math.PI - 0.04, omega: 0.4, xRef: 0, intTheta: 0, prevErrTheta: Math.PI, dFilt: 0, mode: 'SWINGUP', swingKickDone: false });
+      beginStepMetrics(0, 178);
+      showToast('Swing-Up & Catch: Pumping energy from θ = 180°');
+    }
+
+    syncSlidersFromState();
+  }
+
+  function applyBenchRegime(regime) {
+    if (sim.plant !== 'stepbench') selectPlant('stepbench', false);
+    document.querySelectorAll('.bench-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.bench === regime);
+    });
+    sim.t = 0;
+    sim.windSteady = 0;
+    sim.gustTimer = 0;
+    sim.mass = 1.0;
+    sim.uMax = 45;
+    sim.antiWindup = true;
+    sim.derivKick = false;
+    sim.scopeChannel = 'bench_y';
+    clearHistory();
+
+    if (regime === 'underdamped') {
+      sim.kp = 44; sim.ki = 18; sim.kd = 2.4;
+      Object.assign(sim.bench, { y: 0, v: 0, yRef: 1.5, kSpring: 2.0, cDamper: 0.35, intE: 0, prevE: 1.5, dFilt: 0 });
+      showToast('Underdamped: Fast rise with classic overshoot ringing');
+    } else if (regime === 'critical') {
+      sim.kp = 25; sim.ki = 12; sim.kd = 10.5;
+      Object.assign(sim.bench, { y: 0, v: 0, yRef: 1.5, kSpring: 2.0, cDamper: 0.35, intE: 0, prevE: 1.5, dFilt: 0 });
+      showToast('Critically Damped: Fastest settle with near-zero overshoot');
+    } else if (regime === 'overdamped') {
+      sim.kp = 16; sim.ki = 5; sim.kd = 18.5;
+      Object.assign(sim.bench, { y: 0, v: 0, yRef: 1.5, kSpring: 2.0, cDamper: 0.35, intE: 0, prevE: 1.5, dFilt: 0 });
+      showToast('Overdamped: Sluggish crawl, zero oscillation');
+    } else if (regime === 'no_ki') {
+      sim.kp = 12; sim.ki = 0; sim.kd = 6.8;
+      Object.assign(sim.bench, { y: 0, v: 0, yRef: 1.5, kSpring: 2.6, cDamper: 0.35, intE: 0, prevE: 1.5, dFilt: 0 });
+      showToast('Steady-State Error (Kᵢ = 0): Spring load holds mass short!', true);
+    } else if (regime === 'deriv_kick') {
+      sim.kp = 24; sim.ki = 10; sim.kd = 13.0;
+      sim.derivKick = true;
+      Object.assign(sim.bench, { y: 0, v: 0, yRef: 1.5, kSpring: 2.0, cDamper: 0.35, intE: 0, prevE: 0, dFilt: 0 });
+      showToast('Derivative Kick: Watch the amber u(t) spike on step jump!', true);
+    }
+    beginStepMetrics(1.5, 0);
+    syncSlidersFromState();
+  }
+
+  // =========================================================================
+  // DISTURBANCE ACTIONS
+  // =========================================================================
+  function triggerWindGust() {
+    sim.gustDir = sim.gustTimer > 0 ? -sim.gustDir : (Math.random() < 0.5 ? 1 : -1);
+    sim.gustTimer = sim.gustDuration;
+    showToast(`💨 Wind Gust (${sim.gustDir > 0 ? 'Right →' : '← Left'})`, true);
+  }
+
+  function triggerPokeImpulse() {
+    const str = sim.gustStrength;
+    const dir = Math.random() < 0.5 ? 1 : -1;
+    audio.playPoke();
+    if (sim.plant === 'cartpole') {
+      const c = sim.cart;
+      c.omega += dir * 2.15 * str;
+      const bx = c.x + c.L * Math.sin(c.theta);
+      const by = c.L * Math.cos(c.theta);
+      sim.impacts.push({ x: bx, y: by, dir, life: 1.0 });
+      beginStepMetrics(0, radToDeg(wrapAngle(c.theta + dir * 0.2)));
+    } else if (sim.plant === 'quadcopter') {
+      const q = sim.quad;
+      q.vx += dir * 2.8 * str;
+      q.vy -= 1.1 * str;
+      q.omega += dir * 4.2 * str;
+      sim.impacts.push({ x: q.x, y: q.y, dir, life: 1.0 });
+    } else {
+      const b = sim.bench;
+      b.v += dir * 3.8 * str;
+      sim.impacts.push({ x: b.y, y: 0, dir, life: 1.0 });
+    }
+    showToast('👊 Physical Poke Impulse Injected!', true);
+  }
+
+  function triggerStepJump() {
+    if (sim.plant === 'cartpole') {
+      const nextRef = sim.cart.xRef >= 0 ? -1.4 : 1.4;
+      sim.scopeChannel = 'cart_x';
+      beginStepMetrics(nextRef, sim.cart.x);
+      sim.cart.xRef = nextRef;
+      showToast(`⚡ Rail Setpoint → ${nextRef > 0 ? '+' : ''}${nextRef.toFixed(1)} m`);
+    } else if (sim.plant === 'quadcopter') {
+      const nextX = sim.quad.xRef >= 0 ? -1.8 : 1.8;
+      const nextY = sim.quad.yRef > 2.6 ? 1.5 : 3.6;
+      sim.scopeChannel = 'quad_y';
+      beginStepMetrics(nextY, sim.quad.y);
+      sim.quad.xRef = nextX;
+      sim.quad.yRef = nextY;
+      showToast(`⚡ Waypoint → (${nextX.toFixed(1)}, ${nextY.toFixed(1)}) m`);
+    } else {
+      const nextRef = sim.bench.yRef > 0.5 ? -0.8 : 1.6;
+      sim.scopeChannel = 'bench_y';
+      beginStepMetrics(nextRef, sim.bench.y);
+      sim.bench.yRef = nextRef;
+      showToast(`⚡ Step Jump → ${nextRef > 0 ? '+' : ''}${nextRef.toFixed(1)} m`);
+    }
+  }
+
+  function triggerDropOrInvert() {
+    if (sim.plant === 'cartpole') {
+      sim.scopeChannel = 'angle';
+      Object.assign(sim.cart, { theta: Math.PI - 0.05, omega: 0.35, vx: 0, intTheta: 0, mode: sim.swingUpAssist ? 'SWINGUP' : 'FALLEN' });
+      beginStepMetrics(0, 177);
+      showToast('🔄 Pole Dropped to 180° — ' + (sim.swingUpAssist ? 'Swing-Up Engaged' : 'Enable Swing-Up Assist'), true);
+    } else if (sim.plant === 'quadcopter') {
+      sim.quad.phi = 0.85;
+      sim.quad.omega = 5.5;
+      sim.quad.vy = -2.6;
+      showToast('🔄 Quadcopter Flip Disturbance!', true);
+    } else {
+      sim.bench.y = -1.6;
+      sim.bench.v = 0;
+      sim.bench.intE = 0;
+      beginStepMetrics(sim.bench.yRef, -1.6);
+      showToast('🔄 Mass Displaced to -1.6 m');
+    }
+  }
+
+  // =========================================================================
+  // COORDINATE TRANSFORMS (World <-> Screen)
+  // =========================================================================
+  let viewW = window.innerWidth;
+  let viewH = window.innerHeight;
+  let dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+  function getLayout() {
+    // Shift visual center slightly left if right drawer is open on wide screens
+    const drawerOpen = !ui.drawer.classList.contains('collapsed') && !document.body.classList.contains('zen-mode') && viewW > 960;
+    const cx = drawerOpen ? (viewW - 330) * 0.5 + 48 : viewW * 0.5;
+    const scaleBase = Math.min(viewW * (drawerOpen ? 0.62 : 0.82) / 8.8, viewH * 0.68 / 5.4);
+    const pxPerM = clamp(scaleBase, 52, 138);
+    return { cx, cy: viewH * 0.56, pxPerM, drawerOpen };
+  }
+
+  function worldToScreen(wx, wy) {
+    const L = getLayout();
+    if (sim.plant === 'cartpole') {
+      const railY = viewH * 0.66;
+      return { x: L.cx + wx * L.pxPerM, y: railY - wy * L.pxPerM };
+    }
+    if (sim.plant === 'quadcopter') {
+      const floorY = viewH * 0.82;
+      return { x: L.cx + wx * L.pxPerM, y: floorY - wy * L.pxPerM };
+    }
+    // stepbench
+    const benchY = viewH * 0.56;
+    return { x: L.cx + (wx - 0.35) * (L.pxPerM * 1.15), y: benchY - wy * L.pxPerM };
+  }
+
+  function screenToWorld(sx, sy) {
+    const L = getLayout();
+    if (sim.plant === 'cartpole') {
+      const railY = viewH * 0.66;
+      return { x: (sx - L.cx) / L.pxPerM, y: (railY - sy) / L.pxPerM };
+    }
+    if (sim.plant === 'quadcopter') {
+      const floorY = viewH * 0.82;
+      return { x: (sx - L.cx) / L.pxPerM, y: (floorY - sy) / L.pxPerM };
+    }
+    const benchY = viewH * 0.56;
+    return { x: (sx - L.cx) / (L.pxPerM * 1.15) + 0.35, y: (benchY - sy) / L.pxPerM };
+  }
+
+  // =========================================================================
+  // POINTER INTERACTION (DIRECT MANIPULATION)
+  // =========================================================================
+  function hitTest(sx, sy) {
+    if (sim.plant === 'cartpole') {
+      const c = sim.cart;
+      const bobPos = worldToScreen(c.x + c.L * Math.sin(c.theta), c.L * Math.cos(c.theta));
+      if (Math.hypot(sx - bobPos.x, sy - bobPos.y) < 34) return 'bob';
+      const refPos = worldToScreen(c.xRef, 0);
+      if (Math.hypot(sx - refPos.x, sy - (refPos.y + 34)) < 32 || Math.hypot(sx - refPos.x, sy - (refPos.y - 16)) < 26) return 'cart_ref';
+      const cartPos = worldToScreen(c.x, 0);
+      if (Math.abs(sx - cartPos.x) < 46 && Math.abs(sy - cartPos.y) < 28) return 'bob';
+      return null;
+    }
+    if (sim.plant === 'quadcopter') {
+      const q = sim.quad;
+      const dPos = worldToScreen(q.x, q.y);
+      if (Math.hypot(sx - dPos.x, sy - dPos.y) < 42) return 'drone';
+      const wPos = worldToScreen(q.xRef, q.yRef);
+      if (Math.hypot(sx - wPos.x, sy - wPos.y) < 36) return 'quad_ref';
+      return 'quad_click_sky';
+    }
+    const b = sim.bench;
+    const mPos = worldToScreen(b.y, 0);
+    if (Math.abs(sx - mPos.x) < 38 && Math.abs(sy - mPos.y) < 36) return 'bench_mass';
+    const rPos = worldToScreen(b.yRef, 0);
+    if (Math.hypot(sx - rPos.x, sy - (rPos.y - 54)) < 34 || Math.hypot(sx - rPos.x, sy - (rPos.y + 42)) < 34) return 'bench_ref';
+    return 'bench_click_rail';
+  }
+
+  canvas.addEventListener('pointerdown', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const sx = e.clientX - rect.left;
+    const sy = e.clientY - rect.top;
+    const hit = hitTest(sx, sy);
+    const w = screenToWorld(sx, sy);
+
+    if (hit === 'quad_click_sky') {
+      const nx = clamp(w.x, -4.1, 4.1);
+      const ny = clamp(w.y, 0.7, 5.0);
+      const dx = Math.abs(nx - sim.quad.xRef);
+      const dy = Math.abs(ny - sim.quad.yRef);
+      sim.scopeChannel = dx > dy * 1.35 ? 'quad_x' : 'quad_y';
+      beginStepMetrics(sim.scopeChannel === 'quad_x' ? nx : ny, sim.scopeChannel === 'quad_x' ? sim.quad.x : sim.quad.y);
+      sim.quad.xRef = nx;
+      sim.quad.yRef = ny;
+      sim.drag.active = true;
+      sim.drag.target = 'quad_ref';
+      canvas.classList.add('grabbing');
+      canvas.setPointerCapture(e.pointerId);
+      return;
+    }
+
+    if (hit === 'bench_click_rail') {
+      const nr = clamp(w.x, -1.8, 2.6);
+      beginStepMetrics(nr, sim.bench.y);
+      sim.bench.yRef = nr;
+      sim.drag.active = true;
+      sim.drag.target = 'bench_ref';
+      canvas.classList.add('grabbing');
+      canvas.setPointerCapture(e.pointerId);
+      return;
+    }
+
+    if (hit) {
+      sim.drag.active = true;
+      sim.drag.target = hit;
+      sim.drag.wx = w.x;
+      sim.drag.wy = w.y;
+      sim.drag.prevWx = w.x;
+      sim.drag.prevWy = w.y;
+      canvas.classList.add('grabbing');
+      canvas.setPointerCapture(e.pointerId);
+    }
+  });
+
+  canvas.addEventListener('pointermove', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const sx = e.clientX - rect.left;
+    const sy = e.clientY - rect.top;
+    const w = screenToWorld(sx, sy);
+
+    if (!sim.drag.active) {
+      const hit = hitTest(sx, sy);
+      canvas.classList.toggle('grab', !!hit && hit !== 'quad_click_sky' && hit !== 'bench_click_rail');
+      return;
+    }
+
+    sim.drag.prevWx = sim.drag.wx;
+    sim.drag.prevWy = sim.drag.wy;
+    sim.drag.wx = w.x;
+    sim.drag.wy = w.y;
+
+    if (sim.drag.target === 'cart_ref') {
+      const nr = clamp(w.x, -2.9, 2.9);
+      sim.scopeChannel = 'cart_x';
+      sim.cart.xRef = nr;
+    } else if (sim.drag.target === 'quad_ref') {
+      sim.quad.xRef = clamp(w.x, -4.1, 4.1);
+      sim.quad.yRef = clamp(w.y, 0.7, 5.0);
+    } else if (sim.drag.target === 'bench_ref') {
+      sim.bench.yRef = clamp(w.x, -1.8, 2.6);
+    }
+  });
+
+  function endDrag() {
+    if (!sim.drag.active) return;
+    const t = sim.drag.target;
+    if (t === 'cart_ref') beginStepMetrics(sim.cart.xRef, sim.cart.x);
+    else if (t === 'quad_ref') beginStepMetrics(sim.scopeChannel === 'quad_x' ? sim.quad.xRef : sim.quad.yRef, sim.scopeChannel === 'quad_x' ? sim.quad.x : sim.quad.y);
+    else if (t === 'bench_ref') beginStepMetrics(sim.bench.yRef, sim.bench.y);
+    else if (t === 'bob') beginStepMetrics(0, radToDeg(wrapAngle(sim.cart.theta)));
+    sim.drag.active = false;
+    sim.drag.target = null;
+    canvas.classList.remove('grabbing');
+  }
+  canvas.addEventListener('pointerup', endDrag);
+  canvas.addEventListener('pointercancel', endDrag);
+
+  // =========================================================================
+  // VISUAL PARTICLES (THRUST PLUMES + WIND STREAKS)
+  // =========================================================================
+  function initWindStreaks() {
+    sim.windStreaks = [];
+    for (let i = 0; i < 42; i++) {
+      sim.windStreaks.push({
+        x: Math.random() * viewW,
+        y: Math.random() * viewH,
+        len: 35 + Math.random() * 85,
+        speed: 0.7 + Math.random() * 0.9,
+        alpha: 0.14 + Math.random() * 0.32
+      });
+    }
+  }
+
+  function updateVisualFx(dt) {
+    // Impact ripples
+    for (let i = sim.impacts.length - 1; i >= 0; i--) {
+      sim.impacts[i].life -= dt * 2.0;
+      if (sim.impacts[i].life <= 0) sim.impacts.splice(i, 1);
+    }
+
+    // Wind streaks
+    const wf = sim.terms.windForce;
+    if (sim.showWindFx && Math.abs(wf) > 0.35) {
+      const vx = wf * 68;
+      for (const s of sim.windStreaks) {
+        s.x += vx * s.speed * dt;
+        if (s.x > viewW + s.len) { s.x = -s.len; s.y = Math.random() * viewH; }
+        if (s.x < -s.len) { s.x = viewW + s.len; s.y = Math.random() * viewH; }
+      }
+    }
+
+    // Rotor / Thruster particles
+    if (sim.showWindFx && sim.running) {
+      if (sim.plant === 'quadcopter') {
+        const q = sim.quad;
+        const cosP = Math.cos(q.phi), sinP = Math.sin(q.phi);
+        const rotors = [
+          { off: -q.armL, thrust: q.tL },
+          { off: q.armL, thrust: q.tR }
+        ];
+        for (const r of rotors) {
+          const norm = r.thrust / Math.max(1, sim.uMax * 0.5);
+          if (norm > 0.08 && Math.random() < 0.75) {
+            const rx = q.x + r.off * cosP;
+            const ry = q.y - r.off * sinP;
+            const jetSpd = 2.6 + 4.8 * norm;
+            sim.particles.push({
+              x: rx + (Math.random() - 0.5) * 0.16,
+              y: ry - 0.06,
+              vx: q.vx - sinP * jetSpd + (Math.random() - 0.5) * 0.6 + wf * 0.08,
+              vy: q.vy - cosP * jetSpd + (Math.random() - 0.5) * 0.4,
+              life: 0.45 + Math.random() * 0.2,
+              maxLife: 0.65,
+              size: 2.2 + 3.0 * norm,
+              color: norm > 0.75 ? '255, 190, 92' : '88, 220, 255'
+            });
+          }
+        }
+      } else if (sim.plant === 'cartpole' && Math.abs(sim.terms.u) > 4.5) {
+        const c = sim.cart;
+        const uSign = Math.sign(sim.terms.u);
+        const norm = clamp(Math.abs(sim.terms.u) / Math.max(1, sim.uMax), 0, 1);
+        if (Math.random() < 0.65) {
+          sim.particles.push({
+            x: c.x - uSign * 0.34,
+            y: 0.02 + (Math.random() - 0.5) * 0.08,
+            vx: c.vx - uSign * (2.5 + 4.5 * norm),
+            vy: (Math.random() - 0.5) * 0.5,
+            life: 0.32,
+            maxLife: 0.32,
+            size: 2.0 + 2.4 * norm,
+            color: norm > 0.8 ? '255, 190, 92' : '88, 220, 255'
+          });
+        }
+      }
+    }
+
+    for (let i = sim.particles.length - 1; i >= 0; i--) {
+      const p = sim.particles[i];
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.life -= dt;
+      if (p.life <= 0) sim.particles.splice(i, 1);
+    }
+
+    // Motion Trail
+    if (sim.showTrail && sim.running) {
+      let tx = 0, ty = 0;
+      if (sim.plant === 'cartpole') {
+        tx = sim.cart.x + sim.cart.L * Math.sin(sim.cart.theta);
+        ty = sim.cart.L * Math.cos(sim.cart.theta);
+      } else if (sim.plant === 'quadcopter') {
+        tx = sim.quad.x;
+        ty = sim.quad.y;
+      } else {
+        tx = sim.bench.y;
+        ty = 0;
+      }
+      sim.trail.push({ x: tx, y: ty });
+      if (sim.trail.length > 140) sim.trail.shift();
+    }
+  }
+
+  // =========================================================================
+  // MAIN SIMULATION STEP
+  // =========================================================================
+  function stepSimulation(frameDt) {
+    if (!sim.running) return;
+    const scaledDt = Math.min(frameDt, 0.04) * sim.speed;
+    const fixedDt = 1 / 240;
+    const steps = Math.max(1, Math.round(scaledDt / fixedDt));
+    const h = scaledDt / steps;
+
+    for (let i = 0; i < steps; i++) {
+      sim.t += h;
+      if (sim.stormMode) sim.stormPhase += h;
+      if (sim.gustTimer > 0) sim.gustTimer = Math.max(0, sim.gustTimer - h);
+
+      if (sim.plant === 'cartpole') stepCartPole(h);
+      else if (sim.plant === 'quadcopter') stepQuadcopter(h);
+      else stepBench(h);
+
+      const tr = getPrimaryTraceValues();
+      updateStepMetrics(tr.r, tr.y);
+
+      sim.scopeSampleAccum += h;
+      if (sim.scopeSampleAccum >= 1 / 55) {
+        sim.scopeSampleAccum = 0;
+        sim.scope.push({
+          t: sim.t,
+          r: tr.r,
+          y: tr.y,
+          uNorm: clamp(sim.terms.u / Math.max(1, sim.uMax), -1.15, 1.15),
+          sat: sim.terms.saturated
+        });
+        if (sim.scope.length > sim.scopeMaxPts) sim.scope.shift();
+      }
+    }
+
+    updateVisualFx(scaledDt);
+    audio.update();
+  }
+
+  // =========================================================================
+  // RENDERING: SHARED BACKDROP, GRID, FORCE VECTORS
+  // =========================================================================
+  function drawBackdrop() {
+    // Deep aerospace-lab gradient
+    const bg = ctx.createRadialGradient(viewW * 0.52, viewH * 0.45, 40, viewW * 0.5, viewH * 0.5, Math.max(viewW, viewH) * 0.8);
+    bg.addColorStop(0, '#0a1226');
+    bg.addColorStop(0.55, '#050915');
+    bg.addColorStop(1, '#040711');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, viewW, viewH);
+
+    // Subtle precision coordinate grid
+    const L = getLayout();
+    const stepPx = L.pxPerM * 0.5;
+    ctx.save();
+    ctx.lineWidth = 1;
+    for (let x = L.cx % stepPx; x < viewW; x += stepPx) {
+      const major = Math.abs(((x - L.cx) / L.pxPerM) - Math.round((x - L.cx) / L.pxPerM)) < 0.05;
+      ctx.strokeStyle = major ? 'rgba(116, 160, 255, 0.075)' : 'rgba(116, 160, 255, 0.028)';
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, viewH);
+      ctx.stroke();
+    }
+    const baseY = sim.plant === 'quadcopter' ? viewH * 0.82 : (sim.plant === 'cartpole' ? viewH * 0.66 : viewH * 0.56);
+    for (let y = baseY % stepPx; y < viewH; y += stepPx) {
+      const major = Math.abs(((baseY - y) / L.pxPerM) - Math.round((baseY - y) / L.pxPerM)) < 0.05;
+      ctx.strokeStyle = major ? 'rgba(116, 160, 255, 0.075)' : 'rgba(116, 160, 255, 0.028)';
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(viewW, y);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // Wind streaks overlay
+    const wf = sim.terms.windForce;
+    if (sim.showWindFx && Math.abs(wf) > 0.35) {
+      const intensity = clamp(Math.abs(wf) / 12, 0.12, 1.0);
+      const dir = Math.sign(wf);
+      ctx.save();
+      ctx.lineCap = 'round';
+      for (const s of sim.windStreaks) {
+        const grad = ctx.createLinearGradient(s.x, s.y, s.x - dir * s.len, s.y);
+        grad.addColorStop(0, `rgba(130, 215, 255, ${s.alpha * intensity * 0.85})`);
+        grad.addColorStop(1, 'rgba(130, 215, 255, 0)');
+        ctx.strokeStyle = grad;
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.moveTo(s.x, s.y);
+        ctx.lineTo(s.x - dir * s.len, s.y);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+  }
+
+  function drawArrow(x1, y1, x2, y2, color, width = 2.6, label = '') {
+    const dx = x2 - x1, dy = y2 - y1;
+    const len = Math.hypot(dx, dy);
+    if (len < 4) return;
+    const ang = Math.atan2(dy, dx);
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = width;
+    ctx.lineCap = 'round';
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 10;
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+
+    const head = Math.min(11, 5 + len * 0.14);
+    ctx.beginPath();
+    ctx.moveTo(x2, y2);
+    ctx.lineTo(x2 - head * Math.cos(ang - 0.44), y2 - head * Math.sin(ang - 0.44));
+    ctx.lineTo(x2 - head * Math.cos(ang + 0.44), y2 - head * Math.sin(ang + 0.44));
+    ctx.closePath();
+    ctx.fill();
+
+    if (label) {
+      ctx.shadowBlur = 0;
+      ctx.font = '700 10.5px ui-monospace, Menlo, monospace';
+      ctx.textAlign = dx >= 0 ? 'left' : 'right';
+      ctx.fillText(label, x2 + (dx >= 0 ? 6 : -6), y2 + 4);
+    }
+    ctx.restore();
+  }
+
+  function drawParticlesAndImpacts() {
+    // Particles
+    ctx.save();
+    for (const p of sim.particles) {
+      const sp = worldToScreen(p.x, p.y);
+      const a = clamp(p.life / p.maxLife, 0, 1);
+      ctx.fillStyle = `rgba(${p.color}, ${a * 0.78})`;
+      ctx.beginPath();
+      ctx.arc(sp.x, sp.y, p.size * (0.4 + 0.6 * a), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+
+    // Impact ripples
+    for (const imp of sim.impacts) {
+      const sp = worldToScreen(imp.x, imp.y);
+      const r = (1 - imp.life) * 58 + 10;
+      ctx.save();
+      ctx.strokeStyle = `rgba(255, 190, 92, ${imp.life * 0.9})`;
+      ctx.lineWidth = 2.4 * imp.life;
+      ctx.beginPath();
+      ctx.arc(sp.x, sp.y, r, 0, Math.PI * 2);
+      ctx.stroke();
+      drawArrow(sp.x - imp.dir * 42, sp.y, sp.x - imp.dir * 8, sp.y, `rgba(255, 190, 92, ${imp.life})`, 3, '');
+      ctx.restore();
+    }
+  }
+
+  // =========================================================================
+  // RENDERING: MODE A — CART-POLE INVERTED PENDULUM
+  // =========================================================================
+  function renderCartPole() {
+    const c = sim.cart;
+    const L = getLayout();
+    const leftEnd = worldToScreen(-c.railHalf, 0);
+    const rightEnd = worldToScreen(c.railHalf, 0);
+    const railY = leftEnd.y + 22;
+
+    // 1) Glowing Aluminum Precision Rail
+    ctx.save();
+    // Ambient rail glow
+    const railGlow = ctx.createLinearGradient(leftEnd.x, railY - 12, leftEnd.x, railY + 24);
+    railGlow.addColorStop(0, 'rgba(88, 220, 255, 0)');
+    railGlow.addColorStop(0.5, 'rgba(88, 220, 255, 0.14)');
+    railGlow.addColorStop(1, 'rgba(88, 220, 255, 0)');
+    ctx.fillStyle = railGlow;
+    ctx.fillRect(leftEnd.x - 18, railY - 12, (rightEnd.x - leftEnd.x) + 36, 36);
+
+    // Metallic rail bar
+    const barGrad = ctx.createLinearGradient(0, railY - 6, 0, railY + 8);
+    barGrad.addColorStop(0, '#5a6e96');
+    barGrad.addColorStop(0.35, '#a8c2ea');
+    barGrad.addColorStop(0.65, '#3b4c6e');
+    barGrad.addColorStop(1, '#1d273c');
+    ctx.fillStyle = barGrad;
+    ctx.beginPath();
+    ctx.roundRect(leftEnd.x - 14, railY - 5, (rightEnd.x - leftEnd.x) + 28, 12, 5);
+    ctx.fill();
+
+    // Highlight groove
+    ctx.strokeStyle = 'rgba(180, 232, 255, 0.55)';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(leftEnd.x - 8, railY - 3);
+    ctx.lineTo(rightEnd.x + 8, railY - 3);
+    ctx.stroke();
+
+    // Ruler ticks along rail
+    ctx.font = '600 10px ui-monospace, Menlo, monospace';
+    ctx.textAlign = 'center';
+    for (let m = -3; m <= 3; m++) {
+      const p = worldToScreen(m, 0);
+      ctx.strokeStyle = m === 0 ? 'rgba(88, 220, 255, 0.65)' : 'rgba(148, 179, 255, 0.35)';
+      ctx.lineWidth = m === 0 ? 1.6 : 1;
+      ctx.beginPath();
+      ctx.moveTo(p.x, railY + 7);
+      ctx.lineTo(p.x, railY + 15);
+      ctx.stroke();
+      ctx.fillStyle = m === 0 ? '#8be8ff' : '#6f82aa';
+      ctx.fillText(`${m >= 0 && m !== 0 ? '+' : ''}${m}m`, p.x, railY + 27);
+    }
+
+    // End-stop dampers
+    for (const ex of [leftEnd.x - 16, rightEnd.x + 16]) {
+      ctx.fillStyle = '#25324e';
+      ctx.strokeStyle = 'rgba(255, 190, 92, 0.55)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.roundRect(ex - 6, railY - 18, 12, 32, 4);
+      ctx.fill();
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // 2) Draggable Cyan Rail Setpoint Target
+    const refP = worldToScreen(c.xRef, 0);
+    ctx.save();
+    ctx.setLineDash([4, 5]);
+    ctx.strokeStyle = 'rgba(88, 220, 255, 0.32)';
+    ctx.lineWidth = 1.3;
+    ctx.beginPath();
+    ctx.moveTo(refP.x, railY - c.L * L.pxPerM - 35);
+    ctx.lineTo(refP.x, railY + 18);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Setpoint diamond beacon below rail
+    const pulse = 0.75 + 0.25 * Math.sin(sim.t * 5);
+    ctx.fillStyle = `rgba(88, 220, 255, ${0.22 * pulse})`;
+    ctx.beginPath();
+    ctx.arc(refP.x, railY + 38, 15, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#58dcff';
+    ctx.shadowColor = '#58dcff';
+    ctx.shadowBlur = 12;
+    ctx.beginPath();
+    ctx.moveTo(refP.x, railY + 8);
+    ctx.lineTo(refP.x - 8, railY + 22);
+    ctx.lineTo(refP.x + 8, railY + 22);
+    ctx.closePath();
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.font = '700 10px ui-monospace, Menlo, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#9cecff';
+    ctx.fillText(`TARGET ${c.xRef.toFixed(2)}m`, refP.x, railY + 42);
+    ctx.restore();
+
+    // 3) Motion Trail of Bob
+    if (sim.showTrail && sim.trail.length > 2) {
+      ctx.save();
+      ctx.lineCap = 'round';
+      for (let i = 1; i < sim.trail.length; i++) {
+        const a = i / sim.trail.length;
+        const p0 = worldToScreen(sim.trail[i - 1].x, sim.trail[i - 1].y);
+        const p1 = worldToScreen(sim.trail[i].x, sim.trail[i].y);
+        ctx.strokeStyle = `rgba(88, 220, 255, ${a * a * 0.55})`;
+        ctx.lineWidth = 1.2 + a * 2.4;
+        ctx.beginPath();
+        ctx.moveTo(p0.x, p0.y);
+        ctx.lineTo(p1.x, p1.y);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    // 4) Cart Body, Rotating Wheels & Thrusters
+    const cartP = worldToScreen(c.x, 0);
+    const bobP = worldToScreen(c.x + c.L * Math.sin(c.theta), c.L * Math.cos(c.theta));
+    const cartW = 86;
+    const cartH = 34;
+
+    // Thruster flame glow on side opposite to u
+    const uNorm = clamp(sim.terms.u / Math.max(1, sim.uMax), -1, 1);
+    if (Math.abs(uNorm) > 0.05) {
+      const dir = Math.sign(uNorm);
+      const flameLen = 14 + 44 * Math.abs(uNorm);
+      const nozX = cartP.x - dir * (cartW * 0.5 + 2);
+      const nozY = cartP.y;
+      ctx.save();
+      const fg = ctx.createLinearGradient(nozX, nozY, nozX - dir * flameLen, nozY);
+      fg.addColorStop(0, '#fff7dc');
+      fg.addColorStop(0.3, Math.abs(uNorm) > 0.82 ? '#ffbe5c' : '#58dcff');
+      fg.addColorStop(1, 'rgba(88, 220, 255, 0)');
+      ctx.fillStyle = fg;
+      ctx.beginPath();
+      ctx.moveTo(nozX, nozY - 7);
+      ctx.lineTo(nozX - dir * flameLen, nozY);
+      ctx.lineTo(nozX, nozY + 7);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // Rotating Wheels
+    const wheelR = 10.5;
+    for (const wx of [cartP.x - 26, cartP.x + 26]) {
+      const wy = railY - wheelR - 3;
+      ctx.save();
+      ctx.translate(wx, wy);
+      ctx.rotate(c.wheelAngle);
+      ctx.fillStyle = '#182238';
+      ctx.strokeStyle = '#7fa2d8';
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.arc(0, 0, wheelR, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      // Spokes
+      ctx.strokeStyle = '#58dcff';
+      ctx.lineWidth = 1.4;
+      for (let k = 0; k < 3; k++) {
+        const a = (k * Math.PI) / 3;
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(a) * -7, Math.sin(a) * -7);
+        ctx.lineTo(Math.cos(a) * 7, Math.sin(a) * 7);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    // CNC Chassis
+    ctx.save();
+    const chGrad = ctx.createLinearGradient(cartP.x, cartP.y - cartH * 0.5, cartP.x, cartP.y + cartH * 0.5);
+    chGrad.addColorStop(0, '#2a3958');
+    chGrad.addColorStop(0.5, '#172136');
+    chGrad.addColorStop(1, '#0f1626');
+    ctx.fillStyle = chGrad;
+    ctx.strokeStyle = c.mode === 'SWINGUP' ? 'rgba(255, 190, 92, 0.7)' : 'rgba(130, 185, 255, 0.55)';
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.roundRect(cartP.x - cartW * 0.5, cartP.y - cartH * 0.5, cartW, cartH, 8);
+    ctx.fill();
+    ctx.stroke();
+
+    // Glowing effort LED bar on cart
+    const ledColor = sim.terms.saturated ? '#ff6083' : (c.mode === 'SWINGUP' ? '#ffbe5c' : '#58dcff');
+    ctx.fillStyle = ledColor;
+    ctx.shadowColor = ledColor;
+    ctx.shadowBlur = 10;
+    const ledW = Math.max(6, Math.abs(uNorm) * 32);
+    ctx.fillRect(uNorm >= 0 ? cartP.x : cartP.x - ledW, cartP.y + 7, ledW, 3.5);
+    ctx.restore();
+
+    // 5) Vertical Reference Line & Protractor Arc
+    ctx.save();
+    ctx.setLineDash([3, 4]);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.18)';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(cartP.x, cartP.y);
+    ctx.lineTo(cartP.x, cartP.y - c.L * L.pxPerM - 16);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    const arcR = 46;
+    const thW = wrapAngle(c.theta);
+    ctx.strokeStyle = Math.abs(thW) < 0.25 ? 'rgba(74, 242, 178, 0.55)' : 'rgba(255, 190, 92, 0.65)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(cartP.x, cartP.y, arcR, -Math.PI * 0.5, -Math.PI * 0.5 + thW, thW < 0);
+    ctx.stroke();
+    ctx.restore();
+
+    // 6) Pendulum Rod & Glowing Mass Bob
+    ctx.save();
+    ctx.strokeStyle = '#dbe7ff';
+    ctx.lineWidth = 5.5;
+    ctx.lineCap = 'round';
+    ctx.shadowColor = 'rgba(88, 220, 255, 0.35)';
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    ctx.moveTo(cartP.x, cartP.y);
+    ctx.lineTo(bobP.x, bobP.y);
+    ctx.stroke();
+
+    // Pivot hub
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#0e1628';
+    ctx.strokeStyle = '#ffbe5c';
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    ctx.arc(cartP.x, cartP.y, 7, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Bob (scales gently with mass)
+    const bobR = 13 + clamp((sim.mass - 0.15) * 9, 0, 12);
+    const bobGrad = ctx.createRadialGradient(bobP.x - 4, bobP.y - 4, 2, bobP.x, bobP.y, bobR);
+    const balanced = Math.abs(thW) < 0.22 && c.mode === 'PID';
+    bobGrad.addColorStop(0, '#ffffff');
+    bobGrad.addColorStop(0.35, balanced ? '#58dcff' : '#ffbe5c');
+    bobGrad.addColorStop(1, balanced ? '#14588a' : '#8a3c14');
+    ctx.fillStyle = bobGrad;
+    ctx.shadowColor = balanced ? '#58dcff' : '#ffbe5c';
+    ctx.shadowBlur = 20;
+    ctx.beginPath();
+    ctx.arc(bobP.x, bobP.y, bobR, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.65)';
+    ctx.lineWidth = 1.4;
+    ctx.stroke();
+    ctx.restore();
+
+    // 7) On-Canvas Force Vectors (P/I/D + Total u)
+    if (sim.showVectors) {
+      const fScale = 1.9;
+      drawArrow(cartP.x, cartP.y - 24, cartP.x + clamp(sim.terms.u * fScale, -120, 120), cartP.y - 24, '#4af2b2', 3.0, `u=${sim.terms.u.toFixed(1)}N`);
+      if (sim.showPidBars) {
+        drawArrow(cartP.x, cartP.y - 36, cartP.x + clamp(sim.terms.p * fScale, -95, 95), cartP.y - 36, '#58dcff', 1.8, '');
+        drawArrow(cartP.x, cartP.y - 43, cartP.x + clamp(sim.terms.i * fScale, -95, 95), cartP.y - 43, '#a78bfa', 1.8, '');
+        drawArrow(cartP.x, cartP.y - 50, cartP.x + clamp(sim.terms.d * fScale, -95, 95), cartP.y - 50, '#ffbe5c', 1.8, '');
+      }
+      if (Math.abs(sim.terms.windForce) > 0.4) {
+        drawArrow(bobP.x, bobP.y - bobR - 12, bobP.x + clamp(sim.terms.windForce * 6, -80, 80), bobP.y - bobR - 12, '#7dd3fc', 2.0, 'Wind');
+      }
+    }
+
+    drawParticlesAndImpacts();
+  }
+
+  // =========================================================================
+  // RENDERING: MODE B — 2D TWIN-ROTOR QUADCOPTER DRONE
+  // =========================================================================
+  function renderQuadcopter() {
+    const q = sim.quad;
+    const L = getLayout();
+    const floorL = worldToScreen(-4.7, 0);
+    const floorR = worldToScreen(4.7, 0);
+    const floorY = floorL.y;
+
+    // 1) Landing Deck / Floor & Altitude Ruler
+    ctx.save();
+    const deckGrad = ctx.createLinearGradient(0, floorY, 0, floorY + 46);
+    deckGrad.addColorStop(0, 'rgba(88, 220, 255, 0.16)');
+    deckGrad.addColorStop(1, 'rgba(88, 220, 255, 0)');
+    ctx.fillStyle = deckGrad;
+    ctx.fillRect(floorL.x, floorY, floorR.x - floorL.x, 46);
+
+    ctx.strokeStyle = 'rgba(130, 200, 255, 0.48)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(floorL.x, floorY);
+    ctx.lineTo(floorR.x, floorY);
+    ctx.stroke();
+
+    // Ground ticks
+    ctx.font = '600 10px ui-monospace, Menlo, monospace';
+    ctx.textAlign = 'center';
+    for (let x = -4; x <= 4; x++) {
+      const p = worldToScreen(x, 0);
+      ctx.strokeStyle = 'rgba(148, 179, 255, 0.3)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(p.x, floorY);
+      ctx.lineTo(p.x, floorY + 8);
+      ctx.stroke();
+      ctx.fillStyle = '#6f82aa';
+      ctx.fillText(`${x}m`, p.x, floorY + 20);
+    }
+
+    // Altitude markers along right side of flight arena
+    ctx.textAlign = 'left';
+    for (let y = 1; y <= 5; y++) {
+      const p = worldToScreen(-4.5, y);
+      ctx.fillStyle = 'rgba(148, 179, 255, 0.45)';
+      ctx.fillText(`${y}m`, p.x + 6, p.y + 3);
+    }
+    ctx.restore();
+
+    // 2) Flight Path Trail
+    if (sim.showTrail && sim.trail.length > 2) {
+      ctx.save();
+      ctx.lineCap = 'round';
+      for (let i = 1; i < sim.trail.length; i++) {
+        const a = i / sim.trail.length;
+        const p0 = worldToScreen(sim.trail[i - 1].x, sim.trail[i - 1].y);
+        const p1 = worldToScreen(sim.trail[i].x, sim.trail[i].y);
+        ctx.strokeStyle = `rgba(88, 220, 255, ${a * a * 0.52})`;
+        ctx.lineWidth = 1.2 + a * 2.5;
+        ctx.beginPath();
+        ctx.moveTo(p0.x, p0.y);
+        ctx.lineTo(p1.x, p1.y);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    // 3) Draggable Cyan 2D Waypoint Target + Tether
+    const dPos = worldToScreen(q.x, q.y);
+    const wPos = worldToScreen(q.xRef, q.yRef);
+    ctx.save();
+    ctx.setLineDash([5, 6]);
+    ctx.strokeStyle = 'rgba(88, 220, 255, 0.28)';
+    ctx.lineWidth = 1.3;
+    ctx.beginPath();
+    ctx.moveTo(dPos.x, dPos.y);
+    ctx.lineTo(wPos.x, wPos.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Rotating waypoint reticle
+    ctx.translate(wPos.x, wPos.y);
+    const pulse = 1 + 0.1 * Math.sin(sim.t * 4.5);
+    const glow = ctx.createRadialGradient(0, 0, 3, 0, 0, 28 * pulse);
+    glow.addColorStop(0, 'rgba(88, 220, 255, 0.35)');
+    glow.addColorStop(1, 'rgba(88, 220, 255, 0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(0, 0, 28 * pulse, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.save();
+    ctx.rotate(sim.t * 0.8);
+    ctx.strokeStyle = '#58dcff';
+    ctx.lineWidth = 1.8;
+    ctx.setLineDash([7, 5]);
+    ctx.beginPath();
+    ctx.arc(0, 0, 17, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+
+    ctx.strokeStyle = '#9cf0ff';
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(-10, 0); ctx.lineTo(10, 0);
+    ctx.moveTo(0, -10); ctx.lineTo(0, 10);
+    ctx.stroke();
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(0, 0, 3, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.font = '700 10px ui-monospace, Menlo, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#8eeaff';
+    ctx.fillText(`WP (${q.xRef.toFixed(1)}, ${q.yRef.toFixed(1)})`, 0, -23);
+    ctx.restore();
+
+    // Ground shadow beneath drone
+    ctx.save();
+    const shadowScale = clamp(1 - q.y / 6.5, 0.25, 1);
+    ctx.fillStyle = `rgba(0, 0, 0, ${0.42 * shadowScale})`;
+    ctx.beginPath();
+    ctx.ellipse(dPos.x, floorY + 2, 42 * shadowScale, 6 * shadowScale, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // 4) Particles (behind drone)
+    drawParticlesAndImpacts();
+
+    // 5) Twin-Rotor Quadcopter Body
+    const armPx = q.armL * L.pxPerM;
+    const maxEach = Math.max(1, sim.uMax * 0.5);
+
+    ctx.save();
+    ctx.translate(dPos.x, dPos.y);
+    ctx.rotate(q.phi);
+
+    // Volumetric Thrust Plumes underneath Left and Right rotors
+    const drawPlume = (rx, thrust) => {
+      const norm = clamp(thrust / maxEach, 0, 1.15);
+      if (norm < 0.03) return;
+      const len = 18 + norm * 78 * (0.94 + 0.12 * Math.sin(sim.t * 48 + rx));
+      const wTop = 10 + norm * 7;
+      const g = ctx.createLinearGradient(rx, 4, rx, 4 + len);
+      g.addColorStop(0, norm > 0.78 ? 'rgba(255, 240, 200, 0.92)' : 'rgba(205, 248, 255, 0.9)');
+      g.addColorStop(0.32, norm > 0.78 ? 'rgba(255, 180, 75, 0.62)' : 'rgba(88, 220, 255, 0.58)');
+      g.addColorStop(1, 'rgba(88, 220, 255, 0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.moveTo(rx - wTop * 0.5, 4);
+      ctx.lineTo(rx + wTop * 0.5, 4);
+      ctx.lineTo(rx + wTop * 0.18, 4 + len);
+      ctx.lineTo(rx - wTop * 0.18, 4 + len);
+      ctx.closePath();
+      ctx.fill();
+    };
+    drawPlume(-armPx, q.tL);
+    drawPlume(armPx, q.tR);
+
+    // Landing skids
+    ctx.strokeStyle = '#53688f';
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    ctx.moveTo(-16, 7); ctx.lineTo(-22, 20); ctx.lineTo(-30, 20);
+    ctx.moveTo(16, 7); ctx.lineTo(22, 20); ctx.lineTo(30, 20);
+    ctx.stroke();
+
+    // Carbon-fiber main spar
+    ctx.strokeStyle = '#99b6e6';
+    ctx.lineWidth = 5;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(-armPx, 0);
+    ctx.lineTo(armPx, 0);
+    ctx.stroke();
+
+    // Central avionics fuselage
+    const hullG = ctx.createLinearGradient(0, -13, 0, 11);
+    hullG.addColorStop(0, '#33486e');
+    hullG.addColorStop(1, '#121b2e');
+    ctx.fillStyle = hullG;
+    ctx.strokeStyle = 'rgba(130, 205, 255, 0.68)';
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(-24, 0);
+    ctx.lineTo(-14, -12);
+    ctx.lineTo(14, -12);
+    ctx.lineTo(24, 0);
+    ctx.lineTo(15, 10);
+    ctx.lineTo(-15, 10);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // Status LED dome
+    const distErr = Math.hypot(q.xRef - q.x, q.yRef - q.y);
+    const ledC = sim.terms.saturated ? '#ff6083' : (distErr < 0.22 ? '#4af2b2' : '#58dcff');
+    ctx.fillStyle = ledC;
+    ctx.shadowColor = ledC;
+    ctx.shadowBlur = 12;
+    ctx.beginPath();
+    ctx.arc(0, -3, 4.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Motor pods & Animated Spinning Rotors
+    const drawRotor = (rx, phase, thrust) => {
+      const norm = clamp(thrust / maxEach, 0, 1.1);
+      // Pod
+      ctx.fillStyle = '#1f2d47';
+      ctx.strokeStyle = '#7ea3db';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.roundRect(rx - 6, -9, 12, 13, 3);
+      ctx.fill();
+      ctx.stroke();
+
+      // Rotor shaft
+      ctx.strokeStyle = '#d8e9ff';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(rx, -9);
+      ctx.lineTo(rx, -14);
+      ctx.stroke();
+
+      // Translucent spinning rotor blur disc
+      const bladeSpan = 26;
+      const bladeProj = Math.cos(phase) * bladeSpan;
+      ctx.fillStyle = `rgba(120, 228, 255, ${0.14 + 0.16 * norm})`;
+      ctx.beginPath();
+      ctx.ellipse(rx, -14, bladeSpan, 3.2, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Animated strobing rotor blade
+      ctx.strokeStyle = '#e6f8ff';
+      ctx.lineWidth = 2.6;
+      ctx.beginPath();
+      ctx.moveTo(rx - bladeProj, -14);
+      ctx.lineTo(rx + bladeProj, -14);
+      ctx.stroke();
+
+      // Glowing tips
+      ctx.fillStyle = '#ffbe5c';
+      ctx.beginPath();
+      ctx.arc(rx - bladeSpan, -14, 1.8, 0, Math.PI * 2);
+      ctx.arc(rx + bladeSpan, -14, 1.8, 0, Math.PI * 2);
+      ctx.fill();
+    };
+    drawRotor(-armPx, q.rotorPhaseL, q.tL);
+    drawRotor(armPx, q.rotorPhaseR, q.tR);
+    ctx.restore();
+
+    // 6) On-Canvas Thrust & Wind Vectors
+    if (sim.showVectors) {
+      const cosP = Math.cos(q.phi), sinP = Math.sin(q.phi);
+      const tScale = 2.6;
+      const tTot = q.tL + q.tR;
+      drawArrow(dPos.x, dPos.y, dPos.x + sinP * tTot * tScale, dPos.y - cosP * tTot * tScale, '#4af2b2', 2.5, `T=${tTot.toFixed(1)}N`);
+      if (Math.abs(sim.terms.windForce) > 0.4) {
+        drawArrow(dPos.x, dPos.y - 26, dPos.x + clamp(sim.terms.windForce * 8, -95, 95), dPos.y - 26, '#7dd3fc', 2.0, `Wind ${sim.terms.windForce.toFixed(1)}N`);
+      }
+    }
+  }
+
+  // =========================================================================
+  // RENDERING: MODE C — MASS-SPRING-DAMPER STEP-RESPONSE BENCH
+  // =========================================================================
+  function renderStepBench() {
+    const b = sim.bench;
+    const L = getLayout();
+    const wallP = worldToScreen(-2.35, 0);
+    const rightP = worldToScreen(3.0, 0);
+    const massP = worldToScreen(b.y, 0);
+    const refP = worldToScreen(b.yRef, 0);
+    const benchY = massP.y;
+
+    // 1) Optical Bench Rail & Settling Band
+    ctx.save();
+    // ±2% Settling Band highlight around setpoint
+    const bandPx = Math.max(5, 0.04 * L.pxPerM * 1.15);
+    ctx.fillStyle = 'rgba(74, 242, 178, 0.09)';
+    ctx.fillRect(refP.x - bandPx, benchY - 75, bandPx * 2, 150);
+
+    // Metallic rail track
+    const rGrad = ctx.createLinearGradient(0, benchY + 26, 0, benchY + 42);
+    rGrad.addColorStop(0, '#5a6e96');
+    rGrad.addColorStop(0.4, '#a2bce6');
+    rGrad.addColorStop(1, '#1d273c');
+    ctx.fillStyle = rGrad;
+    ctx.beginPath();
+    ctx.roundRect(wallP.x, benchY + 28, rightP.x - wallP.x + 14, 12, 4);
+    ctx.fill();
+
+    // Ruler ticks
+    ctx.font = '600 10px ui-monospace, Menlo, monospace';
+    ctx.textAlign = 'center';
+    for (let x = -2.0; x <= 3.01; x += 0.5) {
+      const p = worldToScreen(x, 0);
+      const isInt = Math.abs(x - Math.round(x)) < 0.01;
+      ctx.strokeStyle = isInt ? 'rgba(148, 179, 255, 0.5)' : 'rgba(148, 179, 255, 0.22)';
+      ctx.lineWidth = isInt ? 1.4 : 1;
+      ctx.beginPath();
+      ctx.moveTo(p.x, benchY + 40);
+      ctx.lineTo(p.x, benchY + (isInt ? 50 : 46));
+      ctx.stroke();
+      if (isInt) {
+        ctx.fillStyle = x === 0 ? '#8be8ff' : '#7a8db5';
+        ctx.fillText(`${x > 0 ? '+' : ''}${x.toFixed(0)}m`, p.x, benchY + 62);
+      }
+    }
+
+    // Left Fixed Bulkhead Wall
+    ctx.fillStyle = '#1b263d';
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.45)';
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.roundRect(wallP.x - 18, benchY - 56, 18, 96, 4);
+    ctx.fill();
+    ctx.stroke();
+    // Diagonal hatch on wall
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.22)';
+    ctx.lineWidth = 1.2;
+    for (let hy = benchY - 48; hy < benchY + 34; hy += 12) {
+      ctx.beginPath();
+      ctx.moveTo(wallP.x - 16, hy + 8);
+      ctx.lineTo(wallP.x - 2, hy - 4);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // 2) Helical Spring (top) & Hydraulic Damper (bottom)
+    const blockHalfW = 32;
+    const attachLeft = wallP.x;
+    const attachRight = massP.x - blockHalfW;
+
+    // Coiled Spring
+    ctx.save();
+    const coils = 12;
+    const spY = benchY - 14;
+    const span = Math.max(24, attachRight - attachLeft);
+    ctx.strokeStyle = '#7fc2ff';
+    ctx.lineWidth = 2.4;
+    ctx.lineJoin = 'round';
+    ctx.shadowColor = 'rgba(88, 220, 255, 0.35)';
+    ctx.shadowBlur = 6;
+    ctx.beginPath();
+    ctx.moveTo(attachLeft, spY);
+    const lead = 12;
+    ctx.lineTo(attachLeft + lead, spY);
+    const innerSpan = Math.max(8, span - lead * 2);
+    for (let i = 0; i < coils; i++) {
+      const t1 = (i + 0.25) / coils;
+      const t2 = (i + 0.75) / coils;
+      ctx.lineTo(attachLeft + lead + t1 * innerSpan, spY - 12);
+      ctx.lineTo(attachLeft + lead + t2 * innerSpan, spY + 12);
+    }
+    ctx.lineTo(attachRight - lead, spY);
+    ctx.lineTo(attachRight, spY);
+    ctx.stroke();
+    ctx.restore();
+
+    // Hydraulic Damper Dashpot
+    ctx.save();
+    const dmY = benchY + 13;
+    const midX = attachLeft + span * 0.45;
+    ctx.strokeStyle = '#9aa9cc';
+    ctx.lineWidth = 2;
+    // Cylinder body attached to left wall
+    ctx.beginPath();
+    ctx.moveTo(attachLeft, dmY);
+    ctx.lineTo(attachLeft + 18, dmY);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(148, 179, 255, 0.1)';
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.5)';
+    ctx.beginPath();
+    ctx.roundRect(attachLeft + 18, dmY - 8, Math.max(36, span * 0.45), 16, 3);
+    ctx.fill();
+    ctx.stroke();
+    // Piston rod attached to mass block
+    const pistX = attachLeft + 24 + Math.max(8, span * 0.34);
+    ctx.strokeStyle = '#ffbe5c';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(pistX, dmY - 6);
+    ctx.lineTo(pistX, dmY + 6);
+    ctx.moveTo(pistX, dmY);
+    ctx.lineTo(attachRight, dmY);
+    ctx.stroke();
+    ctx.restore();
+
+    // 3) Draggable Cyan Target Setpoint Flag
+    ctx.save();
+    ctx.setLineDash([4, 5]);
+    ctx.strokeStyle = 'rgba(88, 220, 255, 0.55)';
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(refP.x, benchY - 78);
+    ctx.lineTo(refP.x, benchY + 38);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.fillStyle = '#58dcff';
+    ctx.shadowColor = '#58dcff';
+    ctx.shadowBlur = 12;
+    ctx.beginPath();
+    ctx.moveTo(refP.x, benchY - 76);
+    ctx.lineTo(refP.x + 16, benchY - 68);
+    ctx.lineTo(refP.x, benchY - 60);
+    ctx.closePath();
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    ctx.font = '700 10.5px ui-monospace, Menlo, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#9cecff';
+    ctx.fillText(`SETPOINT r = ${b.yRef.toFixed(2)} m`, refP.x, benchY - 86);
+    ctx.restore();
+
+    // 4) Sliding Mass Carriage Block
+    ctx.save();
+    const blockH = 54;
+    const mGrad = ctx.createLinearGradient(massP.x, benchY - 27, massP.x, benchY + 27);
+    mGrad.addColorStop(0, '#2c4168');
+    mGrad.addColorStop(0.5, '#192640');
+    mGrad.addColorStop(1, '#10182b');
+    ctx.fillStyle = mGrad;
+    ctx.strokeStyle = Math.abs(b.yRef - b.y) < 0.04 ? '#4af2b2' : '#58dcff';
+    ctx.lineWidth = 2;
+    ctx.shadowColor = Math.abs(b.yRef - b.y) < 0.04 ? 'rgba(74, 242, 178, 0.45)' : 'rgba(88, 220, 255, 0.4)';
+    ctx.shadowBlur = 16;
+    ctx.beginPath();
+    ctx.roundRect(massP.x - blockHalfW, benchY - blockH * 0.5, blockHalfW * 2, blockH, 9);
+    ctx.fill();
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // Mass label inside block
+    ctx.font = '700 12px ui-monospace, Menlo, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#eef6ff';
+    ctx.fillText(`${sim.mass.toFixed(1)}kg`, massP.x, benchY - 2);
+    ctx.font = '600 9.5px ui-monospace, Menlo, monospace';
+    ctx.fillStyle = '#89b4e8';
+    ctx.fillText(`y=${b.y.toFixed(2)}`, massP.x, benchY + 13);
+    ctx.restore();
+
+    // 5) On-Canvas Force Vectors (P / I / D + Total u)
+    if (sim.showVectors) {
+      const fScale = 2.4;
+      drawArrow(massP.x, benchY - 42, massP.x + clamp(sim.terms.u * fScale, -140, 140), benchY - 42, sim.terms.saturated ? '#ff6083' : '#4af2b2', 3.2, `u=${sim.terms.u.toFixed(1)}N`);
+      if (sim.showPidBars) {
+        drawArrow(massP.x, benchY - 56, massP.x + clamp(sim.terms.p * fScale, -110, 110), benchY - 56, '#58dcff', 1.9, 'P');
+        drawArrow(massP.x, benchY - 68, massP.x + clamp(sim.terms.i * fScale, -110, 110), benchY - 68, '#a78bfa', 1.9, 'I');
+        drawArrow(massP.x, benchY - 80, massP.x + clamp(sim.terms.d * fScale, -110, 110), benchY - 80, '#ffbe5c', 1.9, 'D');
+      }
+      if (Math.abs(sim.terms.windForce) > 0.4) {
+        drawArrow(massP.x, benchY + 46, massP.x + clamp(sim.terms.windForce * 6, -90, 90), benchY + 46, '#7dd3fc', 2.0, 'Load');
+      }
+    }
+
+    drawParticlesAndImpacts();
+  }
+
+  // =========================================================================
+  // RENDERING: HIGH-DPI STEP-RESPONSE OSCILLOSCOPE
+  // =========================================================================
+  function renderScope() {
+    if (!sim.showScope) return;
+    const rect = scopeCanvas.getBoundingClientRect();
+    if (rect.width < 10 || rect.height < 10) return;
+    const sw = Math.round(rect.width * dpr);
+    const sh = Math.round(rect.height * dpr);
+    if (scopeCanvas.width !== sw || scopeCanvas.height !== sh) {
+      scopeCanvas.width = sw;
+      scopeCanvas.height = sh;
+    }
+
+    sctx.save();
+    sctx.scale(dpr, dpr);
+    const w = rect.width;
+    const h = rect.height;
+
+    // Background
+    sctx.fillStyle = '#03060f';
+    sctx.fillRect(0, 0, w, h);
+
+    // Subtle oscilloscope grid
+    sctx.strokeStyle = 'rgba(130, 175, 255, 0.1)';
+    sctx.lineWidth = 1;
+    for (let i = 1; i < 4; i++) {
+      const gy = (h * i) / 4;
+      sctx.beginPath();
+      sctx.moveTo(0, gy);
+      sctx.lineTo(w, gy);
+      sctx.stroke();
+    }
+    for (let i = 1; i < 6; i++) {
+      const gx = (w * i) / 6;
+      sctx.beginPath();
+      sctx.moveTo(gx, 0);
+      sctx.lineTo(gx, h);
+      sctx.stroke();
+    }
+
+    const pts = sim.scope;
+    if (pts.length < 2) {
+      sctx.restore();
+      return;
+    }
+
+    // Auto-range cleanly around data with sensible minimum span
+    const tr = getPrimaryTraceValues();
+    ui.scopeLegendY.textContent = tr.label;
+    let minV = Infinity, maxV = -Infinity;
+    for (const p of pts) {
+      if (p.r < minV) minV = p.r;
+      if (p.r > maxV) maxV = p.r;
+      if (p.y < minV) minV = p.y;
+      if (p.y > maxV) maxV = p.y;
+    }
+    const minSpan = sim.scopeChannel === 'angle' ? 24 : 2.2;
+    const mid = 0.5 * (minV + maxV);
+    const halfSpan = Math.max(minSpan * 0.5, (maxV - minV) * 0.62);
+    const lo = mid - halfSpan;
+    const hi = mid + halfSpan;
+
+    const padY = 8;
+    const mapY = (val) => h - padY - ((val - lo) / (hi - lo)) * (h - padY * 2);
+    const mapU = (uN) => h * 0.5 - uN * (h * 0.41);
+    const n = pts.length;
+    const mapX = (idx) => (idx / (sim.scopeMaxPts - 1)) * w;
+    const offsetIdx = sim.scopeMaxPts - n;
+
+    // 1) Control Effort u(t) — Amber
+    sctx.strokeStyle = 'rgba(255, 190, 92, 0.72)';
+    sctx.lineWidth = 1.25;
+    sctx.beginPath();
+    for (let i = 0; i < n; i++) {
+      const x = mapX(offsetIdx + i);
+      const y = mapU(pts[i].uNorm);
+      if (i === 0) sctx.moveTo(x, y); else sctx.lineTo(x, y);
+    }
+    sctx.stroke();
+
+    // 2) Setpoint r(t) — Dashed White
+    sctx.save();
+    sctx.setLineDash([5, 4]);
+    sctx.strokeStyle = 'rgba(255, 255, 255, 0.78)';
+    sctx.lineWidth = 1.3;
+    sctx.beginPath();
+    for (let i = 0; i < n; i++) {
+      const x = mapX(offsetIdx + i);
+      const y = mapY(pts[i].r);
+      if (i === 0) sctx.moveTo(x, y); else sctx.lineTo(x, y);
+    }
+    sctx.stroke();
+    sctx.restore();
+
+    // 3) Actual State y(t) — Glowing Cyan
+    sctx.save();
+    sctx.strokeStyle = '#58dcff';
+    sctx.lineWidth = 2.0;
+    sctx.shadowColor = 'rgba(88, 220, 255, 0.6)';
+    sctx.shadowBlur = 7;
+    sctx.beginPath();
+    for (let i = 0; i < n; i++) {
+      const x = mapX(offsetIdx + i);
+      const y = mapY(pts[i].y);
+      if (i === 0) sctx.moveTo(x, y); else sctx.lineTo(x, y);
+    }
+    sctx.stroke();
+    sctx.restore();
+
+    // Scale labels
+    sctx.font = '600 8.5px ui-monospace, Menlo, monospace';
+    sctx.fillStyle = 'rgba(154, 169, 204, 0.65)';
+    sctx.textAlign = 'left';
+    sctx.fillText(`${hi.toFixed(1)}${tr.unit}`, 4, 10);
+    sctx.fillText(`${lo.toFixed(1)}${tr.unit}`, 4, h - 3);
+
+    sctx.restore();
+  }
+
+  // =========================================================================
+  // HUD TELEMETRY & P/I/D BARS UPDATE
+  // =========================================================================
+  function setBiBar(fillEl, valEl, value, maxVal) {
+    const pct = clamp(value / Math.max(1, maxVal), -1, 1) * 50;
+    if (pct >= 0) {
+      fillEl.style.left = '50%';
+      fillEl.style.width = `${pct.toFixed(1)}%`;
+    } else {
+      fillEl.style.left = `${(50 + pct).toFixed(1)}%`;
+      fillEl.style.width = `${(-pct).toFixed(1)}%`;
+    }
+    valEl.textContent = `${value >= 0 ? '+' : ''}${value.toFixed(1)} N`;
+  }
+
+  function updateHUD() {
+    const tr = getPrimaryTraceValues();
+    const m = sim.metrics;
+
+    if (sim.plant === 'cartpole') {
+      const deg = radToDeg(wrapAngle(sim.cart.theta));
+      ui.telLbl1.textContent = 'Pole Angle θ';
+      ui.telVal1.textContent = `${deg >= 0 ? '+' : ''}${deg.toFixed(1)}°`;
+      ui.telLbl2.textContent = 'Cart Pos x';
+      ui.telVal2.textContent = `${sim.cart.x >= 0 ? '+' : ''}${sim.cart.x.toFixed(2)} m`;
+      ui.telLbl3.textContent = 'Effort u(t)';
+      ui.telVal3.textContent = `${sim.terms.u >= 0 ? '+' : ''}${sim.terms.u.toFixed(1)} N`;
+
+      if (sim.cart.mode === 'SWINGUP') {
+        ui.statusPill.textContent = 'Swing-Up';
+        ui.statusPill.className = 'status-pill warn';
+      } else if (sim.cart.mode === 'FALLEN') {
+        ui.statusPill.textContent = 'Fallen';
+        ui.statusPill.className = 'status-pill danger';
+      } else if (Math.abs(deg) < 2.2 && Math.abs(sim.cart.x - sim.cart.xRef) < 0.08) {
+        ui.statusPill.textContent = 'Balanced';
+        ui.statusPill.className = 'status-pill';
+      } else {
+        ui.statusPill.textContent = 'Stabilizing';
+        ui.statusPill.className = 'status-pill info';
+      }
+    } else if (sim.plant === 'quadcopter') {
+      const dist = Math.hypot(sim.quad.xRef - sim.quad.x, sim.quad.yRef - sim.quad.y);
+      const tilt = radToDeg(sim.quad.phi);
+      ui.telLbl1.textContent = 'Pitch / Alt';
+      ui.telVal1.textContent = `${tilt.toFixed(1)}° · ${sim.quad.y.toFixed(2)}m`;
+      ui.telLbl2.textContent = '2D Error';
+      ui.telVal2.textContent = `${dist.toFixed(2)} m`;
+      ui.telLbl3.textContent = 'Total Thrust';
+      ui.telVal3.textContent = `${(sim.quad.tL + sim.quad.tR).toFixed(1)} N`;
+
+      if (sim.terms.saturated) {
+        ui.statusPill.textContent = 'Saturated';
+        ui.statusPill.className = 'status-pill warn';
+      } else if (dist < 0.14) {
+        ui.statusPill.textContent = 'Locked Hover';
+        ui.statusPill.className = 'status-pill';
+      } else {
+        ui.statusPill.textContent = 'Tracking WP';
+        ui.statusPill.className = 'status-pill info';
+      }
+    } else {
+      const err = sim.bench.yRef - sim.bench.y;
+      ui.telLbl1.textContent = 'Position y(t)';
+      ui.telVal1.textContent = `${sim.bench.y >= 0 ? '+' : ''}${sim.bench.y.toFixed(2)} m`;
+      ui.telLbl2.textContent = 'Error e(t)';
+      ui.telVal2.textContent = `${err >= 0 ? '+' : ''}${err.toFixed(3)} m`;
+      ui.telLbl3.textContent = 'Effort u(t)';
+      ui.telVal3.textContent = `${sim.terms.u >= 0 ? '+' : ''}${sim.terms.u.toFixed(1)} N`;
+
+      if (sim.terms.windupFlag && !sim.antiWindup) {
+        ui.statusPill.textContent = 'Windup!';
+        ui.statusPill.className = 'status-pill danger';
+      } else if (m.settled && Math.abs(err) < 0.03) {
+        ui.statusPill.textContent = 'Settled';
+        ui.statusPill.className = 'status-pill';
+      } else if (sim.kd < 0.3 && Math.abs(sim.bench.v) > 0.6) {
+        ui.statusPill.textContent = 'Oscillating';
+        ui.statusPill.className = 'status-pill warn';
+      } else {
+        ui.statusPill.textContent = 'Tracking';
+        ui.statusPill.className = 'status-pill info';
+      }
+    }
+
+    // Step-Response Metrics
+    ui.telTr.textContent = m.riseTime !== null ? `${m.riseTime.toFixed(2)} s` : '—';
+    ui.telOs.textContent = `${m.peakOvershoot.toFixed(1)}%`;
+    ui.telTs.textContent = m.settlingTime !== null ? `${m.settlingTime.toFixed(2)} s` : '—';
+    ui.telEss.textContent = `${m.ssError >= 0 ? '+' : ''}${m.ssError.toFixed(tr.unit === '°' ? 1 : 3)}${tr.unit}`;
+    ui.telSimT.textContent = `${sim.t.toFixed(1)} s`;
+
+    // P / I / D Individual Force Component Bars
+    if (sim.showPidBars) {
+      const scale = sim.uMax;
+      setBiBar(ui.barPFill, ui.barPVal, sim.terms.p, scale);
+      setBiBar(ui.barIFill, ui.barIVal, sim.terms.i, scale);
+      setBiBar(ui.barDFill, ui.barDVal, sim.terms.d, scale);
+      setBiBar(ui.barUFill, ui.barUVal, sim.terms.u, scale);
+      ui.barISat.classList.toggle('on', sim.terms.windupFlag);
+      ui.barUSat.classList.toggle('on', sim.terms.saturated);
+      ui.barUFill.classList.toggle('sat', sim.terms.saturated);
+    }
+  }
+
+  // =========================================================================
+  // MAIN ANIMATION LOOP
+  // =========================================================================
+  function resize() {
+    viewW = window.innerWidth;
+    viewH = window.innerHeight;
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.round(viewW * dpr);
+    canvas.height = Math.round(viewH * dpr);
+    initWindStreaks();
+  }
+  window.addEventListener('resize', resize);
+
+  let lastTs = performance.now();
+  function loop(ts) {
+    const dt = Math.min(0.05, Math.max(0.001, (ts - lastTs) / 1000));
+    lastTs = ts;
+
+    stepSimulation(dt);
+
+    ctx.save();
+    ctx.scale(dpr, dpr);
+    drawBackdrop();
+    if (sim.plant === 'cartpole') renderCartPole();
+    else if (sim.plant === 'quadcopter') renderQuadcopter();
+    else renderStepBench();
+    ctx.restore();
+
+    renderScope();
+    updateHUD();
+
+    requestAnimationFrame(loop);
+  }
+
+  // =========================================================================
+  // UI EVENT WIRING
+  // =========================================================================
+  // Drawer Tabs
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      const pane = $(`tab-${btn.dataset.tab}`);
+      if (pane) pane.classList.add('active');
+    });
+  });
+
+  // Plant switcher
+  document.querySelectorAll('.plant-btn').forEach(btn => {
+    btn.addEventListener('click', () => selectPlant(btn.dataset.plant, false));
+  });
+
+  // 6 Curated Presets
+  document.querySelectorAll('.preset-btn').forEach(btn => {
+    btn.addEventListener('click', () => applyPreset(btn.dataset.preset));
+  });
+
+  // Mode C Quick Regimes
+  document.querySelectorAll('.bench-btn').forEach(btn => {
+    btn.addEventListener('click', () => applyBenchRegime(btn.dataset.bench));
+  });
+
+  // PID Sliders
+  ui.slKp.addEventListener('input', () => {
+    sim.kp = parseFloat(ui.slKp.value);
+    ui.valKp.textContent = sim.kp.toFixed(1);
+  });
+  ui.slKi.addEventListener('input', () => {
+    sim.ki = parseFloat(ui.slKi.value);
+    ui.valKi.textContent = sim.ki.toFixed(1);
+    if (sim.ki === 0) {
+      sim.cart.intTheta = 0;
+      sim.quad.intY = 0;
+      sim.quad.intX = 0;
+      sim.bench.intE = 0;
+    }
+  });
+  ui.slKd.addEventListener('input', () => {
+    sim.kd = parseFloat(ui.slKd.value);
+    ui.valKd.textContent = sim.kd.toFixed(1);
+  });
+
+  ui.chkAntiWindup.addEventListener('change', () => {
+    sim.antiWindup = ui.chkAntiWindup.checked;
+    showToast(sim.antiWindup ? 'Integral Anti-Windup Enabled' : 'Integral Anti-Windup Disabled (Watch Overshoot!)', !sim.antiWindup);
+  });
+  ui.chkDerivKick.addEventListener('change', () => {
+    sim.derivKick = ui.chkDerivKick.checked;
+    showToast(sim.derivKick ? 'Derivative on Error ON (Step causes Kick)' : 'Derivative on Measurement (Smooth D-term)');
+  });
+  ui.chkSwingUp.addEventListener('change', () => {
+    sim.swingUpAssist = ui.chkSwingUp.checked;
+  });
+
+  // Environment Sliders & Disturbance Buttons
+  ui.slWind.addEventListener('input', () => {
+    sim.windSteady = parseFloat(ui.slWind.value);
+    ui.valWind.textContent = `${sim.windSteady >= 0 ? '+' : ''}${sim.windSteady.toFixed(1)} N`;
+  });
+  ui.slGustStr.addEventListener('input', () => {
+    sim.gustStrength = parseFloat(ui.slGustStr.value);
+    ui.valGustStr.textContent = `${sim.gustStrength.toFixed(1)}×`;
+  });
+  ui.slMass.addEventListener('input', () => {
+    sim.mass = parseFloat(ui.slMass.value);
+    ui.valMass.textContent = `${sim.mass.toFixed(2)} kg`;
+  });
+  ui.slGrav.addEventListener('input', () => {
+    sim.gravity = parseFloat(ui.slGrav.value);
+    ui.valGrav.textContent = `${sim.gravity.toFixed(2)} m/s²`;
+  });
+  ui.slUmax.addEventListener('input', () => {
+    sim.uMax = parseFloat(ui.slUmax.value);
+    ui.valUmax.textContent = `${sim.uMax.toFixed(0)} N`;
+  });
+
+  ui.btnGust.addEventListener('click', triggerWindGust);
+  ui.btnPoke.addEventListener('click', triggerPokeImpulse);
+  ui.btnStep.addEventListener('click', triggerStepJump);
+  ui.btnDrop.addEventListener('click', triggerDropOrInvert);
+  ui.btnBarGust.addEventListener('click', triggerWindGust);
+  ui.btnBarPoke.addEventListener('click', triggerPokeImpulse);
+
+  // Display Toggles
+  ui.chkPidBars.addEventListener('change', () => {
+    sim.showPidBars = ui.chkPidBars.checked;
+    ui.pidBarsWrap.style.display = sim.showPidBars ? 'flex' : 'none';
+  });
+  ui.chkScope.addEventListener('change', () => {
+    sim.showScope = ui.chkScope.checked;
+    ui.scopeWrap.style.display = sim.showScope ? 'flex' : 'none';
+  });
+  ui.chkVectors.addEventListener('change', () => { sim.showVectors = ui.chkVectors.checked; });
+  ui.chkTrail.addEventListener('change', () => {
+    sim.showTrail = ui.chkTrail.checked;
+    if (!sim.showTrail) sim.trail = [];
+  });
+  ui.chkWindFx.addEventListener('change', () => { sim.showWindFx = ui.chkWindFx.checked; });
+  ui.btnClearScope.addEventListener('click', () => {
+    clearHistory();
+    const tr = getPrimaryTraceValues();
+    beginStepMetrics(tr.r, tr.y);
+  });
+
+  // Bottom Transport Bar
+  function togglePlay() {
+    sim.running = !sim.running;
+    ui.btnPlay.textContent = sim.running ? '⏸ Pause' : '▶ Play';
+    ui.btnPlay.classList.toggle('active', sim.running);
+  }
+  ui.btnPlay.addEventListener('click', togglePlay);
+
+  ui.btnReset.addEventListener('click', () => {
+    if (sim.activePreset) applyPreset(sim.activePreset);
+    else selectPlant(sim.plant, false);
+  });
+
+  document.querySelectorAll('.speed-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      sim.speed = parseFloat(btn.dataset.speed);
+      document.querySelectorAll('.speed-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    });
+  });
+
+  ui.btnSound.addEventListener('click', () => audio.setEnabled(!audio.enabled));
+
+  ui.btnToggleDrawer.addEventListener('click', () => {
+    const collapsed = ui.drawer.classList.toggle('collapsed');
+    ui.btnToggleDrawer.classList.toggle('active', !collapsed);
+  });
+
+  function toggleZen() {
+    document.body.classList.toggle('zen-mode');
+  }
+  ui.btnZen.addEventListener('click', toggleZen);
+  ui.btnZenRestore.addEventListener('click', toggleZen);
+
+  // Keyboard shortcuts
+  window.addEventListener('keydown', (e) => {
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+    if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
+    else if (e.key === 'r' || e.key === 'R') ui.btnReset.click();
+    else if (e.key === 'g' || e.key === 'G') triggerWindGust();
+    else if (e.key === 'p' || e.key === 'P') triggerPokeImpulse();
+    else if (e.key === 'j' || e.key === 'J') triggerStepJump();
+    else if (e.key === 'h' || e.key === 'H') toggleZen();
+    else if (e.key === '1') selectPlant('cartpole', false);
+    else if (e.key === '2') selectPlant('quadcopter', false);
+    else if (e.key === '3') selectPlant('stepbench', false);
+  });
+
+  // =========================================================================
+  // BOOTSTRAP
+  // =========================================================================
+  resize();
+  applyPreset('tuned_cart');
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

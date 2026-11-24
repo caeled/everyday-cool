@@ -1,0 +1,4086 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Mach — Supersonic Shockwaves, Aerodynamics &amp; Rocket Nozzles</title>
+<style>
+  :root {
+    --bg-deep: #040711;
+    --panel-bg: rgba(9, 14, 27, 0.78);
+    --panel-bg-strong: rgba(7, 11, 22, 0.92);
+    --panel-border: rgba(148, 179, 255, 0.16);
+    --panel-border-hi: rgba(148, 179, 255, 0.38);
+    --text-main: #eef3ff;
+    --text-dim: #9aa9cc;
+    --text-muted: #68789c;
+    --accent-amber: #ffbe5c;
+    --accent-cyan: #58dcff;
+    --accent-mint: #4af2b2;
+    --accent-rose: #ff6083;
+    --accent-violet: #a78bfa;
+    --radius-lg: 14px;
+    --radius-md: 10px;
+    --radius-sm: 7px;
+    --mono: ui-monospace, "Cascadia Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Inter, Helvetica, Arial, sans-serif;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg-deep);
+    color: var(--text-main);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    touch-action: none;
+  }
+
+  #sim-canvas {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    cursor: crosshair;
+  }
+  #sim-canvas.grab-ready {
+    cursor: grab;
+  }
+  #sim-canvas.grabbing {
+    cursor: grabbing;
+  }
+
+  /* HUD Layer */
+  .hud {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 10;
+  }
+  body.zen-mode .hud > :not(.zen-restore) {
+    opacity: 0;
+    pointer-events: none !important;
+  }
+
+  .panel {
+    pointer-events: auto;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-lg);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.52), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    transition: opacity 0.25s ease, transform 0.25s ease;
+  }
+
+  /* Top-Left Telemetry Card */
+  .top-left {
+    position: fixed;
+    top: 14px;
+    left: 14px;
+    width: min(416px, calc(100vw - 360px));
+    min-width: 290px;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .brand-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .brand-title-wrap {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .brand-title {
+    font-size: 16px;
+    font-weight: 850;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    background: linear-gradient(120deg, #ffffff 0%, #6ee7ff 46%, #ffbe5c 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .mode-badge {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 999px;
+    border: 1px solid rgba(88, 220, 255, 0.42);
+    background: rgba(88, 220, 255, 0.12);
+    color: var(--accent-cyan);
+  }
+  .mode-badge.nozzle {
+    border-color: rgba(255, 190, 92, 0.45);
+    background: rgba(255, 190, 92, 0.13);
+    color: var(--accent-amber);
+  }
+
+  .status-pill {
+    font-size: 10px;
+    font-weight: 750;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: rgba(88, 220, 255, 0.15);
+    color: var(--accent-cyan);
+    border: 1px solid rgba(88, 220, 255, 0.38);
+    white-space: nowrap;
+  }
+  .status-pill.subsonic {
+    background: rgba(74, 242, 178, 0.14);
+    color: var(--accent-mint);
+    border-color: rgba(74, 242, 178, 0.36);
+  }
+  .status-pill.transonic {
+    background: rgba(255, 190, 92, 0.18);
+    color: var(--accent-amber);
+    border-color: rgba(255, 190, 92, 0.45);
+  }
+  .status-pill.supersonic {
+    background: rgba(88, 220, 255, 0.16);
+    color: var(--accent-cyan);
+    border-color: rgba(88, 220, 255, 0.42);
+  }
+  .status-pill.hypersonic {
+    background: rgba(255, 96, 131, 0.2);
+    color: var(--accent-rose);
+    border-color: rgba(255, 96, 131, 0.5);
+  }
+  .status-pill.violet {
+    background: rgba(167, 139, 250, 0.18);
+    color: #cdbaff;
+    border-color: rgba(167, 139, 250, 0.45);
+  }
+
+  .telemetry-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+  }
+
+  .tele-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(148, 179, 255, 0.11);
+    border-radius: var(--radius-sm);
+    padding: 6px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .tele-label {
+    font-size: 9px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .tele-val {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-main);
+  }
+  .tele-val.amber { color: var(--accent-amber); }
+  .tele-val.cyan { color: var(--accent-cyan); }
+  .tele-val.mint { color: var(--accent-mint); }
+  .tele-val.rose { color: var(--accent-rose); }
+  .tele-val.violet { color: var(--accent-violet); }
+
+  .meta-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding-top: 5px;
+    border-top: 1px solid rgba(148, 179, 255, 0.1);
+    font-size: 10.5px;
+    color: var(--text-dim);
+    font-family: var(--mono);
+    flex-wrap: wrap;
+  }
+  .meta-row span strong {
+    color: var(--text-main);
+    font-weight: 650;
+  }
+
+  /* Right Control Drawer (330px) */
+  .drawer {
+    position: fixed;
+    top: 14px;
+    right: 14px;
+    bottom: 14px;
+    width: 330px;
+    max-width: calc(100vw - 28px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: transform 0.25s ease, opacity 0.25s ease;
+  }
+  .drawer.collapsed {
+    transform: translateX(calc(100% + 24px));
+    pointer-events: none;
+  }
+
+  .lab-switch-wrap {
+    padding: 9px 9px 6px;
+    background: rgba(4, 7, 17, 0.55);
+    border-bottom: 1px solid rgba(148, 179, 255, 0.12);
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 5px;
+  }
+
+  .lab-btn {
+    border: 1px solid rgba(148, 179, 255, 0.18);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-dim);
+    font-size: 11px;
+    font-weight: 750;
+    letter-spacing: 0.04em;
+    padding: 8px 6px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.16s ease;
+    text-align: center;
+  }
+  .lab-btn:hover {
+    color: #fff;
+    border-color: rgba(148, 179, 255, 0.36);
+  }
+  .lab-btn.active.tunnel {
+    color: #e9fbff;
+    background: linear-gradient(135deg, rgba(88, 220, 255, 0.24), rgba(56, 130, 255, 0.18));
+    border-color: var(--accent-cyan);
+    box-shadow: 0 0 14px rgba(88, 220, 255, 0.18);
+  }
+  .lab-btn.active.nozzle {
+    color: #fff6e6;
+    background: linear-gradient(135deg, rgba(255, 190, 92, 0.25), rgba(255, 110, 68, 0.2));
+    border-color: var(--accent-amber);
+    box-shadow: 0 0 14px rgba(255, 190, 92, 0.18);
+  }
+
+  .drawer-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+    padding: 6px 9px;
+    border-bottom: 1px solid var(--panel-border);
+    background: rgba(4, 7, 15, 0.35);
+  }
+
+  .tab-btn {
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    padding: 6px 5px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .tab-btn:hover {
+    color: var(--text-main);
+    background: rgba(255, 255, 255, 0.04);
+  }
+  .tab-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.15);
+    border-color: rgba(88, 220, 255, 0.38);
+  }
+
+  .drawer-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 11px 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .drawer-body::-webkit-scrollbar {
+    width: 5px;
+  }
+  .drawer-body::-webkit-scrollbar-thumb {
+    background: rgba(148, 179, 255, 0.22);
+    border-radius: 999px;
+  }
+
+  .tab-pane {
+    display: none;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .tab-pane.active {
+    display: flex;
+  }
+
+  .mode-group {
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .mode-group.hidden {
+    display: none;
+  }
+
+  .section {
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(148, 179, 255, 0.11);
+    border-radius: var(--radius-md);
+    padding: 10px 11px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .section-title {
+    font-size: 10px;
+    font-weight: 750;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  /* Presets */
+  .preset-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .preset-btn {
+    text-align: left;
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(148, 179, 255, 0.14);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-main);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .preset-btn:hover {
+    border-color: rgba(88, 220, 255, 0.45);
+    background: rgba(88, 220, 255, 0.08);
+  }
+  .preset-btn.active {
+    border-color: var(--accent-amber);
+    background: rgba(255, 190, 92, 0.13);
+  }
+  .preset-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+  }
+  .preset-name {
+    font-size: 11.5px;
+    font-weight: 700;
+  }
+  .preset-tag {
+    font-family: var(--mono);
+    font-size: 9.5px;
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: rgba(88, 220, 255, 0.14);
+    color: var(--accent-cyan);
+    border: 1px solid rgba(88, 220, 255, 0.3);
+  }
+  .preset-tag.amber {
+    background: rgba(255, 190, 92, 0.15);
+    color: var(--accent-amber);
+    border-color: rgba(255, 190, 92, 0.35);
+  }
+  .preset-sub {
+    font-size: 10px;
+    color: var(--text-muted);
+    line-height: 1.3;
+  }
+
+  /* Sliders */
+  .control-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .control-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11.5px;
+    color: var(--text-dim);
+  }
+  .control-head .val {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--text-main);
+    font-weight: 650;
+  }
+
+  .ticks-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 9px;
+    font-family: var(--mono);
+    color: var(--text-muted);
+    margin-top: 1px;
+  }
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 5px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.18);
+    outline: none;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent-cyan);
+    border: 2px solid #08101f;
+    box-shadow: 0 0 10px rgba(88, 220, 255, 0.65);
+    cursor: pointer;
+  }
+  input[type="range"].amber::-webkit-slider-thumb {
+    background: var(--accent-amber);
+    box-shadow: 0 0 10px rgba(255, 190, 92, 0.65);
+  }
+
+  /* Segmented grids */
+  .seg-row {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 5px;
+  }
+  .seg-row.three {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .seg-row.four {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .seg-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-dim);
+    font-size: 10.8px;
+    font-weight: 650;
+    padding: 6.5px 5px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-align: center;
+  }
+  .seg-btn:hover {
+    color: #fff;
+    border-color: rgba(148, 179, 255, 0.36);
+  }
+  .seg-btn.active {
+    color: #fff;
+    background: rgba(88, 220, 255, 0.18);
+    border-color: var(--accent-cyan);
+  }
+  .seg-btn.active.amber {
+    background: rgba(255, 190, 92, 0.18);
+    border-color: var(--accent-amber);
+    color: #ffe3b8;
+  }
+
+  /* Action Buttons */
+  .btn-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .btn {
+    border: 1px solid rgba(148, 179, 255, 0.22);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-main);
+    font-size: 11px;
+    font-weight: 700;
+    padding: 8px 9px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+  }
+  .btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 179, 255, 0.45);
+  }
+  .btn:active {
+    transform: scale(0.98);
+  }
+  .btn.primary {
+    background: linear-gradient(135deg, rgba(88, 220, 255, 0.26), rgba(56, 140, 255, 0.22));
+    border-color: rgba(88, 220, 255, 0.55);
+    color: #e6f9ff;
+  }
+  .btn.amber {
+    background: linear-gradient(135deg, rgba(255, 190, 92, 0.25), rgba(255, 118, 60, 0.22));
+    border-color: rgba(255, 190, 92, 0.55);
+    color: #fff3db;
+  }
+  .btn.running {
+    background: linear-gradient(135deg, rgba(255, 96, 131, 0.34), rgba(255, 145, 58, 0.28));
+    border-color: var(--accent-rose);
+    color: #fff;
+  }
+
+  /* Toggle switches */
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11.5px;
+    color: var(--text-dim);
+    cursor: pointer;
+  }
+  .toggle-row input {
+    display: none;
+  }
+  .switch {
+    width: 34px;
+    height: 18px;
+    border-radius: 999px;
+    background: rgba(148, 179, 255, 0.2);
+    border: 1px solid rgba(148, 179, 255, 0.25);
+    position: relative;
+    transition: all 0.18s ease;
+    flex-shrink: 0;
+  }
+  .switch::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #c8d7f5;
+    transition: transform 0.18s ease, background 0.18s ease;
+  }
+  .toggle-row input:checked + .switch {
+    background: rgba(88, 220, 255, 0.32);
+    border-color: var(--accent-cyan);
+  }
+  .toggle-row input:checked + .switch::after {
+    transform: translateX(16px);
+    background: #fff;
+  }
+
+  /* Bottom Transport Bar */
+  .bottom-bar {
+    position: fixed;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 7px 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: nowrap;
+  }
+
+  .bar-btn {
+    border: 1px solid rgba(148, 179, 255, 0.16);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-main);
+    font-size: 11.5px;
+    font-weight: 650;
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.14s ease;
+    white-space: nowrap;
+  }
+  .bar-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(148, 179, 255, 0.42);
+  }
+  .bar-btn.active {
+    background: rgba(88, 220, 255, 0.2);
+    border-color: var(--accent-cyan);
+    color: #fff;
+  }
+  .bar-btn.amber-active {
+    background: rgba(255, 190, 92, 0.2);
+    border-color: var(--accent-amber);
+    color: #ffe3b8;
+  }
+
+  .bar-divider {
+    width: 1px;
+    height: 20px;
+    background: rgba(148, 179, 255, 0.16);
+    margin: 0 2px;
+  }
+
+  /* Bottom-left hints */
+  .hint-pill {
+    position: fixed;
+    bottom: 14px;
+    left: 14px;
+    padding: 7px 11px;
+    font-size: 11px;
+    color: var(--text-dim);
+    max-width: 315px;
+    line-height: 1.4;
+  }
+  .hint-pill kbd {
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #fff;
+  }
+
+  /* Sonic Boom / Event Banner */
+  .event-banner {
+    position: fixed;
+    top: 18px;
+    left: 50%;
+    transform: translateX(-50%) translateY(-14px);
+    padding: 8px 15px;
+    border-radius: 999px;
+    background: rgba(8, 16, 30, 0.9);
+    border: 1px solid rgba(88, 220, 255, 0.55);
+    color: #dff7ff;
+    font-size: 11.5px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.22s ease, transform 0.22s ease;
+    z-index: 25;
+    backdrop-filter: blur(12px);
+    box-shadow: 0 0 24px rgba(88, 220, 255, 0.25);
+    white-space: nowrap;
+  }
+  .event-banner.visible {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+  .event-banner.amber {
+    border-color: rgba(255, 190, 92, 0.65);
+    color: #ffe8c2;
+    box-shadow: 0 0 24px rgba(255, 190, 92, 0.25);
+  }
+
+  .zen-restore {
+    position: fixed;
+    bottom: 14px;
+    right: 14px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+  }
+  body.zen-mode .zen-restore {
+    opacity: 0.9;
+    pointer-events: auto;
+  }
+
+  .note-small {
+    font-size: 10.3px;
+    color: var(--text-muted);
+    line-height: 1.38;
+  }
+
+  @media (max-width: 920px) {
+    .top-left {
+      width: calc(100vw - 28px);
+      max-width: none;
+    }
+    .drawer {
+      top: auto;
+      bottom: 62px;
+      height: 50vh;
+      width: calc(100vw - 28px);
+    }
+    .hint-pill {
+      display: none;
+    }
+  }
+</style>
+</head>
+<body>
+<canvas id="sim-canvas"></canvas>
+
+<div class="hud">
+  <!-- Top-Left Telemetry Card -->
+  <div class="panel top-left">
+    <div class="brand-row">
+      <div class="brand-title-wrap">
+        <div class="brand-title">Mach</div>
+        <span id="mode-badge" class="mode-badge">Wind Tunnel</span>
+      </div>
+      <span id="regime-pill" class="status-pill supersonic">Supersonic</span>
+    </div>
+
+    <div class="telemetry-grid">
+      <div class="tele-card">
+        <span id="tel-l1" class="tele-label">Mach M∞</span>
+        <span id="tel-v1" class="tele-val cyan">2.20 M</span>
+      </div>
+      <div class="tele-card">
+        <span id="tel-l2" class="tele-label">Lift C_L</span>
+        <span id="tel-v2" class="tele-val mint">+0.000</span>
+      </div>
+      <div class="tele-card">
+        <span id="tel-l3" class="tele-label">Wave Drag C_D</span>
+        <span id="tel-v3" class="tele-val amber">0.088</span>
+      </div>
+      <div class="tele-card">
+        <span id="tel-l4" class="tele-label">L / D Ratio</span>
+        <span id="tel-v4" class="tele-val">0.00</span>
+      </div>
+      <div class="tele-card">
+        <span id="tel-l5" class="tele-label">Stagnation T₀</span>
+        <span id="tel-v5" class="tele-val rose">567 K</span>
+      </div>
+      <div class="tele-card">
+        <span id="tel-l6" class="tele-label">Shock P₂ / P₁</span>
+        <span id="tel-v6" class="tele-val violet">1.89×</span>
+      </div>
+    </div>
+
+    <div class="meta-row">
+      <span id="meta-1">Shock β: <strong>36.5°</strong></span>
+      <span id="meta-2">Mach μ: <strong>27.0°</strong></span>
+      <span id="meta-3">AoA α: <strong>0.0°</strong></span>
+    </div>
+  </div>
+
+  <!-- Event Banner -->
+  <div id="event-banner" class="event-banner">Sonic Barrier Crossed · M = 1.00</div>
+
+  <!-- Right Control Drawer -->
+  <div id="control-drawer" class="panel drawer">
+    <div class="lab-switch-wrap">
+      <button id="btn-lab-tunnel" class="lab-btn active tunnel">Wind Tunnel</button>
+      <button id="btn-lab-nozzle" class="lab-btn">de Laval Nozzle</button>
+    </div>
+
+    <div class="drawer-tabs">
+      <button id="tab-btn-controls" class="tab-btn active" data-tab="controls">Controls</button>
+      <button id="tab-btn-presets" class="tab-btn" data-tab="presets">Presets</button>
+      <button id="tab-btn-display" class="tab-btn" data-tab="display">Display</button>
+    </div>
+
+    <div class="drawer-body">
+      <!-- CONTROLS TAB -->
+      <div id="pane-controls" class="tab-pane active">
+        <!-- Mode A: Wind Tunnel Controls -->
+        <div id="group-tunnel" class="mode-group">
+          <div class="section">
+            <div class="section-title">
+              <span>Freestream Flow</span>
+              <span id="tunnel-speed-ms" style="font-family:var(--mono);color:var(--accent-cyan);">749 m/s</span>
+            </div>
+
+            <div class="control-row">
+              <div class="control-head">
+                <span>Freestream Mach (M∞)</span>
+                <span id="val-mach" class="val">2.20</span>
+              </div>
+              <input id="slider-mach" type="range" min="0.20" max="4.00" step="0.01" value="2.20" />
+              <div class="ticks-row">
+                <span>0.2 Sub</span><span>1.0 Sonic</span><span>2.5 Super</span><span>4.0 Hyper</span>
+              </div>
+            </div>
+
+            <div class="control-row">
+              <div class="control-head">
+                <span>Angle of Attack (α)</span>
+                <span id="val-aoa" class="val">0.0°</span>
+              </div>
+              <input id="slider-aoa" class="amber" type="range" min="-15" max="15" step="0.5" value="0" />
+              <div class="ticks-row">
+                <span>-15°</span><span>0° Level</span><span>+15°</span>
+              </div>
+            </div>
+
+            <div class="control-row">
+              <div class="control-head">
+                <span>Half-Angle / Thickness</span>
+                <span id="val-wedge" class="val">11°</span>
+              </div>
+              <input id="slider-wedge" type="range" min="6" max="24" step="0.5" value="11" />
+            </div>
+          </div>
+
+          <div class="section">
+            <div class="section-title"><span>Aerodynamic Body</span></div>
+            <div class="seg-row four">
+              <button id="body-wedge" class="seg-btn active" data-body="wedge">Diamond Wedge</button>
+              <button id="body-capsule" class="seg-btn" data-body="capsule">Blunt Capsule</button>
+              <button id="body-airfoil" class="seg-btn" data-body="airfoil">Delta Airfoil</button>
+              <button id="body-rocket" class="seg-btn" data-body="rocket">Cone-Cylinder</button>
+            </div>
+          </div>
+
+          <div class="section">
+            <div class="section-title"><span>Gas Medium (γ) &amp; Sweep</span></div>
+            <div class="seg-row three">
+              <button id="gas-air" class="seg-btn active" data-gamma="1.40">Air 1.40</button>
+              <button id="gas-co2" class="seg-btn" data-gamma="1.29">CO₂ 1.29</button>
+              <button id="gas-he" class="seg-btn" data-gamma="1.66">He 1.66</button>
+            </div>
+            <div class="btn-row">
+              <button id="btn-mach-sweep" class="btn primary">▶ Mach Sweep</button>
+              <button id="btn-level-aoa" class="btn">Level α = 0°</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Mode B: de Laval Nozzle Controls -->
+        <div id="group-nozzle" class="mode-group hidden">
+          <div class="section">
+            <div class="section-title">
+              <span>Nozzle &amp; Atmosphere</span>
+              <span id="nozzle-alt-label" style="font-family:var(--mono);color:var(--accent-amber);">0.0 km</span>
+            </div>
+
+            <div class="control-row">
+              <div class="control-head">
+                <span>Ambient Back Pressure (Pₐ)</span>
+                <span id="val-pa" class="val">101.3 kPa</span>
+              </div>
+              <input id="slider-pa" class="amber" type="range" min="0" max="101.3" step="0.5" value="101.3" />
+              <div class="ticks-row">
+                <span>0 kPa Vac</span><span>25 kPa Strat</span><span>101 kPa Sea</span>
+              </div>
+            </div>
+
+            <div class="control-row">
+              <div class="control-head">
+                <span>Chamber Pressure (P_c)</span>
+                <span id="val-pc" class="val">3.20 MPa</span>
+              </div>
+              <input id="slider-pc" type="range" min="0.60" max="12.0" step="0.1" value="3.20" />
+              <div class="ticks-row">
+                <span>0.6 MPa</span><span>6.0 MPa</span><span>12.0 MPa</span>
+              </div>
+            </div>
+
+            <div class="control-row">
+              <div class="control-head">
+                <span>Expansion Area Ratio (Aₑ / A*)</span>
+                <span id="val-ar" class="val">7.5 : 1</span>
+              </div>
+              <input id="slider-ar" type="range" min="2.5" max="18.0" step="0.25" value="7.5" />
+            </div>
+          </div>
+
+          <div class="section">
+            <div class="section-title"><span>Propellant Gas (γ)</span></div>
+            <div class="seg-row three">
+              <button id="prop-rp1" class="seg-btn active amber" data-pgamma="1.24">RP-1 1.24</button>
+              <button id="prop-lh2" class="seg-btn" data-pgamma="1.21">LH₂ 1.21</button>
+              <button id="prop-cold" class="seg-btn" data-pgamma="1.40">N₂ 1.40</button>
+            </div>
+            <div class="btn-row">
+              <button id="btn-ascent-demo" class="btn amber">▲ Launch Ascent</button>
+              <button id="btn-match-pa" class="btn primary">Match Pₑ = Pₐ</button>
+            </div>
+            <div class="note-small">
+              Throat is choked at <strong>M* = 1.00</strong>. Lower Pₐ (higher altitude) shifts from overexpanded Mach diamonds to an underexpanded vacuum bell plume.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- PRESETS TAB -->
+      <div id="pane-presets" class="tab-pane">
+        <div class="section">
+          <div class="section-title"><span>Curated Aerospace Scenarios</span></div>
+          <div class="preset-grid">
+            <button id="preset-wedge-oblique" class="preset-btn active" data-preset="wedge-oblique">
+              <div class="preset-top">
+                <span class="preset-name">Mach 2.2 Sharp Wedge Oblique Shocks</span>
+                <span class="preset-tag">Tunnel</span>
+              </div>
+              <span class="preset-sub">Exact θ–β–M attached oblique shocks &amp; Prandtl–Meyer shoulder expansion fans.</span>
+            </button>
+
+            <button id="preset-capsule-bow" class="preset-btn" data-preset="capsule-bow">
+              <div class="preset-top">
+                <span class="preset-name">Mach 3.8 Blunt Capsule Bow Shock</span>
+                <span class="preset-tag">Tunnel</span>
+              </div>
+              <span class="preset-sub">Detached hyperbolic bow shock, intense standoff compression &amp; hypersonic plasma glow.</span>
+            </button>
+
+            <button id="preset-transonic" class="preset-btn" data-preset="transonic">
+              <div class="preset-top">
+                <span class="preset-name">Transonic Drag Rise (M = 0.96)</span>
+                <span class="preset-tag">Tunnel</span>
+              </div>
+              <span class="preset-sub">Local supersonic pockets terminating in shimmering normal shocks &amp; wave-drag spike.</span>
+            </button>
+
+            <button id="preset-airfoil-lift" class="preset-btn" data-preset="airfoil-lift">
+              <div class="preset-top">
+                <span class="preset-name">Supersonic Diamond Airfoil Lift</span>
+                <span class="preset-tag">Tunnel</span>
+              </div>
+              <span class="preset-sub">M = 2.40 delta airfoil pitched at +9.5° AoA with live Lift, Wave Drag &amp; L/D vectors.</span>
+            </button>
+
+            <button id="preset-mach-diamonds" class="preset-btn" data-preset="mach-diamonds">
+              <div class="preset-top">
+                <span class="preset-name">Sea-Level Mach Diamonds (Overexpanded)</span>
+                <span class="preset-tag amber">Nozzle</span>
+              </div>
+              <span class="preset-sub">Ambient 101 kPa pinches supersonic jet inward into blazing incandescent Mach shock cells.</span>
+            </button>
+
+            <button id="preset-vacuum-plume" class="preset-btn" data-preset="vacuum-plume">
+              <div class="preset-top">
+                <span class="preset-name">Vacuum Bell Plume (Underexpanded)</span>
+                <span class="preset-tag amber">Nozzle</span>
+              </div>
+              <span class="preset-sub">0 kPa space vacuum causes explosive Falcon-9 upper-stage plume ballooning.</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- DISPLAY TAB -->
+      <div id="pane-display" class="tab-pane">
+        <div class="section">
+          <div class="section-title"><span>Optical Field Mode (Tunnel)</span></div>
+          <div class="seg-row four">
+            <button id="vis-schlieren" class="seg-btn active" data-vis="schlieren">Schlieren ∂ρ/∂x</button>
+            <button id="vis-pressure" class="seg-btn" data-vis="pressure">Pressure P/P₁</button>
+            <button id="vis-mach" class="seg-btn" data-vis="mach">Local Mach</button>
+            <button id="vis-temp" class="seg-btn" data-vis="temp">Thermal T/T₁</button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Overlays &amp; Diagnostics</span></div>
+          <label class="toggle-row">
+            <span>Density / Schlieren Field</span>
+            <input id="chk-field" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>High-Speed Streamline Particles</span>
+            <input id="chk-particles" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Shock &amp; Expansion Wave Lines</span>
+            <input id="chk-shocks" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Mach Cone Reference (μ)</span>
+            <input id="chk-cone" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Force Vectors (Lift / Drag)</span>
+            <input id="chk-vectors" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Synced Physics Graph</span>
+            <input id="chk-graph" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+          <label class="toggle-row">
+            <span>Cursor Flow Probe</span>
+            <input id="chk-probe" type="checkbox" checked />
+            <span class="switch"></span>
+          </label>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Flow Visual Tuning</span></div>
+          <div class="control-row">
+            <div class="control-head">
+              <span>Schlieren Contrast</span>
+              <span id="val-contrast" class="val">1.20×</span>
+            </div>
+            <input id="slider-contrast" type="range" min="0.5" max="2.2" step="0.05" value="1.20" />
+          </div>
+          <div class="control-row">
+            <div class="control-head">
+              <span>Streamline Speed</span>
+              <span id="val-speed" class="val">1.00×</span>
+            </div>
+            <input id="slider-speed" type="range" min="0.25" max="2.0" step="0.05" value="1.00" />
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom-Left Interaction Hints -->
+  <div id="hint-pill" class="panel hint-pill">
+    Drag body to tilt <strong>AoA (α)</strong> · Hover to probe flow · <kbd>Space</kbd> Pause · <kbd>H</kbd> Cinema
+  </div>
+
+  <!-- Bottom-Center Transport Bar -->
+  <div class="panel bottom-bar">
+    <button id="btn-play" class="bar-btn active">⏸ Pause</button>
+    <button id="btn-reset" class="bar-btn">↺ Reset</button>
+    <div class="bar-divider"></div>
+    <button id="btn-audio" class="bar-btn">🔇 Audio</button>
+    <button id="btn-drawer" class="bar-btn active">⚙ Controls</button>
+    <button id="btn-cinema" class="bar-btn">Cinema (H)</button>
+  </div>
+
+  <!-- Cinema Mode Restore Pill -->
+  <button id="btn-zen-restore" class="panel bar-btn zen-restore">Show HUD (H)</button>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // =========================================================================
+  // 1. COMPRESSIBLE GAS DYNAMICS PHYSICS ENGINE
+  // =========================================================================
+  const T_INF = 288.15;      // Sea-level standard temperature (K)
+  const P_INF = 101.325;     // Sea-level pressure (kPa)
+  const R_AIR = 287.05;      // J/(kg·K)
+  const G0 = 9.80665;        // m/s²
+  const DEG = Math.PI / 180;
+  const RAD = 180 / Math.PI;
+
+  function clamp(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); }
+  function lerp(a, b, t) { return a + (b - a) * t; }
+  function smoothstep(edge0, edge1, x) {
+    const t = clamp((x - edge0) / (edge1 - edge0), 0, 1);
+    return t * t * (3 - 2 * t);
+  }
+
+  // Isentropic stagnation ratios
+  function isentropicTempRatio(M, g) {
+    return 1 + 0.5 * (g - 1) * M * M;
+  }
+  function isentropicPressRatio(M, g) {
+    return Math.pow(isentropicTempRatio(M, g), g / (g - 1));
+  }
+  function isentropicDensityRatio(M, g) {
+    return Math.pow(isentropicTempRatio(M, g), 1 / (g - 1));
+  }
+
+  // Area-Mach relation A/A*
+  function areaMachRatio(M, g) {
+    const m = Math.max(0.005, M);
+    const term = (2 / (g + 1)) * (1 + 0.5 * (g - 1) * m * m);
+    return (1 / m) * Math.pow(term, (g + 1) / (2 * (g - 1)));
+  }
+
+  // Solve M from A/A* (either subsonic branch < 1 or supersonic branch > 1)
+  function solveMachFromArea(ar, g, supersonic) {
+    if (ar <= 1.00001) return 1.0;
+    let lo = supersonic ? 1.0001 : 0.002;
+    let hi = supersonic ? 12.0 : 0.9999;
+    // Expand upper bound if needed
+    if (supersonic) {
+      while (areaMachRatio(hi, g) < ar && hi < 25) hi *= 1.4;
+    }
+    for (let i = 0; i < 36; i++) {
+      const mid = 0.5 * (lo + hi);
+      const val = areaMachRatio(mid, g);
+      if (supersonic) {
+        if (val < ar) lo = mid; else hi = mid;
+      } else {
+        if (val > ar) lo = mid; else hi = mid;
+      }
+    }
+    return 0.5 * (lo + hi);
+  }
+
+  // Normal shock relations for Mn >= 1
+  function normalShock(Mn, g) {
+    const m = Math.max(1.0, Mn);
+    const m2 = m * m;
+    const pRatio = 1 + (2 * g / (g + 1)) * (m2 - 1);
+    const rhoRatio = ((g + 1) * m2) / (2 + (g - 1) * m2);
+    const tRatio = pRatio / rhoRatio;
+    const mn2 = Math.sqrt((1 + 0.5 * (g - 1) * m2) / (g * m2 - 0.5 * (g - 1)));
+    const p0Ratio = Math.pow(((g + 1) * m2) / ((g - 1) * m2 + 2), g / (g - 1)) *
+                    Math.pow((g + 1) / (2 * g * m2 - (g - 1)), 1 / (g - 1));
+    return { pRatio, rhoRatio, tRatio, mn2, p0Ratio };
+  }
+
+  // Exact theta-beta-M function: returns tan(theta)
+  function tanThetaFromBeta(M, beta, g) {
+    const s = Math.sin(beta);
+    const m2s2 = M * M * s * s;
+    if (m2s2 <= 1.0) return 0;
+    const denom = M * M * (g + Math.cos(2 * beta)) + 2;
+    return 2 * (1 / Math.tan(beta)) * (m2s2 - 1) / denom;
+  }
+
+  // Solve weak oblique shock angle beta for given M1 > 1 and deflection theta > 0 (radians)
+  function solveObliqueShock(M1, theta, g) {
+    if (M1 <= 1.001) {
+      return { attached: false, beta: Math.PI / 2, thetaMax: 0, pRatio: 1, rhoRatio: 1, tRatio: 1, M2: M1 };
+    }
+    const mu = Math.asin(1 / M1);
+    // Find thetaMax and corresponding betaMax on [mu, pi/2]
+    let bestBeta = mu;
+    let maxTan = -1;
+    const steps = 64;
+    for (let i = 1; i < steps; i++) {
+      const b = mu + (Math.PI * 0.5 - mu) * (i / steps);
+      const tt = tanThetaFromBeta(M1, b, g);
+      if (tt > maxTan) { maxTan = tt; bestBeta = b; }
+    }
+    // Refine betaMax via golden section
+    let a = Math.max(mu, bestBeta - 0.04);
+    let b = Math.min(Math.PI * 0.5, bestBeta + 0.04);
+    for (let i = 0; i < 16; i++) {
+      const m1 = a + (b - a) * 0.382;
+      const m2 = a + (b - a) * 0.618;
+      if (tanThetaFromBeta(M1, m1, g) < tanThetaFromBeta(M1, m2, g)) a = m1; else b = m2;
+    }
+    const betaMax = 0.5 * (a + b);
+    const thetaMax = Math.atan(tanThetaFromBeta(M1, betaMax, g));
+
+    if (theta <= 1e-4) {
+      return { attached: true, beta: mu, thetaMax, pRatio: 1, rhoRatio: 1, tRatio: 1, M2: M1 };
+    }
+    if (theta > thetaMax * 0.995) {
+      // Detached shock
+      const ns = normalShock(M1, g);
+      return {
+        attached: false,
+        beta: Math.PI / 2,
+        thetaMax,
+        pRatio: ns.pRatio,
+        rhoRatio: ns.rhoRatio,
+        tRatio: ns.tRatio,
+        M2: ns.mn2
+      };
+    }
+
+    // Bisect weak shock solution on [mu, betaMax]
+    const target = Math.tan(theta);
+    let lo = mu;
+    let hi = betaMax;
+    for (let i = 0; i < 30; i++) {
+      const mid = 0.5 * (lo + hi);
+      if (tanThetaFromBeta(M1, mid, g) < target) lo = mid; else hi = mid;
+    }
+    const beta = 0.5 * (lo + hi);
+    const Mn1 = M1 * Math.sin(beta);
+    const ns = normalShock(Mn1, g);
+    const M2 = ns.mn2 / Math.max(0.08, Math.sin(beta - theta));
+    return {
+      attached: true,
+      beta,
+      thetaMax,
+      pRatio: ns.pRatio,
+      rhoRatio: ns.rhoRatio,
+      tRatio: ns.tRatio,
+      M2: Math.max(0.25, M2)
+    };
+  }
+
+  // Prandtl-Meyer expansion angle nu(M) in radians
+  function prandtlMeyerNu(M, g) {
+    if (M <= 1.0) return 0;
+    const k = Math.sqrt((g + 1) / (g - 1));
+    const m2m1 = Math.sqrt(M * M - 1);
+    return k * Math.atan(m2m1 / k) - Math.atan(m2m1);
+  }
+
+  function inversePrandtlMeyer(nuTarget, g) {
+    if (nuTarget <= 0) return 1.0;
+    const nuMax = (Math.PI * 0.5) * (Math.sqrt((g + 1) / (g - 1)) - 1);
+    const target = Math.min(nuTarget, nuMax * 0.96);
+    let lo = 1.0;
+    let hi = 18.0;
+    for (let i = 0; i < 30; i++) {
+      const mid = 0.5 * (lo + hi);
+      if (prandtlMeyerNu(mid, g) < target) lo = mid; else hi = mid;
+    }
+    return 0.5 * (lo + hi);
+  }
+
+  // Expansion across convex turn deltaTheta > 0 from M1 >= 1
+  function solveExpansion(M1, turnRad, g) {
+    const mStart = Math.max(1.01, M1);
+    const nu1 = prandtlMeyerNu(mStart, g);
+    const M2 = inversePrandtlMeyer(nu1 + Math.max(0, turnRad), g);
+    const pRatio = isentropicPressRatio(mStart, g) / isentropicPressRatio(M2, g);
+    const rhoRatio = isentropicDensityRatio(mStart, g) / isentropicDensityRatio(M2, g);
+    const tRatio = isentropicTempRatio(mStart, g) / isentropicTempRatio(M2, g);
+    return { M2, pRatio, rhoRatio, tRatio };
+  }
+
+  // =========================================================================
+  // 2. APPLICATION STATE & PRESETS
+  // =========================================================================
+  const state = {
+    lab: 'tunnel', // 'tunnel' | 'nozzle'
+    paused: false,
+    time: 0,
+    audioOn: false,
+    drawerOpen: true,
+    cinema: false,
+
+    // Mode A: Wind Tunnel
+    mach: 2.20,
+    prevMach: 2.20,
+    aoa: 0.0,       // degrees (-15..+15)
+    wedgeDeg: 11.0, // half angle / thickness parameter
+    body: 'wedge',  // 'wedge' | 'capsule' | 'airfoil' | 'rocket'
+    gamma: 1.40,
+    machSweep: false,
+    machSweepDir: 1,
+
+    // Mode B: de Laval Nozzle
+    pa: 101.3,      // Ambient pressure (kPa) 0..101.3
+    pc: 3.20,       // Chamber pressure (MPa) 0.6..12.0
+    areaRatio: 7.5, // Ae / A*
+    pGamma: 1.24,   // Exhaust gas gamma
+    ascentDemo: false,
+
+    // Display options
+    visMode: 'schlieren', // 'schlieren' | 'pressure' | 'mach' | 'temp'
+    showField: true,
+    showParticles: true,
+    showShocks: true,
+    showCone: true,
+    showVectors: true,
+    showGraph: true,
+    showProbe: true,
+    contrast: 1.20,
+    flowSpeed: 1.00,
+
+    // Interactive state
+    mouseX: -1000,
+    mouseY: -1000,
+    mouseInside: false,
+    draggingBody: false,
+    draggingNozzleAlt: false,
+    dragStartY: 0,
+    dragStartVal: 0,
+    boomFlash: 0,
+    boomRingR: 0,
+    lastBoomTime: -10,
+    activePreset: 'wedge-oblique'
+  };
+
+  const PRESETS = {
+    'wedge-oblique': {
+      lab: 'tunnel', body: 'wedge', mach: 2.20, aoa: 0.0, wedgeDeg: 11.0, gamma: 1.40, visMode: 'schlieren',
+      banner: 'Mach 2.2 Sharp Wedge · Attached Oblique Shocks'
+    },
+    'capsule-bow': {
+      lab: 'tunnel', body: 'capsule', mach: 3.80, aoa: 0.0, wedgeDeg: 14.0, gamma: 1.40, visMode: 'schlieren',
+      banner: 'Mach 3.8 Re-Entry Capsule · Detached Bow Shock & Plasma'
+    },
+    'transonic': {
+      lab: 'tunnel', body: 'airfoil', mach: 0.96, aoa: 2.0, wedgeDeg: 10.5, gamma: 1.40, visMode: 'schlieren',
+      banner: 'Transonic M = 0.96 · Normal Shocks & Wave-Drag Spike'
+    },
+    'airfoil-lift': {
+      lab: 'tunnel', body: 'airfoil', mach: 2.40, aoa: 9.5, wedgeDeg: 7.5, gamma: 1.40, visMode: 'schlieren',
+      banner: 'Supersonic Delta Airfoil · +9.5° AoA Lift & Wave Drag'
+    },
+    'mach-diamonds': {
+      lab: 'nozzle', pa: 101.3, pc: 3.20, areaRatio: 7.5, pGamma: 1.24,
+      banner: 'Sea-Level Overexpanded Plume · Mach Shock Diamonds'
+    },
+    'vacuum-plume': {
+      lab: 'nozzle', pa: 0.0, pc: 4.50, areaRatio: 13.5, pGamma: 1.24,
+      banner: 'Vacuum Underexpanded Plume · Falcon-9 Upper Stage Bell'
+    }
+  };
+
+  // =========================================================================
+  // 3. PROCEDURAL WEB AUDIO ENGINE (MUTED BY DEFAULT)
+  // =========================================================================
+  const audio = {
+    ctx: null,
+    master: null,
+    noiseGain: null,
+    noiseFilter: null,
+    rumbleOsc: null,
+    rumbleGain: null,
+    ready: false
+  };
+
+  function initAudio() {
+    if (audio.ready) return;
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+
+    // Create 3 seconds of pink-ish noise buffer
+    const bufSize = ctx.sampleRate * 3;
+    const buf = ctx.createBuffer(1, bufSize, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0;
+    for (let i = 0; i < bufSize; i++) {
+      const white = Math.random() * 2 - 1;
+      b0 = 0.99886 * b0 + white * 0.0555179;
+      b1 = 0.99332 * b1 + white * 0.0750759;
+      b2 = 0.96900 * b2 + white * 0.1538520;
+      b3 = 0.86650 * b3 + white * 0.3104856;
+      b4 = 0.55000 * b4 + white * 0.5329522;
+      b5 = -0.7616 * b5 - white * 0.0168980;
+      data[i] = (b0 + b1 + b2 + b3 + b4 + b5 + white * 0.5362) * 0.08;
+    }
+
+    const noiseSrc = ctx.createBufferSource();
+    noiseSrc.buffer = buf;
+    noiseSrc.loop = true;
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.value = 320;
+    filter.Q.value = 0.7;
+
+    const noiseGain = ctx.createGain();
+    noiseGain.gain.value = 0.0;
+
+    // Sub-bass jet/rocket rumble
+    const rumbleOsc = ctx.createOscillator();
+    rumbleOsc.type = 'sawtooth';
+    rumbleOsc.frequency.value = 52;
+    const rumbleFilter = ctx.createBiquadFilter();
+    rumbleFilter.type = 'lowpass';
+    rumbleFilter.frequency.value = 110;
+    const rumbleGain = ctx.createGain();
+    rumbleGain.gain.value = 0.0;
+
+    const master = ctx.createGain();
+    master.gain.value = 0.0;
+
+    noiseSrc.connect(filter);
+    filter.connect(noiseGain);
+    noiseGain.connect(master);
+
+    rumbleOsc.connect(rumbleFilter);
+    rumbleFilter.connect(rumbleGain);
+    rumbleGain.connect(master);
+    master.connect(ctx.destination);
+
+    noiseSrc.start();
+    rumbleOsc.start();
+
+    audio.ctx = ctx;
+    audio.master = master;
+    audio.noiseFilter = filter;
+    audio.noiseGain = noiseGain;
+    audio.rumbleOsc = rumbleOsc;
+    audio.rumbleGain = rumbleGain;
+    audio.ready = true;
+  }
+
+  function updateAudioParams() {
+    if (!audio.ready) return;
+    const now = audio.ctx.currentTime;
+    const targetMaster = (state.audioOn && !state.paused) ? 0.42 : 0.0;
+    audio.master.gain.setTargetAtTime(targetMaster, now, 0.08);
+    if (!state.audioOn || state.paused) return;
+
+    if (state.lab === 'tunnel') {
+      const m = state.mach;
+      const freq = 140 + m * 240 + (m > 0.85 && m < 1.15 ? 180 : 0);
+      const nGain = clamp(0.14 + m * 0.14, 0.12, 0.65);
+      const rGain = clamp(0.06 + m * 0.06, 0.04, 0.28);
+      audio.noiseFilter.frequency.setTargetAtTime(freq, now, 0.06);
+      audio.noiseGain.gain.setTargetAtTime(nGain, now, 0.06);
+      audio.rumbleOsc.frequency.setTargetAtTime(38 + m * 14, now, 0.08);
+      audio.rumbleGain.gain.setTargetAtTime(rGain, now, 0.06);
+    } else {
+      // Rocket roar scales with chamber pressure & dampens slightly in vacuum
+      const pNorm = clamp(state.pc / 12.0, 0.1, 1.0);
+      const atm = clamp(0.25 + 0.75 * (state.pa / 101.3), 0.25, 1.0);
+      audio.noiseFilter.frequency.setTargetAtTime(190 + pNorm * 320 * atm, now, 0.08);
+      audio.noiseGain.gain.setTargetAtTime((0.28 + pNorm * 0.42) * atm, now, 0.08);
+      audio.rumbleOsc.frequency.setTargetAtTime(42 + pNorm * 28, now, 0.08);
+      audio.rumbleGain.gain.setTargetAtTime((0.16 + pNorm * 0.24) * (0.5 + 0.5 * atm), now, 0.08);
+    }
+  }
+
+  function triggerSonicBoom() {
+    if (state.time - state.lastBoomTime < 0.75) return;
+    state.lastBoomTime = state.time;
+    state.boomFlash = 1.0;
+    state.boomRingR = 12;
+    showBanner('Sonic Barrier Crossed · M = 1.00', false);
+
+    if (!state.audioOn || !audio.ready) return;
+    const ctx = audio.ctx;
+    const now = ctx.currentTime;
+
+    // Double N-wave sonic boom (nose shock + tail shock ~75ms apart)
+    [0, 0.075].forEach((offset, idx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(idx === 0 ? 115 : 88, now + offset);
+      osc.frequency.exponentialRampToValueAtTime(24, now + offset + 0.24);
+      gain.gain.setValueAtTime(0.001, now + offset);
+      gain.gain.linearRampToValueAtTime(idx === 0 ? 0.65 : 0.42, now + offset + 0.012);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.32);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now + offset);
+      osc.stop(now + offset + 0.35);
+
+      // Crisp shockwave snap burst
+      const bLen = Math.floor(ctx.sampleRate * 0.14);
+      const nb = ctx.createBuffer(1, bLen, ctx.sampleRate);
+      const nd = nb.getChannelData(0);
+      for (let i = 0; i < bLen; i++) {
+        nd[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.025));
+      }
+      const ns = ctx.createBufferSource();
+      ns.buffer = nb;
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.value = idx === 0 ? 900 : 520;
+      const ng = ctx.createGain();
+      ng.gain.value = idx === 0 ? 0.5 : 0.3;
+      ns.connect(lp);
+      lp.connect(ng);
+      ng.connect(ctx.destination);
+      ns.start(now + offset);
+    });
+  }
+
+  // =========================================================================
+  // 4. CANVAS SETUP & OFFSCREEN SCHLIEREN BUFFER
+  // =========================================================================
+  const canvas = document.getElementById('sim-canvas');
+  const ctx = canvas.getContext('2d', { alpha: false });
+
+  // Offscreen field buffer for high-speed optical Schlieren / pressure rendering
+  const FIELD_W = 240;
+  const FIELD_H = 136;
+  const fieldCanvas = document.createElement('canvas');
+  fieldCanvas.width = FIELD_W;
+  fieldCanvas.height = FIELD_H;
+  const fieldCtx = fieldCanvas.getContext('2d');
+  const fieldImg = fieldCtx.createImageData(FIELD_W, FIELD_H);
+  const rhoBuf = new Float32Array(FIELD_W * FIELD_H);
+  const pBuf = new Float32Array(FIELD_W * FIELD_H);
+  const mBuf = new Float32Array(FIELD_W * FIELD_H);
+  const tBuf = new Float32Array(FIELD_W * FIELD_H);
+
+  let W = window.innerWidth;
+  let H = window.innerHeight;
+  let DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+  function resizeCanvas() {
+    W = window.innerWidth;
+    H = window.innerHeight;
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.floor(W * DPR);
+    canvas.height = Math.floor(H * DPR);
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  }
+  window.addEventListener('resize', resizeCanvas);
+  resizeCanvas();
+
+  // =========================================================================
+  // 5. MODE A: WIND TUNNEL AERODYNAMIC SOLVER & GEOMETRY
+  // =========================================================================
+  function getTunnelCenter() {
+    const rightOffset = (state.drawerOpen && !state.cinema && W > 920) ? 165 : 0;
+    return {
+      cx: (W - rightOffset * 2) * 0.48 + rightOffset * 0.18,
+      cy: H * 0.51,
+      scale: Math.min(W * 0.25, H * 0.34, 240)
+    };
+  }
+
+  // Analytical aero solution for current Wind Tunnel parameters
+  function computeTunnelAero() {
+    const M = state.mach;
+    const g = state.gamma;
+    const alphaRad = state.aoa * DEG;
+    const theta0 = state.wedgeDeg * DEG;
+    const body = state.body;
+
+    // Effective body half-angle & bluntness
+    const isBlunt = (body === 'capsule');
+    const effHalfAngle = body === 'airfoil' ? theta0 * 0.72 : (body === 'rocket' ? theta0 * 0.92 : theta0);
+
+    // Upper & lower leading-edge flow deflection relative to freestream
+    // Positive alpha = nose pitched UP -> lower surface compresses more, upper less (or expands!)
+    const thetaLower = effHalfAngle + alphaRad;
+    const thetaUpper = effHalfAngle - alphaRad;
+
+    const mu = M > 1.001 ? Math.asin(1 / M) : Math.PI * 0.5;
+    const T0 = T_INF * isentropicTempRatio(M, g);
+    const speedOfSound = Math.sqrt(g * R_AIR * T_INF);
+    const vInf = M * speedOfSound;
+
+    // Shock solutions
+    let lowerShock = null;
+    let upperShock = null;
+    let detached = false;
+    let standoff = 0; // normalized to chord L
+    let bowRc = 0.24;
+
+    if (M > 1.02) {
+      if (isBlunt) {
+        detached = true;
+        // Billig's correlation for sphere-cone / capsule standoff
+        const noseR = 0.22 + (state.wedgeDeg - 6) * 0.005;
+        standoff = noseR * 0.143 * Math.exp(3.24 / (M * M));
+        bowRc = noseR * 1.143 * Math.exp(0.54 / Math.pow(M - 1, 1.2));
+        const ns = normalShock(M, g);
+        lowerShock = { attached: false, beta: Math.PI / 2, pRatio: ns.pRatio, rhoRatio: ns.rhoRatio, tRatio: ns.tRatio, M2: ns.mn2, isExpansion: false };
+        upperShock = { attached: false, beta: Math.PI / 2, pRatio: ns.pRatio, rhoRatio: ns.rhoRatio, tRatio: ns.tRatio, M2: ns.mn2, isExpansion: false };
+      } else {
+        // Sharp leading edge: check lower & upper independently
+        if (thetaLower > 0.002) {
+          lowerShock = solveObliqueShock(M, thetaLower, g);
+          lowerShock.isExpansion = false;
+        } else {
+          const ex = solveExpansion(M, -thetaLower, g);
+          lowerShock = { attached: true, beta: mu, pRatio: ex.pRatio, rhoRatio: ex.rhoRatio, tRatio: ex.tRatio, M2: ex.M2, isExpansion: true };
+        }
+
+        if (thetaUpper > 0.002) {
+          upperShock = solveObliqueShock(M, thetaUpper, g);
+          upperShock.isExpansion = false;
+        } else {
+          const ex = solveExpansion(M, -thetaUpper, g);
+          upperShock = { attached: true, beta: mu, pRatio: ex.pRatio, rhoRatio: ex.rhoRatio, tRatio: ex.tRatio, M2: ex.M2, isExpansion: true };
+        }
+
+        if (!lowerShock.attached || !upperShock.attached) {
+          detached = true;
+          const excess = Math.max(
+            lowerShock.attached ? 0 : (thetaLower - (lowerShock.thetaMax || 0)),
+            upperShock.attached ? 0 : (thetaUpper - (upperShock.thetaMax || 0))
+          );
+          standoff = clamp(0.03 + 0.22 * excess + 0.06 / Math.max(0.12, M - 0.98), 0.03, 0.36);
+          bowRc = clamp(0.18 + standoff * 1.6, 0.18, 0.9);
+        }
+      }
+    }
+
+    // Aft surface expansion (Prandtl-Meyer around mid-chord shoulder)
+    let p2Low = 1, p2Up = 1, p3Low = 1, p3Up = 1;
+    let m2Low = M, m2Up = M, m3Low = M, m3Up = M;
+    let rho2Low = 1, rho2Up = 1, rho3Low = 1, rho3Up = 1;
+
+    if (M > 1.02 && !detached) {
+      p2Low = lowerShock.pRatio;
+      p2Up = upperShock.pRatio;
+      m2Low = lowerShock.M2;
+      m2Up = upperShock.M2;
+      rho2Low = lowerShock.rhoRatio;
+      rho2Up = upperShock.rhoRatio;
+
+      const turn = body === 'rocket' ? effHalfAngle : effHalfAngle * 2;
+      const exLow = solveExpansion(m2Low, turn, g);
+      const exUp = solveExpansion(m2Up, turn, g);
+      p3Low = p2Low * exLow.pRatio;
+      p3Up = p2Up * exUp.pRatio;
+      m3Low = exLow.M2;
+      m3Up = exUp.M2;
+      rho3Low = rho2Low * exLow.rhoRatio;
+      rho3Up = rho2Up * exUp.rhoRatio;
+    } else if (M > 1.02 && detached) {
+      const ns = normalShock(M, g);
+      p2Low = ns.pRatio * (1 + 0.15 * Math.sin(alphaRad));
+      p2Up = ns.pRatio * (1 - 0.15 * Math.sin(alphaRad));
+      m2Low = ns.mn2;
+      m2Up = ns.mn2;
+      rho2Low = ns.rhoRatio;
+      rho2Up = ns.rhoRatio;
+      p3Low = Math.max(0.35, 0.65 + 0.2 * p2Low * 0.15);
+      p3Up = Math.max(0.35, 0.65 + 0.2 * p2Up * 0.15);
+      m3Low = Math.max(1.1, M * 0.78);
+      m3Up = Math.max(1.1, M * 0.78);
+    }
+
+    // Aerodynamic coefficients CL & CD across all regimes (Subsonic -> Transonic -> Supersonic -> Hypersonic)
+    const qNorm = 0.5 * g * M * M;
+    let CL = 0;
+    let CD = 0;
+    let pJumpMax = 1.0;
+
+    if (M < 0.80) {
+      // Prandtl-Glauert compressible subsonic lift + profile drag
+      const betaPG = Math.sqrt(Math.max(0.18, 1 - M * M));
+      const liftSlope = isBlunt ? 0.65 : (body === 'rocket' ? 1.85 : 5.4);
+      CL = (liftSlope * alphaRad) / betaPG;
+      const cd0 = isBlunt ? 0.58 : (body === 'rocket' ? 0.045 : 0.018 + 0.18 * effHalfAngle * effHalfAngle);
+      CD = cd0 + 0.09 * CL * CL;
+      pJumpMax = isentropicPressRatio(M, g);
+    } else if (M <= 1.20) {
+      // Transonic regime with realistic wave-drag divergence spike!
+      const tTrans = (M - 0.80) / 0.40;
+      const bell = Math.exp(-Math.pow((M - 1.02) / 0.11, 2));
+      const liftSlope = isBlunt ? 0.75 : (body === 'rocket' ? 2.2 : 6.4);
+      CL = liftSlope * alphaRad * (1 + 0.32 * bell);
+      const thickFactor = isBlunt ? 1.05 : (body === 'airfoil' ? 0.42 : 0.65);
+      const waveSpike = (0.28 * thickFactor + 1.8 * effHalfAngle * effHalfAngle) * bell;
+      const baseCd = isBlunt ? 0.72 + 0.42 * tTrans : (0.035 + 0.25 * effHalfAngle * effHalfAngle);
+      CD = baseCd + waveSpike + 0.16 * CL * CL;
+      // Local normal shock peak across transonic pocket
+      const localPeakM = Math.max(1.02, M * (1.18 + 0.45 * effHalfAngle + 0.4 * Math.abs(alphaRad)));
+      pJumpMax = normalShock(localPeakM, g).pRatio;
+    } else {
+      // Supersonic / Hypersonic shock-expansion integration
+      if (isBlunt) {
+        // Modified Newtonian aerodynamics for blunt capsule
+        const ns = normalShock(M, g);
+        const cpMax = (ns.pRatio - 1) / Math.max(0.1, qNorm);
+        CL = -0.36 * cpMax * Math.sin(2 * alphaRad) * 0.45; // slight trim lift at AoA
+        CD = 0.82 * cpMax * (1 + 0.15 * Math.sin(alphaRad) * Math.sin(alphaRad));
+        pJumpMax = ns.pRatio;
+      } else if (!detached) {
+        // Exact Shock-Expansion integration over front & rear facets of diamond/airfoil/rocket
+        const cp2L = (p2Low - 1) / qNorm;
+        const cp2U = (p2Up - 1) / qNorm;
+        const cp3L = (p3Low - 1) / qNorm;
+        const cp3U = (p3Up - 1) / qNorm;
+
+        // Normal force & axial force on 2-segment diamond
+        const cn = 0.5 * ((cp2L - cp2U) + (cp3L - cp3U));
+        const ca = 0.5 * Math.tan(effHalfAngle) * ((cp2L + cp2U) - (cp3L + cp3U)) + 0.012;
+        const bodyScale = body === 'rocket' ? 0.58 : 1.0;
+        CL = (cn * Math.cos(alphaRad) - ca * Math.sin(alphaRad)) * bodyScale;
+        CD = Math.max(0.015, (cn * Math.sin(alphaRad) + ca * Math.cos(alphaRad)) * (body === 'rocket' ? 0.78 : 1.0));
+        pJumpMax = Math.max(p2Low, p2Up);
+      } else {
+        // Detached sharp body at high AoA or low supersonic M
+        const ns = normalShock(M, g);
+        const betaSup = Math.sqrt(M * M - 1);
+        CL = (3.6 * alphaRad) / Math.max(0.65, betaSup);
+        CD = 0.22 + (4.2 * (effHalfAngle * effHalfAngle + alphaRad * alphaRad)) / Math.max(0.6, betaSup);
+        pJumpMax = ns.pRatio;
+      }
+    }
+
+    const LD = Math.abs(CD) > 1e-4 ? CL / CD : 0;
+
+    // Regime classification
+    let regime = 'Supersonic';
+    let regimeClass = 'supersonic';
+    if (M < 0.80) { regime = 'Subsonic'; regimeClass = 'subsonic'; }
+    else if (M <= 1.20) { regime = 'Transonic'; regimeClass = 'transonic'; }
+    else if (M >= 3.50) { regime = 'Hypersonic'; regimeClass = 'hypersonic'; }
+
+    // Representative shock angle beta for telemetry
+    let shockBetaDeg = null;
+    if (M > 1.02 && !detached) {
+      const bShow = lowerShock && !lowerShock.isExpansion ? lowerShock.beta :
+                    (upperShock && !upperShock.isExpansion ? upperShock.beta : mu);
+      shockBetaDeg = bShow * RAD;
+    }
+
+    return {
+      M, g, alphaRad, effHalfAngle, isBlunt, detached, standoff, bowRc,
+      mu, T0, vInf,
+      lowerShock, upperShock,
+      p2Low, p2Up, p3Low, p3Up,
+      m2Low, m2Up, m3Low, m3Up,
+      rho2Low, rho2Up, rho3Low, rho3Up,
+      CL, CD, LD, pJumpMax,
+      regime, regimeClass, shockBetaDeg
+    };
+  }
+
+  // Body half-thickness profile y_body(u) in body-local coordinates u in [-0.5, +0.5]
+  function bodyHalfHeight(u, body, effHalfAngle) {
+    if (u < -0.5 || u > 0.5) return 0;
+    const t = Math.tan(effHalfAngle);
+    if (body === 'wedge') {
+      const halfThick = 0.5 * t;
+      return u < 0 ? (u + 0.5) * t : (0.5 - u) * t;
+    }
+    if (body === 'airfoil') {
+      // Sharp biconvex / supersonic delta airfoil
+      const s = 1 - 4 * u * u;
+      return Math.max(0, 0.44 * t * Math.pow(s, 0.92));
+    }
+    if (body === 'rocket') {
+      // Sharp ogive/conical nose [-0.5, -0.1] + cylinder [-0.1, 0.5]
+      const rMax = 0.38 * t;
+      if (u < -0.1) {
+        const f = (u + 0.5) / 0.4;
+        return rMax * Math.pow(f, 0.85);
+      }
+      return rMax;
+    }
+    if (body === 'capsule') {
+      // Blunt Apollo/Orion heatshield on left (u = -0.5) tapering to aft truncated cone
+      const rMax = clamp(0.24 + (state.wedgeDeg - 6) * 0.0045, 0.22, 0.34);
+      if (u < -0.34) {
+        // Spherical nose cap
+        const f = clamp((u + 0.5) / 0.16, 0, 1);
+        return rMax * Math.sqrt(1 - Math.pow(1 - f, 2));
+      }
+      // Conical frustum tapering aft
+      const f = (u + 0.34) / 0.84;
+      return rMax * (1 - 0.56 * f);
+    }
+    return 0;
+  }
+
+  // Evaluate local Wind Tunnel flow state (rho, P, M, T, vx, vy, insideBody) at normalized coords (nx, ny)
+  // where origin (0,0) is body center, chord L = 1.0, freestream flows +x.
+  function sampleTunnelFlow(nx, ny, aero) {
+    const M = aero.M;
+    const g = aero.g;
+    const ca = Math.cos(aero.alphaRad);
+    const sa = Math.sin(aero.alphaRad);
+
+    // Transform point into body-aligned coordinates (u along chord, v perpendicular; note canvas y+ is down)
+    // Nose pitches UP by +alpha => nose is at (-0.5*cos, -0.5*sin) in screen coords (y down)
+    const u = nx * ca + ny * sa;
+    const v = -nx * sa + ny * ca;
+
+    const bh = bodyHalfHeight(u, state.body, aero.effHalfAngle);
+    if (u >= -0.5 && u <= 0.5 && Math.abs(v) <= bh) {
+      return { inside: true, rho: 1, p: 1, m: 0, t: 1, vx: 0, vy: 0 };
+    }
+
+    // Distance to body nose & surface
+    const noseX = -0.5 * ca;
+    const noseY = -0.5 * sa;
+    const tailX = 0.5 * ca;
+    const tailY = 0.5 * sa;
+
+    // --- CASE 1: SUBSONIC & TRANSONIC (M <= 1.04) ---
+    if (M <= 1.04) {
+      const dx = nx - noseX;
+      const dy = ny - noseY;
+      const r2 = nx * nx + ny * ny + 0.09;
+      const r = Math.sqrt(r2);
+
+      // Potential-like stagnation compression at nose & acceleration over shoulders
+      const stag = Math.exp(-((nx - noseX) * (nx - noseX) + (ny - noseY) * (ny - noseY)) / 0.065);
+      const shoulder = Math.exp(-((u * u) / 0.14 + (Math.abs(v) - bh) * (Math.abs(v) - bh) / 0.09));
+      const sideSign = v < 0 ? 1 : -1; // upper surface in screen coords has v < 0
+      const circBoost = sideSign * aero.alphaRad * 1.65 * Math.exp(-(u * u * 3.2 + v * v * 4.0));
+
+      let localM = M * (1 - 0.55 * stag + (0.28 + 0.55 * aero.effHalfAngle) * shoulder + circBoost);
+
+      // Transonic normal shock formation (0.80 <= M <= 1.04)
+      if (M >= 0.78) {
+        const transStrength = smoothstep(0.78, 0.96, M);
+        const shockU = lerp(0.02, 0.34, clamp((M - 0.80) / 0.22, 0, 1));
+        const lateralDecay = Math.exp(-Math.max(0, Math.abs(v) - bh) / (0.22 + 0.42 * transStrength));
+        const isSupPocket = (u > -0.25 && u < shockU && Math.abs(v) > bh * 0.8);
+        if (isSupPocket) {
+          localM += (0.24 + 0.22 * sideSign * aero.alphaRad) * transStrength * lateralDecay * smoothstep(-0.25, 0.0, u);
+        }
+        // Sharp normal shock drop right at u = shockU
+        const shockDrop = smoothstep(shockU - 0.022, shockU + 0.022, u) * lateralDecay * transStrength;
+        const preM = Math.max(1.0, localM);
+        if (preM > 1.0 && shockDrop > 0) {
+          const ns = normalShock(preM, g);
+          localM = lerp(preM, ns.mn2, shockDrop);
+        }
+      }
+
+      localM = clamp(localM, 0.05, 1.55);
+      const t0 = isentropicTempRatio(M, g);
+      const tLoc = t0 / isentropicTempRatio(localM, g);
+      const pLoc = Math.pow(tLoc, g / (g - 1));
+      const rhoLoc = Math.pow(tLoc, 1 / (g - 1));
+
+      // Smooth deflection velocity around body
+      const bodyNear = Math.exp(-Math.max(0, Math.abs(v) - bh) * 5.2) * smoothstep(-0.75, -0.35, u) * smoothstep(0.75, 0.35, u);
+      const slope = (u < 0 ? 1 : -0.6) * Math.tan(aero.effHalfAngle) * (v < 0 ? -1 : 1);
+      const vyBody = bodyNear * (slope + Math.sin(aero.alphaRad) * 0.4);
+      const vx = Math.max(0.22, localM / Math.max(0.2, M));
+      const vy = vyBody - 0.22 * aero.alphaRad * Math.exp(-r * 2.2);
+
+      return { inside: false, rho: rhoLoc, p: pLoc, m: localM, t: tLoc, vx, vy };
+    }
+
+    // --- CASE 2: SUPERSONIC & HYPERSONIC (M > 1.04) ---
+    let rho = 1.0, p = 1.0, m = M, t = 1.0;
+    let vx = 1.0, vy = 0.0;
+
+    if (aero.detached) {
+      // Detached Hyperbolic Bow Shock (Billig locus)
+      const xApex = noseX - aero.standoff;
+      const yRel = ny - noseY;
+      const betaAsym = aero.mu;
+      const tanB = Math.tan(betaAsym);
+      const cotB = 1 / Math.max(0.08, tanB);
+      const rc = aero.bowRc;
+      const xShock = xApex + rc * cotB * cotB * (Math.sqrt(1 + (yRel * yRel * tanB * tanB) / (rc * rc)) - 1);
+
+      if (nx < xShock) {
+        // Undisturbed supersonic freestream upstream of bow shock!
+        return { inside: false, rho: 1, p: 1, m: M, t: 1, vx: 1, vy: 0 };
+      }
+
+      // Compute local shock slope beta_local along the hyperbola
+      const dyDxDen = Math.sqrt(1 + (yRel * yRel * tanB * tanB) / (rc * rc));
+      const dxDy = (yRel / rc) / dyDxDen; // cot(beta_local)
+      const betaLocal = Math.atan2(1, Math.abs(dxDy));
+      const Mn1 = Math.max(1.0, M * Math.sin(betaLocal));
+      const ns = normalShock(Mn1, g);
+
+      // Post-shock expansion downstream along body
+      const distPastShock = nx - xShock;
+      const expandFactor = smoothstep(0.0, 0.95, Math.max(0, u + 0.35));
+      const farFade = Math.exp(-Math.abs(yRel) * 0.42);
+      const wakeMask = (u > 0.48 && Math.abs(v) < 0.26) ? smoothstep(0.48, 0.65, u) * Math.exp(-v * v / 0.045) : 0;
+
+      // Blend sharp bow shock jump into downstream expansion
+      const sharp = smoothstep(0.0, 0.022, distPastShock);
+      p = lerp(1.0, lerp(ns.pRatio, Math.max(0.55, 1 + (ns.pRatio - 1) * 0.18), expandFactor * 0.78), sharp);
+      rho = lerp(1.0, lerp(ns.rhoRatio, Math.max(0.65, 1 + (ns.rhoRatio - 1) * 0.25), expandFactor * 0.75), sharp);
+      t = p / Math.max(0.2, rho);
+      m = lerp(M, lerp(ns.mn2 / Math.max(0.32, Math.sin(betaLocal)), M * 0.86, expandFactor * 0.8), sharp);
+
+      if (wakeMask > 0) {
+        p = lerp(p, 0.45, wakeMask * 0.65);
+        rho = lerp(rho, 0.48, wakeMask * 0.65);
+        m = lerp(m, 0.6, wakeMask * 0.7);
+      }
+
+      // Streamline deflection outward behind bow shock
+      const signY = yRel < 0 ? -1 : 1;
+      const deflect = signY * Math.sin(2 * betaLocal) * 0.36 * Math.exp(-distPastShock * 1.45) * (0.4 + 0.6 * farFade);
+      const bodyPush = (u > -0.55 && u < 0.52) ? (v < 0 ? -1 : 1) * Math.exp(-Math.max(0, Math.abs(v) - bh) * 7.5) * 0.42 : 0;
+      vx = clamp(m / M, 0.22, 1.15);
+      vy = deflect + bodyPush - (wakeMask * v * 0.9);
+      return { inside: false, rho, p, m, t, vx, vy };
+    }
+
+    // --- ATTACHED OBLIQUE SHOCKS + PRANDTL-MEYER EXPANSION FANS ---
+    const isLower = (v >= 0); // screen y+ is down => lower surface is v > 0
+    const dxNose = nx - noseX;
+    const dyNose = ny - noseY;
+
+    const sh = isLower ? aero.lowerShock : aero.upperShock;
+    const beta = sh.beta;
+    // Shock ray angle in screen coords: lower shock goes down-right (+beta), upper goes up-right (-beta)
+    const shockYDist = isLower ? dyNose : -dyNose;
+    const shockLineX = shockYDist / Math.max(0.05, Math.tan(beta));
+
+    if (dxNose < shockLineX) {
+      // Ahead of leading-edge oblique shock -> pristine freestream
+      return { inside: false, rho: 1, p: 1, m: M, t: 1, vx: 1, vy: 0 };
+    }
+
+    // Behind leading-edge oblique shock (Region 2)
+    const p2 = isLower ? aero.p2Low : aero.p2Up;
+    const rho2 = isLower ? aero.rho2Low : aero.rho2Up;
+    const m2 = isLower ? aero.m2Low : aero.m2Up;
+    const p3 = isLower ? aero.p3Low : aero.p3Up;
+    const rho3 = isLower ? aero.rho3Low : aero.rho3Up;
+    const m3 = isLower ? aero.m3Low : aero.m3Up;
+
+    const shoulderU = state.body === 'rocket' ? -0.10 : 0.0;
+    const shX = shoulderU * ca - (isLower ? 1 : -1) * bodyHalfHeight(shoulderU, state.body, aero.effHalfAngle) * sa;
+    const shY = shoulderU * sa + (isLower ? 1 : -1) * bodyHalfHeight(shoulderU, state.body, aero.effHalfAngle) * ca;
+
+    // Region 2 flow angle
+    const flowAngle2 = isLower
+      ? (aero.effHalfAngle + aero.alphaRad)
+      : -(aero.effHalfAngle - aero.alphaRad);
+    const flowAngle3 = state.body === 'rocket'
+      ? aero.alphaRad
+      : (isLower ? (-aero.effHalfAngle + aero.alphaRad) : (aero.effHalfAngle + aero.alphaRad));
+
+    // Leading & trailing rays of shoulder Prandtl-Meyer expansion fan
+    const mu2 = Math.asin(1 / Math.max(1.03, m2));
+    const mu3 = Math.asin(1 / Math.max(1.03, m3));
+    const fanRayStart = isLower ? (mu2 + flowAngle2) : -(mu2 - flowAngle2);
+    const fanRayEnd = isLower ? (mu3 + flowAngle3) : -(mu3 - flowAngle3);
+
+    const dxSh = nx - shX;
+    const dySh = ny - shY;
+    const rayAngle = Math.atan2(dySh, dxSh);
+
+    let fanFrac = 0;
+    if (dxSh > -0.02) {
+      if (isLower) {
+        fanFrac = clamp((fanRayStart - rayAngle) / Math.max(0.05, fanRayStart - fanRayEnd), 0, 1);
+      } else {
+        fanFrac = clamp((rayAngle - fanRayStart) / Math.max(0.05, fanRayEnd - fanRayStart), 0, 1);
+      }
+    }
+
+    // Trailing-edge recompression oblique shock
+    const dxTail = nx - tailX;
+    const dyTail = ny - tailY;
+    const tailDist = isLower ? dyTail : -dyTail;
+    const tailBeta = Math.asin(1 / Math.max(1.04, m3)) + 0.14;
+    const tailXLine = tailDist / Math.max(0.08, Math.tan(tailBeta));
+    const pastTail = (dxTail > tailXLine) ? smoothstep(tailXLine, tailXLine + 0.025, dxTail) : 0;
+
+    // Distance attenuation far away from body
+    const distAtten = Math.exp(-Math.max(0, shockYDist - 0.15) * 0.32);
+
+    // Smoothly blend Region 2 -> Prandtl-Meyer fan -> Region 3 -> Trailing recompression
+    const shockBlend = smoothstep(0.0, 0.018, dxNose - shockLineX);
+    p = lerp(p2, p3, fanFrac);
+    rho = lerp(rho2, rho3, fanFrac);
+    m = lerp(m2, m3, fanFrac);
+
+    if (pastTail > 0) {
+      p = lerp(p, 1.0 + 0.18 * (p2 - 1) * distAtten, pastTail);
+      rho = lerp(rho, 1.0 + 0.16 * (rho2 - 1) * distAtten, pastTail);
+      m = lerp(m, M * 0.96, pastTail);
+    }
+
+    p = lerp(1.0, p, shockBlend * (0.28 + 0.72 * distAtten));
+    rho = lerp(1.0, rho, shockBlend * (0.28 + 0.72 * distAtten));
+    m = lerp(M, m, shockBlend * (0.35 + 0.65 * distAtten));
+    t = p / Math.max(0.2, rho);
+
+    let flowAng = lerp(flowAngle2, flowAngle3, fanFrac);
+    if (pastTail > 0) flowAng = lerp(flowAng, 0, pastTail * 0.92);
+    flowAng *= shockBlend * (0.25 + 0.75 * distAtten);
+
+    const speedRatio = clamp(m / M, 0.35, 1.45);
+    vx = speedRatio * Math.cos(flowAng);
+    vy = speedRatio * Math.sin(flowAng);
+
+    return { inside: false, rho, p, m, t, vx, vy };
+  }
+
+  // =========================================================================
+  // 6. MODE B: DE LAVAL CONVERGING-DIVERGING ROCKET NOZZLE SOLVER
+  // =========================================================================
+  function getNozzleLayout() {
+    const rightOffset = (state.drawerOpen && !state.cinema && W > 920) ? 344 : 24;
+    const usableW = W - rightOffset - 24;
+    const x0 = 36 + Math.max(0, (usableW - 920) * 0.28);
+    const totalW = Math.min(usableW - 30, 960);
+    const graphH = state.showGraph ? Math.min(185, H * 0.26) : 0;
+    const cy = state.showGraph ? (H - graphH - 58) * 0.50 + 28 : H * 0.50;
+    const scaleY = Math.min(H * 0.18, totalW * 0.145, 128);
+
+    // Axial positions in pixels
+    const xChamberStart = x0;
+    const xConvergeStart = x0 + totalW * 0.12;
+    const xThroat = x0 + totalW * 0.24;
+    const xExit = x0 + totalW * 0.45;
+    const xPlumeEnd = x0 + totalW * 0.99;
+
+    return {
+      x0, totalW, cy, scaleY, graphH,
+      xChamberStart, xConvergeStart, xThroat, xExit, xPlumeEnd
+    };
+  }
+
+  // Nozzle inner half-height in normalized radius units (throat r* = 1.0)
+  function nozzleRadiusNorm(s) {
+    // s in [0, 1]: 0..0.28 chamber, 0.28..0.54 converging, 0.54 throat, 0.54..1.0 Rao bell diverging
+    const rExit = Math.sqrt(state.areaRatio);
+    const rChamber = 2.35;
+    if (s <= 0.26) return rChamber;
+    if (s <= 0.54) {
+      const t = (s - 0.26) / 0.28;
+      // Smooth cubic converging contour
+      const c = 0.5 - 0.5 * Math.cos(Math.PI * t);
+      return lerp(rChamber, 1.0, c);
+    }
+    // Parabolic Rao bell diverging nozzle
+    const t = (s - 0.54) / 0.46;
+    const bell = Math.pow(t, 0.78) * (1.18 - 0.18 * t);
+    return 1.0 + (rExit - 1.0) * clamp(bell, 0, 1);
+  }
+
+  function computeNozzlePhysics() {
+    const g = state.pGamma;
+    const pcKpa = state.pc * 1000; // MPa -> kPa
+    const paKpa = state.pa;
+    const ar = state.areaRatio;
+
+    // Design isentropic supersonic exit conditions (assuming choked throat M* = 1.0)
+    const Me = solveMachFromArea(ar, g, true);
+    const peKpa = pcKpa / isentropicPressRatio(Me, g);
+    const Tc = 3350; // K combustion chamber temp
+    const Te = Tc / isentropicTempRatio(Me, g);
+    const Rgas = g > 1.35 ? 296.8 : (g < 1.22 ? 580.0 : 375.0);
+    const ve = Me * Math.sqrt(g * Rgas * Te);
+
+    // Throat area A* = 0.045 m² (~24 cm diameter throat, Raptor/Merlin class lab engine)
+    const Astar = 0.045;
+    const Ae = Astar * ar;
+    const mdot = (pcKpa * 1000 * Astar / Math.sqrt(Tc)) *
+                 Math.sqrt(g / Rgas) * Math.pow(2 / (g + 1), (g + 1) / (2 * (g - 1)));
+
+    // Actual thrust F = mdot * ve + (pe - pa) * Ae (Newtons -> kN)
+    const thrustN = Math.max(0, mdot * ve + (peKpa - paKpa) * 1000 * Ae);
+    const thrustKN = thrustN / 1000;
+    const isp = thrustN / Math.max(1, mdot * G0);
+
+    // Pressure ratio Pe / Pa
+    const peOverPa = paKpa > 0.25 ? peKpa / paKpa : 999;
+
+    // Approximate standard atmosphere altitude from Pa (kPa)
+    let altKm = 0;
+    if (paKpa <= 0.05) altKm = 85.0;
+    else altKm = Math.max(0, -7.2 * Math.log(paKpa / 101.325));
+
+    // Expansion regime
+    let regime = 'Ideally Expanded';
+    let regimeClass = 'subsonic';
+    if (paKpa < 1.5 || peOverPa > 1.22) {
+      regime = paKpa < 1.5 ? 'Vacuum Underexpanded' : 'Underexpanded';
+      regimeClass = 'violet';
+    } else if (peOverPa < 0.85) {
+      regime = peOverPa < 0.34 ? 'Overexpanded (Separated)' : 'Overexpanded · Diamonds';
+      regimeClass = 'transonic';
+    }
+
+    // Build synced 1D profile across Nozzle (s: 0..1) + Plume (p: 0..1)
+    const N_NOZ = 72;
+    const N_PLUME = 78;
+    const profileM = new Float32Array(N_NOZ + N_PLUME);
+    const profileP = new Float32Array(N_NOZ + N_PLUME); // normalized to kPa
+    const profileXFrac = new Float32Array(N_NOZ + N_PLUME); // 0..1 of full layout
+
+    for (let i = 0; i < N_NOZ; i++) {
+      const s = i / (N_NOZ - 1);
+      const r = nozzleRadiusNorm(s);
+      const localAR = r * r;
+      const isSup = s > 0.54;
+      const M = Math.abs(s - 0.54) < 0.008 ? 1.0 : solveMachFromArea(localAR, g, isSup);
+      const P = pcKpa / isentropicPressRatio(M, g);
+      profileM[i] = M;
+      profileP[i] = P;
+      profileXFrac[i] = s * 0.45;
+    }
+
+    // Plume 1D centerline oscillations (Mach shock diamonds vs smooth expansion)
+    const misMatch = Math.log(clamp(peOverPa, 0.14, 18.0)); // <0 overexpanded, 0 ideal, >0 underexpanded
+    const diamondAmp = clamp(Math.abs(misMatch) * 0.42, 0, 0.88);
+    // Pack/Prandtl shock cell wavelength scales with sqrt(Me^2 - 1)
+    const cellFreq = (2.15 * Math.PI) / clamp(Math.sqrt(Math.max(0.4, Me * Me - 1)) * 0.58, 0.55, 2.2);
+
+    for (let j = 0; j < N_PLUME; j++) {
+      const f = j / (N_PLUME - 1); // 0 at exit, 1 at far end
+      const decay = Math.exp(-f * (paKpa < 2 ? 0.55 : 1.75));
+      let mPlume = Me;
+      let pPlume = peKpa;
+
+      if (paKpa < 1.5) {
+        // Free vacuum expansion: Mach climbs smoothly, pressure drops exponentially
+        mPlume = Me + 2.6 * Math.pow(f, 0.65);
+        pPlume = peKpa * Math.exp(-f * 4.5);
+      } else if (peOverPa < 0.92) {
+        // Overexpanded: compression shock cells! Sharp Mach dips & Pressure spikes at diamond nodes
+        const phase = f * cellFreq * 2.55;
+        const wave = Math.sin(phase);
+        const sharpSpike = Math.pow(Math.max(0, Math.sin(phase - 0.35)), 2.2);
+        mPlume = Math.max(0.85, Me * (1 - 0.38 * diamondAmp * decay * sharpSpike + 0.08 * wave * decay));
+        pPlume = Math.max(paKpa * 0.4, lerp(peKpa, paKpa, 0.42 + 0.45 * f) * (1 + 0.95 * diamondAmp * decay * sharpSpike));
+      } else if (peOverPa > 1.12) {
+        // Underexpanded: initial expansion then barrel shock compression
+        const phase = f * cellFreq * 1.75;
+        const expandWave = Math.sin(phase);
+        mPlume = Me * (1 + 0.32 * diamondAmp * decay * Math.max(0, expandWave) - 0.18 * diamondAmp * decay * Math.max(0, -expandWave));
+        pPlume = Math.max(0.5, lerp(peKpa, paKpa, 0.35 + 0.55 * f) * Math.exp(-0.55 * diamondAmp * decay * expandWave));
+      } else {
+        // Ideally expanded: razor-clean constant supersonic beam slowly mixing downstream
+        mPlume = Me * (1 - 0.12 * f * f);
+        pPlume = lerp(peKpa, paKpa, 0.25 * f);
+      }
+
+      profileM[N_NOZ + j] = mPlume;
+      profileP[N_NOZ + j] = pPlume;
+      profileXFrac[N_NOZ + j] = 0.45 + f * 0.54;
+    }
+
+    return {
+      g, pcKpa, paKpa, ar, Me, peKpa, Te, ve, mdot, thrustKN, isp,
+      peOverPa, altKm, regime, regimeClass,
+      misMatch, diamondAmp, cellFreq,
+      N_NOZ, N_PLUME, profileM, profileP, profileXFrac
+    };
+  }
+
+  // =========================================================================
+  // 7. PARTICLE SYSTEMS (STREAMLINES + ROCKET EXHAUST)
+  // =========================================================================
+  const NUM_TUNNEL_P = 540;
+  const tunnelParticles = [];
+  for (let i = 0; i < NUM_TUNNEL_P; i++) {
+    tunnelParticles.push({
+      x: Math.random() * 2 - 1, // screen fraction
+      y: Math.random(),
+      px: 0, py: 0,
+      lane: (i % 36) / 36,
+      life: Math.random(),
+      seed: Math.random()
+    });
+  }
+
+  const NUM_NOZ_P = 520;
+  const nozzleParticles = [];
+  function resetNozzleParticle(p, randomX) {
+    p.s = randomX ? Math.random() * 1.95 : Math.random() * 0.14; // 0..0.45 inside nozzle, 0.45..2.0 plume
+    p.rFrac = (Math.random() * 2 - 1) * 0.92;
+    p.life = 1.0;
+    p.size = 1.1 + Math.random() * 1.9;
+    p.seed = Math.random();
+    p.px = 0; p.py = 0;
+    p.first = true;
+  }
+  for (let i = 0; i < NUM_NOZ_P; i++) {
+    const p = {};
+    resetNozzleParticle(p, true);
+    nozzleParticles.push(p);
+  }
+
+  // =========================================================================
+  // 8. RENDERING: MODE A (SUPERSONIC WIND TUNNEL)
+  // =========================================================================
+  function renderTunnelField(aero, tc) {
+    const data = fieldImg.data;
+    const invScale = 1 / tc.scale;
+    const vis = state.visMode;
+    const contrast = state.contrast;
+
+    // Pass 1: Sample scalar fields on grid
+    for (let j = 0; j < FIELD_H; j++) {
+      const sy = (j + 0.5) / FIELD_H * H;
+      const ny = (sy - tc.cy) * invScale;
+      const rowOff = j * FIELD_W;
+      for (let i = 0; i < FIELD_W; i++) {
+        const sx = (i + 0.5) / FIELD_W * W;
+        const nx = (sx - tc.cx) * invScale;
+        const res = sampleTunnelFlow(nx, ny, aero);
+        const idx = rowOff + i;
+        rhoBuf[idx] = res.inside ? -1 : res.rho;
+        pBuf[idx] = res.p;
+        mBuf[idx] = res.m;
+        tBuf[idx] = res.t;
+      }
+    }
+
+    // Pass 2: Colorize field (Schlieren optical density gradient / Pressure / Mach / Thermal)
+    for (let j = 0; j < FIELD_H; j++) {
+      const rowOff = j * FIELD_W;
+      for (let i = 0; i < FIELD_W; i++) {
+        const idx = rowOff + i;
+        const p4 = idx * 4;
+        const rho = rhoBuf[idx];
+
+        if (rho < 0) {
+          data[p4] = 4; data[p4 + 1] = 7; data[p4 + 2] = 17; data[p4 + 3] = 0;
+          continue;
+        }
+
+        let r = 8, g = 14, b = 28, a = 155;
+
+        if (vis === 'schlieren') {
+          // Knife-edge horizontal + subtle vertical density gradient (∂ρ/∂x)
+          const il = i > 0 ? i - 1 : i;
+          const ir = i < FIELD_W - 1 ? i + 1 : i;
+          const ju = j > 0 ? j - 1 : j;
+          const jd = j < FIELD_H - 1 ? j + 1 : j;
+          const rL = rhoBuf[rowOff + il] < 0 ? rho : rhoBuf[rowOff + il];
+          const rR = rhoBuf[rowOff + ir] < 0 ? rho : rhoBuf[rowOff + ir];
+          const rU = rhoBuf[ju * FIELD_W + i] < 0 ? rho : rhoBuf[ju * FIELD_W + i];
+          const rD = rhoBuf[jd * FIELD_W + i] < 0 ? rho : rhoBuf[jd * FIELD_W + i];
+
+          const gradX = (rR - rL) * 4.8 * contrast;
+          const gradY = (rD - rU) * 1.4 * contrast;
+          const gVal = Math.tanh((gradX + gradY * 0.35) * 1.45);
+          const rhoDev = clamp((rho - 1.0) * 0.32 * contrast, -0.5, 1.0);
+
+          if (gVal >= 0) {
+            // Compression shock gradient -> luminous silvery-cyan / amber highlight
+            const k = Math.pow(gVal, 0.78);
+            const hot = smoothstep(2.4, 3.8, aero.M) * k;
+            r = 14 + k * 195 + hot * 46 + Math.max(0, rhoDev) * 45;
+            g = 22 + k * 215 - hot * 22 + Math.max(0, rhoDev) * 42;
+            b = 42 + k * 213 - hot * 75 + Math.max(0, rhoDev) * 55;
+            a = clamp(25 + k * 210 + Math.abs(rhoDev) * 85, 0, 235);
+          } else {
+            // Expansion fan gradient -> deep shadowed slate-indigo with subtle cool tint
+            const k = Math.pow(-gVal, 0.82);
+            r = 6 + (1 - k) * 10;
+            g = 12 + (1 - k) * 14 + k * 24;
+            b = 26 + k * 54;
+            a = clamp(20 + k * 165 + Math.abs(rhoDev) * 55, 0, 195);
+          }
+        } else if (vis === 'pressure') {
+          const val = clamp((Math.log(Math.max(0.2, pBuf[idx])) * 0.65 * contrast) + 0.35, 0, 1);
+          r = lerp(12, 255, smoothstep(0.32, 0.92, val));
+          g = lerp(24, 210, Math.sin(val * Math.PI));
+          b = lerp(75, 40, smoothstep(0.45, 0.95, val)) + (1 - val) * 110;
+          a = clamp(42 + Math.abs(pBuf[idx] - 1) * 145 * contrast, 24, 215);
+        } else if (vis === 'mach') {
+          const val = clamp(mBuf[idx] / 4.0, 0, 1);
+          r = lerp(255, 40, smoothstep(0.15, 0.65, val)) + smoothstep(0.75, 1.0, val) * 140;
+          g = lerp(70, 225, smoothstep(0.05, 0.6, val));
+          b = lerp(110, 255, smoothstep(0.25, 0.85, val));
+          a = clamp(50 + Math.abs(mBuf[idx] - aero.M) * 130 * contrast, 32, 200);
+        } else {
+          // Thermal T/T1
+          const val = clamp((tBuf[idx] - 0.75) * 0.55 * contrast, 0, 1);
+          r = lerp(16, 255, smoothstep(0.05, 0.62, val));
+          g = lerp(20, 215, smoothstep(0.35, 0.95, val));
+          b = lerp(55, 190, smoothstep(0.72, 1.0, val));
+          a = clamp(28 + Math.abs(tBuf[idx] - 1) * 175 * contrast, 20, 225);
+        }
+
+        data[p4] = clamp(r, 0, 255);
+        data[p4 + 1] = clamp(g, 0, 255);
+        data[p4 + 2] = clamp(b, 0, 255);
+        data[p4 + 3] = clamp(a, 0, 255);
+      }
+    }
+
+    fieldCtx.putImageData(fieldImg, 0, 0);
+    ctx.save();
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(fieldCanvas, 0, 0, W, H);
+    ctx.restore();
+  }
+
+  function drawTunnelGrid(tc) {
+    ctx.save();
+    // Subtle aerospace wind-tunnel optical backdrop & scale rulings
+    const grad = ctx.createRadialGradient(tc.cx, tc.cy, 40, tc.cx, tc.cy, Math.max(W, H) * 0.72);
+    grad.addColorStop(0, '#0a1224');
+    grad.addColorStop(0.55, '#050916');
+    grad.addColorStop(1, '#03050d');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+
+    // Subtle test-section grid lines
+    ctx.strokeStyle = 'rgba(130, 175, 255, 0.045)';
+    ctx.lineWidth = 1;
+    const step = 48;
+    const ox = tc.cx % step;
+    const oy = tc.cy % step;
+    ctx.beginPath();
+    for (let x = ox; x < W; x += step) {
+      ctx.moveTo(x, 0); ctx.lineTo(x, H);
+    }
+    for (let y = oy; y < H; y += step) {
+      ctx.moveTo(0, y); ctx.lineTo(W, y);
+    }
+    ctx.stroke();
+
+    // Centerline optical datum
+    ctx.strokeStyle = 'rgba(130, 175, 255, 0.1)';
+    ctx.setLineDash([6, 8]);
+    ctx.beginPath();
+    ctx.moveTo(0, tc.cy);
+    ctx.lineTo(W, tc.cy);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
+
+  function drawTunnelShocksAndFans(aero, tc) {
+    const M = aero.M;
+    const ca = Math.cos(aero.alphaRad);
+    const sa = Math.sin(aero.alphaRad);
+    const noseX = tc.cx - 0.5 * tc.scale * ca;
+    const noseY = tc.cy - 0.5 * tc.scale * sa;
+    const tailX = tc.cx + 0.5 * tc.scale * ca;
+    const tailY = tc.cy + 0.5 * tc.scale * sa;
+
+    ctx.save();
+
+    // 1. Mach Cone Reference (mu = arcsin(1/M))
+    if (state.showCone && M > 1.02) {
+      const mu = aero.mu;
+      const len = Math.max(W, H) * 0.9;
+      ctx.strokeStyle = 'rgba(88, 220, 255, 0.28)';
+      ctx.lineWidth = 1.25;
+      ctx.setLineDash([7, 6]);
+      ctx.beginPath();
+      ctx.moveTo(noseX, noseY);
+      ctx.lineTo(noseX + len * Math.cos(mu), noseY - len * Math.sin(mu));
+      ctx.moveTo(noseX, noseY);
+      ctx.lineTo(noseX + len * Math.cos(mu), noseY + len * Math.sin(mu));
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Angle arc & label for mu
+      const arcR = 64;
+      ctx.strokeStyle = 'rgba(88, 220, 255, 0.45)';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.arc(noseX, noseY, arcR, 0, mu);
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(136, 232, 255, 0.85)';
+      ctx.font = '600 10.5px ui-monospace, Consolas, monospace';
+      ctx.fillText(`μ=${(mu * RAD).toFixed(1)}°`, noseX + arcR + 6, noseY + Math.sin(mu * 0.5) * arcR + 4);
+    }
+
+    if (!state.showShocks) { ctx.restore(); return; }
+
+    // 2. Transonic Shimmering Normal Shocks (0.80 <= M <= 1.04)
+    if (M >= 0.78 && M <= 1.04) {
+      const transStrength = smoothstep(0.78, 0.96, M);
+      const shockU = lerp(0.02, 0.34, clamp((M - 0.80) / 0.22, 0, 1));
+      const bh = bodyHalfHeight(shockU, state.body, aero.effHalfAngle);
+      const shimmer = Math.sin(state.time * 26) * 2.5 * transStrength;
+
+      [-1, 1].forEach((side) => {
+        const x1 = tc.cx + (shockU * ca - side * bh * sa) * tc.scale + shimmer;
+        const y1 = tc.cy + (shockU * sa + side * bh * ca) * tc.scale;
+        const hShock = (0.38 + 0.52 * transStrength) * tc.scale;
+        const x2 = x1 - side * hShock * sa + shimmer * 1.4;
+        const y2 = y1 + side * hShock * ca;
+
+        const g = ctx.createLinearGradient(x1, y1, x2, y2);
+        g.addColorStop(0, `rgba(255, 220, 140, ${0.88 * transStrength})`);
+        g.addColorStop(0.45, `rgba(110, 230, 255, ${0.55 * transStrength})`);
+        g.addColorStop(1, 'rgba(88, 220, 255, 0)');
+        ctx.strokeStyle = g;
+        ctx.lineWidth = 3.2;
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.quadraticCurveTo((x1 + x2) * 0.5 + 8 * transStrength, (y1 + y2) * 0.5, x2, y2);
+        ctx.stroke();
+
+        // Crisp inner core
+        ctx.strokeStyle = `rgba(255, 250, 235, ${0.72 * transStrength})`;
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+      });
+    }
+
+    // 3. Detached Hyperbolic Bow Shock (M > 1.04)
+    if (M > 1.04 && aero.detached) {
+      const xApex = noseX - aero.standoff * tc.scale;
+      const tanB = Math.tan(aero.mu);
+      const cotB = 1 / Math.max(0.08, tanB);
+      const rc = aero.bowRc * tc.scale;
+      const maxY = Math.max(H * 0.72, tc.scale * 2.8);
+
+      const isHyper = M >= 3.3;
+      // Wide luminous Schlieren / plasma halo
+      ctx.beginPath();
+      for (let i = -90; i <= 90; i++) {
+        const yRel = (i / 90) * maxY;
+        const xS = xApex + rc * cotB * cotB * (Math.sqrt(1 + (yRel * yRel * tanB * tanB) / (rc * rc)) - 1);
+        const yS = noseY + yRel;
+        if (i === -90) ctx.moveTo(xS, yS); else ctx.lineTo(xS, yS);
+      }
+      ctx.strokeStyle = isHyper ? 'rgba(255, 130, 88, 0.34)' : 'rgba(98, 224, 255, 0.28)';
+      ctx.lineWidth = isHyper ? 12 : 9;
+      ctx.stroke();
+
+      // Razor-sharp bow shock front
+      ctx.strokeStyle = isHyper ? 'rgba(255, 225, 180, 0.94)' : 'rgba(215, 248, 255, 0.92)';
+      ctx.lineWidth = 2.2;
+      ctx.stroke();
+
+      // Standoff annotation
+      ctx.strokeStyle = 'rgba(255, 190, 92, 0.65)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(xApex, noseY);
+      ctx.lineTo(noseX, noseY);
+      ctx.stroke();
+    }
+
+    // 4. Attached Oblique Shocks & Prandtl-Meyer Expansion Fans
+    if (M > 1.04 && !aero.detached) {
+      const rayLen = Math.max(W, H) * 0.82;
+      const isHyper = M >= 3.3;
+
+      const drawObliqueRay = (shockObj, signY) => {
+        if (!shockObj) return;
+        const beta = shockObj.beta;
+        const ex = noseX + rayLen * Math.cos(beta);
+        const ey = noseY + signY * rayLen * Math.sin(beta);
+
+        if (shockObj.isExpansion) {
+          // Leading-edge Prandtl-Meyer expansion fan (when AoA > half-angle!)
+          const mu1 = aero.mu;
+          const mu2 = Math.asin(1 / Math.max(1.03, shockObj.M2));
+          for (let k = 0; k <= 6; k++) {
+            const ang = lerp(mu1, mu2, k / 6);
+            ctx.strokeStyle = `rgba(120, 175, 255, ${0.14 + 0.1 * (1 - Math.abs(k - 3) / 3)})`;
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(noseX, noseY);
+            ctx.lineTo(noseX + rayLen * 0.55 * Math.cos(ang), noseY + signY * rayLen * 0.55 * Math.sin(ang));
+            ctx.stroke();
+          }
+        } else {
+          // Glowing oblique shock front
+          const grad = ctx.createLinearGradient(noseX, noseY, ex, ey);
+          grad.addColorStop(0, isHyper ? 'rgba(255, 195, 115, 0.95)' : 'rgba(220, 250, 255, 0.95)');
+          grad.addColorStop(0.45, isHyper ? 'rgba(255, 132, 85, 0.55)' : 'rgba(88, 220, 255, 0.58)');
+          grad.addColorStop(1, 'rgba(88, 220, 255, 0.04)');
+          ctx.strokeStyle = grad;
+          ctx.lineWidth = 6.5;
+          ctx.beginPath();
+          ctx.moveTo(noseX, noseY);
+          ctx.lineTo(ex, ey);
+          ctx.stroke();
+
+          ctx.strokeStyle = isHyper ? 'rgba(255, 244, 214, 0.95)' : 'rgba(235, 252, 255, 0.92)';
+          ctx.lineWidth = 1.9;
+          ctx.stroke();
+        }
+      };
+
+      drawObliqueRay(aero.lowerShock, +1);
+      drawObliqueRay(aero.upperShock, -1);
+
+      // Mid-chord / Shoulder Prandtl-Meyer Expansion Fans
+      const shoulderU = state.body === 'rocket' ? -0.10 : 0.0;
+      const bhSh = bodyHalfHeight(shoulderU, state.body, aero.effHalfAngle);
+
+      [-1, 1].forEach((side) => {
+        const isLower = side > 0;
+        const shX = tc.cx + (shoulderU * ca - side * bhSh * sa) * tc.scale;
+        const shY = tc.cy + (shoulderU * sa + side * bhSh * ca) * tc.scale;
+        const m2 = isLower ? aero.m2Low : aero.m2Up;
+        const m3 = isLower ? aero.m3Low : aero.m3Up;
+        const fAng2 = isLower ? (aero.effHalfAngle + aero.alphaRad) : -(aero.effHalfAngle - aero.alphaRad);
+        const fAng3 = state.body === 'rocket'
+          ? aero.alphaRad
+          : (isLower ? (-aero.effHalfAngle + aero.alphaRad) : (aero.effHalfAngle + aero.alphaRad));
+        const aStart = isLower ? (Math.asin(1 / Math.max(1.04, m2)) + fAng2) : -(Math.asin(1 / Math.max(1.04, m2)) - fAng2);
+        const aEnd = isLower ? (Math.asin(1 / Math.max(1.04, m3)) + fAng3) : -(Math.asin(1 / Math.max(1.04, m3)) - fAng3);
+
+        const fanLen = tc.scale * 1.95;
+        // Soft shaded wedge
+        ctx.fillStyle = 'rgba(92, 165, 255, 0.065)';
+        ctx.beginPath();
+        ctx.moveTo(shX, shY);
+        ctx.lineTo(shX + fanLen * Math.cos(aStart), shY + fanLen * Math.sin(aStart));
+        ctx.lineTo(shX + fanLen * Math.cos(aEnd), shY + fanLen * Math.sin(aEnd));
+        ctx.closePath();
+        ctx.fill();
+
+        // Crisp fan rays
+        const nRays = 7;
+        for (let k = 0; k < nRays; k++) {
+          const ang = lerp(aStart, aEnd, k / (nRays - 1));
+          ctx.strokeStyle = k === 0 || k === nRays - 1
+            ? 'rgba(130, 195, 255, 0.42)'
+            : 'rgba(110, 175, 255, 0.2)';
+          ctx.lineWidth = k === 0 || k === nRays - 1 ? 1.1 : 0.8;
+          ctx.beginPath();
+          ctx.moveTo(shX, shY);
+          ctx.lineTo(shX + fanLen * Math.cos(ang), shY + fanLen * Math.sin(ang));
+          ctx.stroke();
+        }
+      });
+
+      // Trailing-edge Recompression Shocks
+      [-1, 1].forEach((side) => {
+        const m3 = side > 0 ? aero.m3Low : aero.m3Up;
+        const tBeta = Math.asin(1 / Math.max(1.04, m3)) + 0.14;
+        const tx2 = tailX + rayLen * 0.65 * Math.cos(tBeta);
+        const ty2 = tailY + side * rayLen * 0.65 * Math.sin(tBeta);
+        const g = ctx.createLinearGradient(tailX, tailY, tx2, ty2);
+        g.addColorStop(0, 'rgba(180, 232, 255, 0.72)');
+        g.addColorStop(0.5, 'rgba(88, 200, 255, 0.28)');
+        g.addColorStop(1, 'rgba(88, 200, 255, 0)');
+        ctx.strokeStyle = g;
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.moveTo(tailX, tailY);
+        ctx.lineTo(tx2, ty2);
+        ctx.stroke();
+      });
+    }
+
+    // Sonic boom expanding ring flash
+    if (state.boomFlash > 0.01) {
+      ctx.strokeStyle = `rgba(180, 242, 255, ${state.boomFlash * 0.65})`;
+      ctx.lineWidth = 3.5 * state.boomFlash;
+      ctx.beginPath();
+      ctx.arc(noseX, noseY, state.boomRingR, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
+  function updateAndDrawTunnelParticles(dt, aero, tc) {
+    if (!state.showParticles) return;
+    const invScale = 1 / tc.scale;
+    const baseVel = (140 + aero.M * 255) * state.flowSpeed;
+
+    ctx.save();
+    ctx.lineCap = 'round';
+
+    for (let i = 0; i < NUM_TUNNEL_P; i++) {
+      const p = tunnelParticles[i];
+      let sx = p.x * W;
+      let sy = p.y * H;
+
+      const nx = (sx - tc.cx) * invScale;
+      const ny = (sy - tc.cy) * invScale;
+      const flow = sampleTunnelFlow(nx, ny, aero);
+
+      if (!state.paused) {
+        p.px = sx;
+        p.py = sy;
+        if (flow.inside) {
+          // Respawn cleanly at inlet
+          p.x = -0.02 - Math.random() * 0.08;
+          p.y = 0.06 + Math.random() * 0.88;
+          p.px = p.x * W;
+          p.py = p.y * H;
+          continue;
+        }
+        const vxPx = flow.vx * baseVel;
+        const vyPx = flow.vy * baseVel;
+        sx += vxPx * dt;
+        sy += vyPx * dt;
+        p.x = sx / W;
+        p.y = sy / H;
+
+        if (p.x > 1.04 || p.y < -0.05 || p.y > 1.05) {
+          p.x = -0.02 - Math.random() * 0.05;
+          p.y = 0.04 + Math.random() * 0.92;
+          p.px = p.x * W;
+          p.py = p.y * H;
+          continue;
+        }
+      }
+
+      if (flow.inside) continue;
+      const dx = sx - p.px;
+      const dy = sy - p.py;
+      if (dx * dx + dy * dy > 16000) continue;
+
+      // Color by compression / local temperature
+      const hot = clamp((flow.p - 1.0) * 0.38, 0, 1);
+      const r = Math.floor(lerp(130, 255, hot));
+      const g = Math.floor(lerp(225, 195, hot * 0.85));
+      const b = Math.floor(lerp(255, 110, hot));
+      const alpha = clamp(0.24 + hot * 0.45 + 0.14 * (aero.M / 4), 0.18, 0.82);
+
+      // Draw crisp streak aligned with instantaneous velocity
+      const streakLen = clamp(6 + aero.M * 6.5 * flow.vx, 5, 28);
+      const vMag = Math.hypot(flow.vx, flow.vy) || 1;
+      const tx = sx - (flow.vx / vMag) * streakLen;
+      const ty = sy - (flow.vy / vMag) * streakLen;
+
+      ctx.strokeStyle = `rgba(${r},${g},${b},${alpha})`;
+      ctx.lineWidth = hot > 0.45 ? 1.8 : 1.25;
+      ctx.beginPath();
+      ctx.moveTo(tx, ty);
+      ctx.lineTo(sx, sy);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawAerodynamicBody(aero, tc) {
+    ctx.save();
+    ctx.translate(tc.cx, tc.cy);
+    ctx.rotate(aero.alphaRad);
+
+    const L = tc.scale;
+    const steps = 60;
+
+    // Hypersonic Plasma Nose Glow (M > 3.1)
+    if (aero.M > 3.0) {
+      const plasma = smoothstep(3.0, 3.9, aero.M);
+      const nosePos = -0.5 * L;
+      const glowR = (state.body === 'capsule' ? 0.52 : 0.34) * L;
+      const pg = ctx.createRadialGradient(nosePos - 4, 0, 2, nosePos + 8, 0, glowR);
+      pg.addColorStop(0, `rgba(255, 250, 235, ${0.95 * plasma})`);
+      pg.addColorStop(0.22, `rgba(255, 165, 72, ${0.78 * plasma})`);
+      pg.addColorStop(0.55, `rgba(225, 75, 155, ${0.38 * plasma})`);
+      pg.addColorStop(1, 'rgba(110, 60, 255, 0)');
+      ctx.fillStyle = pg;
+      ctx.beginPath();
+      ctx.arc(nosePos, 0, glowR, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Build closed body silhouette path
+    ctx.beginPath();
+    for (let i = 0; i <= steps; i++) {
+      const u = -0.5 + i / steps;
+      const y = -bodyHalfHeight(u, state.body, aero.effHalfAngle) * L;
+      if (i === 0) ctx.moveTo(u * L, y); else ctx.lineTo(u * L, y);
+    }
+    for (let i = steps; i >= 0; i--) {
+      const u = -0.5 + i / steps;
+      const y = bodyHalfHeight(u, state.body, aero.effHalfAngle) * L;
+      ctx.lineTo(u * L, y);
+    }
+    ctx.closePath();
+
+    // Metallic titanium / aerospace ceramic fill
+    const bodyGrad = ctx.createLinearGradient(-0.5 * L, -0.25 * L, 0.5 * L, 0.25 * L);
+    if (state.body === 'capsule') {
+      bodyGrad.addColorStop(0, '#5a3a35');
+      bodyGrad.addColorStop(0.22, '#2d3a54');
+      bodyGrad.addColorStop(0.65, '#192338');
+      bodyGrad.addColorStop(1, '#0e1526');
+    } else {
+      bodyGrad.addColorStop(0, '#44587c');
+      bodyGrad.addColorStop(0.35, '#25344f');
+      bodyGrad.addColorStop(0.75, '#152035');
+      bodyGrad.addColorStop(1, '#0d1424');
+    }
+    ctx.fillStyle = bodyGrad;
+    ctx.fill();
+
+    // Glowing thermal leading edge for supersonic / hypersonic
+    const heat = smoothstep(2.0, 3.8, aero.M);
+    ctx.strokeStyle = heat > 0.1
+      ? `rgba(255, ${Math.round(lerp(220, 145, heat))}, ${Math.round(lerp(245, 78, heat))}, ${0.75 + 0.25 * heat})`
+      : 'rgba(165, 205, 255, 0.72)';
+    ctx.lineWidth = 2.0;
+    ctx.stroke();
+
+    // Internal aerospace CAD detail lines
+    ctx.strokeStyle = 'rgba(155, 195, 255, 0.2)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(-0.46 * L, 0);
+    ctx.lineTo(0.46 * L, 0);
+    if (state.body === 'wedge' || state.body === 'airfoil') {
+      const bh0 = bodyHalfHeight(0, state.body, aero.effHalfAngle) * L;
+      ctx.moveTo(0, -bh0);
+      ctx.lineTo(0, bh0);
+    } else if (state.body === 'rocket') {
+      const bh0 = bodyHalfHeight(-0.1, state.body, aero.effHalfAngle) * L;
+      ctx.moveTo(-0.1 * L, -bh0);
+      ctx.lineTo(-0.1 * L, bh0);
+      // Stabilizing aft fins
+      ctx.fillStyle = '#1b2842';
+      ctx.strokeStyle = 'rgba(145, 190, 255, 0.55)';
+      [-1, 1].forEach((s) => {
+        ctx.beginPath();
+        ctx.moveTo(0.24 * L, s * bh0);
+        ctx.lineTo(0.49 * L, s * (bh0 + 0.14 * L));
+        ctx.lineTo(0.50 * L, s * bh0);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      });
+    } else if (state.body === 'capsule') {
+      // Thermal heatshield rim highlight
+      const r0 = bodyHalfHeight(-0.34, state.body, aero.effHalfAngle) * L;
+      ctx.strokeStyle = heat > 0.2 ? `rgba(255, 150, 75, ${0.5 + 0.5 * heat})` : 'rgba(255, 190, 120, 0.45)';
+      ctx.lineWidth = 2.4;
+      ctx.beginPath();
+      ctx.moveTo(-0.34 * L, -r0);
+      ctx.lineTo(-0.34 * L, r0);
+      ctx.stroke();
+    }
+    ctx.stroke();
+
+    // Drag-tilt handle indicator if hovering or dragging
+    if (state.draggingBody) {
+      ctx.strokeStyle = 'rgba(255, 190, 92, 0.65)';
+      ctx.lineWidth = 1.2;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.arc(0, 0, 0.58 * L, -0.5, 0.5);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    ctx.restore();
+  }
+
+  function drawForceVectors(aero, tc) {
+    if (!state.showVectors) return;
+    const ox = tc.cx - 0.08 * tc.scale;
+    const oy = tc.cy;
+    const liftPx = clamp(-aero.CL * 115, -145, 145); // screen y- is UP (+CL)
+    const dragPx = clamp(aero.CD * 145, 14, 155);
+
+    ctx.save();
+    const drawArrow = (x1, y1, x2, y2, color, label) => {
+      const dx = x2 - x1;
+      const dy = y2 - y1;
+      const len = Math.hypot(dx, dy);
+      if (len < 12) return;
+      const ang = Math.atan2(dy, dx);
+      ctx.strokeStyle = color;
+      ctx.fillStyle = color;
+      ctx.lineWidth = 2.4;
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(x2, y2);
+      ctx.lineTo(x2 - 9 * Math.cos(ang - 0.42), y2 - 9 * Math.sin(ang - 0.42));
+      ctx.lineTo(x2 - 9 * Math.cos(ang + 0.42), y2 - 9 * Math.sin(ang + 0.42));
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.font = '700 10.5px ui-monospace, Consolas, monospace';
+      ctx.fillText(label, x2 + (dx >= 0 ? 6 : -44), y2 + (dy < 0 ? -6 : 14));
+    };
+
+    // Drag arrow (+x)
+    drawArrow(ox, oy, ox + dragPx, oy, '#ffbe5c', `D ${aero.CD.toFixed(3)}`);
+    // Lift arrow (-y for positive CL)
+    if (Math.abs(liftPx) > 10) {
+      drawArrow(ox, oy, ox, oy + liftPx, '#4af2b2', `L ${aero.CL >= 0 ? '+' : ''}${aero.CL.toFixed(3)}`);
+    }
+
+    // Anchor dot
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(ox, oy, 3.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Mini Drag-Divergence / Wave Drag Curve Inset (Mode A)
+  function drawTunnelDragGraph(aero) {
+    if (!state.showGraph || W < 640) return;
+    const gw = 248;
+    const gh = 92;
+    const gx = 14;
+    const gy = H - gh - 64;
+
+    ctx.save();
+    ctx.fillStyle = 'rgba(8, 13, 26, 0.78)';
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.18)';
+    ctx.lineWidth = 1;
+    roundRect(ctx, gx, gy, gw, gh, 10);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = 'rgba(154, 169, 204, 0.9)';
+    ctx.font = '700 9.5px ui-monospace, Consolas, monospace';
+    ctx.fillText('WAVE DRAG COEFFICIENT C_D(M)', gx + 10, gy + 15);
+
+    const px0 = gx + 12;
+    const px1 = gx + gw - 12;
+    const py0 = gy + 24;
+    const py1 = gy + gh - 16;
+
+    // Transonic shaded band (0.8 -> 1.2)
+    const xSub = lerp(px0, px1, (0.80 - 0.2) / 3.8);
+    const xSup = lerp(px0, px1, (1.20 - 0.2) / 3.8);
+    ctx.fillStyle = 'rgba(255, 190, 92, 0.1)';
+    ctx.fillRect(xSub, py0, xSup - xSub, py1 - py0);
+
+    // M=1 vertical line
+    const xSonic = lerp(px0, px1, (1.0 - 0.2) / 3.8);
+    ctx.strokeStyle = 'rgba(255, 190, 92, 0.35)';
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.moveTo(xSonic, py0);
+    ctx.lineTo(xSonic, py1);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Plot analytical CD(M) curve for current body
+    const savedM = state.mach;
+    let maxCd = 0.45;
+    const pts = [];
+    for (let i = 0; i <= 56; i++) {
+      const mSample = 0.20 + (i / 56) * 3.80;
+      state.mach = mSample;
+      const a = computeTunnelAero();
+      if (a.CD > maxCd) maxCd = a.CD;
+      pts.push({ m: mSample, cd: a.CD });
+    }
+    state.mach = savedM;
+
+    ctx.strokeStyle = '#58dcff';
+    ctx.lineWidth = 1.75;
+    ctx.beginPath();
+    pts.forEach((pt, idx) => {
+      const x = lerp(px0, px1, (pt.m - 0.2) / 3.8);
+      const y = lerp(py1, py0 + 4, clamp(pt.cd / (maxCd * 1.1), 0, 1));
+      if (idx === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+
+    // Live operating marker
+    const curX = lerp(px0, px1, (aero.M - 0.2) / 3.8);
+    const curY = lerp(py1, py0 + 4, clamp(aero.CD / (maxCd * 1.1), 0, 1));
+    ctx.fillStyle = '#ffbe5c';
+    ctx.beginPath();
+    ctx.arc(curX, curY, 4.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#040711';
+    ctx.lineWidth = 1.4;
+    ctx.stroke();
+
+    // Axis ticks
+    ctx.fillStyle = 'rgba(130, 150, 190, 0.75)';
+    ctx.font = '600 8.5px ui-monospace, Consolas, monospace';
+    ctx.fillText('0.2', px0, gy + gh - 4);
+    ctx.fillText('M=1', xSonic - 9, gy + gh - 4);
+    ctx.fillText('4.0', px1 - 16, gy + gh - 4);
+
+    ctx.restore();
+  }
+
+  // =========================================================================
+  // 9. RENDERING: MODE B (DE LAVAL ROCKET NOZZLE & MACH DIAMONDS)
+  // =========================================================================
+  function getPlumeEnvelope(f, noz, layout) {
+    // f in [0, 1] along exhaust plume from exit to xPlumeEnd
+    // Returns half-width in pixels
+    const rExitPx = (Math.sqrt(noz.ar) / 2.65) * layout.scaleY;
+    const pePa = noz.peOverPa;
+    const pa = noz.paKpa;
+
+    if (pa < 1.2) {
+      // Space Vacuum: dramatic Falcon-9 upper-stage bell ballooning!
+      const swell = 1 + 3.4 * Math.pow(f, 0.72);
+      return rExitPx * swell;
+    }
+
+    if (pePa < 0.92) {
+      // Overexpanded: ambient pressure pinches jet inward with periodic Mach diamond nodes!
+      const pinch = clamp((1 - pePa) * 0.42, 0.05, 0.36);
+      const phase = f * noz.cellFreq * 2.55;
+      const osc = -Math.sin(phase) * pinch * Math.exp(-f * 1.45);
+      const shearSpread = 1 + f * 0.24;
+      return rExitPx * Math.max(0.45, (1 - pinch * 0.28 + osc) * shearSpread);
+    }
+
+    if (pePa > 1.12) {
+      // Underexpanded: expands outward into barrel cells
+      const expand = clamp(Math.log(pePa) * 0.48, 0.12, 1.85);
+      const phase = f * noz.cellFreq * 1.75;
+      const osc = Math.sin(phase) * expand * 0.45 * Math.exp(-f * 1.05);
+      const baseGrowth = 1 + expand * Math.pow(f, 0.62) * 0.85;
+      return rExitPx * Math.max(0.8, baseGrowth + osc);
+    }
+
+    // Ideally expanded: straight razor-clean beam
+    return rExitPx * (1 + f * 0.11);
+  }
+
+  function drawNozzleScene(dt, noz) {
+    const layout = getNozzleLayout();
+    const { cy, scaleY, xChamberStart, xThroat, xExit, xPlumeEnd } = layout;
+    const plumeLen = xPlumeEnd - xExit;
+    const rUnitPx = scaleY / 2.65;
+
+    // 1. Deep aerospace test-stand backdrop (shifts to starlit vacuum as altitude rises!)
+    const vacFrac = smoothstep(25, 0.5, noz.paKpa);
+    const bgGrad = ctx.createRadialGradient(xExit + plumeLen * 0.25, cy, 40, xExit + plumeLen * 0.2, cy, Math.max(W, H) * 0.8);
+    bgGrad.addColorStop(0, vacFrac > 0.5 ? '#120a24' : '#12101f');
+    bgGrad.addColorStop(0.5, '#060916');
+    bgGrad.addColorStop(1, '#03050d');
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, W, H);
+
+    // Subtle test-stand grid or stars at high altitude
+    if (vacFrac > 0.15) {
+      ctx.save();
+      for (let i = 0; i < 65; i++) {
+        const sx = ((i * 197.3) % 1) * W;
+        const sy = ((i * 431.7) % 1) * (H - layout.graphH);
+        const tw = 0.5 + 0.5 * Math.sin(state.time * 2 + i);
+        ctx.fillStyle = `rgba(210, 230, 255, ${vacFrac * (0.15 + 0.45 * tw)})`;
+        ctx.fillRect(sx, sy, i % 4 === 0 ? 2 : 1.2, i % 4 === 0 ? 2 : 1.2);
+      }
+      ctx.restore();
+    }
+
+    // Subtle calibration grid
+    ctx.save();
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.04)';
+    ctx.lineWidth = 1;
+    for (let x = Math.floor(xChamberStart); x < W; x += 50) {
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+    }
+    for (let y = cy % 50; y < H; y += 50) {
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+    }
+    ctx.restore();
+
+    // 2. SUPERSONIC EXHAUST PLUME & MACH SHOCK DIAMONDS
+    ctx.save();
+    const segs = 90;
+    const flicker = 0.96 + 0.04 * Math.sin(state.time * 47);
+
+    // Outer luminous exhaust glow envelope
+    ctx.beginPath();
+    for (let i = 0; i <= segs; i++) {
+      const f = i / segs;
+      const x = xExit + f * plumeLen;
+      const env = getPlumeEnvelope(f, noz, layout);
+      if (i === 0) ctx.moveTo(x, cy - env * 1.32); else ctx.lineTo(x, cy - env * 1.32);
+    }
+    for (let i = segs; i >= 0; i--) {
+      const f = i / segs;
+      const x = xExit + f * plumeLen;
+      const env = getPlumeEnvelope(f, noz, layout);
+      ctx.lineTo(x, cy + env * 1.32);
+    }
+    ctx.closePath();
+
+    const outerGrad = ctx.createLinearGradient(xExit, cy, xPlumeEnd, cy);
+    if (noz.paKpa < 3) {
+      // Vacuum violet-cyan ionized bell plume
+      outerGrad.addColorStop(0, `rgba(255, 195, 115, ${0.42 * flicker})`);
+      outerGrad.addColorStop(0.25, `rgba(195, 105, 255, ${0.26 * flicker})`);
+      outerGrad.addColorStop(0.65, `rgba(95, 155, 255, ${0.12 * flicker})`);
+      outerGrad.addColorStop(1, 'rgba(60, 110, 255, 0)');
+    } else {
+      outerGrad.addColorStop(0, `rgba(255, 175, 80, ${0.46 * flicker})`);
+      outerGrad.addColorStop(0.35, `rgba(255, 105, 78, ${0.24 * flicker})`);
+      outerGrad.addColorStop(0.78, `rgba(145, 95, 255, ${0.09 * flicker})`);
+      outerGrad.addColorStop(1, 'rgba(80, 90, 220, 0)');
+    }
+    ctx.fillStyle = outerGrad;
+    ctx.fill();
+
+    // Main collimated supersonic plasma core
+    ctx.beginPath();
+    for (let i = 0; i <= segs; i++) {
+      const f = i / segs;
+      const x = xExit + f * plumeLen;
+      const env = getPlumeEnvelope(f, noz, layout);
+      if (i === 0) ctx.moveTo(x, cy - env); else ctx.lineTo(x, cy - env);
+    }
+    for (let i = segs; i >= 0; i--) {
+      const f = i / segs;
+      const x = xExit + f * plumeLen;
+      const env = getPlumeEnvelope(f, noz, layout);
+      ctx.lineTo(x, cy + env);
+    }
+    ctx.closePath();
+
+    const coreGrad = ctx.createLinearGradient(xExit, cy, xPlumeEnd, cy);
+    if (noz.paKpa < 2) {
+      coreGrad.addColorStop(0, 'rgba(255, 245, 210, 0.85)');
+      coreGrad.addColorStop(0.18, 'rgba(255, 170, 95, 0.55)');
+      coreGrad.addColorStop(0.55, 'rgba(165, 115, 255, 0.24)');
+      coreGrad.addColorStop(1, 'rgba(80, 140, 255, 0.02)');
+    } else if (noz.peOverPa >= 0.85 && noz.peOverPa <= 1.22) {
+      // Ideally expanded: razor-clean bright cyan-white-amber beam!
+      coreGrad.addColorStop(0, 'rgba(255, 250, 232, 0.94)');
+      coreGrad.addColorStop(0.32, 'rgba(135, 225, 255, 0.62)');
+      coreGrad.addColorStop(0.72, 'rgba(255, 155, 92, 0.28)');
+      coreGrad.addColorStop(1, 'rgba(120, 85, 220, 0.02)');
+    } else {
+      coreGrad.addColorStop(0, 'rgba(255, 238, 195, 0.88)');
+      coreGrad.addColorStop(0.28, 'rgba(255, 148, 86, 0.52)');
+      coreGrad.addColorStop(0.7, 'rgba(180, 92, 240, 0.22)');
+      coreGrad.addColorStop(1, 'rgba(90, 75, 200, 0.02)');
+    }
+    ctx.fillStyle = coreGrad;
+    ctx.fill();
+
+    // Draw Blazing Mach Shock Diamonds & X-Shock Cells!
+    if (state.showShocks && noz.paKpa > 1.2) {
+      const pePa = noz.peOverPa;
+      const isOver = pePa < 0.90;
+      const isUnder = pePa > 1.14;
+      const strength = clamp(Math.abs(Math.log(clamp(pePa, 0.16, 12))) * 0.72, 0, 1);
+
+      if ((isOver || isUnder) && strength > 0.08) {
+        const nCells = isOver ? 7 : 5;
+        const cellStep = (Math.PI / (noz.cellFreq * (isOver ? 2.55 : 1.75))) * 2;
+
+        for (let c = 0; c < nCells; c++) {
+          const fStart = c * cellStep;
+          const fMid = (c + 0.5) * cellStep;
+          const fEnd = (c + 1.0) * cellStep;
+          if (fStart > 0.96) break;
+
+          const atten = Math.exp(-fMid * (isOver ? 1.7 : 1.35)) * strength;
+          const xS = xExit + fStart * plumeLen;
+          const xM = xExit + fMid * plumeLen;
+          const xE = xExit + Math.min(1.0, fEnd) * plumeLen;
+          const rS = getPlumeEnvelope(fStart, noz, layout);
+          const rM = getPlumeEnvelope(Math.min(1, fMid), noz, layout);
+          const rE = getPlumeEnvelope(Math.min(1, fEnd), noz, layout);
+
+          // Oblique criss-cross shock lines inside the plume
+          ctx.strokeStyle = isOver
+            ? `rgba(255, 240, 200, ${0.72 * atten})`
+            : `rgba(175, 215, 255, ${0.52 * atten})`;
+          ctx.lineWidth = 1.6 * (0.5 + 0.5 * atten);
+
+          if (isOver) {
+            // Inward compression shocks converging to Mach diamond node at xM
+            const diskH = pePa < 0.55 ? rM * clamp((0.58 - pePa) * 1.15, 0.08, 0.42) : 2;
+            ctx.beginPath();
+            ctx.moveTo(xS, cy - rS * 0.96);
+            ctx.lineTo(xM, cy - diskH);
+            ctx.moveTo(xS, cy + rS * 0.96);
+            ctx.lineTo(xM, cy + diskH);
+            // Reflected expansion waves back out to xE
+            ctx.moveTo(xM, cy - diskH);
+            ctx.lineTo(xE, cy - rE * 0.95);
+            ctx.moveTo(xM, cy + diskH);
+            ctx.lineTo(xE, cy + rE * 0.95);
+            ctx.stroke();
+
+            // Incandescent glowing Mach Shock Diamond core!
+            const dW = (xE - xS) * 0.34;
+            const dH = Math.max(diskH * 1.4, rM * 0.58);
+            const dg = ctx.createRadialGradient(xM, cy, 1, xM, cy, Math.max(dW, dH));
+            dg.addColorStop(0, `rgba(255, 255, 255, ${0.98 * atten})`);
+            dg.addColorStop(0.28, `rgba(255, 224, 130, ${0.88 * atten})`);
+            dg.addColorStop(0.62, `rgba(255, 118, 95, ${0.42 * atten})`);
+            dg.addColorStop(1, 'rgba(180, 90, 255, 0)');
+            ctx.fillStyle = dg;
+            ctx.beginPath();
+            ctx.ellipse(xM, cy, dW, dH, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Crisp normal Mach Disk vertical bar when strongly overexpanded
+            if (diskH > 3) {
+              ctx.strokeStyle = `rgba(255, 255, 255, ${0.95 * atten})`;
+              ctx.lineWidth = 2.6;
+              ctx.beginPath();
+              ctx.moveTo(xM, cy - diskH);
+              ctx.lineTo(xM, cy + diskH);
+              ctx.stroke();
+            }
+          } else {
+            // Underexpanded barrel shock + Prandtl-Meyer expansion lines from nozzle lip
+            ctx.beginPath();
+            ctx.moveTo(xS, cy - rS * 0.85);
+            ctx.quadraticCurveTo(xM, cy - rM * 0.72, xE, cy - rE * 0.35);
+            ctx.moveTo(xS, cy + rS * 0.85);
+            ctx.quadraticCurveTo(xM, cy + rM * 0.72, xE, cy + rE * 0.35);
+            ctx.stroke();
+
+            // Glowing Mach barrel focal spot at cell end
+            const dg = ctx.createRadialGradient(xE, cy, 1, xE, cy, rE * 0.72);
+            dg.addColorStop(0, `rgba(255, 245, 220, ${0.72 * atten})`);
+            dg.addColorStop(0.45, `rgba(185, 130, 255, ${0.32 * atten})`);
+            dg.addColorStop(1, 'rgba(90, 120, 255, 0)');
+            ctx.fillStyle = dg;
+            ctx.beginPath();
+            ctx.arc(xE, cy, rE * 0.72, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+      }
+    }
+
+    // Lip Prandtl-Meyer Expansion Fans in Vacuum / Underexpanded mode
+    if (state.showShocks && (noz.peOverPa > 1.15 || noz.paKpa < 2)) {
+      const rExitPx = (Math.sqrt(noz.ar) / 2.65) * layout.scaleY;
+      const fanSpread = noz.paKpa < 2 ? 0.65 : clamp(Math.log(noz.peOverPa) * 0.22, 0.12, 0.55);
+      [-1, 1].forEach((side) => {
+        for (let k = 0; k < 5; k++) {
+          const ang = side * lerp(0.05, fanSpread, k / 4);
+          const len = plumeLen * 0.38;
+          ctx.strokeStyle = 'rgba(165, 190, 255, 0.2)';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(xExit, cy + side * rExitPx);
+          ctx.lineTo(xExit + len * Math.cos(ang), cy + side * rExitPx + len * Math.sin(ang));
+          ctx.stroke();
+        }
+      });
+    }
+    ctx.restore();
+
+    // 3. CUTAWAY COMBUSTION CHAMBER & DE LAVAL BELL NOZZLE
+    ctx.save();
+    const nozLen = xExit - xChamberStart;
+    const nWall = 64;
+
+    // Internal plasma fill inside combustion chamber & nozzle
+    ctx.beginPath();
+    for (let i = 0; i <= nWall; i++) {
+      const s = i / nWall;
+      const x = xChamberStart + s * nozLen;
+      const r = nozzleRadiusNorm(s) * rUnitPx;
+      if (i === 0) ctx.moveTo(x, cy - r); else ctx.lineTo(x, cy - r);
+    }
+    for (let i = nWall; i >= 0; i--) {
+      const s = i / nWall;
+      const x = xChamberStart + s * nozLen;
+      const r = nozzleRadiusNorm(s) * rUnitPx;
+      ctx.lineTo(x, cy + r);
+    }
+    ctx.closePath();
+
+    const intGrad = ctx.createLinearGradient(xChamberStart, cy, xExit, cy);
+    intGrad.addColorStop(0.0, 'rgba(255, 130, 50, 0.92)');
+    intGrad.addColorStop(0.28, 'rgba(255, 195, 95, 0.95)');
+    intGrad.addColorStop(0.54, 'rgba(255, 252, 238, 0.98)'); // Hot choked sonic throat!
+    intGrad.addColorStop(0.78, 'rgba(255, 215, 145, 0.84)');
+    intGrad.addColorStop(1.0, 'rgba(255, 190, 125, 0.72)');
+    ctx.fillStyle = intGrad;
+    ctx.fill();
+
+    // Glowing Sonic Throat Line (M = 1.00 Choked!)
+    const rThroatPx = 1.0 * rUnitPx;
+    ctx.strokeStyle = 'rgba(88, 220, 255, 0.9)';
+    ctx.lineWidth = 2.0;
+    ctx.setLineDash([4, 3]);
+    ctx.beginPath();
+    ctx.moveTo(xThroat, cy - rThroatPx);
+    ctx.lineTo(xThroat, cy + rThroatPx);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Metallic cutaway nozzle walls (upper & lower shells)
+    const wallThick = 11;
+    [-1, 1].forEach((side) => {
+      ctx.beginPath();
+      for (let i = 0; i <= nWall; i++) {
+        const s = i / nWall;
+        const x = xChamberStart + s * nozLen;
+        const r = nozzleRadiusNorm(s) * rUnitPx;
+        if (i === 0) ctx.moveTo(x, cy + side * r); else ctx.lineTo(x, cy + side * r);
+      }
+      for (let i = nWall; i >= 0; i--) {
+        const s = i / nWall;
+        const x = xChamberStart + s * nozLen;
+        const r = nozzleRadiusNorm(s) * rUnitPx + wallThick * (s > 0.54 ? lerp(1.0, 0.55, (s - 0.54) / 0.46) : 1.15);
+        ctx.lineTo(x, cy + side * r);
+      }
+      ctx.closePath();
+
+      const wallGrad = ctx.createLinearGradient(xChamberStart, cy, xExit, cy);
+      wallGrad.addColorStop(0, '#3a4b6b');
+      wallGrad.addColorStop(0.5, '#60759c');
+      wallGrad.addColorStop(0.65, '#465878');
+      wallGrad.addColorStop(1, '#26344f');
+      ctx.fillStyle = wallGrad;
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(180, 212, 255, 0.68)';
+      ctx.lineWidth = 1.3;
+      ctx.stroke();
+    });
+
+    // Injector faceplate at left end of combustion chamber
+    const rChPx = nozzleRadiusNorm(0) * rUnitPx;
+    ctx.fillStyle = '#25334d';
+    ctx.strokeStyle = 'rgba(165, 200, 255, 0.6)';
+    ctx.lineWidth = 1.4;
+    ctx.fillRect(xChamberStart - 12, cy - rChPx - 12, 14, (rChPx + 12) * 2);
+    ctx.strokeRect(xChamberStart - 12, cy - rChPx - 12, 14, (rChPx + 12) * 2);
+
+    // Nozzle station labels
+    ctx.font = '700 9.5px ui-monospace, Consolas, monospace';
+    ctx.fillStyle = 'rgba(255, 200, 120, 0.85)';
+    ctx.fillText('CHAMBER', xChamberStart + 6, cy - rChPx - 18);
+    ctx.fillStyle = '#58dcff';
+    ctx.fillText('THROAT M=1.0', xThroat - 34, cy - rThroatPx - 20);
+    ctx.fillStyle = 'rgba(200, 220, 255, 0.82)';
+    const rExPx = nozzleRadiusNorm(1) * rUnitPx;
+    ctx.fillText(`EXIT M=${noz.Me.toFixed(2)}`, xExit - 32, cy - rExPx - 16);
+
+    ctx.restore();
+
+    // 4. HIGH-SPEED SUPERSONIC EXHAUST PARTICLES
+    if (state.showParticles) {
+      ctx.save();
+      ctx.lineCap = 'round';
+      for (let i = 0; i < NUM_NOZ_P; i++) {
+        const p = nozzleParticles[i];
+        let x, y, localM;
+        if (p.s < 0.45) {
+          const sNorm = p.s / 0.45;
+          x = xChamberStart + sNorm * (xExit - xChamberStart);
+          const rPx = nozzleRadiusNorm(sNorm) * rUnitPx;
+          y = cy + p.rFrac * rPx * 0.92;
+          const idx = clamp(Math.floor(sNorm * (noz.N_NOZ - 1)), 0, noz.N_NOZ - 1);
+          localM = noz.profileM[idx];
+        } else {
+          const f = (p.s - 0.45) / 1.5;
+          x = xExit + f * plumeLen;
+          const env = getPlumeEnvelope(clamp(f, 0, 1), noz, layout);
+          y = cy + p.rFrac * env * 0.95;
+          const idx = clamp(noz.N_NOZ + Math.floor(f * (noz.N_PLUME - 1)), noz.N_NOZ, noz.N_NOZ + noz.N_PLUME - 1);
+          localM = noz.profileM[idx];
+        }
+
+        if (!state.paused) {
+          const speed = (0.18 + localM * 0.48) * state.flowSpeed;
+          p.px = x;
+          p.py = y;
+          p.s += speed * dt;
+          if (p.s > 1.95) {
+            resetNozzleParticle(p, false);
+            continue;
+          }
+        }
+
+        if (p.first) { p.px = x; p.py = y; p.first = false; continue; }
+        const dx = x - p.px;
+        const dy = y - p.py;
+        if (dx * dx + dy * dy > 14000) continue;
+
+        const fade = p.s < 0.45 ? 0.72 : clamp(1 - (p.s - 0.45) / 1.55, 0, 1);
+        const streak = clamp(4 + localM * 8.5, 4, 30);
+        const ang = Math.atan2(dy, Math.max(0.5, dx));
+        const isHot = p.s < 0.65 || (noz.peOverPa < 0.9 && Math.abs(p.rFrac) < 0.35);
+        ctx.strokeStyle = isHot
+          ? `rgba(255, 240, 195, ${0.55 * fade})`
+          : (noz.paKpa < 3 ? `rgba(170, 165, 255, ${0.42 * fade})` : `rgba(255, 168, 102, ${0.45 * fade})`);
+        ctx.lineWidth = p.size * 0.85;
+        ctx.beginPath();
+        ctx.moveTo(x - Math.cos(ang) * streak, y - Math.sin(ang) * streak);
+        ctx.lineTo(x, y);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    // 5. SYNCED 1D ISENTROPIC M(x) & P(x) PROFILE GRAPH DIRECTLY BENEATH NOZZLE
+    if (state.showGraph) {
+      drawNozzleProfileGraph(noz, layout);
+    }
+  }
+
+  function drawNozzleProfileGraph(noz, layout) {
+    const gx = layout.xChamberStart - 12;
+    const gw = layout.xPlumeEnd - gx + 12;
+    const gh = Math.max(132, layout.graphH - 18);
+    const gy = H - gh - 64;
+
+    ctx.save();
+    // Glassmorphic chart frame
+    ctx.fillStyle = 'rgba(7, 12, 24, 0.82)';
+    ctx.strokeStyle = 'rgba(148, 179, 255, 0.2)';
+    ctx.lineWidth = 1;
+    roundRect(ctx, gx, gy, gw, gh, 12);
+    ctx.fill();
+    ctx.stroke();
+
+    const pyTop = gy + 24;
+    const pyBot = gy + gh - 18;
+    const plotH = pyBot - pyTop;
+
+    // Header & Legend
+    ctx.font = '700 10px ui-monospace, Consolas, monospace';
+    ctx.fillStyle = '#58dcff';
+    ctx.fillText('━ MACH M(x)', gx + 12, gy + 15);
+    ctx.fillStyle = '#ffbe5c';
+    ctx.fillText('━ PRESSURE P(x)/P_c', gx + 106, gy + 15);
+    ctx.fillStyle = 'rgba(255, 110, 145, 0.9)';
+    ctx.fillText('┈ AMBIENT Pₐ', gx + 246, gy + 15);
+
+    // Horizontal M = 1.0 sonic line (Mach axis: 0 -> maxM)
+    const maxM = Math.max(4.5, noz.Me * 1.38);
+    const ySonic = pyBot - (1.0 / maxM) * plotH;
+    ctx.strokeStyle = 'rgba(88, 220, 255, 0.28)';
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(layout.xChamberStart, ySonic);
+    ctx.lineTo(layout.xPlumeEnd, ySonic);
+    ctx.stroke();
+
+    // Vertical aligned station guides (Throat & Exit) synced 1:1 with nozzle above!
+    ctx.strokeStyle = 'rgba(88, 220, 255, 0.35)';
+    ctx.beginPath();
+    ctx.moveTo(layout.xThroat, pyTop);
+    ctx.lineTo(layout.xThroat, pyBot);
+    ctx.stroke();
+
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+    ctx.beginPath();
+    ctx.moveTo(layout.xExit, pyTop);
+    ctx.lineTo(layout.xExit, pyBot);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Ambient pressure Pa horizontal reference line (log-scaled P/Pc for clarity across orders of magnitude!)
+    const mapPToY = (pKpa) => {
+      // Normalized log compression so both Pc (MPa) and Pa/Pe (kPa) remain vividly legible
+      const ratio = clamp(pKpa / noz.pcKpa, 0.0005, 1.0);
+      const norm = clamp((Math.log10(ratio) + 3.0) / 3.0, 0, 1);
+      return pyBot - norm * plotH;
+    };
+
+    const yPa = mapPToY(Math.max(0.2, noz.paKpa));
+    ctx.strokeStyle = 'rgba(255, 96, 131, 0.72)';
+    ctx.lineWidth = 1.3;
+    ctx.setLineDash([5, 4]);
+    ctx.beginPath();
+    ctx.moveTo(layout.xExit - 12, yPa);
+    ctx.lineTo(layout.xPlumeEnd, yPa);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Plot Static Pressure P(x) curve (amber)
+    const totalPts = noz.N_NOZ + noz.N_PLUME;
+    ctx.strokeStyle = '#ffbe5c';
+    ctx.lineWidth = 2.0;
+    ctx.beginPath();
+    for (let i = 0; i < totalPts; i++) {
+      const xf = noz.profileXFrac[i];
+      const x = xf <= 0.45
+        ? lerp(layout.xChamberStart, layout.xExit, xf / 0.45)
+        : lerp(layout.xExit, layout.xPlumeEnd, (xf - 0.45) / 0.54);
+      const y = mapPToY(noz.profileP[i]);
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    // Plot Mach M(x) curve (cyan)
+    ctx.strokeStyle = '#58dcff';
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    for (let i = 0; i < totalPts; i++) {
+      const xf = noz.profileXFrac[i];
+      const x = xf <= 0.45
+        ? lerp(layout.xChamberStart, layout.xExit, xf / 0.45)
+        : lerp(layout.xExit, layout.xPlumeEnd, (xf - 0.45) / 0.54);
+      const y = pyBot - clamp(noz.profileM[i] / maxM, 0, 1) * plotH;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    // Sonic Throat intersection dot
+    ctx.fillStyle = '#58dcff';
+    ctx.beginPath();
+    ctx.arc(layout.xThroat, ySonic, 4, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Axis annotations
+    ctx.fillStyle = 'rgba(154, 169, 204, 0.85)';
+    ctx.font = '600 9px ui-monospace, Consolas, monospace';
+    ctx.fillText('M=1.0', layout.xChamberStart + 2, ySonic - 4);
+    ctx.fillText('Throat', layout.xThroat - 16, gy + gh - 5);
+    ctx.fillText('Nozzle Exit', layout.xExit - 26, gy + gh - 5);
+    ctx.fillText('Supersonic Exhaust Plume', layout.xExit + (layout.xPlumeEnd - layout.xExit) * 0.36, gy + gh - 5);
+
+    ctx.restore();
+  }
+
+  // =========================================================================
+  // 10. LIVE CURSOR AERODYNAMIC PROBE
+  // =========================================================================
+  function drawFlowProbe(aero, noz) {
+    if (!state.showProbe || !state.mouseInside || state.draggingBody || state.draggingNozzleAlt) return;
+    const mx = state.mouseX;
+    const my = state.mouseY;
+
+    let lines = [];
+    if (state.lab === 'tunnel') {
+      const tc = getTunnelCenter();
+      const nx = (mx - tc.cx) / tc.scale;
+      const ny = (my - tc.cy) / tc.scale;
+      const s = sampleTunnelFlow(nx, ny, aero);
+      if (s.inside) return;
+      lines = [
+        `M  ${s.m.toFixed(2)}`,
+        `P/P₁ ${s.p.toFixed(2)}×`,
+        `T  ${Math.round(s.t * T_INF)} K`
+      ];
+    } else {
+      const layout = getNozzleLayout();
+      if (mx < layout.xChamberStart || mx > layout.xPlumeEnd) return;
+      let idx = 0;
+      if (mx <= layout.xExit) {
+        const f = clamp((mx - layout.xChamberStart) / (layout.xExit - layout.xChamberStart), 0, 1);
+        idx = Math.floor(f * (noz.N_NOZ - 1));
+      } else {
+        const f = clamp((mx - layout.xExit) / (layout.xPlumeEnd - layout.xExit), 0, 1);
+        idx = noz.N_NOZ + Math.floor(f * (noz.N_PLUME - 1));
+      }
+      const mLoc = noz.profileM[idx];
+      const pLoc = noz.profileP[idx];
+      lines = [
+        `M(x) ${mLoc.toFixed(2)}`,
+        `P(x) ${pLoc >= 1000 ? (pLoc / 1000).toFixed(2) + ' MPa' : pLoc.toFixed(1) + ' kPa'}`
+      ];
+    }
+
+    ctx.save();
+    // Crosshair reticle
+    ctx.strokeStyle = 'rgba(88, 220, 255, 0.72)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(mx, my, 7, 0, Math.PI * 2);
+    ctx.moveTo(mx - 12, my); ctx.lineTo(mx - 5, my);
+    ctx.moveTo(mx + 5, my); ctx.lineTo(mx + 12, my);
+    ctx.moveTo(mx, my - 12); ctx.lineTo(mx, my - 5);
+    ctx.moveTo(mx, my + 5); ctx.lineTo(mx, my + 12);
+    ctx.stroke();
+
+    const bx = mx + 14 + 108 > W ? mx - 122 : mx + 14;
+    const by = my - 14 < 12 ? my + 14 : my - 14 - lines.length * 14;
+    ctx.fillStyle = 'rgba(6, 11, 23, 0.86)';
+    ctx.strokeStyle = 'rgba(88, 220, 255, 0.35)';
+    roundRect(ctx, bx, by, 108, lines.length * 14 + 10, 7);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = '#e5f4ff';
+    ctx.font = '600 10.5px ui-monospace, Consolas, monospace';
+    lines.forEach((ln, i) => {
+      ctx.fillText(ln, bx + 8, by + 16 + i * 14);
+    });
+    ctx.restore();
+  }
+
+  function roundRect(c, x, y, w, h, r) {
+    c.beginPath();
+    c.moveTo(x + r, y);
+    c.arcTo(x + w, y, x + w, y + h, r);
+    c.arcTo(x + w, y + h, x, y + h, r);
+    c.arcTo(x, y + h, x, y, r);
+    c.arcTo(x, y, x + w, y, r);
+    c.closePath();
+  }
+
+  // =========================================================================
+  // 11. DOM BINDINGS & HUD TELEMETRY UPDATES
+  // =========================================================================
+  const el = {
+    modeBadge: document.getElementById('mode-badge'),
+    regimePill: document.getElementById('regime-pill'),
+    telL1: document.getElementById('tel-l1'), telV1: document.getElementById('tel-v1'),
+    telL2: document.getElementById('tel-l2'), telV2: document.getElementById('tel-v2'),
+    telL3: document.getElementById('tel-l3'), telV3: document.getElementById('tel-v3'),
+    telL4: document.getElementById('tel-l4'), telV4: document.getElementById('tel-v4'),
+    telL5: document.getElementById('tel-l5'), telV5: document.getElementById('tel-v5'),
+    telL6: document.getElementById('tel-l6'), telV6: document.getElementById('tel-v6'),
+    meta1: document.getElementById('meta-1'),
+    meta2: document.getElementById('meta-2'),
+    meta3: document.getElementById('meta-3'),
+    eventBanner: document.getElementById('event-banner'),
+    drawer: document.getElementById('control-drawer'),
+    hintPill: document.getElementById('hint-pill'),
+
+    btnLabTunnel: document.getElementById('btn-lab-tunnel'),
+    btnLabNozzle: document.getElementById('btn-lab-nozzle'),
+    groupTunnel: document.getElementById('group-tunnel'),
+    groupNozzle: document.getElementById('group-nozzle'),
+
+    tabBtnControls: document.getElementById('tab-btn-controls'),
+    tabBtnPresets: document.getElementById('tab-btn-presets'),
+    tabBtnDisplay: document.getElementById('tab-btn-display'),
+    paneControls: document.getElementById('pane-controls'),
+    panePresets: document.getElementById('pane-presets'),
+    paneDisplay: document.getElementById('pane-display'),
+
+    // Tunnel sliders & readouts
+    sliderMach: document.getElementById('slider-mach'),
+    valMach: document.getElementById('val-mach'),
+    tunnelSpeedMs: document.getElementById('tunnel-speed-ms'),
+    sliderAoa: document.getElementById('slider-aoa'),
+    valAoa: document.getElementById('val-aoa'),
+    sliderWedge: document.getElementById('slider-wedge'),
+    valWedge: document.getElementById('val-wedge'),
+    bodyWedge: document.getElementById('body-wedge'),
+    bodyCapsule: document.getElementById('body-capsule'),
+    bodyAirfoil: document.getElementById('body-airfoil'),
+    bodyRocket: document.getElementById('body-rocket'),
+    gasAir: document.getElementById('gas-air'),
+    gasCo2: document.getElementById('gas-co2'),
+    gasHe: document.getElementById('gas-he'),
+    btnMachSweep: document.getElementById('btn-mach-sweep'),
+    btnLevelAoa: document.getElementById('btn-level-aoa'),
+
+    // Nozzle sliders & readouts
+    sliderPa: document.getElementById('slider-pa'),
+    valPa: document.getElementById('val-pa'),
+    nozzleAltLabel: document.getElementById('nozzle-alt-label'),
+    sliderPc: document.getElementById('slider-pc'),
+    valPc: document.getElementById('val-pc'),
+    sliderAr: document.getElementById('slider-ar'),
+    valAr: document.getElementById('val-ar'),
+    propRp1: document.getElementById('prop-rp1'),
+    propLh2: document.getElementById('prop-lh2'),
+    propCold: document.getElementById('prop-cold'),
+    btnAscentDemo: document.getElementById('btn-ascent-demo'),
+    btnMatchPa: document.getElementById('btn-match-pa'),
+
+    // Presets
+    presetWedgeOblique: document.getElementById('preset-wedge-oblique'),
+    presetCapsuleBow: document.getElementById('preset-capsule-bow'),
+    presetTransonic: document.getElementById('preset-transonic'),
+    presetAirfoilLift: document.getElementById('preset-airfoil-lift'),
+    presetMachDiamonds: document.getElementById('preset-mach-diamonds'),
+    presetVacuumPlume: document.getElementById('preset-vacuum-plume'),
+
+    // Display
+    visSchlieren: document.getElementById('vis-schlieren'),
+    visPressure: document.getElementById('vis-pressure'),
+    visMach: document.getElementById('vis-mach'),
+    visTemp: document.getElementById('vis-temp'),
+    chkField: document.getElementById('chk-field'),
+    chkParticles: document.getElementById('chk-particles'),
+    chkShocks: document.getElementById('chk-shocks'),
+    chkCone: document.getElementById('chk-cone'),
+    chkVectors: document.getElementById('chk-vectors'),
+    chkGraph: document.getElementById('chk-graph'),
+    chkProbe: document.getElementById('chk-probe'),
+    sliderContrast: document.getElementById('slider-contrast'),
+    valContrast: document.getElementById('val-contrast'),
+    sliderSpeed: document.getElementById('slider-speed'),
+    valSpeed: document.getElementById('val-speed'),
+
+    // Transport bar
+    btnPlay: document.getElementById('btn-play'),
+    btnReset: document.getElementById('btn-reset'),
+    btnAudio: document.getElementById('btn-audio'),
+    btnDrawer: document.getElementById('btn-drawer'),
+    btnCinema: document.getElementById('btn-cinema'),
+    btnZenRestore: document.getElementById('btn-zen-restore')
+  };
+
+  let bannerTimer = null;
+  function showBanner(text, amber) {
+    el.eventBanner.textContent = text;
+    el.eventBanner.classList.toggle('amber', !!amber);
+    el.eventBanner.classList.add('visible');
+    if (bannerTimer) clearTimeout(bannerTimer);
+    bannerTimer = setTimeout(() => el.eventBanner.classList.remove('visible'), 2300);
+  }
+
+  function syncControlsUI() {
+    const isTunnel = state.lab === 'tunnel';
+    el.btnLabTunnel.className = 'lab-btn' + (isTunnel ? ' active tunnel' : '');
+    el.btnLabNozzle.className = 'lab-btn' + (!isTunnel ? ' active nozzle' : '');
+    el.groupTunnel.classList.toggle('hidden', !isTunnel);
+    el.groupNozzle.classList.toggle('hidden', isTunnel);
+
+    el.modeBadge.textContent = isTunnel ? 'Wind Tunnel' : 'de Laval Nozzle';
+    el.modeBadge.className = 'mode-badge' + (isTunnel ? '' : ' nozzle');
+
+    el.hintPill.innerHTML = isTunnel
+      ? 'Drag body to tilt <strong>AoA (α)</strong> · Hover to probe flow · <kbd>Space</kbd> Pause · <kbd>H</kbd> Cinema'
+      : 'Drag vertically on plume for <strong>Altitude (Pₐ)</strong> · Hover to probe · <kbd>Space</kbd> Pause · <kbd>H</kbd> Cinema';
+
+    // Sliders
+    el.sliderMach.value = state.mach.toFixed(2);
+    el.valMach.textContent = state.mach.toFixed(2);
+    el.sliderAoa.value = state.aoa.toFixed(1);
+    el.valAoa.textContent = (state.aoa >= 0 ? '+' : '') + state.aoa.toFixed(1) + '°';
+    el.sliderWedge.value = state.wedgeDeg.toFixed(1);
+    el.valWedge.textContent = state.wedgeDeg.toFixed(1) + '°';
+
+    el.sliderPa.value = state.pa.toFixed(1);
+    el.valPa.textContent = state.pa < 0.2 ? '0.0 kPa (Vac)' : `${state.pa.toFixed(1)} kPa`;
+    el.sliderPc.value = state.pc.toFixed(2);
+    el.valPc.textContent = `${state.pc.toFixed(2)} MPa`;
+    el.sliderAr.value = state.areaRatio.toFixed(2);
+    el.valAr.textContent = `${state.areaRatio.toFixed(1)} : 1`;
+
+    // Segmented buttons
+    [el.bodyWedge, el.bodyCapsule, el.bodyAirfoil, el.bodyRocket].forEach((b) => {
+      b.classList.toggle('active', b.dataset.body === state.body);
+    });
+    [el.gasAir, el.gasCo2, el.gasHe].forEach((b) => {
+      b.classList.toggle('active', Math.abs(parseFloat(b.dataset.gamma) - state.gamma) < 0.01);
+    });
+    [el.propRp1, el.propLh2, el.propCold].forEach((b) => {
+      const act = Math.abs(parseFloat(b.dataset.pgamma) - state.pGamma) < 0.01;
+      b.classList.toggle('active', act);
+      b.classList.toggle('amber', act);
+    });
+    [el.visSchlieren, el.visPressure, el.visMach, el.visTemp].forEach((b) => {
+      b.classList.toggle('active', b.dataset.vis === state.visMode);
+    });
+    [
+      el.presetWedgeOblique, el.presetCapsuleBow, el.presetTransonic,
+      el.presetAirfoilLift, el.presetMachDiamonds, el.presetVacuumPlume
+    ].forEach((b) => {
+      b.classList.toggle('active', b.dataset.preset === state.activePreset);
+    });
+
+    el.btnMachSweep.classList.toggle('running', state.machSweep);
+    el.btnMachSweep.textContent = state.machSweep ? '■ Stop Sweep' : '▶ Mach Sweep';
+    el.btnAscentDemo.classList.toggle('running', state.ascentDemo);
+    el.btnAscentDemo.textContent = state.ascentDemo ? '■ Stop Ascent' : '▲ Launch Ascent';
+
+    el.btnPlay.textContent = state.paused ? '▶ Play' : '⏸ Pause';
+    el.btnPlay.classList.toggle('active', !state.paused);
+    el.btnAudio.textContent = state.audioOn ? '🔊 Audio' : '🔇 Audio';
+    el.btnAudio.classList.toggle('amber-active', state.audioOn);
+    el.btnDrawer.classList.toggle('active', state.drawerOpen);
+    el.drawer.classList.toggle('collapsed', !state.drawerOpen);
+    document.body.classList.toggle('zen-mode', state.cinema);
+  }
+
+  function updateTelemetryHUD(aero, noz) {
+    if (state.lab === 'tunnel') {
+      el.regimePill.textContent = aero.regime;
+      el.regimePill.className = 'status-pill ' + aero.regimeClass;
+
+      el.telL1.textContent = 'Mach M∞';
+      el.telV1.textContent = `${aero.M.toFixed(2)} M`;
+      el.telL2.textContent = 'Lift C_L';
+      el.telV2.textContent = `${aero.CL >= 0 ? '+' : ''}${aero.CL.toFixed(3)}`;
+      el.telL3.textContent = 'Wave Drag C_D';
+      el.telV3.textContent = aero.CD.toFixed(3);
+      el.telL4.textContent = 'L / D Ratio';
+      el.telV4.textContent = `${aero.LD >= 0 ? '+' : ''}${aero.LD.toFixed(2)}`;
+      el.telL5.textContent = 'Stagnation T₀';
+      el.telV5.textContent = `${Math.round(aero.T0)} K`;
+      el.telL6.textContent = 'Shock P₂ / P₁';
+      el.telV6.textContent = `${aero.pJumpMax.toFixed(2)}×`;
+
+      el.tunnelSpeedMs.textContent = `${Math.round(aero.vInf)} m/s`;
+      const betaStr = aero.M <= 1.02 ? 'Sub/Trans' : (aero.detached ? 'Detached Bow' : `${aero.shockBetaDeg.toFixed(1)}°`);
+      const muStr = aero.M > 1.02 ? `${(aero.mu * RAD).toFixed(1)}°` : '—';
+      el.meta1.innerHTML = `Shock β: <strong>${betaStr}</strong>`;
+      el.meta2.innerHTML = `Mach μ: <strong>${muStr}</strong>`;
+      el.meta3.innerHTML = `AoA α: <strong>${state.aoa >= 0 ? '+' : ''}${state.aoa.toFixed(1)}°</strong>`;
+    } else {
+      el.regimePill.textContent = noz.regime;
+      el.regimePill.className = 'status-pill ' + noz.regimeClass;
+
+      el.telL1.textContent = 'Exit Mach Mₑ';
+      el.telV1.textContent = `${noz.Me.toFixed(2)} M`;
+      el.telL2.textContent = 'Exit Press Pₑ';
+      el.telV2.textContent = `${noz.peKpa.toFixed(1)} kPa`;
+      el.telL3.textContent = 'Ambient Pₐ';
+      el.telV3.textContent = noz.paKpa < 0.2 ? '0.0 kPa' : `${noz.paKpa.toFixed(1)} kPa`;
+      el.telL4.textContent = 'Thrust F';
+      el.telV4.textContent = `${Math.round(noz.thrustKN)} kN`;
+      el.telL5.textContent = 'Specific Imp';
+      el.telV5.textContent = `${Math.round(noz.isp)} s`;
+      el.telL6.textContent = 'Ratio Pₑ / Pₐ';
+      el.telV6.textContent = noz.paKpa < 0.3 ? '∞ (Vac)' : `${noz.peOverPa.toFixed(2)}×`;
+
+      el.nozzleAltLabel.textContent = noz.paKpa < 0.2 ? 'Vacuum (>85 km)' : `${noz.altKm.toFixed(1)} km`;
+      el.meta1.innerHTML = `Throat: <strong>M* = 1.00 Choked</strong>`;
+      el.meta2.innerHTML = `vₑ: <strong>${Math.round(noz.ve)} m/s</strong>`;
+      el.meta3.innerHTML = `P_c: <strong>${state.pc.toFixed(1)} MPa</strong>`;
+    }
+  }
+
+  // =========================================================================
+  // 12. EVENT LISTENERS & INTERACTIONS
+  // =========================================================================
+  function switchTab(tabName) {
+    [el.tabBtnControls, el.tabBtnPresets, el.tabBtnDisplay].forEach((b) => {
+      b.classList.toggle('active', b.dataset.tab === tabName);
+    });
+    el.paneControls.classList.toggle('active', tabName === 'controls');
+    el.panePresets.classList.toggle('active', tabName === 'presets');
+    el.paneDisplay.classList.toggle('active', tabName === 'display');
+  }
+  [el.tabBtnControls, el.tabBtnPresets, el.tabBtnDisplay].forEach((b) => {
+    b.addEventListener('click', () => switchTab(b.dataset.tab));
+  });
+
+  function setLab(lab) {
+    state.lab = lab;
+    state.machSweep = false;
+    state.ascentDemo = false;
+    syncControlsUI();
+    updateAudioParams();
+  }
+  el.btnLabTunnel.addEventListener('click', () => setLab('tunnel'));
+  el.btnLabNozzle.addEventListener('click', () => setLab('nozzle'));
+
+  function applyPreset(key) {
+    const p = PRESETS[key];
+    if (!p) return;
+    state.activePreset = key;
+    state.lab = p.lab;
+    state.machSweep = false;
+    state.ascentDemo = false;
+    if (p.lab === 'tunnel') {
+      state.body = p.body;
+      state.mach = p.mach;
+      state.prevMach = p.mach;
+      state.aoa = p.aoa;
+      state.wedgeDeg = p.wedgeDeg;
+      state.gamma = p.gamma;
+      state.visMode = p.visMode || 'schlieren';
+    } else {
+      state.pa = p.pa;
+      state.pc = p.pc;
+      state.areaRatio = p.areaRatio;
+      state.pGamma = p.pGamma;
+    }
+    syncControlsUI();
+    updateAudioParams();
+    showBanner(p.banner, p.lab === 'nozzle');
+  }
+
+  [
+    el.presetWedgeOblique, el.presetCapsuleBow, el.presetTransonic,
+    el.presetAirfoilLift, el.presetMachDiamonds, el.presetVacuumPlume
+  ].forEach((btn) => {
+    btn.addEventListener('click', () => applyPreset(btn.dataset.preset));
+  });
+
+  // Tunnel controls
+  el.sliderMach.addEventListener('input', (e) => {
+    const nextM = parseFloat(e.target.value);
+    if ((state.mach < 1.0 && nextM >= 1.0) || (state.mach > 1.0 && nextM <= 1.0)) {
+      triggerSonicBoom();
+    }
+    state.mach = nextM;
+    state.machSweep = false;
+    state.activePreset = '';
+    syncControlsUI();
+    updateAudioParams();
+  });
+
+  el.sliderAoa.addEventListener('input', (e) => {
+    state.aoa = parseFloat(e.target.value);
+    state.activePreset = '';
+    syncControlsUI();
+  });
+
+  el.sliderWedge.addEventListener('input', (e) => {
+    state.wedgeDeg = parseFloat(e.target.value);
+    state.activePreset = '';
+    syncControlsUI();
+  });
+
+  [el.bodyWedge, el.bodyCapsule, el.bodyAirfoil, el.bodyRocket].forEach((b) => {
+    b.addEventListener('click', () => {
+      state.body = b.dataset.body;
+      state.activePreset = '';
+      syncControlsUI();
+    });
+  });
+
+  [el.gasAir, el.gasCo2, el.gasHe].forEach((b) => {
+    b.addEventListener('click', () => {
+      state.gamma = parseFloat(b.dataset.gamma);
+      syncControlsUI();
+    });
+  });
+
+  el.btnMachSweep.addEventListener('click', () => {
+    state.machSweep = !state.machSweep;
+    if (state.machSweep) {
+      if (state.mach > 3.7) state.mach = 0.35;
+      state.machSweepDir = 1;
+      state.paused = false;
+    }
+    syncControlsUI();
+  });
+
+  el.btnLevelAoa.addEventListener('click', () => {
+    state.aoa = 0.0;
+    syncControlsUI();
+  });
+
+  // Nozzle controls
+  el.sliderPa.addEventListener('input', (e) => {
+    state.pa = parseFloat(e.target.value);
+    state.ascentDemo = false;
+    state.activePreset = '';
+    syncControlsUI();
+    updateAudioParams();
+  });
+
+  el.sliderPc.addEventListener('input', (e) => {
+    state.pc = parseFloat(e.target.value);
+    state.activePreset = '';
+    syncControlsUI();
+    updateAudioParams();
+  });
+
+  el.sliderAr.addEventListener('input', (e) => {
+    state.areaRatio = parseFloat(e.target.value);
+    state.activePreset = '';
+    syncControlsUI();
+  });
+
+  [el.propRp1, el.propLh2, el.propCold].forEach((b) => {
+    b.addEventListener('click', () => {
+      state.pGamma = parseFloat(b.dataset.pgamma);
+      syncControlsUI();
+    });
+  });
+
+  el.btnAscentDemo.addEventListener('click', () => {
+    state.ascentDemo = !state.ascentDemo;
+    if (state.ascentDemo) {
+      if (state.pa < 2) state.pa = 101.3;
+      state.paused = false;
+    }
+    syncControlsUI();
+  });
+
+  el.btnMatchPa.addEventListener('click', () => {
+    const noz = computeNozzlePhysics();
+    state.pa = clamp(noz.peKpa, 0, 101.3);
+    state.ascentDemo = false;
+    syncControlsUI();
+    updateAudioParams();
+    showBanner(`Matched Ideally Expanded · Pₑ = Pₐ = ${state.pa.toFixed(1)} kPa`, true);
+  });
+
+  // Display controls
+  [el.visSchlieren, el.visPressure, el.visMach, el.visTemp].forEach((b) => {
+    b.addEventListener('click', () => {
+      state.visMode = b.dataset.vis;
+      syncControlsUI();
+    });
+  });
+  el.chkField.addEventListener('change', (e) => { state.showField = e.target.checked; });
+  el.chkParticles.addEventListener('change', (e) => { state.showParticles = e.target.checked; });
+  el.chkShocks.addEventListener('change', (e) => { state.showShocks = e.target.checked; });
+  el.chkCone.addEventListener('change', (e) => { state.showCone = e.target.checked; });
+  el.chkVectors.addEventListener('change', (e) => { state.showVectors = e.target.checked; });
+  el.chkGraph.addEventListener('change', (e) => { state.showGraph = e.target.checked; });
+  el.chkProbe.addEventListener('change', (e) => { state.showProbe = e.target.checked; });
+
+  el.sliderContrast.addEventListener('input', (e) => {
+    state.contrast = parseFloat(e.target.value);
+    el.valContrast.textContent = `${state.contrast.toFixed(2)}×`;
+  });
+  el.sliderSpeed.addEventListener('input', (e) => {
+    state.flowSpeed = parseFloat(e.target.value);
+    el.valSpeed.textContent = `${state.flowSpeed.toFixed(2)}×`;
+  });
+
+  // Transport Bar
+  el.btnPlay.addEventListener('click', () => {
+    state.paused = !state.paused;
+    syncControlsUI();
+    updateAudioParams();
+  });
+
+  el.btnReset.addEventListener('click', () => {
+    applyPreset(state.lab === 'tunnel' ? 'wedge-oblique' : 'mach-diamonds');
+  });
+
+  el.btnAudio.addEventListener('click', () => {
+    if (!audio.ready) initAudio();
+    if (audio.ctx && audio.ctx.state === 'suspended') audio.ctx.resume();
+    state.audioOn = !state.audioOn;
+    syncControlsUI();
+    updateAudioParams();
+  });
+
+  el.btnDrawer.addEventListener('click', () => {
+    state.drawerOpen = !state.drawerOpen;
+    syncControlsUI();
+  });
+
+  function toggleCinema() {
+    state.cinema = !state.cinema;
+    syncControlsUI();
+  }
+  el.btnCinema.addEventListener('click', toggleCinema);
+  el.btnZenRestore.addEventListener('click', toggleCinema);
+
+  // Keyboard shortcuts
+  window.addEventListener('keydown', (e) => {
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+    if (e.code === 'Space') {
+      e.preventDefault();
+      state.paused = !state.paused;
+      syncControlsUI();
+      updateAudioParams();
+    } else if (e.key === 'h' || e.key === 'H') {
+      toggleCinema();
+    } else if (e.key === 'r' || e.key === 'R') {
+      applyPreset(state.lab === 'tunnel' ? 'wedge-oblique' : 'mach-diamonds');
+    } else if (e.key === 'm' || e.key === 'M') {
+      setLab(state.lab === 'tunnel' ? 'nozzle' : 'tunnel');
+    }
+  });
+
+  // Direct Canvas Pointer Interaction (Drag-tilt AoA in Tunnel / Drag Altitude in Nozzle)
+  canvas.addEventListener('pointerdown', (e) => {
+    canvas.setPointerCapture(e.pointerId);
+    state.mouseX = e.clientX;
+    state.mouseY = e.clientY;
+    state.mouseInside = true;
+
+    if (state.lab === 'tunnel') {
+      const tc = getTunnelCenter();
+      const dist = Math.hypot(e.clientX - tc.cx, e.clientY - tc.cy);
+      if (dist < tc.scale * 0.95) {
+        state.draggingBody = true;
+        state.dragStartY = e.clientY;
+        state.dragStartVal = state.aoa;
+        canvas.classList.add('grabbing');
+      }
+    } else {
+      state.draggingNozzleAlt = true;
+      state.dragStartY = e.clientY;
+      state.dragStartVal = state.pa;
+      state.ascentDemo = false;
+      canvas.classList.add('grabbing');
+    }
+  });
+
+  canvas.addEventListener('pointermove', (e) => {
+    state.mouseX = e.clientX;
+    state.mouseY = e.clientY;
+    state.mouseInside = true;
+
+    if (state.draggingBody && state.lab === 'tunnel') {
+      const dy = e.clientY - state.dragStartY;
+      // Dragging up pitches nose up (+AoA)
+      state.aoa = clamp(Math.round((state.dragStartVal - dy * 0.12) * 2) / 2, -15, 15);
+      state.activePreset = '';
+      syncControlsUI();
+      return;
+    }
+
+    if (state.draggingNozzleAlt && state.lab === 'nozzle') {
+      const dy = e.clientY - state.dragStartY;
+      // Dragging up climbs to higher altitude (lower Pa)
+      state.pa = clamp(state.dragStartVal + dy * 0.38, 0, 101.3);
+      state.activePreset = '';
+      syncControlsUI();
+      updateAudioParams();
+      return;
+    }
+
+    if (state.lab === 'tunnel') {
+      const tc = getTunnelCenter();
+      const near = Math.hypot(e.clientX - tc.cx, e.clientY - tc.cy) < tc.scale * 0.85;
+      canvas.classList.toggle('grab-ready', near);
+    } else {
+      canvas.classList.remove('grab-ready');
+    }
+  });
+
+  function endPointerDrag() {
+    state.draggingBody = false;
+    state.draggingNozzleAlt = false;
+    canvas.classList.remove('grabbing');
+  }
+  canvas.addEventListener('pointerup', endPointerDrag);
+  canvas.addEventListener('pointercancel', endPointerDrag);
+  canvas.addEventListener('pointerleave', () => {
+    state.mouseInside = false;
+    endPointerDrag();
+  });
+
+  // =========================================================================
+  // 13. MAIN ANIMATION LOOP
+  // =========================================================================
+  let lastTs = performance.now();
+  let hudTick = 0;
+
+  function frame(ts) {
+    const rawDt = (ts - lastTs) / 1000;
+    lastTs = ts;
+    const dt = Math.min(0.05, Math.max(0.001, rawDt));
+
+    if (!state.paused) {
+      state.time += dt;
+
+      // Automated Mach Sweep demo
+      if (state.lab === 'tunnel' && state.machSweep) {
+        const prevM = state.mach;
+        state.mach += state.machSweepDir * dt * 0.34;
+        if (state.mach >= 3.85) { state.mach = 3.85; state.machSweepDir = -1; }
+        if (state.mach <= 0.30) { state.mach = 0.30; state.machSweepDir = 1; }
+        if ((prevM < 1.0 && state.mach >= 1.0) || (prevM > 1.0 && state.mach <= 1.0)) {
+          triggerSonicBoom();
+        }
+        el.sliderMach.value = state.mach.toFixed(2);
+        el.valMach.textContent = state.mach.toFixed(2);
+        updateAudioParams();
+      }
+
+      // Automated Launch Ascent demo (Sea Level -> Vacuum)
+      if (state.lab === 'nozzle' && state.ascentDemo) {
+        state.pa = Math.max(0, state.pa - dt * (10 + state.pa * 0.14));
+        if (state.pa <= 0.05) {
+          state.pa = 0.0;
+          state.ascentDemo = false;
+          syncControlsUI();
+          showBanner('Orbit Insertion Altitude · Vacuum Plume', true);
+        } else {
+          el.sliderPa.value = state.pa.toFixed(1);
+          el.valPa.textContent = `${state.pa.toFixed(1)} kPa`;
+          updateAudioParams();
+        }
+      }
+
+      // Sonic boom flash decay
+      if (state.boomFlash > 0) {
+        state.boomFlash = Math.max(0, state.boomFlash - dt * 1.45);
+        state.boomRingR += dt * 520;
+      }
+    }
+
+    if (state.lab === 'tunnel') {
+      const aero = computeTunnelAero();
+      const tc = getTunnelCenter();
+
+      drawTunnelGrid(tc);
+      if (state.showField) renderTunnelField(aero, tc);
+      drawTunnelShocksAndFans(aero, tc);
+      updateAndDrawTunnelParticles(dt, aero, tc);
+      drawAerodynamicBody(aero, tc);
+      drawForceVectors(aero, tc);
+      drawTunnelDragGraph(aero);
+      drawFlowProbe(aero, null);
+
+      hudTick++;
+      if (hudTick % 3 === 0) updateTelemetryHUD(aero, null);
+    } else {
+      const noz = computeNozzlePhysics();
+      drawNozzleScene(dt, noz);
+      drawFlowProbe(null, noz);
+
+      hudTick++;
+      if (hudTick % 3 === 0) updateTelemetryHUD(null, noz);
+    }
+
+    requestAnimationFrame(frame);
+  }
+
+  // Initialize cleanly
+  syncControlsUI();
+  updateTelemetryHUD(computeTunnelAero(), computeNozzlePhysics());
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
