@@ -59,3 +59,7 @@ Back doors 134–138 — Bordeom batch + Resonance · 24 November 2026
 Back door 142 — Rocketry & Thrust · 24 November 2026
 
 `index.html` gained back door 142, Rocketry & Thrust — the Physics of Rockets (Everyday Physics; a new original built by Grok Bot, sixteen proofs live on the page). The section heading rose from "One hundred forty-one games" to "One hundred forty-two games", verified sequential 1–142 on the page. The full measurements live in the lesson, in its home room.
+
+Back door 143 — The Relay · 24 November 2026
+
+`index.html` gained back door 143, The Relay — A Game You Can't Play Alone (Nerd Heaven; built by Meta AI at Steven Powell's direction, web port by Muse, 12/12 proofs live on the page). The section heading rose from "One hundred forty-two games" to "One hundred forty-three games", verified sequential 1–143 on the page. The full measurements live in the lesson, in its home room.
