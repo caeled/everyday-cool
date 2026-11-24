@@ -1,0 +1,1429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>SensorLab — Robotic Sensors &amp; Kalman Sensor Fusion Workshop</title>
+<style>
+  :root {
+    --bg-deep: #040711;
+    --panel-bg: rgba(9, 14, 28, 0.82);
+    --panel-border: rgba(145, 180, 255, 0.17);
+    --text-main: #edf3ff;
+    --text-dim: #9aaad0;
+    --text-muted: #68789e;
+    --cyan: #5ce1ff;
+    --amber: #ffbf5e;
+    --mint: #4cf2b2;
+    --rose: #ff6488;
+    --violet: #b08cff;
+    --radius-lg: 14px;
+    --radius-md: 10px;
+    --radius-sm: 7px;
+    --mono: ui-monospace, "Cascadia Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Inter, Helvetica, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    width: 100%; height: 100%; overflow: hidden;
+    background: var(--bg-deep); color: var(--text-main);
+    font-family: var(--sans); -webkit-font-smoothing: antialiased;
+    user-select: none; touch-action: none;
+  }
+  #sim-canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; cursor: crosshair; }
+  .hud { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
+  body.zen-mode .hud > :not(.zen-restore) { opacity: 0; pointer-events: none !important; }
+  .panel {
+    pointer-events: auto; background: var(--panel-bg);
+    border: 1px solid var(--panel-border); border-radius: var(--radius-lg);
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.52), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    transition: opacity 0.25s ease, transform 0.25s ease;
+  }
+
+  /* Top-left telemetry */
+  .top-left {
+    position: fixed; top: 14px; left: 14px;
+    width: min(425px, calc(100vw - 365px)); min-width: 290px;
+    padding: 12px 14px; display: flex; flex-direction: column; gap: 8px;
+  }
+  .brand-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .brand-title {
+    font-size: 15px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase;
+    background: linear-gradient(120deg, #e8f8ff 0%, #5ce1ff 48%, #4cf2b2 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .status-pill {
+    font-size: 10px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;
+    padding: 3px 9px; border-radius: 999px;
+    background: rgba(76, 242, 178, 0.15); color: var(--mint);
+    border: 1px solid rgba(76, 242, 178, 0.38); white-space: nowrap;
+  }
+  .status-pill.warn { background: rgba(255, 191, 94, 0.16); color: var(--amber); border-color: rgba(255, 191, 94, 0.45); }
+  .status-pill.danger { background: rgba(255, 100, 136, 0.18); color: var(--rose); border-color: rgba(255, 100, 136, 0.48); }
+
+  .tele-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
+  .tele-card {
+    background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(145, 180, 255, 0.1);
+    border-radius: var(--radius-sm); padding: 5px 7px; display: flex; flex-direction: column; gap: 1px;
+  }
+  .tele-lbl { font-size: 9px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+  .tele-val { font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--text-main); }
+
+  .ir-strip {
+    display: flex; align-items: center; gap: 6px; padding: 5px 7px;
+    border-radius: var(--radius-sm); background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(145, 180, 255, 0.1); font-size: 10px; color: var(--text-dim);
+  }
+  .ir-dots { display: flex; gap: 5px; flex: 1; justify-content: center; }
+  .ir-dot {
+    width: 14px; height: 14px; border-radius: 50%;
+    border: 1px solid rgba(145, 180, 255, 0.3); background: #0c1428;
+    transition: background 0.06s ease, box-shadow 0.06s ease;
+  }
+  .ir-dot.on { background: #5ce1ff; box-shadow: 0 0 10px #5ce1ff; border-color: #fff; }
+
+  #scope-canvas {
+    width: 100%; height: 82px; border-radius: var(--radius-sm);
+    background: rgba(3, 6, 15, 0.85); border: 1px solid rgba(145, 180, 255, 0.16); display: block;
+  }
+  .scope-legend {
+    display: flex; justify-content: space-between; font-family: var(--mono); font-size: 9.5px; color: var(--text-dim);
+  }
+
+  /* Right Drawer */
+  .drawer {
+    position: fixed; top: 14px; right: 14px; bottom: 14px;
+    width: 334px; max-width: calc(100vw - 28px);
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  .drawer.collapsed { transform: translateX(calc(100% + 26px)); pointer-events: none; }
+  .drawer-tabs {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px;
+    padding: 8px 8px 6px; border-bottom: 1px solid var(--panel-border);
+    background: rgba(4, 7, 16, 0.45);
+  }
+  .tab-btn {
+    border: 1px solid transparent; background: transparent; color: var(--text-dim);
+    font-size: 11px; font-weight: 700; padding: 7px 4px; border-radius: var(--radius-sm);
+    cursor: pointer; transition: all 0.14s ease;
+  }
+  .tab-btn:hover { color: #fff; background: rgba(255, 255, 255, 0.04); }
+  .tab-btn.active { color: #fff; background: rgba(92, 225, 255, 0.16); border-color: rgba(92, 225, 255, 0.42); }
+  .drawer-body { flex: 1; overflow-y: auto; padding: 11px 12px 16px; display: flex; flex-direction: column; gap: 11px; }
+  .drawer-body::-webkit-scrollbar { width: 5px; }
+  .drawer-body::-webkit-scrollbar-thumb { background: rgba(145, 180, 255, 0.24); border-radius: 999px; }
+  .tab-pane { display: none; flex-direction: column; gap: 11px; }
+  .tab-pane.active { display: flex; }
+
+  .section {
+    background: rgba(255, 255, 255, 0.025); border: 1px solid rgba(145, 180, 255, 0.11);
+    border-radius: var(--radius-md); padding: 10px 11px; display: flex; flex-direction: column; gap: 8px;
+  }
+  .section-title {
+    font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--text-dim); display: flex; justify-content: space-between; align-items: center;
+  }
+  .preset-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+  .preset-btn {
+    text-align: left; padding: 6px 8px; border-radius: var(--radius-sm);
+    border: 1px solid rgba(145, 180, 255, 0.15); background: rgba(255, 255, 255, 0.03);
+    color: var(--text-main); cursor: pointer; display: flex; flex-direction: column; gap: 1px;
+    transition: all 0.14s ease;
+  }
+  .preset-btn:hover { border-color: rgba(92, 225, 255, 0.5); background: rgba(92, 225, 255, 0.09); }
+  .preset-btn.active { border-color: var(--cyan); background: rgba(92, 225, 255, 0.16); }
+  .preset-name { font-size: 11px; font-weight: 750; }
+  .preset-sub { font-size: 9.5px; color: var(--text-muted); }
+
+  .seg-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(60px, 1fr)); gap: 4px; }
+  .seg-btn {
+    border: 1px solid rgba(145, 180, 255, 0.16); background: rgba(255, 255, 255, 0.03);
+    color: var(--text-dim); font-size: 10.5px; font-weight: 650; padding: 6px 4px;
+    border-radius: var(--radius-sm); cursor: pointer; text-align: center; transition: all 0.13s ease;
+  }
+  .seg-btn:hover { color: #fff; border-color: rgba(145, 180, 255, 0.36); }
+  .seg-btn.active { color: #fff; background: rgba(92, 225, 255, 0.18); border-color: var(--cyan); }
+  .seg-btn.active.amber { background: rgba(255, 191, 94, 0.18); border-color: var(--amber); color: #ffe5b5; }
+
+  .control-row { display: flex; flex-direction: column; gap: 4px; }
+  .control-head { display: flex; justify-content: space-between; align-items: center; font-size: 11.5px; color: var(--text-dim); }
+  .control-head .val { font-family: var(--mono); font-size: 11.5px; color: var(--text-main); font-weight: 650; }
+  input[type="range"] {
+    -webkit-appearance: none; appearance: none; width: 100%; height: 5px;
+    border-radius: 999px; background: rgba(145, 180, 255, 0.2); outline: none; cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none; width: 14px; height: 14px; border-radius: 50%;
+    background: var(--cyan); border: 2px solid #081120; box-shadow: 0 0 10px rgba(92, 225, 255, 0.65); cursor: pointer;
+  }
+  input[type="range"].amber::-webkit-slider-thumb { background: var(--amber); box-shadow: 0 0 10px rgba(255, 191, 94, 0.65); }
+
+  .toggle-row { display: flex; align-items: center; justify-content: space-between; font-size: 11.5px; color: var(--text-dim); cursor: pointer; }
+  .toggle-row input { display: none; }
+  .switch {
+    width: 34px; height: 18px; border-radius: 999px; background: rgba(145, 180, 255, 0.2);
+    border: 1px solid rgba(145, 180, 255, 0.25); position: relative; transition: all 0.18s ease; flex-shrink: 0;
+  }
+  .switch::after {
+    content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px;
+    border-radius: 50%; background: #c8d7f5; transition: transform 0.18s ease, background 0.18s ease;
+  }
+  .toggle-row input:checked + .switch { background: rgba(92, 225, 255, 0.32); border-color: var(--cyan); }
+  .toggle-row input:checked + .switch::after { transform: translateX(16px); background: #fff; }
+
+  .btn-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .btn {
+    border: 1px solid rgba(145, 180, 255, 0.22); background: rgba(255, 255, 255, 0.05);
+    color: var(--text-main); font-size: 11px; font-weight: 700; padding: 7px 9px;
+    border-radius: var(--radius-sm); cursor: pointer; transition: all 0.14s ease;
+  }
+  .btn:hover { background: rgba(255, 255, 255, 0.1); border-color: rgba(145, 180, 255, 0.45); }
+  .btn.primary { background: linear-gradient(135deg, rgba(92, 225, 255, 0.26), rgba(88, 120, 255, 0.24)); border-color: rgba(92, 225, 255, 0.55); color: #eafaff; }
+
+  .note-small { font-size: 10.5px; color: var(--text-muted); line-height: 1.38; }
+
+  .mat-legend { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; font-size: 10px; color: var(--text-dim); }
+  .mat-item { display: flex; align-items: center; gap: 5px; }
+  .mat-swatch { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+
+  .bottom-bar {
+    position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%);
+    padding: 7px 10px; display: flex; align-items: center; gap: 6px;
+  }
+  .bar-btn {
+    border: 1px solid rgba(145, 180, 255, 0.16); background: rgba(255, 255, 255, 0.04);
+    color: var(--text-main); font-size: 11.5px; font-weight: 650; padding: 6px 10px;
+    border-radius: var(--radius-sm); cursor: pointer; transition: all 0.14s ease; white-space: nowrap;
+  }
+  .bar-btn:hover { background: rgba(255, 255, 255, 0.1); border-color: rgba(145, 180, 255, 0.42); }
+  .bar-btn.active { background: rgba(92, 225, 255, 0.2); border-color: var(--cyan); color: #fff; }
+  .bar-divider { width: 1px; height: 20px; background: rgba(145, 180, 255, 0.16); margin: 0 2px; }
+
+  .hint-pill {
+    position: fixed; bottom: 14px; left: 14px; padding: 7px 11px;
+    font-size: 11px; color: var(--text-dim); max-width: 315px; line-height: 1.4;
+  }
+  .hint-pill kbd {
+    font-family: var(--mono); font-size: 10px; padding: 1px 5px; border-radius: 4px;
+    background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.18); color: #fff;
+  }
+  .zen-restore { position: fixed; bottom: 14px; right: 14px; opacity: 0; pointer-events: none; }
+  body.zen-mode .zen-restore { opacity: 0.9; pointer-events: auto; }
+
+  @media (max-width: 920px) {
+    .top-left { width: calc(100vw - 28px); max-width: none; }
+    .drawer { top: auto; bottom: 62px; height: 48vh; width: calc(100vw - 28px); }
+    .hint-pill { display: none; }
+  }
+</style>
+</head>
+<body>
+<canvas id="sim-canvas"></canvas>
+
+<div class="hud">
+  <!-- Top-Left Live Sensor Telemetry -->
+  <div class="panel top-left">
+    <div class="brand-row">
+      <div class="brand-title">SensorLab · Robotics</div>
+      <span id="status-pill" class="status-pill">Kalman Lock · Nominal</span>
+    </div>
+
+    <div class="tele-grid">
+      <div class="tele-card">
+        <span class="tele-lbl">Ultrasonic</span>
+        <span id="tel-sonar" class="tele-val" style="color:var(--mint)">142 cm</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-lbl">Lidar Front</span>
+        <span id="tel-lidar" class="tele-val" style="color:var(--cyan)">142 cm</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-lbl">IMU Heading</span>
+        <span id="tel-imu" class="tele-val" style="color:var(--amber)">0.0°</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-lbl">Kalman Error</span>
+        <span id="tel-kf" class="tele-val" style="color:var(--mint)">2.1 cm</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-lbl">Odom Drift</span>
+        <span id="tel-odom" class="tele-val" style="color:var(--rose)">8.4 cm</span>
+      </div>
+      <div class="tele-card">
+        <span class="tele-lbl">GPS / Stereo</span>
+        <span id="tel-gps" class="tele-val">3D LOCK</span>
+      </div>
+    </div>
+
+    <div class="ir-strip">
+      <span style="font-family:var(--mono); font-weight:700;">IR ARRAY</span>
+      <div class="ir-dots" id="ir-dots">
+        <span class="ir-dot" id="ir0"></span>
+        <span class="ir-dot" id="ir1"></span>
+        <span class="ir-dot" id="ir2"></span>
+        <span class="ir-dot" id="ir3"></span>
+        <span class="ir-dot" id="ir4"></span>
+      </div>
+      <span id="tel-bump" style="font-family:var(--mono); color:var(--text-muted);">BUMP: OK</span>
+    </div>
+
+    <canvas id="scope-canvas" width="390" height="82"></canvas>
+    <div class="scope-legend" id="scope-legend">
+      <span style="color:#4cf2b2">■ Sonar (cm)</span>
+      <span style="color:#5ce1ff">■ Lidar (cm)</span>
+      <span style="color:#ffbf5e">■ Kalman Err</span>
+      <span style="color:#ff6488">■ Odom Drift</span>
+    </div>
+  </div>
+
+  <!-- Right Control Drawer -->
+  <aside id="drawer" class="panel drawer">
+    <div class="drawer-tabs">
+      <button class="tab-btn active" data-tab="labs">Workshops</button>
+      <button class="tab-btn" data-tab="sensors">Sensors</button>
+      <button class="tab-btn" data-tab="arena">Arena &amp; Paint</button>
+    </div>
+
+    <div class="drawer-body">
+      <!-- TAB 1: WORKSHOPS & DRIVE -->
+      <div id="tab-labs" class="tab-pane active">
+        <div class="section">
+          <div class="section-title"><span>6 Sensor Workshop Labs</span></div>
+          <div class="preset-grid">
+            <button class="preset-btn active" data-preset="fusion">
+              <span class="preset-name">Full Sensor Suite</span>
+              <span class="preset-sub">All 7 sensors + Kalman</span>
+            </button>
+            <button class="preset-btn" data-preset="glassfoam">
+              <span class="preset-name">Glass vs. Foam</span>
+              <span class="preset-sub">Lidar &amp; Sonar blindspots!</span>
+            </button>
+            <button class="preset-btn" data-preset="linefollow">
+              <span class="preset-name">IR Line-Follower</span>
+              <span class="preset-sub">5-IR P-control figure-8 race</span>
+            </button>
+            <button class="preset-btn" data-preset="tunnel">
+              <span class="preset-name">GPS-Denied Tunnel</span>
+              <span class="preset-sub">Covariance growth &amp; lock</span>
+            </button>
+            <button class="preset-btn" data-preset="magdrift">
+              <span class="preset-name">Magnet &amp; Gyro Drift</span>
+              <span class="preset-sub">IMU compass distortion</span>
+            </button>
+            <button class="preset-btn" data-preset="slip">
+              <span class="preset-name">Icy Wheel Slip</span>
+              <span class="preset-sub">Quadrature vs Kalman</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Rover Drive Controller</span></div>
+          <div class="seg-row" id="drive-row">
+            <button class="seg-btn active" data-drive="auto">Auto Patrol</button>
+            <button class="seg-btn" data-drive="line">IR Line P-Control</button>
+            <button class="seg-btn" data-drive="manual">WASD Manual</button>
+          </div>
+          <div class="seg-row" id="scope-mode-row">
+            <button class="seg-btn active amber" data-smode="range">Range &amp; KF</button>
+            <button class="seg-btn" data-smode="quad">Encoder A/B</button>
+            <button class="seg-btn" data-smode="imu">IMU Gyro/Mag</button>
+          </div>
+          <div class="btn-row">
+            <button id="btn-reset-kf" class="btn primary">↺ Reset Drift/KF</button>
+            <button id="btn-ping" class="btn">📡 Manual Sonar</button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Material Physics Key</span></div>
+          <div class="mat-legend">
+            <span class="mat-item"><span class="mat-swatch" style="background:#64748b"></span>Concrete (All Hit)</span>
+            <span class="mat-item"><span class="mat-swatch" style="background:#7dd3fc"></span>Glass (Lidar Miss!)</span>
+            <span class="mat-item"><span class="mat-swatch" style="background:#a855f7"></span>Foam (Sonar Miss!)</span>
+            <span class="mat-item"><span class="mat-swatch" style="background:#f59e0b"></span>Iron (Bends Compass)</span>
+            <span class="mat-item"><span class="mat-swatch" style="background:#1e3a5f"></span>GPS-Denied Roof</span>
+            <span class="mat-item"><span class="mat-swatch" style="background:#38bdf8;opacity:.45"></span>Ice (Wheel Slip!)</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 2: SENSORS & NOISE -->
+      <div id="tab-sensors" class="tab-pane">
+        <div class="section">
+          <div class="section-title"><span>Active Sensor Suite</span></div>
+          <label class="toggle-row"><span>Ultrasonic Sonar (40 kHz Cone)</span><input id="chk-sonar" type="checkbox" checked /><span class="switch"></span></label>
+          <label class="toggle-row"><span>360° Scanning ToF Lidar</span><input id="chk-lidar" type="checkbox" checked /><span class="switch"></span></label>
+          <label class="toggle-row"><span>Stereo Depth Camera (65° FOV)</span><input id="chk-stereo" type="checkbox" checked /><span class="switch"></span></label>
+          <label class="toggle-row"><span>5-Ch IR Line-Follower Array</span><input id="chk-ir" type="checkbox" checked /><span class="switch"></span></label>
+          <label class="toggle-row"><span>Tactile Bumpers &amp; Whiskers</span><input id="chk-bump" type="checkbox" checked /><span class="switch"></span></label>
+          <label class="toggle-row"><span>Kalman Filter + 95% Ellipse</span><input id="chk-kf" type="checkbox" checked /><span class="switch"></span></label>
+          <label class="toggle-row"><span>Drifting Odom Ghost Rover</span><input id="chk-odom" type="checkbox" checked /><span class="switch"></span></label>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Noise, Drift &amp; Environment</span></div>
+          <div class="control-row">
+            <div class="control-head"><span>Sensor Range Noise (σ)</span><span id="val-noise" class="val">3.0 cm</span></div>
+            <input id="sl-noise" type="range" min="0" max="18" step="0.5" value="3.0" />
+          </div>
+          <div class="control-row">
+            <div class="control-head"><span>Wheel Slip / Encoder Error</span><span id="val-slip" class="val">8%</span></div>
+            <input id="sl-slip" class="amber" type="range" min="0" max="45" step="1" value="8" />
+          </div>
+          <div class="control-row">
+            <div class="control-head"><span>IMU Gyro Bias Drift</span><span id="val-gyro" class="val">1.8 °/s</span></div>
+            <input id="sl-gyro" class="amber" type="range" min="0" max="10" step="0.2" value="1.8" />
+          </div>
+          <label class="toggle-row"><span>Low-Light Fog (Degrades Camera)</span><input id="chk-fog" type="checkbox" /><span class="switch"></span></label>
+        </div>
+      </div>
+
+      <!-- TAB 3: ARENA PAINT TOOLS -->
+      <div id="tab-arena" class="tab-pane">
+        <div class="section">
+          <div class="section-title"><span>Interactive Canvas Tool</span></div>
+          <div class="seg-row" id="tool-row">
+            <button class="seg-btn active" data-tool="waypoint">Waypoint</button>
+            <button class="seg-btn" data-tool="concrete">Concrete</button>
+            <button class="seg-btn" data-tool="glass">Glass</button>
+            <button class="seg-btn" data-tool="foam">Foam</button>
+            <button class="seg-btn" data-tool="magnet">Iron Mag</button>
+            <button class="seg-btn" data-tool="erase">Erase</button>
+          </div>
+          <p class="note-small">
+            In <strong>Waypoint</strong> mode, click anywhere to send the rover there (or drag the rover directly!). Switch to <strong>Concrete / Glass / Foam</strong> to draw walls and test how each sensor reacts!
+          </p>
+          <button id="btn-clear-walls" class="btn">Clear Custom Walls</button>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <div class="panel hint-pill">
+    <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> Drive · <strong>Click arena</strong> to set waypoint · <strong>Drag rover</strong> to move</div>
+    <div><strong>Glass</strong> fools Lidar · <strong>Foam</strong> absorbs Sonar · <kbd>H</kbd> Cinema</div>
+  </div>
+
+  <div class="panel bottom-bar">
+    <button id="btn-play" class="bar-btn active">⏸ Pause</button>
+    <button id="btn-reset" class="bar-btn">↺ Reset</button>
+    <div class="bar-divider"></div>
+    <button id="btn-mode-bar" class="bar-btn active">Mode: Auto</button>
+    <button id="btn-sound" class="bar-btn">🔇 Audio</button>
+    <button id="btn-toggle-drawer" class="bar-btn active">Workshop</button>
+    <button id="btn-zen" class="bar-btn">Cinema</button>
+  </div>
+  <button id="btn-zen-restore" class="panel bar-btn zen-restore">Show HUD (H)</button>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  const canvas = document.getElementById('sim-canvas');
+  const ctx = canvas.getContext('2d', { alpha: false });
+  const scopeCanvas = document.getElementById('scope-canvas');
+  const sCtx = scopeCanvas.getContext('2d');
+
+  let W = window.innerWidth, H = window.innerHeight, DPR = Math.min(window.devicePixelRatio || 1, 2);
+  function resize() {
+    W = window.innerWidth; H = window.innerHeight;
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.floor(W * DPR); canvas.height = Math.floor(H * DPR);
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  }
+
+  const audio = {
+    enabled: false, ctx: null,
+    toggle() {
+      this.enabled = !this.enabled;
+      if (this.enabled && !this.ctx) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (AC) this.ctx = new AC();
+      }
+      if (this.enabled && this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
+      return this.enabled;
+    },
+    ping(freq = 1200, dur = 0.08, vol = 0.035) {
+      if (!this.enabled || !this.ctx) return;
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator(), g = this.ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, now);
+      osc.frequency.exponentialRampToValueAtTime(freq * 0.65, now + dur);
+      g.gain.setValueAtTime(vol, now);
+      g.gain.exponentialRampToValueAtTime(0.0008, now + dur);
+      osc.connect(g); g.connect(this.ctx.destination);
+      osc.start(now); osc.stop(now + dur);
+    }
+  };
+
+  // =========================================================================
+  // STATE & WORLD GEOMETRY
+  // =========================================================================
+  const state = {
+    paused: false,
+    preset: 'fusion',
+    driveMode: 'auto',   // 'auto' | 'line' | 'manual'
+    scopeMode: 'range',  // 'range' | 'quad' | 'imu'
+    tool: 'waypoint',    // 'waypoint' | 'concrete' | 'glass' | 'foam' | 'magnet' | 'erase'
+
+    showSonar: true,
+    showLidar: true,
+    showStereo: true,
+    showIR: true,
+    showBump: true,
+    showKF: true,
+    showOdom: true,
+    fog: false,
+
+    noiseCm: 3.0,
+    slipPct: 8,
+    gyroDriftDeg: 1.8,
+    simTime: 0
+  };
+
+  // Rover true pose + dead-reckoning odometry + Kalman fused estimate
+  const rover = {
+    x: 0, y: 0, theta: 0, v: 0, omega: 0,
+    radius: 19,
+    wheelL: 0, wheelR: 0,
+    bumperL: false, bumperR: false,
+    reflexTimer: 0, reflexDir: 1,
+    // Dead-reckoning (encoders + drifting gyro)
+    odomX: 0, odomY: 0, odomTheta: 0,
+    // Kalman filter estimate + covariance std (px)
+    kfX: 0, kfY: 0, kfTheta: 0, kfCov: 6,
+    // Raw noisy GPS dot
+    gpsX: 0, gpsY: 0, gpsLocked: true, gpsTimer: 0,
+    // Readings
+    sonarDist: 250, sonarEchoMat: 'none', sonarAngleNote: '',
+    lidarFront: 250, lidarHits: [],
+    stereoPts: [],
+    irVals: [0, 0, 0, 0, 0],
+    imuHeading: 0, magDistort: 0,
+    // Waypoint
+    wpX: 0, wpY: 0, hasWp: false,
+    trailTrue: [], trailKF: [], trailOdom: []
+  };
+
+  // Arena objects (coordinates relative to screen center cx, cy!)
+  let walls = [];       // { x1, y1, x2, y2, mat: 'concrete'|'glass'|'foam', custom? }
+  let magnets = [];     // { x, y, strength }
+  let gpsDeniedZones = []; // { x, y, w, h }
+  let iceZones = [];    // { x, y, r }
+  let lineTrack = [];   // [{ x, y }, ...] closed loop
+  let sonarWaves = [];  // expanding visual rings
+  let sonarTimer = 0;
+
+  // Scope ring buffers
+  const scopeHist = [];
+  const keys = { w:false, a:false, s:false, d:false, ArrowUp:false, ArrowDown:false, ArrowLeft:false, ArrowRight:false };
+
+  function gaussRand() {
+    let u = 0, v = 0;
+    while (u === 0) u = Math.random();
+    while (v === 0) v = Math.random();
+    return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+  }
+
+  function buildTrack(scale = 1) {
+    const pts = [];
+    const N = 160;
+    for (let i = 0; i < N; i++) {
+      const t = (i / N) * Math.PI * 2;
+      // Smooth figure-8 Lissajous track!
+      pts.push({
+        x: Math.sin(t) * 265 * scale,
+        y: Math.sin(t * 2) * 145 * scale
+      });
+    }
+    return pts;
+  }
+
+  function resetEstimatesToTrue() {
+    rover.odomX = rover.x; rover.odomY = rover.y; rover.odomTheta = rover.theta;
+    rover.kfX = rover.x; rover.kfY = rover.y; rover.kfTheta = rover.theta; rover.kfCov = 6;
+    rover.trailTrue = []; rover.trailKF = []; rover.trailOdom = [];
+  }
+
+  function loadPreset(name) {
+    state.preset = name;
+    walls = [];
+    magnets = [];
+    gpsDeniedZones = [];
+    iceZones = [];
+    lineTrack = [];
+    sonarWaves = [];
+    rover.hasWp = false;
+    rover.reflexTimer = 0;
+    state.fog = false;
+
+    // Outer arena boundary (concrete)
+    const bx = 370, by = 245;
+    walls.push(
+      { x1:-bx, y1:-by, x2: bx, y2:-by, mat:'concrete' },
+      { x1: bx, y1:-by, x2: bx, y2: by, mat:'concrete' },
+      { x1: bx, y1: by, x2:-bx, y2: by, mat:'concrete' },
+      { x1:-bx, y1: by, x2:-bx, y2:-by, mat:'concrete' }
+    );
+
+    if (name === 'fusion') {
+      state.driveMode = 'auto';
+      state.slipPct = 10; state.gyroDriftDeg = 2.0; state.noiseCm = 3.0;
+      walls.push(
+        { x1:-150, y1:-120, x2:-30, y2:-120, mat:'glass' },
+        { x1: 60,  y1: 50,  x2: 185, y2: 120, mat:'foam' },
+        { x1:-180, y1: 85,  x2:-70, y2: 135, mat:'concrete' }
+      );
+      magnets.push({ x: 180, y: -110, strength: 1.0 });
+      gpsDeniedZones.push({ x: -330, y: -210, w: 230, h: 175 });
+      iceZones.push({ x: 40, y: -140, r: 65 });
+      lineTrack = buildTrack(0.85);
+      rover.x = -220; rover.y = 40; rover.theta = -0.25;
+    } else if (name === 'glassfoam') {
+      state.driveMode = 'auto';
+      state.slipPct = 4; state.gyroDriftDeg = 0.8; state.noiseCm = 2.0;
+      // Glass corridor + acoustic foam baffle!
+      walls.push(
+        { x1:-95, y1:-175, x2:-95, y2: 155, mat:'glass' },
+        { x1: 95, y1:-155, x2: 95, y2: 175, mat:'foam' },
+        { x1:-240, y1:-60, x2:-140, y2: 20, mat:'glass' },
+        { x1: 155, y1:-80, x2: 255, y2: 10, mat:'foam' }
+      );
+      rover.x = 0; rover.y = 10; rover.theta = 0.05;
+    } else if (name === 'linefollow') {
+      state.driveMode = 'line';
+      state.slipPct = 5; state.gyroDriftDeg = 1.0; state.noiseCm = 2.5;
+      lineTrack = buildTrack(1.0);
+      rover.x = lineTrack[0].x; rover.y = lineTrack[0].y;
+      rover.theta = Math.atan2(lineTrack[2].y - lineTrack[0].y, lineTrack[2].x - lineTrack[0].x);
+    } else if (name === 'tunnel') {
+      state.driveMode = 'auto';
+      state.slipPct = 14; state.gyroDriftDeg = 2.8; state.noiseCm = 4.0;
+      gpsDeniedZones.push({ x: -165, y: -190, w: 330, h: 380 });
+      walls.push(
+        { x1:-165, y1:-190, x2: 165, y2:-190, mat:'concrete' },
+        { x1:-165, y1: 190, x2: 165, y2: 190, mat:'concrete' },
+        { x1: 0,   y1:-65,  x2: 0,   y2: 65,  mat:'concrete' }
+      );
+      rover.x = -265; rover.y = 0; rover.theta = 0;
+    } else if (name === 'magdrift') {
+      state.driveMode = 'auto';
+      state.slipPct = 6; state.gyroDriftDeg = 5.5; state.noiseCm = 2.5;
+      magnets.push({ x: -90, y: -40, strength: 1.35 }, { x: 130, y: 75, strength: 1.2 });
+      walls.push({ x1: -20, y1: -150, x2: 40, y2: -70, mat: 'concrete' });
+      rover.x = -230; rover.y = 90; rover.theta = -0.35;
+    } else if (name === 'slip') {
+      state.driveMode = 'auto';
+      state.slipPct = 32; state.gyroDriftDeg = 3.2; state.noiseCm = 3.0;
+      iceZones.push({ x: -90, y: 0, r: 105 }, { x: 130, y: -20, r: 95 });
+      gpsDeniedZones.push({ x: 35, y: -155, w: 190, h: 270 });
+      rover.x = -250; rover.y = 20; rover.theta = 0.05;
+    }
+
+    resetEstimatesToTrue();
+    syncUI();
+  }
+
+  // =========================================================================
+  // RAYCASTING & SENSOR PHYSICS
+  // =========================================================================
+  function raySegIntersect(ox, oy, dx, dy, x1, y1, x2, y2) {
+    const sx = x2 - x1, sy = y2 - y1;
+    const denom = dx * sy - dy * sx;
+    if (Math.abs(denom) < 1e-7) return null;
+    const t = ((x1 - ox) * sy - (y1 - oy) * sx) / denom;
+    const u = ((x1 - ox) * dy - (y1 - oy) * dx) / denom;
+    if (t > 0 && u >= 0 && u <= 1) {
+      // Surface normal
+      const len = Math.hypot(sx, sy) || 1;
+      let nx = -sy / len, ny = sx / len;
+      if (nx * dx + ny * dy > 0) { nx = -nx; ny = -ny; }
+      return { t, x: ox + dx * t, y: oy + dy * t, nx, ny };
+    }
+    return null;
+  }
+
+  function castSensorRay(ox, oy, ang, maxRange, sensorType) {
+    const dx = Math.cos(ang), dy = Math.sin(ang);
+    let best = null;
+    for (let i = 0; i < walls.length; i++) {
+      const w = walls[i];
+      // Real material physics!
+      // 1) Lidar & Optical Camera pass right through clear Glass!
+      if ((sensorType === 'lidar' || sensorType === 'stereo') && w.mat === 'glass') continue;
+      // 2) Acoustic Foam absorbs 40 kHz Ultrasonic sonar!
+      if (sensorType === 'sonar' && w.mat === 'foam') continue;
+
+      const hit = raySegIntersect(ox, oy, dx, dy, w.x1, w.y1, w.x2, w.y2);
+      if (hit && hit.t < maxRange && (!best || hit.t < best.t)) {
+        // Specular reflection check for ultrasonic at grazing angles (>42 deg off normal)
+        if (sensorType === 'sonar') {
+          const cosInc = Math.abs(dx * hit.nx + dy * hit.ny);
+          if (cosInc < 0.72) continue; // sound wave bounces away from receiver!
+        }
+        best = { ...hit, mat: w.mat };
+      }
+    }
+    return best;
+  }
+
+  function pointSegDist(px, py, x1, y1, x2, y2) {
+    const dx = x2 - x1, dy = y2 - y1;
+    const l2 = dx * dx + dy * dy || 1;
+    const t = Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / l2));
+    return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
+  }
+
+  function sampleLineTrack(px, py) {
+    if (lineTrack.length < 2) return 0;
+    let minD = Infinity;
+    for (let i = 0; i < lineTrack.length; i++) {
+      const a = lineTrack[i];
+      const b = lineTrack[(i + 1) % lineTrack.length];
+      const d = pointSegDist(px, py, a.x, a.y, b.x, b.y);
+      if (d < minD) minD = d;
+    }
+    return minD < 9.5 ? Math.max(0, 1 - minD / 9.5) : 0;
+  }
+
+  function isInGPSDenied(x, y) {
+    for (const z of gpsDeniedZones) {
+      if (x >= z.x && x <= z.x + z.w && y >= z.y && y <= z.y + z.h) return true;
+    }
+    return false;
+  }
+
+  function isOnIce(x, y) {
+    for (const z of iceZones) {
+      if (Math.hypot(x - z.x, y - z.y) <= z.r) return true;
+    }
+    return false;
+  }
+
+  // =========================================================================
+  // SIMULATION STEP (DRIVE + SENSORS + 2D KALMAN FILTER)
+  // =========================================================================
+  function stepSim(dt) {
+    state.simTime += dt;
+
+    // 1) Sample all sensors at current pose
+    // 1a. 5-Channel IR Reflectance Array on rover nose
+    const noseX = rover.x + Math.cos(rover.theta) * (rover.radius + 3);
+    const noseY = rover.y + Math.sin(rover.theta) * (rover.radius + 3);
+    const px = -Math.sin(rover.theta), py = Math.cos(rover.theta);
+    let irWeighted = 0, irSum = 0;
+    for (let i = 0; i < 5; i++) {
+      const off = (i - 2) * 7.5;
+      const val = sampleLineTrack(noseX + px * off, noseY + py * off);
+      rover.irVals[i] = val;
+      irWeighted += (i - 2) * val;
+      irSum += val;
+    }
+
+    // 1b. Ultrasonic 40 kHz Cone (5 sub-rays spanning ±12°)
+    let sonarMin = 280, sonarMat = 'none';
+    for (let k = -2; k <= 2; k++) {
+      const ang = rover.theta + k * 0.085;
+      const hit = castSensorRay(noseX, noseY, ang, 280, 'sonar');
+      if (hit && hit.t < sonarMin) { sonarMin = hit.t; sonarMat = hit.mat; }
+    }
+    rover.sonarDist = Math.max(4, Math.min(280, sonarMin + gaussRand() * state.noiseCm * 0.65));
+    rover.sonarEchoMat = sonarMat;
+
+    // Periodic sonar wave ring visual
+    sonarTimer += dt;
+    if (state.showSonar && sonarTimer > 0.42) {
+      sonarTimer = 0;
+      sonarWaves.push({ x: noseX, y: noseY, theta: rover.theta, r: 8, maxR: Math.min(240, sonarMin + 10), alpha: 0.78 });
+      if (sonarMin < 140) audio.ping(1450 - sonarMin * 3, 0.06, 0.02);
+    }
+
+    // 1c. 360° Lidar (72 rays)
+    rover.lidarHits = [];
+    let lidarF = 280;
+    const lidarRays = 72;
+    for (let i = 0; i < lidarRays; i++) {
+      const ang = rover.theta + (i / lidarRays) * Math.PI * 2;
+      const hit = castSensorRay(rover.x, rover.y, ang, 280, 'lidar');
+      if (hit) {
+        const noisyT = Math.max(4, hit.t + gaussRand() * state.noiseCm * 0.25);
+        const hx = rover.x + Math.cos(ang) * noisyT;
+        const hy = rover.y + Math.sin(ang) * noisyT;
+        rover.lidarHits.push({ x: hx, y: hy, mat: hit.mat, t: noisyT });
+        if (i === 0 || i === 1 || i === lidarRays - 1) lidarF = Math.min(lidarF, noisyT);
+      }
+    }
+    rover.lidarFront = lidarF;
+
+    // 1d. Stereo Depth Camera (65° frustum, degrades in fog!)
+    rover.stereoPts = [];
+    const stereoRange = state.fog ? 95 : 220;
+    for (let k = -8; k <= 8; k++) {
+      const ang = rover.theta + k * 0.0709;
+      const hit = castSensorRay(noseX, noseY, ang, stereoRange, 'stereo');
+      if (hit) {
+        const stereoNoise = state.fog ? 16 : (hit.t * 0.03 + state.noiseCm * 0.5);
+        const nt = Math.max(8, hit.t + gaussRand() * stereoNoise);
+        rover.stereoPts.push({ x: noseX + Math.cos(ang) * nt, y: noseY + Math.sin(ang) * nt, d: nt });
+      }
+    }
+
+    // 1e. Magnetometer + Iron Distortion
+    let magX = 1, magY = 0;
+    let totalDistort = 0;
+    for (const m of magnets) {
+      const dx = m.x - rover.x, dy = m.y - rover.y;
+      const d2 = dx * dx + dy * dy + 900;
+      const pull = (12000 * m.strength) / d2;
+      magX += (dx / Math.sqrt(d2)) * pull;
+      magY += (dy / Math.sqrt(d2)) * pull;
+      totalDistort += pull;
+    }
+    rover.magDistort = Math.min(1, totalDistort * 0.35);
+    const localNorth = Math.atan2(magY, magX);
+    rover.imuHeading = ((rover.theta - localNorth) * 180 / Math.PI + 360) % 360;
+
+    // 2) Drive Control Law
+    let targetV = 0, targetW = 0;
+    if (rover.reflexTimer > 0) {
+      rover.reflexTimer -= dt;
+      targetV = -48;
+      targetW = rover.reflexDir * 2.4;
+    } else if (state.driveMode === 'manual') {
+      if (keys.w || keys.ArrowUp) targetV = 95;
+      if (keys.s || keys.ArrowDown) targetV = -65;
+      if (keys.a || keys.ArrowLeft) targetW = -2.4;
+      if (keys.d || keys.ArrowRight) targetW = 2.4;
+    } else if (state.driveMode === 'line' && lineTrack.length > 0) {
+      targetV = 78;
+      if (irSum > 0.08) {
+        const err = irWeighted / irSum;
+        targetW = err * 2.35;
+      } else {
+        targetW = 0.7; // gentle search arc
+      }
+    } else {
+      // Auto patrol / Waypoint seeker with fused obstacle avoidance
+      if (rover.hasWp) {
+        const dx = rover.wpX - rover.x, dy = rover.wpY - rover.y;
+        const d = Math.hypot(dx, dy);
+        if (d < 16) {
+          rover.hasWp = false;
+          audio.ping(880, 0.14, 0.05);
+        } else {
+          let err = Math.atan2(dy, dx) - rover.theta;
+          while (err > Math.PI) err -= Math.PI * 2;
+          while (err < -Math.PI) err += Math.PI * 2;
+          targetW = Math.max(-2.6, Math.min(2.6, err * 3.2));
+          targetV = Math.max(25, 92 * Math.max(0.25, Math.cos(err)));
+        }
+      } else {
+        targetV = 82;
+        const fusedFront = Math.min(state.showSonar ? rover.sonarDist : 280, state.showLidar ? rover.lidarFront : 280);
+        if (fusedFront < 72) {
+          targetW = 2.2;
+          targetV = 35;
+        } else {
+          targetW = Math.sin(state.simTime * 0.55) * 0.35;
+        }
+      }
+    }
+
+    rover.v += (targetV - rover.v) * Math.min(1, dt * 8);
+    rover.omega += (targetW - rover.omega) * Math.min(1, dt * 10);
+
+    // Move true rover + check physical wall collision / tactile bumpers!
+    const nextX = rover.x + Math.cos(rover.theta) * rover.v * dt;
+    const nextY = rover.y + Math.sin(rover.theta) * rover.v * dt;
+    rover.bumperL = false; rover.bumperR = false;
+    let collided = false;
+    for (const w of walls) {
+      if (pointSegDist(nextX, nextY, w.x1, w.y1, w.x2, w.y2) < rover.radius) {
+        collided = true;
+        // Determine left vs right bumper
+        const mx = (w.x1 + w.x2) * 0.5 - rover.x;
+        const my = (w.y1 + w.y2) * 0.5 - rover.y;
+        const cross = Math.cos(rover.theta) * my - Math.sin(rover.theta) * mx;
+        if (cross >= 0) { rover.bumperR = true; rover.reflexDir = -1; }
+        else { rover.bumperL = true; rover.reflexDir = 1; }
+        break;
+      }
+    }
+
+    if (collided) {
+      rover.v = -22;
+      if (state.driveMode === 'auto') rover.reflexTimer = 0.45;
+      audio.ping(220, 0.1, 0.06);
+    } else {
+      rover.x = nextX;
+      rover.y = nextY;
+      rover.theta += rover.omega * dt;
+    }
+
+    // Wheel quadrature encoder phase counters
+    const vL = rover.v - rover.omega * 14;
+    const vR = rover.v + rover.omega * 14;
+    const onIce = isOnIce(rover.x, rover.y);
+    const slipMult = 1 + ((onIce ? 0.45 : state.slipPct / 100) * (0.4 + 0.6 * Math.sin(state.simTime * 3.1)));
+    rover.wheelL += vL * slipMult * dt * 0.25;
+    rover.wheelR += vR * slipMult * dt * 0.25;
+
+    // 3) Dead-Reckoning Odometry (Encoders + Gyro Drift)
+    const gyroBiasRad = (state.gyroDriftDeg * Math.PI) / 180;
+    const odomV = rover.v * slipMult;
+    const odomW = rover.omega + gyroBiasRad * (onIce ? 1.8 : 1.0);
+    rover.odomTheta += odomW * dt;
+    rover.odomX += Math.cos(rover.odomTheta) * odomV * dt;
+    rover.odomY += Math.sin(rover.odomTheta) * odomV * dt;
+
+    // 4) 2D Kalman Sensor Fusion (Predict from Odom/IMU -> Update from GPS / Lidar!)
+    rover.kfTheta += odomW * dt;
+    rover.kfX += Math.cos(rover.kfTheta) * odomV * dt;
+    rover.kfY += Math.sin(rover.kfTheta) * odomV * dt;
+    // Process uncertainty grows during motion (faster on ice!)
+    const procGrow = (Math.abs(rover.v) * 0.08 + Math.abs(gyroBiasRad) * 18) * (onIce ? 2.2 : 1.0);
+    rover.kfCov = Math.min(72, Math.sqrt(rover.kfCov * rover.kfCov + procGrow * dt * 16));
+
+    // Periodic GPS measurement (denied inside roof tunnels!)
+    rover.gpsLocked = !isInGPSDenied(rover.x, rover.y);
+    rover.gpsTimer += dt;
+    if (rover.gpsLocked && rover.gpsTimer > 0.22) {
+      rover.gpsTimer = 0;
+      const gpsSigma = Math.max(4, state.noiseCm * 2.4);
+      rover.gpsX = rover.x + gaussRand() * gpsSigma;
+      rover.gpsY = rover.y + gaussRand() * gpsSigma;
+
+      // Kalman Gain K = P / (P + R)
+      const P = rover.kfCov * rover.kfCov;
+      const R = gpsSigma * gpsSigma;
+      const K = P / (P + R);
+      rover.kfX += K * (rover.gpsX - rover.kfX);
+      rover.kfY += K * (rover.gpsY - rover.kfY);
+      // Heading correction from the page's own compass: the filter
+      // believes imuHeading (the magnetometer reading), so gyro drift
+      // and magnet distortion both flow into the fused heading, as
+      // they do on a real robot. (Repaired 2026-11-24 under Steven's
+      // sanction: this update previously read rover.theta — the
+      // ground truth. See the lesson page's provenance note.)
+      let compassTheta = rover.imuHeading * Math.PI / 180;
+      if (compassTheta > Math.PI) compassTheta -= Math.PI * 2;
+      let hErr = compassTheta - rover.kfTheta;
+      while (hErr > Math.PI) hErr -= Math.PI * 2;
+      while (hErr < -Math.PI) hErr += Math.PI * 2;
+      rover.kfTheta += hErr * Math.min(0.45, K * (1 - rover.magDistort * 0.7));
+      rover.kfCov = Math.max(4.5, Math.sqrt((1 - K) * P));
+    }
+
+    // Record trails
+    if (rover.trailTrue.length === 0 || Math.hypot(rover.x - rover.trailTrue[rover.trailTrue.length - 1].x, rover.y - rover.trailTrue[rover.trailTrue.length - 1].y) > 5) {
+      rover.trailTrue.push({ x: rover.x, y: rover.y });
+      rover.trailKF.push({ x: rover.kfX, y: rover.kfY });
+      rover.trailOdom.push({ x: rover.odomX, y: rover.odomY });
+      if (rover.trailTrue.length > 220) { rover.trailTrue.shift(); rover.trailKF.shift(); rover.trailOdom.shift(); }
+    }
+
+    // Sonar ring updates
+    for (let i = sonarWaves.length - 1; i >= 0; i--) {
+      const w = sonarWaves[i];
+      w.r += 230 * dt;
+      w.alpha = Math.max(0, 0.78 * (1 - w.r / w.maxR));
+      if (w.r >= w.maxR) sonarWaves.splice(i, 1);
+    }
+
+    // Record scope history
+    scopeHist.push({
+      sonar: rover.sonarDist,
+      lidar: rover.lidarFront,
+      kfErr: Math.hypot(rover.kfX - rover.x, rover.kfY - rover.y),
+      odomErr: Math.min(180, Math.hypot(rover.odomX - rover.x, rover.odomY - rover.y)),
+      qA: Math.sin(rover.wheelL * 2.5) >= 0 ? 1 : 0,
+      qB: Math.cos(rover.wheelL * 2.5) >= 0 ? 1 : 0,
+      gyro: rover.omega * 180 / Math.PI + state.gyroDriftDeg,
+      magD: rover.magDistort * 100
+    });
+    if (scopeHist.length > 160) scopeHist.shift();
+  }
+
+  // =========================================================================
+  // RENDERING
+  // =========================================================================
+  function render(nowSec) {
+    const cx = W * 0.5 - (document.getElementById('drawer').classList.contains('collapsed') ? 0 : 95);
+    const cy = H * 0.5 + 15;
+
+    ctx.fillStyle = '#040711';
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.save();
+    ctx.translate(cx, cy);
+
+    // Subtle engineering floor grid
+    ctx.strokeStyle = 'rgba(105, 145, 225, 0.065)';
+    ctx.lineWidth = 1;
+    for (let x = -400; x <= 400; x += 40) { ctx.beginPath(); ctx.moveTo(x, -260); ctx.lineTo(x, 260); ctx.stroke(); }
+    for (let y = -240; y <= 240; y += 40) { ctx.beginPath(); ctx.moveTo(-400, y); ctx.lineTo(400, y); ctx.stroke(); }
+
+    // 1) GPS-Denied Roof Zones
+    for (const z of gpsDeniedZones) {
+      ctx.fillStyle = 'rgba(28, 52, 92, 0.24)';
+      ctx.strokeStyle = 'rgba(92, 165, 255, 0.35)';
+      ctx.setLineDash([6, 6]);
+      ctx.lineWidth = 1.4;
+      ctx.fillRect(z.x, z.y, z.w, z.h);
+      ctx.strokeRect(z.x, z.y, z.w, z.h);
+      ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(130, 195, 255, 0.65)';
+      ctx.font = '700 10px ui-monospace, monospace';
+      ctx.fillText('GPS-DENIED TUNNEL', z.x + 10, z.y + 18);
+    }
+
+    // 2) Icy Wheel-Slip Zones
+    for (const z of iceZones) {
+      const g = ctx.createRadialGradient(z.x, z.y, 6, z.x, z.y, z.r);
+      g.addColorStop(0, 'rgba(120, 225, 255, 0.22)');
+      g.addColorStop(1, 'rgba(88, 195, 255, 0.03)');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(z.x, z.y, z.r, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = 'rgba(120, 225, 255, 0.32)';
+      ctx.setLineDash([4, 4]); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(160, 235, 255, 0.7)';
+      ctx.font = '600 9.5px ui-monospace, monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('ICE SLIP ZONE', z.x, z.y + 4);
+      ctx.textAlign = 'left';
+    }
+
+    // 3) Ferrous Magnetic Disturbance Blocks
+    for (const m of magnets) {
+      const mg = ctx.createRadialGradient(m.x, m.y, 4, m.x, m.y, 92);
+      mg.addColorStop(0, 'rgba(255, 175, 70, 0.26)');
+      mg.addColorStop(1, 'rgba(255, 175, 70, 0)');
+      ctx.fillStyle = mg;
+      ctx.beginPath(); ctx.arc(m.x, m.y, 92, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#d97706';
+      ctx.strokeStyle = '#fde68a';
+      ctx.lineWidth = 1.6;
+      ctx.beginPath(); ctx.arc(m.x, m.y, 14, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#fff';
+      ctx.font = '700 9px ui-monospace, monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('Fe', m.x, m.y + 3);
+      ctx.fillStyle = 'rgba(255, 210, 130, 0.8)';
+      ctx.fillText('MAG DISTORT', m.x, m.y - 20);
+      ctx.textAlign = 'left';
+    }
+
+    // 4) Floor IR Line Track
+    if (lineTrack.length > 2) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.14)';
+      ctx.lineWidth = 22;
+      ctx.beginPath();
+      lineTrack.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+      ctx.closePath(); ctx.stroke();
+      ctx.strokeStyle = '#090d18';
+      ctx.lineWidth = 10;
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(92, 225, 255, 0.35)';
+      ctx.lineWidth = 1.2;
+      ctx.setLineDash([5, 6]);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // 5) Arena Walls (Material-coded!)
+    for (const w of walls) {
+      ctx.save();
+      ctx.lineCap = 'round';
+      if (w.mat === 'glass') {
+        ctx.strokeStyle = 'rgba(130, 225, 255, 0.62)';
+        ctx.lineWidth = 6;
+        ctx.beginPath(); ctx.moveTo(w.x1, w.y1); ctx.lineTo(w.x2, w.y2); ctx.stroke();
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.4;
+        ctx.stroke();
+      } else if (w.mat === 'foam') {
+        ctx.strokeStyle = '#9333ea';
+        ctx.lineWidth = 9;
+        ctx.setLineDash([5, 4]);
+        ctx.beginPath(); ctx.moveTo(w.x1, w.y1); ctx.lineTo(w.x2, w.y2); ctx.stroke();
+      } else {
+        ctx.strokeStyle = '#64748b';
+        ctx.lineWidth = 7;
+        ctx.beginPath(); ctx.moveTo(w.x1, w.y1); ctx.lineTo(w.x2, w.y2); ctx.stroke();
+        ctx.strokeStyle = 'rgba(205, 220, 245, 0.45)';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    // 6) Sensor Rays & Visuals
+    // 6a. Lidar 360° laser rays
+    if (state.showLidar) {
+      ctx.save();
+      for (const h of rover.lidarHits) {
+        ctx.strokeStyle = 'rgba(92, 225, 255, 0.13)';
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(rover.x, rover.y); ctx.lineTo(h.x, h.y); ctx.stroke();
+        ctx.fillStyle = '#5ce1ff';
+        ctx.beginPath(); ctx.arc(h.x, h.y, 2.2, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    // 6b. Stereo Depth Camera 65° Frustum
+    if (state.showStereo) {
+      const sRange = state.fog ? 95 : 220;
+      const nx = rover.x + Math.cos(rover.theta) * rover.radius;
+      const ny = rover.y + Math.sin(rover.theta) * rover.radius;
+      ctx.save();
+      ctx.fillStyle = state.fog ? 'rgba(255, 191, 94, 0.05)' : 'rgba(176, 140, 255, 0.08)';
+      ctx.beginPath();
+      ctx.moveTo(nx, ny);
+      ctx.arc(nx, ny, sRange, rover.theta - 0.5672, rover.theta + 0.5672);
+      ctx.closePath();
+      ctx.fill();
+      for (const p of rover.stereoPts) {
+        ctx.fillStyle = '#d09cff';
+        ctx.fillRect(p.x - 1.8, p.y - 1.8, 3.6, 3.6);
+      }
+      ctx.restore();
+    }
+
+    // 6c. Ultrasonic 40 kHz Expanding Wave Arcs
+    if (state.showSonar) {
+      for (const sw of sonarWaves) {
+        ctx.save();
+        ctx.strokeStyle = `rgba(76, 242, 178, ${sw.alpha})`;
+        ctx.lineWidth = 2.0;
+        ctx.beginPath();
+        ctx.arc(sw.x, sw.y, sw.r, sw.theta - 0.26, sw.theta + 0.26);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    // 7) Trails: Dead-Reckoning (coral), Kalman Fused (mint), True (cyan)
+    const drawTrail = (arr, col, dash = []) => {
+      if (arr.length < 2) return;
+      ctx.save();
+      ctx.strokeStyle = col; ctx.lineWidth = 1.6; ctx.setLineDash(dash);
+      ctx.beginPath();
+      arr.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+      ctx.stroke();
+      ctx.restore();
+    };
+    if (state.showOdom) drawTrail(rover.trailOdom, 'rgba(255, 100, 136, 0.45)', [4, 4]);
+    if (state.showKF) drawTrail(rover.trailKF, 'rgba(76, 242, 178, 0.72)');
+    drawTrail(rover.trailTrue, 'rgba(92, 225, 255, 0.32)');
+
+    // 8) Noisy Raw GPS Fix Dot & Kalman 95% Uncertainty Ellipse
+    if (state.showKF) {
+      if (rover.gpsLocked) {
+        ctx.fillStyle = 'rgba(255, 191, 94, 0.85)';
+        ctx.beginPath(); ctx.arc(rover.gpsX, rover.gpsY, 4, 0, Math.PI * 2); ctx.fill();
+      }
+      // Kalman 95% covariance ellipse
+      ctx.save();
+      ctx.strokeStyle = 'rgba(76, 242, 178, 0.8)';
+      ctx.fillStyle = 'rgba(76, 242, 178, 0.11)';
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.arc(rover.kfX, rover.kfY, rover.kfCov * 2.45, 0, Math.PI * 2);
+      ctx.fill(); ctx.stroke();
+      ctx.restore();
+    }
+
+    // 9) Drifting Odometry Ghost Rover
+    if (state.showOdom) {
+      drawRoverChassis(rover.odomX, rover.odomY, rover.odomTheta, 'rgba(255, 100, 136, 0.48)', true);
+    }
+
+    // 10) Waypoint Beacon
+    if (rover.hasWp) {
+      const pulse = 8 + 4 * Math.sin(nowSec * 6);
+      ctx.strokeStyle = '#ffbf5e'; ctx.lineWidth = 1.6;
+      ctx.beginPath(); ctx.arc(rover.wpX, rover.wpY, pulse, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = '#ffbf5e';
+      ctx.beginPath(); ctx.arc(rover.wpX, rover.wpY, 3.5, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // 11) True Rover Chassis + Bumpers
+    drawRoverChassis(rover.x, rover.y, rover.theta, '#5ce1ff', false);
+
+    // Fog veil if enabled
+    if (state.fog) {
+      ctx.fillStyle = 'rgba(120, 145, 175, 0.14)';
+      ctx.fillRect(-400, -260, 800, 520);
+    }
+
+    // Wall drawing preview
+    if (ptr.drawingWall) {
+      ctx.strokeStyle = '#fff'; ctx.setLineDash([4, 4]); ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(ptr.wx1, ptr.wy1); ctx.lineTo(ptr.wx2, ptr.wy2); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    ctx.restore();
+  }
+
+  function drawRoverChassis(x, y, theta, accent, isGhost) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(theta);
+    if (isGhost) ctx.globalAlpha = 0.55;
+
+    // Wheels
+    ctx.fillStyle = '#1e293b';
+    ctx.fillRect(-13, -18, 22, 5);
+    ctx.fillRect(-13,  13, 22, 5);
+
+    // Body
+    ctx.fillStyle = isGhost ? 'rgba(255, 100, 136, 0.25)' : '#0f172a';
+    ctx.strokeStyle = accent;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(-16, -13, 32, 26, 7);
+    ctx.fill(); ctx.stroke();
+
+    // Lidar turret
+    ctx.fillStyle = accent;
+    ctx.beginPath(); ctx.arc(0, 0, 6.5, 0, Math.PI * 2); ctx.fill();
+
+    // Front whiskers / bumpers
+    if (!isGhost && state.showBump) {
+      ctx.strokeStyle = rover.bumperL ? '#ff6488' : 'rgba(200, 220, 255, 0.6)';
+      ctx.lineWidth = rover.bumperL ? 2.8 : 1.4;
+      ctx.beginPath(); ctx.moveTo(15, -10); ctx.lineTo(24, -15); ctx.stroke();
+
+      ctx.strokeStyle = rover.bumperR ? '#ff6488' : 'rgba(200, 220, 255, 0.6)';
+      ctx.lineWidth = rover.bumperR ? 2.8 : 1.4;
+      ctx.beginPath(); ctx.moveTo(15, 10); ctx.lineTo(24, 15); ctx.stroke();
+    }
+
+    // Heading arrow
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath(); ctx.moveTo(14, 0); ctx.lineTo(7, -4); ctx.lineTo(7, 4); ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+
+  function renderScope() {
+    const w = scopeCanvas.width, h = scopeCanvas.height;
+    sCtx.clearRect(0, 0, w, h);
+    if (scopeHist.length < 2) return;
+
+    const plotLine = (getter, maxVal, col) => {
+      sCtx.strokeStyle = col; sCtx.lineWidth = 1.6;
+      sCtx.beginPath();
+      scopeHist.forEach((pt, idx) => {
+        const x = (idx / Math.max(1, scopeHist.length - 1)) * w;
+        const y = h - 7 - Math.max(0, Math.min(1, getter(pt) / maxVal)) * (h - 14);
+        if (idx === 0) sCtx.moveTo(x, y); else sCtx.lineTo(x, y);
+      });
+      sCtx.stroke();
+    };
+
+    if (state.scopeMode === 'range') {
+      plotLine(p => p.sonar, 280, '#4cf2b2');
+      plotLine(p => p.lidar, 280, '#5ce1ff');
+      plotLine(p => p.kfErr * 2, 180, '#ffbf5e');
+      plotLine(p => p.odomErr, 180, '#ff6488');
+    } else if (state.scopeMode === 'quad') {
+      plotLine(p => 0.55 + p.qA * 0.35, 1, '#5ce1ff');
+      plotLine(p => 0.10 + p.qB * 0.35, 1, '#ffbf5e');
+    } else {
+      plotLine(p => p.gyro + 90, 180, '#ffbf5e');
+      plotLine(p => p.magD, 100, '#ff6488');
+    }
+  }
+
+  function updateTelemetry() {
+    const kfErr = Math.hypot(rover.kfX - rover.x, rover.kfY - rover.y);
+    const odomErr = Math.hypot(rover.odomX - rover.x, rover.odomY - rover.y);
+
+    document.getElementById('tel-sonar').textContent = rover.sonarDist >= 275 ? 'NO ECHO' : `${rover.sonarDist.toFixed(0)} cm`;
+    document.getElementById('tel-lidar').textContent = rover.lidarFront >= 275 ? '>280 cm' : `${rover.lidarFront.toFixed(0)} cm`;
+    document.getElementById('tel-imu').textContent = `${rover.imuHeading.toFixed(1)}°`;
+    document.getElementById('tel-kf').textContent = `${kfErr.toFixed(1)} cm`;
+    document.getElementById('tel-odom').textContent = `${odomErr.toFixed(1)} cm`;
+    document.getElementById('tel-gps').textContent = rover.gpsLocked ? (state.fog ? 'GPS OK / FOG' : 'GPS + STEREO') : 'GPS DENIED!';
+    document.getElementById('tel-bump').textContent = (rover.bumperL || rover.bumperR) ? 'CONTACT!' : 'BUMP: OK';
+    document.getElementById('tel-bump').style.color = (rover.bumperL || rover.bumperR) ? '#ff6488' : 'var(--text-muted)';
+
+    for (let i = 0; i < 5; i++) {
+      document.getElementById(`ir${i}`).classList.toggle('on', rover.irVals[i] > 0.35);
+    }
+
+    const pill = document.getElementById('status-pill');
+    pill.className = 'status-pill';
+    if (!rover.gpsLocked) { pill.textContent = 'GPS Denied · Dead Reckoning'; pill.classList.add('warn'); }
+    else if (rover.magDistort > 0.35) { pill.textContent = 'Magnetic Interference!'; pill.classList.add('danger'); }
+    else if (isOnIce(rover.x, rover.y)) { pill.textContent = 'Wheel Slip Detected!'; pill.classList.add('warn'); }
+    else { pill.textContent = 'Kalman Lock · Nominal'; }
+  }
+
+  function syncUI() {
+    document.querySelectorAll('.preset-btn').forEach(b => b.classList.toggle('active', b.dataset.preset === state.preset));
+    document.querySelectorAll('#drive-row .seg-btn').forEach(b => b.classList.toggle('active', b.dataset.drive === state.driveMode));
+    document.getElementById('btn-mode-bar').textContent = state.driveMode === 'auto' ? 'Mode: Auto' : state.driveMode === 'line' ? 'Mode: IR Line' : 'Mode: Manual';
+    document.getElementById('sl-noise').value = state.noiseCm;
+    document.getElementById('val-noise').textContent = `${state.noiseCm.toFixed(1)} cm`;
+    document.getElementById('sl-slip').value = state.slipPct;
+    document.getElementById('val-slip').textContent = `${state.slipPct}%`;
+    document.getElementById('sl-gyro').value = state.gyroDriftDeg;
+    document.getElementById('val-gyro').textContent = `${state.gyroDriftDeg.toFixed(1)} °/s`;
+    document.getElementById('chk-fog').checked = state.fog;
+  }
+
+  // =========================================================================
+  // UI & POINTER HANDLERS
+  // =========================================================================
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById(`tab-${btn.dataset.tab}`).classList.add('active');
+    });
+  });
+
+  document.querySelectorAll('.preset-btn').forEach(b => b.addEventListener('click', () => loadPreset(b.dataset.preset)));
+  document.querySelectorAll('#drive-row .seg-btn').forEach(b => b.addEventListener('click', () => { state.driveMode = b.dataset.drive; syncUI(); }));
+  document.querySelectorAll('#scope-mode-row .seg-btn').forEach(b => b.addEventListener('click', () => {
+    state.scopeMode = b.dataset.smode;
+    document.querySelectorAll('#scope-mode-row .seg-btn').forEach(x => x.classList.remove('active', 'amber'));
+    b.classList.add('active', 'amber');
+    const leg = document.getElementById('scope-legend');
+    if (state.scopeMode === 'range') leg.innerHTML = '<span style="color:#4cf2b2">■ Sonar</span><span style="color:#5ce1ff">■ Lidar</span><span style="color:#ffbf5e">■ Kalman Err</span><span style="color:#ff6488">■ Odom Drift</span>';
+    else if (state.scopeMode === 'quad') leg.innerHTML = '<span style="color:#5ce1ff">■ Encoder Phase A</span><span style="color:#ffbf5e">■ Encoder Phase B (90° shift)</span>';
+    else leg.innerHTML = '<span style="color:#ffbf5e">■ Gyro Rate (°/s)</span><span style="color:#ff6488">■ Magnetic Distortion (%)</span>';
+  }));
+
+  document.querySelectorAll('#tool-row .seg-btn').forEach(b => b.addEventListener('click', () => {
+    state.tool = b.dataset.tool;
+    document.querySelectorAll('#tool-row .seg-btn').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+  }));
+
+  document.getElementById('chk-sonar').addEventListener('change', e => state.showSonar = e.target.checked);
+  document.getElementById('chk-lidar').addEventListener('change', e => state.showLidar = e.target.checked);
+  document.getElementById('chk-stereo').addEventListener('change', e => state.showStereo = e.target.checked);
+  document.getElementById('chk-ir').addEventListener('change', e => state.showIR = e.target.checked);
+  document.getElementById('chk-bump').addEventListener('change', e => state.showBump = e.target.checked);
+  document.getElementById('chk-kf').addEventListener('change', e => state.showKF = e.target.checked);
+  document.getElementById('chk-odom').addEventListener('change', e => state.showOdom = e.target.checked);
+  document.getElementById('chk-fog').addEventListener('change', e => state.fog = e.target.checked);
+
+  document.getElementById('sl-noise').addEventListener('input', e => { state.noiseCm = Number(e.target.value); document.getElementById('val-noise').textContent = `${state.noiseCm.toFixed(1)} cm`; });
+  document.getElementById('sl-slip').addEventListener('input', e => { state.slipPct = Number(e.target.value); document.getElementById('val-slip').textContent = `${state.slipPct}%`; });
+  document.getElementById('sl-gyro').addEventListener('input', e => { state.gyroDriftDeg = Number(e.target.value); document.getElementById('val-gyro').textContent = `${state.gyroDriftDeg.toFixed(1)} °/s`; });
+
+  document.getElementById('btn-reset-kf').addEventListener('click', resetEstimatesToTrue);
+  document.getElementById('btn-ping').addEventListener('click', () => {
+    const nx = rover.x + Math.cos(rover.theta) * rover.radius;
+    const ny = rover.y + Math.sin(rover.theta) * rover.radius;
+    sonarWaves.push({ x: nx, y: ny, theta: rover.theta, r: 8, maxR: Math.min(260, rover.sonarDist + 10), alpha: 0.95 });
+    audio.ping(1480, 0.1, 0.05);
+  });
+  document.getElementById('btn-clear-walls').addEventListener('click', () => { walls = walls.filter(w => !w.custom); });
+
+  const btnPlay = document.getElementById('btn-play');
+  btnPlay.addEventListener('click', () => { state.paused = !state.paused; btnPlay.textContent = state.paused ? '▶ Play' : '⏸ Pause'; btnPlay.classList.toggle('active', !state.paused); });
+  document.getElementById('btn-reset').addEventListener('click', () => loadPreset(state.preset));
+  document.getElementById('btn-mode-bar').addEventListener('click', () => {
+    const order = ['auto', 'line', 'manual'];
+    state.driveMode = order[(order.indexOf(state.driveMode) + 1) % order.length];
+    syncUI();
+  });
+  document.getElementById('btn-sound').addEventListener('click', e => { const on = audio.toggle(); e.target.textContent = on ? '🔊 Audio' : '🔇 Audio'; e.target.classList.toggle('active', on); });
+  document.getElementById('btn-toggle-drawer').addEventListener('click', e => { document.getElementById('drawer').classList.toggle('collapsed'); e.target.classList.toggle('active', !document.getElementById('drawer').classList.contains('collapsed')); });
+  function toggleZen() { document.body.classList.toggle('zen-mode'); }
+  document.getElementById('btn-zen').addEventListener('click', toggleZen);
+  document.getElementById('btn-zen-restore').addEventListener('click', toggleZen);
+
+  // Canvas pointer interaction
+  const ptr = { draggingRover: false, drawingWall: false, wx1: 0, wy1: 0, wx2: 0, wy2: 0 };
+  function toArena(sx, sy) {
+    const cx = W * 0.5 - (document.getElementById('drawer').classList.contains('collapsed') ? 0 : 95);
+    const cy = H * 0.5 + 15;
+    return { x: sx - cx, y: sy - cy };
+  }
+
+  canvas.addEventListener('pointerdown', e => {
+    canvas.setPointerCapture(e.pointerId);
+    const p = toArena(e.clientX, e.clientY);
+    if (Math.hypot(p.x - rover.x, p.y - rover.y) < 28) {
+      ptr.draggingRover = true;
+      return;
+    }
+    if (state.tool === 'waypoint') {
+      rover.wpX = Math.max(-345, Math.min(345, p.x));
+      rover.wpY = Math.max(-220, Math.min(220, p.y));
+      rover.hasWp = true;
+      state.driveMode = 'auto';
+      syncUI();
+      audio.ping(720, 0.08, 0.03);
+    } else if (state.tool === 'magnet') {
+      magnets.push({ x: p.x, y: p.y, strength: 1.15 });
+      audio.ping(440, 0.1, 0.04);
+    } else if (state.tool === 'erase') {
+      walls = walls.filter((w, idx) => idx < 4 || pointSegDist(p.x, p.y, w.x1, w.y1, w.x2, w.y2) > 18);
+      magnets = magnets.filter(m => Math.hypot(p.x - m.x, p.y - m.y) > 22);
+    } else {
+      ptr.drawingWall = true;
+      ptr.wx1 = ptr.wx2 = p.x;
+      ptr.wy1 = ptr.wy2 = p.y;
+    }
+  });
+
+  canvas.addEventListener('pointermove', e => {
+    const p = toArena(e.clientX, e.clientY);
+    if (ptr.draggingRover) {
+      rover.x = Math.max(-345, Math.min(345, p.x));
+      rover.y = Math.max(-220, Math.min(220, p.y));
+    } else if (ptr.drawingWall) {
+      ptr.wx2 = p.x; ptr.wy2 = p.y;
+    }
+  });
+
+  canvas.addEventListener('pointerup', () => {
+    if (ptr.drawingWall && Math.hypot(ptr.wx2 - ptr.wx1, ptr.wy2 - ptr.wy1) > 16) {
+      walls.push({ x1: ptr.wx1, y1: ptr.wy1, x2: ptr.wx2, y2: ptr.wy2, mat: state.tool, custom: true });
+    }
+    ptr.draggingRover = false;
+    ptr.drawingWall = false;
+  });
+
+  window.addEventListener('keydown', e => {
+    if (e.key in keys) {
+      keys[e.key] = true;
+      if (state.driveMode !== 'manual') { state.driveMode = 'manual'; syncUI(); }
+    } else if (e.key === 'h' || e.key === 'H') toggleZen();
+    else if (e.code === 'Space') { e.preventDefault(); btnPlay.click(); }
+  });
+  window.addEventListener('keyup', e => { if (e.key in keys) keys[e.key] = false; });
+  window.addEventListener('resize', resize);
+
+  let lastNow = performance.now(), frame = 0;
+  function loop(now) {
+    const dt = Math.min(0.05, (now - lastNow) / 1000);
+    lastNow = now;
+    if (!state.paused) stepSim(dt);
+    render(now / 1000);
+    if (frame % 3 === 0) { updateTelemetry(); renderScope(); }
+    frame++;
+    requestAnimationFrame(loop);
+  }
+
+  resize();
+  loadPreset('fusion');
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
