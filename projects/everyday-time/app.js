@@ -1,3 +1,5 @@
+/* prefers-reduced-motion: paint a static frame, then pause rAF loops */
+(function(){try{if(typeof window!=="undefined"&&window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").matches){var r=window.requestAnimationFrame.bind(window),n=0;window.requestAnimationFrame=function(c){if(n>=2)return 0;n+=1;return r(c);};}}catch(e){}})();
 "use strict";
 /* Everyday Time — page wiring. The rules live in time.js. */
 (function () {
