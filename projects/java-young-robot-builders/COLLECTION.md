@@ -67,3 +67,7 @@ Back door 143 — The Relay · 24 November 2026
 Back door 144 — The Baton Box · 24 November 2026
 
 `index.html` gained back door 144, The Baton Box — a Server That Knows No Games (its own project; built by Muse at Steven Powell's direction, self-test 20/20 with the receipts live in the lesson). The section heading rose from "One hundred forty-three games" to "One hundred forty-four games", verified sequential 1–144 on the page. The full measurements live in the lesson, in its home project.
+
+Back door 145 — The SNES Console · 24 November 2026
+
+`index.html` gained back door 145, The SNES Console — a Super Nintendo in a Page (Nerd Heaven; Snes9x via EmulatorJS, vendored unmodified under Steven Powell's attribution ruling, page by Muse, audit 20/20 with the receipts — including the cross-wired pad, measured at the cartridge — live in the lesson). The section heading rose from "One hundred forty-four games" to "One hundred forty-five games", verified sequential 1–145 on the page. The full measurements live in the lesson, in its home room.
