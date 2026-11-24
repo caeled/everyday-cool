@@ -22,6 +22,10 @@ Cryptography and packet checksums need Web Crypto. Modern browsers may allow it 
 8. **Field missions:** nine experiments and a downloadable printable treasure-hunt sheet.
 9. **Go deeper:** primary sources, portable guide, scientific notes, and an ASL fingerspelling introduction with real hand-position references and a real signing demonstration. ASL is a language with its own grammar; fingerspelling is one part of it.
 
+**Also in the Transfer Station:** **Dead Drop** (`dead-drop.html`) — Steven Powell's own sneakernet workbench, a single offline file with four channels for passing a note across an air gap: image LSB steganography, QR, Morse, and numbers stations, with its back-door lesson (`dead-drop-lesson.html`) on what each channel actually does and the audit that drove all four of them. Its built-in self-test passes 4/4, with 50 independent checks besides.
+
+**Cross-room feature — Morse:** code-sending is this room's subject, so the Transfer Station also features the Morse sender — but the sender itself lives in the Radio Room (`../radio-room/morse.html`, with its lesson at `../radio-room/morse-lesson.html`), on the same table and at the same timing as its sibling Skip.
+
 ## Compatibility
 
 The QR studio and local jsQR reader work offline. For other phones, scan the generated code at a suitable size with its white border visible. Emoji codes declare UTF-8 with ECI 26; support differs between scanners. Downloads require browser download permissions. Uploaded images are decoded locally and never uploaded to a server. The reader accepts PNG, JPEG, and WebP, up to 8 MB; crop unusually large images first.

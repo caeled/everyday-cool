@@ -63,3 +63,11 @@ Seven interactive mathematics exhibits built by Google Antigravity (Gemini) at S
 - `fourier-epicycles.html` / `fourier-epicycles-lesson.html` — the DFT exact to ≤1.3×10⁻¹² on every preset; the "~9% Gibbs" label is false as shipped.
 
 The wave has its own section at the top of `index.html` ("The Math Wave"). Reference bank: ~/workspace/your_files/mathematics-seven-references_2026-11-23.md (17 sources, all curl-verified 200).
+
+
+## Fractal and Warp (added 24 November 2026)
+
+Two of Steven Powell's own Python originals from his Bordeom workshop (numpy and pygame), ported to the web by Muse with the maths carried over line for line. They are a pair: in the Python, `fractal.py` imports its palettes from `warp.py` (`from warp import PALETTES`), and both pages here carry the same shared palette module. They have their own section at the top of `index.html` ("Fractal and Warp"), ahead of the Math Wave.
+
+- `fractal.html` / `fractal-lesson.html` — **Fractal — the endless spirals:** a Mandelbrot / Julia zoomer with Acidwarp-style palette cycling and a dive mode that falls into spiral valleys — six targets (Seahorse valley, Triple spiral valley, Spiral, Deep spiral, Elephant valley, Misiurewicz spirals) found by computation, each refined by zooming repeatedly toward the most detailed pixel. The smooth escape colouring, the iteration budget, and the six targets were carried over line for line; the page's proof table runs the original's own self-test against the shipped code: 13/13 proofs.
+- `warp.html` / `warp-lesson.html` — **Warp — the palette is the animation:** an Acidwarp tribute (the 1992–93 DOS screen saver by Noah Spurrier and Mark Bilk) built on nine index-picture generators — rings, spiral, waves, plasma, kaleido, interference, tunnel, warp, and julia — and five seamless 256-colour palettes. Nothing is redrawn; the palette rotates and the colours do all the moving. The nine generators and five palettes were carried over line for line; the page's proof table runs the original's own self-test against the shipped code: 15/15 proofs.

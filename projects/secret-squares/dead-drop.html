@@ -1,0 +1,1189 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DEAD DROP — sneakernet workbench</title>
+<style>
+  /* Midnight-radio theme. Tokens posted in NOTES.md; dd- prefix is final. */
+  :root {
+    --dd-bg: #060806;
+    --dd-panel: #0c120d;
+    --dd-line: #1e3a24;
+    --dd-phosphor: #46ff7a;
+    --dd-dim: #7aa88a;
+    --dd-amber: #ffb347;
+    --dd-btn-bg: #12341b;
+    --dd-btn-ink: #d8ffe0;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: radial-gradient(1200px 600px at 50% -10%, #0d1a0f 0%, var(--dd-bg) 60%) fixed, var(--dd-bg);
+    color: var(--dd-phosphor);
+    font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+    line-height: 1.45;
+  }
+  .dd-shell { max-width: 1100px; margin: 0 auto; padding: 20px 16px 40px; }
+  .dd-head { border-bottom: 1px solid var(--dd-line); padding-bottom: 12px; margin-bottom: 16px; }
+  .dd-head h1 {
+    margin: 0; font-size: 1.6rem; letter-spacing: 0.35em;
+    text-shadow: 0 0 12px rgba(70, 255, 122, 0.45);
+  }
+  .dd-head p { margin: 6px 0 0; color: var(--dd-dim); }
+  .dd-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 860px) { .dd-grid { grid-template-columns: 1fr; } }
+  .dd-panel {
+    background: var(--dd-panel);
+    border: 1px solid var(--dd-line);
+    border-radius: 8px;
+    padding: 14px 16px;
+    box-shadow: 0 0 24px rgba(70, 255, 122, 0.06) inset;
+  }
+  .dd-panel-title { margin: 0 0 10px; font-size: 1.05rem; letter-spacing: 0.12em; }
+  .dd-label { display: block; color: var(--dd-dim); font-size: 0.85rem; margin: 8px 0; }
+  .dd-msg, .dd-top, .dd-bottom, input[type="text"], textarea {
+    display: block; width: 100%; margin-top: 4px;
+    background: #040604; color: var(--dd-phosphor);
+    border: 1px solid var(--dd-line); border-radius: 4px;
+    font: inherit; padding: 8px;
+  }
+  .dd-msg:focus, input:focus, textarea:focus { outline: 1px solid var(--dd-phosphor); }
+  input[type="file"] { display: block; margin-top: 4px; color: var(--dd-dim); font: inherit; }
+  input[type="range"].dd-slider { width: 100%; accent-color: var(--dd-phosphor); }
+  .dd-meme-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .dd-actions { display: flex; gap: 8px; align-items: center; margin: 10px 0; flex-wrap: wrap; }
+  .dd-btn {
+    background: var(--dd-btn-bg); color: var(--dd-btn-ink);
+    border: 1px solid var(--dd-line); border-radius: 4px;
+    font: inherit; padding: 7px 14px; cursor: pointer; text-decoration: none;
+  }
+  .dd-btn:hover { border-color: var(--dd-phosphor); box-shadow: 0 0 10px rgba(70,255,122,.25); }
+  .dd-out {
+    background: #040604; border: 1px solid var(--dd-line); border-radius: 4px;
+    padding: 8px; min-height: 2.2em; white-space: pre-wrap; word-break: break-word;
+    margin: 8px 0; font-size: 0.85rem;
+  }
+  .dd-status { color: var(--dd-amber); font-size: 0.85rem; min-height: 1.4em; }
+  .dd-hint { color: var(--dd-dim); font-size: 0.78rem; margin: 8px 0 0; }
+  .dd-key {
+    display: inline-block; width: 18px; height: 18px; border-radius: 50%;
+    background: #1a2b1e; border: 1px solid var(--dd-line); vertical-align: middle;
+  }
+  .dd-key-on { background: var(--dd-amber); box-shadow: 0 0 14px var(--dd-amber); border-color: var(--dd-amber); }
+  .dd-preview { display: block; margin-top: 8px; border: 1px solid var(--dd-line); border-radius: 4px; max-width: 100%; }
+  hr { border: none; border-top: 1px solid var(--dd-line); margin: 14px 0; }
+  .dd-selftest { margin-top: 16px; }
+  .dd-missing { color: var(--dd-dim); }
+  .dd-foot { margin-top: 16px; color: var(--dd-dim); font-size: 0.78rem; }
+</style>
+</head>
+<body>
+<div class="dd-shell">
+  <header class="dd-head">
+    <h1>DEAD DROP</h1>
+    <p>Sometimes the models need to pass notes in class.</p>
+  </header>
+
+  <main class="dd-grid">
+    <section id="slot-image" aria-label="image channel"></section>
+    <section id="slot-qr" aria-label="qr channel"></section>
+    <section id="slot-morse" aria-label="morse channel"></section>
+    <section id="slot-numbers" aria-label="numbers channel"></section>
+  </main>
+
+  <section class="dd-panel dd-selftest" aria-label="self test">
+    <h2 class="dd-panel-title">Self-test</h2>
+    <div class="dd-actions">
+      <button type="button" class="dd-btn" id="dd-selftest-btn">Run self-test</button>
+    </div>
+    <pre class="dd-out" id="dd-selftest-out" aria-live="polite">Not run yet.</pre>
+  </section>
+
+  <footer class="dd-foot">One file, offline, no network. Breakage is the only honest audit — run the self-test.</footer>
+</div>
+
+<script>
+// ==== src/image.js ====
+/*
+ * image.js — image channel for the night project.
+ *
+ * Stores UTF-8 text in the least-significant bits of an image's pixels and
+ * reads it back exactly (lossless PNG round-trip). Also renders a captioned
+ * image that carries an embedded message.
+ *
+ * Exposes window.ChanImage:
+ *   encodeIntoImageData(imageData, text) -> imageData   (mutates in place; throws if too small)
+ *   decodeFromImageData(imageData)       -> string       (throws if no valid payload)
+ *   capacityBytes(imageData)             -> number
+ *   renderCaption(opts)                  -> canvas
+ *   mount(containerEl)                   -> builds the panel UI
+ *   selfTest()                           -> {pass, details}
+ *
+ * No network, no dependencies. Vanilla JS + Canvas.
+ */
+(function () {
+  'use strict';
+
+  // 4-byte marker so decode can distinguish "this image carries a payload" from
+  // random LSB noise, plus a 1-byte version and a 4-byte length. Not a secret.
+  var MAGIC = [0x4E, 0x50, 0x31, 0x00]; // "NP1\0"
+  var HEADER_BYTES = MAGIC.length + 1 + 4;
+  var HEADER_BITS = HEADER_BYTES * 8;
+
+  function textToBytes(text) { return new TextEncoder().encode(text); }
+  function bytesToText(bytes) { return new TextDecoder().decode(bytes); }
+
+  // 3 usable LSB slots per pixel (R,G,B); alpha is left untouched.
+  function capacityBits(imageData) { return imageData.width * imageData.height * 3; }
+  function capacityBytes(imageData) {
+    return Math.max(0, Math.floor((capacityBits(imageData) - HEADER_BITS) / 8));
+  }
+
+  function buildPayload(bytes) {
+    var len = bytes.length >>> 0;
+    var out = new Uint8Array(HEADER_BYTES + len);
+    var i = 0;
+    for (; i < MAGIC.length; i++) out[i] = MAGIC[i];
+    out[i++] = 1; // version
+    out[i++] = (len >>> 24) & 0xff;
+    out[i++] = (len >>> 16) & 0xff;
+    out[i++] = (len >>> 8) & 0xff;
+    out[i++] = len & 0xff;
+    out.set(bytes, i);
+    return out;
+  }
+
+  // Walk R,G,B channels in order, skipping alpha (index 3 of every 4 bytes).
+  function forEachSlot(data, count, fn) {
+    var slot = 0;
+    for (var p = 0; p < data.length && slot < count; p += 4) {
+      for (var c = 0; c < 3 && slot < count; c++) { fn(p + c, slot); slot++; }
+    }
+  }
+
+  function encodeIntoImageData(imageData, text) {
+    var payload = buildPayload(textToBytes(text));
+    var totalBits = payload.length * 8;
+    if (totalBits > capacityBits(imageData)) {
+      throw new Error('Message too large for this image. Need ' + totalBits +
+        ' bits, have ' + capacityBits(imageData) + '.');
+    }
+    var data = imageData.data;
+    forEachSlot(data, totalBits, function (idx, slot) {
+      var bit = (payload[slot >> 3] >> (7 - (slot & 7))) & 1;
+      data[idx] = (data[idx] & 0xFE) | bit;
+    });
+    return imageData;
+  }
+
+  function readBits(data, count) {
+    var bits = new Uint8Array(count);
+    forEachSlot(data, count, function (idx, slot) { bits[slot] = data[idx] & 1; });
+    return bits;
+  }
+
+  function bitsToBytes(bits, offset, byteCount) {
+    var out = new Uint8Array(byteCount);
+    for (var b = 0; b < byteCount; b++) {
+      var v = 0;
+      for (var k = 0; k < 8; k++) v = (v << 1) | bits[offset + b * 8 + k];
+      out[b] = v;
+    }
+    return out;
+  }
+
+  function decodeFromImageData(imageData) {
+    var data = imageData.data;
+    if (HEADER_BITS > capacityBits(imageData)) throw new Error('Image too small to hold a payload.');
+    var header = bitsToBytes(readBits(data, HEADER_BITS), 0, HEADER_BYTES);
+    for (var i = 0; i < MAGIC.length; i++) {
+      if (header[i] !== MAGIC[i]) throw new Error('No valid payload found in this image.');
+    }
+    var lo = MAGIC.length + 1;
+    var len = ((header[lo] << 24) | (header[lo + 1] << 16) | (header[lo + 2] << 8) | header[lo + 3]) >>> 0;
+    var need = HEADER_BITS + len * 8;
+    if (need > capacityBits(imageData)) throw new Error('Payload length exceeds image capacity; image may be corrupt.');
+    var body = bitsToBytes(readBits(data, need), HEADER_BITS, len);
+    return bytesToText(body);
+  }
+
+  // ---- captioned-image renderer -------------------------------------------
+
+  function drawCover(ctx, img, w, h) {
+    var ir = img.width / img.height, cr = w / h, sw, sh, sx, sy;
+    if (ir > cr) { sh = img.height; sw = sh * cr; sx = (img.width - sw) / 2; sy = 0; }
+    else { sw = img.width; sh = sw / cr; sx = 0; sy = (img.height - sh) / 2; }
+    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, w, h);
+  }
+
+  function wrapText(ctx, text, maxWidth) {
+    var words = text.split(/\s+/), lines = [], line = '';
+    for (var i = 0; i < words.length; i++) {
+      var test = line ? line + ' ' + words[i] : words[i];
+      if (ctx.measureText(test).width > maxWidth && line) { lines.push(line); line = words[i]; }
+      else line = test;
+    }
+    if (line) lines.push(line);
+    return lines;
+  }
+
+  function drawCaptionText(ctx, text, w, h, pos) {
+    if (!text) return;
+    var size = Math.floor(w / 12);
+    ctx.font = '900 ' + size + 'px Impact, "Arial Black", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = pos === 'top' ? 'top' : 'bottom';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = Math.max(2, size / 12);
+    ctx.fillStyle = '#fff';
+    ctx.strokeStyle = '#000';
+    var lines = wrapText(ctx, text.toUpperCase(), w * 0.92);
+    var lh = size * 1.05;
+    var y = pos === 'top' ? 12 : h - 12 - (lines.length - 1) * lh;
+    for (var i = 0; i < lines.length; i++) {
+      ctx.strokeText(lines[i], w / 2, y + i * lh);
+      ctx.fillText(lines[i], w / 2, y + i * lh);
+    }
+  }
+
+  function renderCaption(opts) {
+    opts = opts || {};
+    var width = opts.width || 600, height = opts.height || 600;
+    var canvas = document.createElement('canvas');
+    canvas.width = width; canvas.height = height;
+    var ctx = canvas.getContext('2d');
+    if (opts.image) drawCover(ctx, opts.image, width, height);
+    else { ctx.fillStyle = opts.background || '#0b0f0b'; ctx.fillRect(0, 0, width, height); }
+    drawCaptionText(ctx, opts.topText || '', width, height, 'top');
+    drawCaptionText(ctx, opts.bottomText || '', width, height, 'bottom');
+    return canvas;
+  }
+
+  // ---- small DOM/file helpers ---------------------------------------------
+
+  function canvasToImageData(c) { return c.getContext('2d').getImageData(0, 0, c.width, c.height); }
+  function imageDataToCanvas(id) {
+    var c = document.createElement('canvas');
+    c.width = id.width; c.height = id.height;
+    c.getContext('2d').putImageData(id, 0, 0);
+    return c;
+  }
+  function fileToCanvas(file) {
+    return loadImageFromFile(file).then(function (img) {
+      var c = document.createElement('canvas');
+      c.width = img.width; c.height = img.height;
+      c.getContext('2d').drawImage(img, 0, 0);
+      return c;
+    });
+  }
+  function loadImageFromFile(file) {
+    return new Promise(function (res, rej) {
+      var url = URL.createObjectURL(file), img = new Image();
+      img.onload = function () { URL.revokeObjectURL(url); res(img); };
+      img.onerror = function () { URL.revokeObjectURL(url); rej(new Error('Could not load image.')); };
+      img.src = url;
+    });
+  }
+
+  // ---- panel UI ------------------------------------------------------------
+
+  function mount(containerEl) {
+    containerEl.innerHTML =
+      '<div class="dd-image dd-panel">' +
+      '  <h2 class="dd-panel-title">Image channel</h2>' +
+      '  <label class="dd-label">Message<textarea class="dd-msg" rows="3"></textarea></label>' +
+      '  <label class="dd-label">Carrier image (optional; a plain field is generated if omitted)' +
+      '    <input type="file" class="dd-carrier" accept="image/*"></label>' +
+      '  <div class="dd-meme-fields">' +
+      '    <input type="text" class="dd-top" placeholder="top caption (optional)">' +
+      '    <input type="text" class="dd-bottom" placeholder="bottom caption (optional)">' +
+      '  </div>' +
+      '  <div class="dd-actions">' +
+      '    <button type="button" class="dd-btn dd-encode">Build image</button>' +
+      '    <a class="dd-btn dd-download" style="display:none">Download</a>' +
+      '  </div>' +
+      '  <canvas class="dd-preview" style="max-width:100%"></canvas>' +
+      '  <hr>' +
+      '  <label class="dd-label">Read an image<input type="file" class="dd-read" accept="image/*"></label>' +
+      '  <pre class="dd-out" aria-live="polite"></pre>' +
+      '</div>';
+    var q = function (s) { return containerEl.querySelector(s); };
+    q('.dd-encode').addEventListener('click', function () {
+      doEncode(containerEl).catch(function (e) { q('.dd-out').textContent = 'Error: ' + e.message; });
+    });
+    q('.dd-read').addEventListener('change', function (e) {
+      doDecode(containerEl, e.target.files[0]).catch(function (err) { q('.dd-out').textContent = 'Error: ' + err.message; });
+    });
+  }
+
+  function doEncode(root) {
+    var q = function (s) { return root.querySelector(s); };
+    var msg = q('.dd-msg').value || '';
+    var top = q('.dd-top').value, bottom = q('.dd-bottom').value;
+    var file = q('.dd-carrier').files[0];
+    var basePromise;
+    if (top || bottom) {
+      basePromise = (file ? loadImageFromFile(file) : Promise.resolve(null)).then(function (img) {
+        return renderCaption({ image: img, topText: top, bottomText: bottom,
+          width: img ? img.width : 600, height: img ? img.height : 600 });
+      });
+    } else if (file) {
+      basePromise = fileToCanvas(file);
+    } else {
+      basePromise = Promise.resolve(renderCaption({ width: 600, height: 600 }));
+    }
+    return basePromise.then(function (baseCanvas) {
+      var id = canvasToImageData(baseCanvas);
+      encodeIntoImageData(id, msg);
+      var out = imageDataToCanvas(id);
+      var preview = q('.dd-preview');
+      preview.width = out.width; preview.height = out.height;
+      preview.getContext('2d').drawImage(out, 0, 0);
+      var url = out.toDataURL('image/png');
+      var dl = q('.dd-download');
+      dl.href = url; dl.download = 'image.png'; dl.style.display = '';
+      q('.dd-out').textContent = 'Built. Capacity ' + capacityBytes(id) +
+        ' bytes; stored ' + textToBytes(msg).length + ' bytes.';
+    });
+  }
+
+  function doDecode(root, file) {
+    if (!file) return Promise.resolve();
+    return fileToCanvas(file).then(function (c) {
+      root.querySelector('.dd-out').textContent = decodeFromImageData(canvasToImageData(c));
+    });
+  }
+
+  // ---- self-test -----------------------------------------------------------
+
+  function selfTest() {
+    try {
+      var w = 64, h = 64, id = new ImageData(w, h);
+      for (var i = 0; i < id.data.length; i += 4) {
+        id.data[i] = i & 0xff; id.data[i + 1] = (i >> 2) & 0xff;
+        id.data[i + 2] = (i >> 4) & 0xff; id.data[i + 3] = 255;
+      }
+      var msg = 'night-project self-test round-trip 0123 αβγ';
+      encodeIntoImageData(id, msg);
+      var out = decodeFromImageData(id);
+      var pass = out === msg;
+      return { pass: pass, details: pass
+        ? 'round-trip exact (' + textToBytes(msg).length + ' bytes, capacity ' + capacityBytes(new ImageData(w, h)) + ' bytes)'
+        : 'mismatch: got "' + out + '"' };
+    } catch (e) {
+      return { pass: false, details: 'threw: ' + e.message };
+    }
+  }
+
+  window.ChanImage = {
+    encodeIntoImageData: encodeIntoImageData,
+    decodeFromImageData: decodeFromImageData,
+    capacityBytes: capacityBytes,
+    renderCaption: renderCaption,
+    mount: mount,
+    selfTest: selfTest
+  };
+})();
+
+</script>
+<script>
+// ==== src/qr.js ====
+/*
+ * qr.js — QR encode channel for the night project.
+ *
+ * Byte-mode QR Code (Model 2), error-correction level M, versions 1-10.
+ * Core algorithm adapted from Project Nayuki's QR Code generator (MIT licensed):
+ * https://www.nayuki.io/page/qr-code-generator-library . Reimplemented compactly
+ * here so the file stays self-contained and offline. Decoding is a stretch goal
+ * (a real QR reader / phone camera decodes these) — not built; see NOTES.md.
+ *
+ * Exposes window.ChanQR:
+ *   encode(text)            -> {size, modules}   (modules[y][x] boolean; true = dark)
+ *   capacityBytes(version)  -> number             (byte-mode capacity at level M)
+ *   renderCanvas(text,opts) -> canvas
+ *   mount(containerEl)      -> builds the panel UI
+ *   selfTest()              -> {pass, details}
+ *
+ * No network, no dependencies. Vanilla JS + Canvas.
+ */
+(function () {
+  'use strict';
+
+  var MIN_VER = 1, MAX_VER = 10, ECL_FORMAT_BITS = 0; // level M -> 00
+
+  // Error-correction characteristics, level M, indexed by version (1..10).
+  var ECC_CW_PER_BLOCK = { 1: 10, 2: 16, 3: 26, 4: 18, 5: 24, 6: 16, 7: 18, 8: 22, 9: 22, 10: 26 };
+  var NUM_EC_BLOCKS    = { 1: 1, 2: 1, 3: 1, 4: 2, 5: 2, 6: 4, 7: 4, 8: 4, 9: 5, 10: 5 };
+
+  function getNumRawDataModules(ver) {
+    var result = (16 * ver + 128) * ver + 64;
+    if (ver >= 2) {
+      var numAlign = Math.floor(ver / 7) + 2;
+      result -= (25 * numAlign - 10) * numAlign - 55;
+      if (ver >= 7) result -= 36;
+    }
+    return result;
+  }
+  function getNumDataCodewords(ver) {
+    return Math.floor(getNumRawDataModules(ver) / 8) - ECC_CW_PER_BLOCK[ver] * NUM_EC_BLOCKS[ver];
+  }
+  function capacityBytes(ver) {
+    var countBits = ver <= 9 ? 8 : 16;
+    return Math.floor((getNumDataCodewords(ver) * 8 - (4 + countBits)) / 8);
+  }
+  function chooseVersion(dataLen) {
+    for (var v = MIN_VER; v <= MAX_VER; v++) if (dataLen <= capacityBytes(v)) return v;
+    return -1;
+  }
+
+  // ---- Galois field GF(256), primitive 0x11D ------------------------------
+  function rsMultiply(x, y) {
+    var z = 0;
+    for (var i = 7; i >= 0; i--) {
+      z = (z << 1) ^ ((z >>> 7) * 0x11D);
+      z ^= ((y >>> i) & 1) * x;
+    }
+    return z & 0xFF;
+  }
+  function rsComputeDivisor(degree) {
+    var result = [];
+    for (var i = 0; i < degree - 1; i++) result.push(0);
+    result.push(1);
+    var root = 1;
+    for (i = 0; i < degree; i++) {
+      for (var j = 0; j < result.length; j++) {
+        result[j] = rsMultiply(result[j], root);
+        if (j + 1 < result.length) result[j] ^= result[j + 1];
+      }
+      root = rsMultiply(root, 0x02);
+    }
+    return result;
+  }
+  function rsComputeRemainder(data, divisor) {
+    var result = divisor.map(function () { return 0; });
+    for (var i = 0; i < data.length; i++) {
+      var factor = data[i] ^ result.shift();
+      result.push(0);
+      for (var j = 0; j < divisor.length; j++) result[j] ^= rsMultiply(divisor[j], factor);
+    }
+    return result;
+  }
+
+  // ---- bit buffer + data encoding -----------------------------------------
+  function appendBits(val, len, bb) { for (var i = len - 1; i >= 0; i--) bb.push((val >>> i) & 1); }
+
+  function encodeToCodewords(bytes, ver) {
+    var bb = [];
+    appendBits(0x4, 4, bb);                        // byte mode indicator
+    appendBits(bytes.length, ver <= 9 ? 8 : 16, bb); // char count
+    for (var i = 0; i < bytes.length; i++) appendBits(bytes[i], 8, bb);
+    var capBits = getNumDataCodewords(ver) * 8;
+    appendBits(0, Math.min(4, capBits - bb.length), bb); // terminator
+    appendBits(0, (8 - bb.length % 8) % 8, bb);          // byte-align
+    for (var pad = 0xEC; bb.length < capBits; pad ^= 0xEC ^ 0x11) appendBits(pad, 8, bb);
+    var cw = [];
+    for (i = 0; i < bb.length; i += 8) {
+      var b = 0;
+      for (var k = 0; k < 8; k++) b = (b << 1) | bb[i + k];
+      cw.push(b);
+    }
+    return cw;
+  }
+
+  function addEccAndInterleave(dataCw, ver) {
+    var numBlocks = NUM_EC_BLOCKS[ver], eccLen = ECC_CW_PER_BLOCK[ver];
+    var rawCw = Math.floor(getNumRawDataModules(ver) / 8);
+    var numShort = numBlocks - rawCw % numBlocks;
+    var shortLen = Math.floor(rawCw / numBlocks);
+    var divisor = rsComputeDivisor(eccLen);
+    var blocks = [], k = 0, maxDat = 0;
+    for (var i = 0; i < numBlocks; i++) {
+      var datLen = shortLen - eccLen + (i < numShort ? 0 : 1);
+      var dat = dataCw.slice(k, k + datLen); k += datLen;
+      blocks.push({ dat: dat, ecc: rsComputeRemainder(dat, divisor) });
+      if (datLen > maxDat) maxDat = datLen;
+    }
+    var result = [];
+    for (var j = 0; j < maxDat; j++)
+      for (i = 0; i < blocks.length; i++) if (j < blocks[i].dat.length) result.push(blocks[i].dat[j]);
+    for (j = 0; j < eccLen; j++)
+      for (i = 0; i < blocks.length; i++) result.push(blocks[i].ecc[j]);
+    return result;
+  }
+
+  // ---- matrix ---------------------------------------------------------------
+  function getAlignPositions(ver) {
+    if (ver === 1) return [];
+    var numAlign = Math.floor(ver / 7) + 2;
+    var step = Math.ceil((ver * 4 + 4) / (numAlign * 2 - 2)) * 2;
+    var result = [];
+    for (var i = 0, p = ver * 4 + 10; i < numAlign - 1; i++, p -= step) result.unshift(p);
+    result.unshift(6);
+    return result;
+  }
+
+  function buildMatrix(allCw, ver) {
+    var size = ver * 4 + 17;
+    var mod = [], isFn = [];
+    for (var r = 0; r < size; r++) {
+      mod.push(new Array(size).fill(false));
+      isFn.push(new Array(size).fill(false));
+    }
+    function setFn(x, y, v) { mod[y][x] = v; isFn[y][x] = true; }
+
+    // finder patterns (7x7 dark border + white ring + 3x3 core) with separators
+    function finder(cx, cy) {
+      for (var dy = -4; dy <= 4; dy++) for (var dx = -4; dx <= 4; dx++) {
+        var xx = cx + dx, yy = cy + dy;
+        if (xx < 0 || xx >= size || yy < 0 || yy >= size) continue;
+        var d = Math.max(Math.abs(dx), Math.abs(dy));
+        setFn(xx, yy, d !== 2 && d !== 4);
+      }
+    }
+    finder(3, 3); finder(size - 4, 3); finder(3, size - 4);
+
+    // timing patterns
+    for (var i = 0; i < size; i++) {
+      if (!isFn[6][i]) setFn(i, 6, i % 2 === 0);
+      if (!isFn[i][6]) setFn(6, i, i % 2 === 0);
+    }
+
+    // alignment patterns (skip the three that collide with finders)
+    var ap = getAlignPositions(ver), n = ap.length;
+    for (var a = 0; a < n; a++) for (var b = 0; b < n; b++) {
+      if ((a === 0 && b === 0) || (a === 0 && b === n - 1) || (a === n - 1 && b === 0)) continue;
+      var ax = ap[a], ay = ap[b];
+      for (var yy = -2; yy <= 2; yy++) for (var xx = -2; xx <= 2; xx++)
+        setFn(ax + xx, ay + yy, Math.max(Math.abs(xx), Math.abs(yy)) !== 1);
+    }
+
+    // reserve + draw version info (v>=7)
+    if (ver >= 7) {
+      var vrem = ver;
+      for (i = 0; i < 12; i++) vrem = (vrem << 1) ^ ((vrem >>> 11) * 0x1F25);
+      var vbits = (ver << 12) | vrem;
+      for (i = 0; i < 18; i++) {
+        var vb = ((vbits >>> i) & 1) !== 0;
+        var aa = size - 11 + i % 3, bb2 = Math.floor(i / 3);
+        setFn(aa, bb2, vb); setFn(bb2, aa, vb);
+      }
+    }
+
+    // data placement (zigzag, upward/downward columns, skipping column 6)
+    function drawData(cw) {
+      var bit = 0;
+      for (var right = size - 1; right >= 1; right -= 2) {
+        if (right === 6) right = 5;
+        for (var vert = 0; vert < size; vert++) {
+          for (var jj = 0; jj < 2; jj++) {
+            var x = right - jj;
+            var upward = ((right + 1) & 2) === 0;
+            var y = upward ? size - 1 - vert : vert;
+            if (!isFn[y][x] && bit < cw.length * 8) {
+              mod[y][x] = ((cw[bit >>> 3] >>> (7 - (bit & 7))) & 1) !== 0;
+              bit++;
+            }
+          }
+        }
+      }
+    }
+    drawFormat(0); // reserve the format-info area as function modules BEFORE placing data
+    drawData(allCw);
+
+    function maskFn(m, x, y) {
+      switch (m) {
+        case 0: return (x + y) % 2 === 0;
+        case 1: return y % 2 === 0;
+        case 2: return x % 3 === 0;
+        case 3: return (x + y) % 3 === 0;
+        case 4: return (Math.floor(x / 3) + Math.floor(y / 2)) % 2 === 0;
+        case 5: return (x * y) % 2 + (x * y) % 3 === 0;
+        case 6: return ((x * y) % 2 + (x * y) % 3) % 2 === 0;
+        case 7: return ((x + y) % 2 + (x * y) % 3) % 2 === 0;
+      }
+      return false;
+    }
+    function applyMask(m) {
+      for (var y = 0; y < size; y++) for (var x = 0; x < size; x++)
+        if (!isFn[y][x] && maskFn(m, x, y)) mod[y][x] = !mod[y][x];
+    }
+    function drawFormat(m) {
+      var data = (ECL_FORMAT_BITS << 3) | m; // 5 bits
+      var rem = data;
+      for (var i2 = 0; i2 < 10; i2++) rem = (rem << 1) ^ ((rem >>> 9) * 0x537);
+      var bits = ((data << 10) | rem) ^ 0x5412; // 15 bits
+      function gb(x) { return ((bits >>> x) & 1) !== 0; }
+      for (i2 = 0; i2 <= 5; i2++) setFn(8, i2, gb(i2));
+      setFn(8, 7, gb(6)); setFn(8, 8, gb(7)); setFn(7, 8, gb(8));
+      for (i2 = 9; i2 < 15; i2++) setFn(14 - i2, 8, gb(i2));
+      for (i2 = 0; i2 < 8; i2++) setFn(size - 1 - i2, 8, gb(i2));
+      for (i2 = 8; i2 < 15; i2++) setFn(8, size - 15 + i2, gb(i2));
+      setFn(8, size - 8, true); // always-dark module
+    }
+
+    // penalty (rules 1, 2, 4; rule 3 omitted — affects only mask choice, not validity)
+    function penalty() {
+      var result = 0, x, y, rc, rl, c;
+      for (y = 0; y < size; y++) {
+        rc = mod[y][0]; rl = 1;
+        for (x = 1; x < size; x++) {
+          if (mod[y][x] === rc) { rl++; if (rl === 5) result += 3; else if (rl > 5) result++; }
+          else { rc = mod[y][x]; rl = 1; }
+        }
+      }
+      for (x = 0; x < size; x++) {
+        rc = mod[0][x]; rl = 1;
+        for (y = 1; y < size; y++) {
+          if (mod[y][x] === rc) { rl++; if (rl === 5) result += 3; else if (rl > 5) result++; }
+          else { rc = mod[y][x]; rl = 1; }
+        }
+      }
+      for (y = 0; y < size - 1; y++) for (x = 0; x < size - 1; x++) {
+        c = mod[y][x];
+        if (c === mod[y][x + 1] && c === mod[y + 1][x] && c === mod[y + 1][x + 1]) result += 3;
+      }
+      var dark = 0;
+      for (y = 0; y < size; y++) for (x = 0; x < size; x++) if (mod[y][x]) dark++;
+      result += Math.floor(Math.abs(dark / (size * size) * 100 - 50) / 5) * 10;
+      return result;
+    }
+
+    var bestMask = 0, minPen = Infinity;
+    for (var m = 0; m < 8; m++) {
+      applyMask(m); drawFormat(m);
+      var p = penalty();
+      if (p < minPen) { minPen = p; bestMask = m; }
+      applyMask(m); // undo (mask is its own inverse over non-function modules)
+    }
+    applyMask(bestMask); drawFormat(bestMask);
+    return { size: size, modules: mod, version: ver, mask: bestMask };
+  }
+
+  function encode(text) {
+    var bytes = new TextEncoder().encode(text);
+    var ver = chooseVersion(bytes.length);
+    if (ver < 0) throw new Error('Message too long for QR (max ' + capacityBytes(MAX_VER) +
+      ' bytes at level M / v10). Use the image channel for large text.');
+    return buildMatrix(addEccAndInterleave(encodeToCodewords(bytes, ver), ver), ver);
+  }
+
+  // ---- render + UI ----------------------------------------------------------
+  function renderCanvas(text, opts) {
+    opts = opts || {};
+    var qr = encode(text);
+    var quiet = opts.quiet == null ? 4 : opts.quiet;
+    var scale = opts.scale || 8;
+    var dim = (qr.size + quiet * 2) * scale;
+    var c = document.createElement('canvas');
+    c.width = dim; c.height = dim;
+    var ctx = c.getContext('2d');
+    ctx.fillStyle = opts.light || '#e9ffe9';
+    ctx.fillRect(0, 0, dim, dim);
+    ctx.fillStyle = opts.dark || '#0b0f0b';
+    for (var y = 0; y < qr.size; y++) for (var x = 0; x < qr.size; x++)
+      if (qr.modules[y][x]) ctx.fillRect((x + quiet) * scale, (y + quiet) * scale, scale, scale);
+    return c;
+  }
+
+  function mount(containerEl) {
+    containerEl.innerHTML =
+      '<div class="dd-qr dd-panel">' +
+      '  <h2 class="dd-panel-title">QR channel</h2>' +
+      '  <label class="dd-label">Text (level M, up to ' + capacityBytes(MAX_VER) + ' bytes)' +
+      '    <textarea class="dd-msg" rows="3"></textarea></label>' +
+      '  <div class="dd-actions">' +
+      '    <button type="button" class="dd-btn dd-encode">Generate</button>' +
+      '    <a class="dd-btn dd-download" style="display:none">Download</a>' +
+      '  </div>' +
+      '  <canvas class="dd-preview" style="max-width:100%;image-rendering:pixelated"></canvas>' +
+      '  <pre class="dd-out" aria-live="polite"></pre>' +
+      '</div>';
+    var q = function (s) { return containerEl.querySelector(s); };
+    q('.dd-encode').addEventListener('click', function () {
+      try {
+        var text = q('.dd-msg').value || '';
+        var canvas = renderCanvas(text, { scale: 6 });
+        var preview = q('.dd-preview');
+        preview.width = canvas.width; preview.height = canvas.height;
+        preview.getContext('2d').drawImage(canvas, 0, 0);
+        var dl = q('.dd-download');
+        dl.href = canvas.toDataURL('image/png'); dl.download = 'qr.png'; dl.style.display = '';
+        var qr = encode(text);
+        q('.dd-out').textContent = 'Generated: version ' + qr.version + ', ' + qr.size + 'x' + qr.size +
+          ', mask ' + qr.mask + ', ' + new TextEncoder().encode(text).length + ' bytes.';
+      } catch (e) { q('.dd-out').textContent = 'Error: ' + e.message; }
+    });
+  }
+
+  // ---- self-test (structural; a real reader is the round-trip audit) --------
+  function selfTest() {
+    try {
+      var qr = encode('HELLO WORLD');           // 11 bytes -> version 1
+      if (qr.size !== 21) return { pass: false, details: 'expected 21x21 for v1, got ' + qr.size };
+      var m = qr.modules;
+      // finder cores dark, white rings present at all three corners
+      var checks = [
+        m[0][0] === true, m[3][3] === true, m[1][1] === false,            // top-left (core dark, ring light)
+        m[0][size(qr) - 1] === true, m[3][size(qr) - 4] === true,          // top-right
+        m[size(qr) - 1][0] === true, m[size(qr) - 4][3] === true,          // bottom-left
+        m[6][8] === true, m[6][9] === false                               // timing alternation
+      ];
+      var ok = checks.every(Boolean);
+      // capacity guard: over-long input must throw
+      var threw = false;
+      try { encode('x'.repeat(capacityBytes(MAX_VER) + 1)); } catch (e) { threw = true; }
+      var pass = ok && threw;
+      return { pass: pass, details: pass
+        ? 'v1 structure valid (finders/timing), capacity guard fires; scan with a real reader to confirm round-trip'
+        : 'structural checks=' + ok + ', capacity guard=' + threw };
+    } catch (e) {
+      return { pass: false, details: 'threw: ' + e.message };
+    }
+    function size(q) { return q.size; }
+  }
+
+  window.ChanQR = {
+    encode: encode,
+    capacityBytes: capacityBytes,
+    renderCanvas: renderCanvas,
+    mount: mount,
+    selfTest: selfTest
+  };
+})();
+
+</script>
+<script>
+// ==== src/audio.js ====
+/*
+ * audio.js — audio channels for the night project.
+ *
+ * Two one-way channels, no network, no dependencies. Vanilla JS + Web Audio.
+ * Speech channel uses speechSynthesis when present, with a beep/display
+ * fallback otherwise.
+ *
+ * Exposes window.ChanMorse:
+ *   textToMorse(text) -> string        (dots/dashes; letters spaced, words " / ")
+ *   morseToEvents(morse) -> [{on, units}]
+ *   mount(containerEl)  -> builds the panel UI
+ *   selfTest() -> {pass, details}      (pure logic; needs no audio hardware)
+ *
+ * Exposes window.ChanNumbers:
+ *   textToGroups(text) -> {digits, groups}
+ *   digitsToText(digits) -> string
+ *   mount(containerEl)  -> builds the panel UI
+ *   selfTest() -> {pass, details}      (pure logic; needs no audio hardware)
+ */
+(function () {
+  'use strict';
+
+  // ---- shared helpers ------------------------------------------------------
+
+  function clamp(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); }
+
+  function getCtx() {
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) throw new Error('Web Audio is not available in this browser.');
+    return new AC();
+  }
+
+  // Loopable 2s white-noise buffer, reused as the static bed source.
+  function makeNoiseBuffer(ctx) {
+    var len = ctx.sampleRate * 2;
+    var buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    var d = buf.getChannelData(0);
+    for (var i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    return buf;
+  }
+
+  // Static bed: noise -> bandpass (shortwave-ish) -> gain -> master.
+  function startBed(ctx, master, level, freq) {
+    var src = ctx.createBufferSource();
+    src.buffer = makeNoiseBuffer(ctx);
+    src.loop = true;
+    var bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass'; bp.frequency.value = freq || 1800; bp.Q.value = 0.6;
+    var g = ctx.createGain();
+    g.gain.value = level;
+    src.connect(bp); bp.connect(g); g.connect(master);
+    src.start();
+    return { stop: function () { try { src.stop(); } catch (e) {} src.disconnect(); } };
+  }
+
+  function beep(ctx, master, freq, when, dur, level) {
+    var o = ctx.createOscillator();
+    o.type = 'sine'; o.frequency.value = freq;
+    var g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, when);
+    g.gain.exponentialRampToValueAtTime(level, when + 0.01);
+    g.gain.setValueAtTime(level, when + dur - 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, when + dur);
+    o.connect(g); g.connect(master);
+    o.start(when); o.stop(when + dur + 0.02);
+  }
+
+  function sliderRow(label, cls, min, max, val) {
+    return '<label class="dd-label">' + label +
+      '<input type="range" class="' + cls + ' dd-slider" min="' + min +
+      '" max="' + max + '" value="' + val + '"></label>';
+  }
+
+  // ---- Morse channel -------------------------------------------------------
+
+  var MORSE = {
+    A: '.-', B: '-...', C: '-.-.', D: '-..', E: '.', F: '..-.', G: '--.',
+    H: '....', I: '..', J: '.---', K: '-.-', L: '.-..', M: '--', N: '-.',
+    O: '---', P: '.--.', Q: '--.-', R: '.-.', S: '...', T: '-', U: '..-',
+    V: '...-', W: '.--', X: '-..-', Y: '-.--', Z: '--..',
+    '0': '-----', '1': '.----', '2': '..---', '3': '...--', '4': '....-',
+    '5': '.....', '6': '-....', '7': '--...', '8': '---..', '9': '----.',
+    '.': '.-.-.-', ',': '--..--', '?': '..--..', "'": '.----.',
+    '!': '-.-.--', '/': '-..-.', '(': '-.--.', ')': '-.--.-',
+    '&': '.-...', ':': '---...', ';': '-.-.-.', '=': '-...-',
+    '+': '.-.-.', '-': '-....-', '_': '..--.-', '"': '.-..-.',
+    '$': '...-..-', '@': '.--.-.'
+  };
+
+  // Letters separated by one space, words by " / ". Unknown chars are dropped.
+  function textToMorse(text) {
+    return String(text || '').toUpperCase().split(/\s+/)
+      .map(function (word) {
+        return word.split('').map(function (ch) { return MORSE[ch] || ''; })
+          .filter(function (s) { return s; }).join(' ');
+      })
+      .filter(function (w) { return w; }).join(' / ');
+  }
+
+  // Standard timing: dit 1u, dah 3u, intra-char gap 1u, letter gap 3u, word gap 7u.
+  function morseToEvents(morse) {
+    var ev = [];
+    var words = String(morse || '').split(' / ');
+    words.forEach(function (word, wi) {
+      word.split(' ').forEach(function (letter, li) {
+        if (!letter) return;
+        letter.split('').forEach(function (sym) {
+          ev.push({ on: true, units: sym === '-' ? 3 : 1 });
+          ev.push({ on: false, units: 1 });
+        });
+        ev.push({ on: false, units: 2 }); // top letter gap up to 3u
+      });
+      if (wi < words.length - 1) ev.push({ on: false, units: 4 }); // top word gap up to 7u
+    });
+    // Drop a single trailing gap so duration math stays exact.
+    while (ev.length && !ev[ev.length - 1].on) ev.pop();
+    return ev;
+  }
+
+  function morseSelfTest() {
+    try {
+      var a = textToMorse('SOS');
+      if (a !== '... --- ...') return { pass: false, details: 'SOS -> "' + a + '"' };
+      var b = textToMorse('Hi there');
+      if (b !== '.... .. / - .... . .-. .') return { pass: false, details: 'word gap -> "' + b + '"' };
+      var ev = morseToEvents('.'); // dit: 1u on, trailing gaps trimmed
+      var units = ev.reduce(function (n, e) { return n + e.units; }, 0);
+      if (ev.length !== 1 || units !== 1) return { pass: false, details: 'E timing: ' + JSON.stringify(ev) };
+      var ev2 = morseToEvents('.-'); // A: 1+1+3 = 5u
+      var u2 = ev2.reduce(function (n, e) { return n + e.units; }, 0);
+      if (u2 !== 5) return { pass: false, details: 'A timing units=' + u2 };
+      return { pass: true, details: 'SOS/word-gap/timing exact' };
+    } catch (e) {
+      return { pass: false, details: 'threw: ' + e.message };
+    }
+  }
+
+  function morseMount(containerEl) {
+    containerEl.innerHTML =
+      '<div class="dd-morse dd-panel">' +
+      '  <h2 class="dd-panel-title">Morse broadcaster</h2>' +
+      '  <label class="dd-label">Message<textarea class="dd-msg" rows="3"></textarea></label>' +
+      sliderRow('Speed (unit ms)', 'dd-speed', 40, 160, 80) +
+      sliderRow('Volume', 'dd-vol', 0, 100, 70) +
+      '  <div class="dd-actions">' +
+      '    <button type="button" class="dd-btn dd-play">Broadcast</button>' +
+      '    <button type="button" class="dd-btn dd-stop">Stop</button>' +
+      '    <span class="dd-key" aria-hidden="true"></span>' +
+      '  </div>' +
+      '  <pre class="dd-out dd-code" aria-live="polite"></pre>' +
+      '  <div class="dd-status" aria-live="polite"></div>' +
+      '</div>';
+    var q = function (s) { return containerEl.querySelector(s); };
+    var session = null;
+
+    function stop() {
+      if (!session) return;
+      session.dead = true;
+      session.timers.forEach(clearTimeout);
+      try { session.bed.stop(); } catch (e) {}
+      try { session.ctx.close(); } catch (e) {}
+      session = null;
+      q('.dd-key').classList.remove('dd-key-on');
+      q('.dd-status').textContent = 'Stopped.';
+    }
+
+    q('.dd-stop').addEventListener('click', stop);
+    q('.dd-play').addEventListener('click', function () {
+      stop();
+      var code = textToMorse(q('.dd-msg').value);
+      q('.dd-code').textContent = code || '(nothing to send)';
+      if (!code) { q('.dd-status').textContent = 'Type a message first.'; return; }
+      var unit = clamp(parseInt(q('.dd-speed').value, 10) || 80, 40, 160) / 1000;
+      var vol = clamp(parseInt(q('.dd-vol').value, 10) || 0, 0, 100) / 100;
+      var ctx;
+      try { ctx = getCtx(); } catch (e) { q('.dd-status').textContent = 'Error: ' + e.message; return; }
+      if (ctx.state === 'suspended') ctx.resume();
+      var master = ctx.createGain();
+      master.gain.value = vol;
+      master.connect(ctx.destination);
+      var bed = startBed(ctx, master, 0.05, 2400);
+      var s = { dead: false, timers: [], ctx: ctx, bed: bed };
+      session = s;
+      // Tone oscillator, gated per segment.
+      var osc = ctx.createOscillator();
+      osc.type = 'sine'; osc.frequency.value = 700;
+      var gate = ctx.createGain();
+      gate.gain.value = 0.0001;
+      osc.connect(gate); gate.connect(master);
+      var t = ctx.currentTime + 0.15;
+      osc.start(t);
+      var keyEl = q('.dd-key');
+      morseToEvents(code).forEach(function (e) {
+        var dur = e.units * unit;
+        if (e.on) {
+          gate.gain.setValueAtTime(0.5, t);
+          gate.gain.setValueAtTime(0.0001, t + dur);
+          var dt = Math.max(0, (t - ctx.currentTime) * 1000);
+          s.timers.push(setTimeout(function () { if (!s.dead) keyEl.classList.add('dd-key-on'); }, dt));
+          s.timers.push(setTimeout(function () { keyEl.classList.remove('dd-key-on'); }, dt + dur * 1000));
+        }
+        t += dur;
+      });
+      osc.stop(t + 0.05);
+      q('.dd-status').textContent = 'On air.';
+      s.timers.push(setTimeout(function () {
+        if (s.dead) return;
+        stop();
+        q('.dd-status').textContent = 'Transmission complete.';
+      }, Math.max(0, (t - ctx.currentTime) * 1000) + 200));
+    });
+  }
+
+  // ---- Numbers channel -----------------------------------------------------
+
+  function utf8Bytes(text) {
+    if (typeof TextEncoder !== 'undefined') return new TextEncoder().encode(String(text || ''));
+    // Fallback for very old browsers: UTF-8 by hand.
+    var s = String(text || ''), out = [];
+    for (var i = 0; i < s.length; i++) {
+      var c = s.charCodeAt(i);
+      if (c < 0x80) out.push(c);
+      else if (c < 0x800) out.push(0xc0 | (c >> 6), 0x80 | (c & 0x3f));
+      else out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 0x3f), 0x80 | (c & 0x3f));
+    }
+    return out;
+  }
+
+  function pad3(n) { return (n < 10 ? '00' : (n < 100 ? '0' : '')) + n; }
+
+  // Digits stream: every UTF-8 byte as 3 digits; spoken/displayed in 5s.
+  function textToGroups(text) {
+    var bytes = utf8Bytes(text);
+    var digits = '';
+    for (var i = 0; i < bytes.length; i++) digits += pad3(bytes[i]);
+    var groups = [];
+    for (var g = 0; g < digits.length; g += 5) groups.push(digits.slice(g, g + 5));
+    return { digits: digits, groups: groups };
+  }
+
+  function digitsToText(digits) {
+    var d = String(digits || '').replace(/\D/g, '');
+    var bytes = [];
+    for (var i = 0; i + 3 <= d.length; i += 3) bytes.push(parseInt(d.slice(i, i + 3), 10));
+    if (typeof TextDecoder !== 'undefined') {
+      return new TextDecoder().decode(new Uint8Array(bytes));
+    }
+    return String.fromCharCode.apply(null, bytes);
+  }
+
+  function numbersSelfTest() {
+    try {
+      var g = textToGroups('A');
+      if (g.digits !== '065') return { pass: false, details: 'A -> "' + g.digits + '"' };
+      var sample = 'night 0123 αβγ';
+      if (digitsToText(textToGroups(sample).digits) !== sample) {
+        return { pass: false, details: 'round-trip mismatch' };
+      }
+      if (textToGroups(sample).groups.join('').length !== textToGroups(sample).digits.length) {
+        return { pass: false, details: 'grouping lost digits' };
+      }
+      return { pass: true, details: 'A=065, mixed-charset round-trip exact' };
+    } catch (e) {
+      return { pass: false, details: 'threw: ' + e.message };
+    }
+  }
+
+  function pickVoice() {
+    try {
+      var vs = window.speechSynthesis.getVoices();
+      for (var i = 0; i < vs.length; i++) {
+        if (/^en/i.test(vs[i].lang) && /male|david|daniel|google uk english male/i.test(vs[i].name)) return vs[i];
+      }
+      for (var j = 0; j < vs.length; j++) if (/^en/i.test(vs[j].lang)) return vs[j];
+    } catch (e) {}
+    return null;
+  }
+
+  function numbersMount(containerEl) {
+    containerEl.innerHTML =
+      '<div class="dd-numbers dd-panel">' +
+      '  <h2 class="dd-panel-title">Numbers station</h2>' +
+      '  <label class="dd-label">Message<textarea class="dd-msg" rows="3"></textarea></label>' +
+      sliderRow('Volume', 'dd-vol', 0, 100, 70) +
+      '  <div class="dd-actions">' +
+      '    <button type="button" class="dd-btn dd-play">Transmit</button>' +
+      '    <button type="button" class="dd-btn dd-stop">Stop</button>' +
+      '  </div>' +
+      '  <pre class="dd-out dd-groups" aria-live="polite"></pre>' +
+      '  <div class="dd-status" aria-live="polite"></div>' +
+      '  <p class="dd-hint">Decode by hand: write the digits, split into 3s, each triple is one UTF-8 byte.</p>' +
+      '</div>';
+    var q = function (s) { return containerEl.querySelector(s); };
+    var session = null;
+
+    function stop(silent) {
+      if (!session) return;
+      session.dead = true;
+      try { if (window.speechSynthesis) window.speechSynthesis.cancel(); } catch (e) {}
+      try { session.bed.stop(); } catch (e) {}
+      try { session.ctx.close(); } catch (e) {}
+      session = null;
+      if (!silent) q('.dd-status').textContent = 'Stopped.';
+    }
+
+    q('.dd-stop').addEventListener('click', function () { stop(false); });
+    q('.dd-play').addEventListener('click', function () {
+      stop(true);
+      var g = textToGroups(q('.dd-msg').value);
+      q('.dd-groups').textContent = g.groups.length
+        ? g.groups.length + ' groups:\n' + g.groups.join(' ') : '(nothing to send)';
+      if (!g.groups.length) { q('.dd-status').textContent = 'Type a message first.'; return; }
+      var vol = clamp(parseInt(q('.dd-vol').value, 10) || 0, 0, 100) / 100;
+      var ctx;
+      try { ctx = getCtx(); } catch (e) { q('.dd-status').textContent = 'Error: ' + e.message; return; }
+      if (ctx.state === 'suspended') ctx.resume();
+      var master = ctx.createGain();
+      master.gain.value = vol;
+      master.connect(ctx.destination);
+      var s = { dead: false, ctx: ctx, bed: startBed(ctx, master, 0.08, 1200) };
+      session = s;
+      var canSpeak = !!(window.speechSynthesis && window.speechSynthesis.speak);
+      q('.dd-status').textContent = canSpeak ? 'Transmitting.' : 'Transmitting (no voice on this browser; beeps + readout only).';
+      var voice = canSpeak ? pickVoice() : null;
+      var i = 0;
+      function speak(text, rate, done) {
+        if (!canSpeak) { done(); return; }
+        var u = new SpeechSynthesisUtterance(text);
+        u.rate = rate; u.pitch = 0.6; u.volume = Math.max(0.01, vol);
+        if (voice) u.voice = voice;
+        u.onend = u.onerror = function () { done(); };
+        try { window.speechSynthesis.speak(u); } catch (e) { done(); }
+      }
+      function next() {
+        if (!s || s.dead) return;
+        if (i >= g.groups.length) {
+          beep(ctx, master, 880, ctx.currentTime + 0.05, 0.4, 0.4);
+          speak('transmission ends', 0.9, function () {
+            if (s.dead) return;
+            var done = (session === s);
+            stop(true);
+            if (done) q('.dd-status').textContent = 'Transmission ends.';
+          });
+          return;
+        }
+        var grp = g.groups[i++];
+        beep(ctx, master, 1000, ctx.currentTime + 0.02, 0.12, 0.35); // interval beep
+        setTimeout(function () {
+          if (!s || s.dead) return;
+          speak(grp.split('').join(' '), 0.8, function () {
+            setTimeout(next, 350);
+          });
+        }, canSpeak ? 250 : 500);
+      }
+      // Attention tone, then groups.
+      beep(ctx, master, 880, ctx.currentTime + 0.05, 0.5, 0.4);
+      setTimeout(next, 700);
+    });
+  }
+
+  window.ChanMorse = {
+    textToMorse: textToMorse,
+    morseToEvents: morseToEvents,
+    mount: morseMount,
+    selfTest: morseSelfTest
+  };
+  window.ChanNumbers = {
+    textToGroups: textToGroups,
+    digitsToText: digitsToText,
+    mount: numbersMount,
+    selfTest: numbersSelfTest
+  };
+})();
+
+</script>
+
+<script>
+// ==== assembly (Muse owns this block; part of index.html, not a module) ====
+(function () {
+  'use strict';
+  function placeholder(slot, title, note) {
+    slot.innerHTML = '<div class="dd-panel dd-missing"><h2 class="dd-panel-title">' +
+      title + '</h2><p>' + note + '</p></div>';
+  }
+  function mountAll() {
+    var slots = [
+      { id: 'slot-image', mod: 'ChanImage', title: 'Image channel' },
+      { id: 'slot-qr', mod: 'ChanQR', title: 'QR channel' },
+      { id: 'slot-morse', mod: 'ChanMorse', title: 'Morse broadcaster' },
+      { id: 'slot-numbers', mod: 'ChanNumbers', title: 'Numbers station' }
+    ];
+    slots.forEach(function (s) {
+      var slot = document.getElementById(s.id);
+      var mod = window[s.mod];
+      if (mod && typeof mod.mount === 'function') {
+        try { mod.mount(slot); }
+        catch (e) { placeholder(slot, s.title, 'Mount failed: ' + e.message); }
+      } else {
+        placeholder(slot, s.title, 'Module not present in this build yet.');
+      }
+    });
+  }
+  function runSelfTest() {
+    var out = document.getElementById('dd-selftest-out');
+    var names = ['ChanImage', 'ChanQR', 'ChanMorse', 'ChanNumbers'];
+    var lines = [], pass = 0, ran = 0;
+    names.forEach(function (n) {
+      var mod = window[n];
+      if (mod && typeof mod.selfTest === 'function') {
+        ran++;
+        try {
+          var r = mod.selfTest();
+          if (r && r.pass) pass++;
+          lines.push((r && r.pass ? 'PASS' : 'FAIL') + ' ' + n + ': ' + ((r && r.details) || 'no details'));
+        } catch (e) { lines.push('FAIL ' + n + ': threw: ' + e.message); }
+      } else {
+        lines.push('SKIP ' + n + ': not present in this build');
+      }
+    });
+    lines.push('');
+    lines.push(ran ? (pass + '/' + ran + ' passed') : 'No modules present.');
+    out.textContent = lines.join('\n');
+  }
+  document.addEventListener('DOMContentLoaded', function () {
+    mountAll();
+    document.getElementById('dd-selftest-btn').addEventListener('click', runSelfTest);
+  });
+})();
+</script>
+</body>
+</html>
+
