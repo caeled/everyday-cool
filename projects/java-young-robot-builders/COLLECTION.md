@@ -55,3 +55,7 @@ Back doors 126–133 — Computer Science & AI wave · 24 November 2026
 Back doors 134–138 — Bordeom batch + Resonance · 24 November 2026
 
 `index.html` gained five back doors: Morse — the Radio Room Sender (134, The Radio Room; Steven's Python Morse sender ported line for line, 19 proof rows matching the Python self-test), Dead Drop — Sneakernet Workbench (135, Secret Squares; Steven's workbench integrated byte-for-byte, self-test 4/4 plus 50 independent checks), Fractal — the Endless Spirals (136, Everyday Math; Steven's Mandelbrot/Julia dive ported line for line, 13/13 proofs), Warp — the Palette Is the Animation (137, Everyday Math; Steven's Acidwarp tribute ported line for line, 15/15 proofs) and Resonance — the Physics of Vibration (138, Everyday Physics; a new Muse original, ten proofs live on the page). The section heading rose from "One hundred thirty-three games" to "One hundred thirty-eight games", verified sequential 1–138 on the page. The full measurements live in the lessons, in their home rooms.
+
+Back door 142 — Rocketry & Thrust · 24 November 2026
+
+`index.html` gained back door 142, Rocketry & Thrust — the Physics of Rockets (Everyday Physics; a new original built by Grok Bot, sixteen proofs live on the page). The section heading rose from "One hundred forty-one games" to "One hundred forty-two games", verified sequential 1–142 on the page. The full measurements live in the lesson, in its home room.

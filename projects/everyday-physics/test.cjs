@@ -120,10 +120,12 @@ assert.ok(fs.existsSync(path.join(__dirname, "physics-game-table.html")), "the G
 assert.ok(fs.existsSync(path.join(__dirname, "gravity-well-illustration.jpg")), "the gravity-well illustration exists");
 const tableHtml = fs.readFileSync(path.join(__dirname, "physics-game-table.html"), "utf8");
 const targets = [...tableHtml.matchAll(/file: '([^']+)'/g)].map((m) => m[1]);
-assert.strictEqual(targets.length, 70, "the Game Table names seventy games");
+assert.strictEqual(targets.length, 71, "the Game Table names seventy-one games");
 for (const t of targets)
   assert.ok(fs.existsSync(path.resolve(__dirname, t)), `the Game Table target ${t} resolves to a real file`);
 assert.ok(tableHtml.includes("The back door — read the lesson"), "every Game Table card carries its back-door lesson link");
+for (const m of tableHtml.matchAll(/<script>([\s\S]*?)<\/script>/g))
+  assert.doesNotThrow(() => new (require("node:vm").Script)(m[1]), "the Game Table script parses (a stray quote or missing comma blanks the whole Table)");
 const lessonOf = {};
 for (const m of tableHtml.matchAll(/file: '([^']+)'(?:,\s*lesson: '([^']+)')?/g))
   lessonOf[m[1]] = m[2] || m[1].replace(".html", "-lesson.html");
@@ -169,7 +171,7 @@ const roomHtml = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
 assert.ok(roomHtml.includes('href="physics-game-table.html"'), "the Physics room links to the Game Table");
 const gamesHtml = fs.readFileSync(path.join(__dirname, "..", "games-room", "index.html"), "utf8");
 assert.ok(gamesHtml.includes('href="../everyday-physics/physics-game-table.html"'), "the Games Room links back to the Game Table");
-console.log("everyday-physics tests: Game Table checks passed (16 local games, 70 targets resolve, nothing external, links both ways)");
+console.log("everyday-physics tests: Game Table checks passed (16 local games, 71 targets resolve, nothing external, links both ways)");
 
 /* Docking: the room's own orbital-rendezvous game (added 20 November 2026) */
 assert.ok(fs.existsSync(path.join(__dirname, "docking.html")), "the Docking game page exists");
@@ -191,5 +193,34 @@ const ballastHtml = fs.readFileSync(path.join(__dirname, "ballast.html"), "utf8"
 assert.ok(!/(?:src|href)="https?:\/\//i.test(ballastHtml), "ballast.html loads nothing external");
 assert.ok(ballastHtml.includes("<title>Ballast — A Submarine Buoyancy Game</title>"), "ballast.html carries its title");
 console.log("everyday-physics tests: Ballast checks passed (page present, self-contained, titled)");
+
+/* Rocketry & Thrust: the room's rocket-physics exhibit (added 24 November 2026) */
+assert.ok(fs.existsSync(path.join(__dirname, "rocketry-thrust.html")), "the Rocketry & Thrust exhibit page exists");
+assert.ok(fs.existsSync(path.join(__dirname, "rocketry-thrust-lesson.html")), "the Rocketry & Thrust lesson page exists");
+const rocketHtml = fs.readFileSync(path.join(__dirname, "rocketry-thrust.html"), "utf8");
+assert.ok(!/<(?:script|link|img)[^>]+(?:src|href)="https?:\/\//i.test(rocketHtml), "rocketry-thrust.html loads nothing external");
+assert.ok(rocketHtml.includes("<title>Rocketry &amp; Thrust — the Physics of Rockets · Everyday Physics</title>"), "rocketry-thrust.html carries its title");
+assert.ok(rocketHtml.includes('src="rocketry-thrust-lesson.html"') || rocketHtml.includes('"rocketry-thrust-lesson.html"'), "the exhibit opens its own lesson");
+const rocketCoreSrc = rocketHtml.split("/* ROCKET-CORE-BEGIN */")[1].split("/* ROCKET-CORE-END */")[0];
+const rocketBox = {};
+require("node:vm").runInNewContext(rocketCoreSrc + "\nthis.ROCKET = ROCKET;", rocketBox);
+const RK = rocketBox.ROCKET;
+const rocketProofs = RK.runProofs();
+assert.ok(rocketProofs.length >= 16, "the exhibit carries at least sixteen proofs");
+for (const pr of rocketProofs) assert.ok(pr.ok, `Rocketry proof passes: ${pr.claim} (${pr.measured})`);
+assert.strictEqual(RK.G0, 9.80665, "standard gravity is exactly 9.80665 m/s²");
+assert.ok(Math.abs(RK.veFromIsp(311) - 311 * 9.80665) < 1e-9, "Isp → exhaust speed uses g₀");
+assert.ok(Math.abs(RK.ispFromVe(RK.veFromIsp(452.3)) - 452.3) < 1e-9, "exhaust speed → Isp round-trips");
+assert.ok(Math.abs(RK.rocketEq(300, 1000, 400) - 300 * 9.80665 * Math.log(2.5)) < 1e-6, "Tsiolkovsky: Δv = Isp·g₀·ln(m₀/m_f)");
+const st1 = RK.stagedDv(1, 500000, 10000, 0.08, 330), st2 = RK.stagedDv(2, 500000, 10000, 0.08, 330);
+const dvOf = (x) => (typeof x === "number" ? x : x.dv);
+assert.ok(dvOf(st2) > dvOf(st1), "two stages beat one with the same mass, payload and structure");
+assert.strictEqual(RK.STEP_MS, 1000 / 60, "the exhibit uses the room's fixed 1/60 s step");
+assert.strictEqual(RK.clampedElapsed(0, 5000, RK.MAX_FRAME_MS), 100, "a long frame is clamped to 100 ms");
+const burst = RK.consumeSteps(150, RK.STEP_MS, RK.MAX_STEPS);
+assert.ok(burst.steps === 6 && burst.acc === 0, "a clamped burst runs six steps and drops the leftover");
+const roomIndexHtml = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
+assert.ok(roomIndexHtml.includes('href="rocketry-thrust.html"') && roomIndexHtml.includes('href="rocketry-thrust-lesson.html"'), "the Physics room shelves the exhibit and its lesson");
+console.log(`everyday-physics tests: Rocketry & Thrust checks passed (page present, self-contained, titled, ${rocketProofs.length}/${rocketProofs.length} core proofs, g₀, Isp, Tsiolkovsky, staging, clamped clock)`);
 
 console.log("everyday-physics tests: all passed (reflection, equal-mass collisions, ballistics, pendulum, seesaw, flight, timestep)");
