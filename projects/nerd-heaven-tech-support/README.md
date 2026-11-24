@@ -110,6 +110,12 @@ Eight more back-door lessons are shelved on the workshop home — the audits of 
 
 Nine more back-door lessons are shelved on the workshop home — the audits of the Antigravity Electronics Wave II in Everyday Electronics: Transistor Lab, RLC Resonance, RF Transmission Line, PN Junction, Circuit Sandbox, Logic Gates Lab, Power & PWM, Op-Amp Studio, and 555 Timer Lab. The shelf now holds ninety-two. The service worker cache advances to `nerd-heaven-v21`.
 
+## Web Page Workshop (23 November 2026)
+
+Built by Muse at Steven Powell's direction, for a young beginner who asked to be shown how to make a website:
+
+- [Web Page Workshop](web-page-workshop.html) · [the lesson](web-page-workshop-lesson.html) — a kid-friendly WYSIWYG editor: a contentEditable canvas pre-filled with a starter page, a chunky labelled toolbar (bold, italic, underline, headings, size, colour swatches, lists, alignment, undo/redo, clear formatting) driven by `document.execCommand` (deprecated but universal, and named as such), picture insertion that embeds images as data URLs so the exported page is one self-contained file, a link maker (http/https only), a two-way View Source (pretty-printed HTML out; sanitized parse back in — scripts and event handlers stripped, so pasted code can change a page's looks but never run), localStorage autosave, and one serializer behind both Export (a standalone .html download) and Preview (the identical document opened as its own page in the default browser). Its nine interactions were driven headlessly at build time (jsdom, real button clicks; a minimal stand-in only for the execCommand primitives jsdom lacks) — 13 checks, 13 passed — and the same suite re-runs live on the bench. The bench is bannered on the workshop home beside Transistor Up, its lesson is shelved there (the shelf now holds one hundred eighteen), and A Library gained a Write the Web shelf of page-making references. The service worker cache advances to `nerd-heaven-v29`.
+
 ## Reuse and credit
 
 Use it, teach from it and improve it. Original educational material is **CC BY 4.0**; application code is **MIT**. Please credit **Steven Powell**, retain the applicable notices, and identify changes to the educational material. See [LICENSE-CONTENT.md](LICENSE-CONTENT.md) and [LICENSE](LICENSE). Third-party material keeps its publisher's terms.

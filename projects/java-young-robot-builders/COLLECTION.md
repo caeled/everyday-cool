@@ -39,3 +39,7 @@ Electronics Wave II back doors, 23 November 2026: `index.html` gained back doors
 ## Back door 116 — Skip · 23 November 2026
 
 `index.html` gained one back door (116) for Skip (The Radio Room) — Steven Powell's own Python skywave game, ported to the web by Muse with its physics and Morse cores carried over line for line; the card carries the port's receipt (secant-law MUF exact at 18.000000000000 MHz for fo 9 at 30°, the original self-test's 31 checks passing against the shipped code). The section heading rose from "One hundred fifteen games" to "One hundred sixteen games", verified sequential 1–116 on the page. The full measurements live in the lesson, in its home room.
+
+## Back door 117 — Web Page Workshop · 23 November 2026
+
+`index.html` gained one back door (117) for the Web Page Workshop (Nerd Heaven) — a kid-friendly WYSIWYG editor whose lesson teaches its own construction: the contenteditable doorway, the execCommand engine named honestly, the two-way View Source, and the nine driven interaction tests (13 checks passing, Preview asserted byte-identical to Export). The section heading rose from "One hundred sixteen games" to "One hundred seventeen games", verified sequential 1–117 on the page. The full measurements live in the lesson, in its home room.
