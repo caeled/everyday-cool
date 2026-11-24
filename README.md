@@ -4,7 +4,7 @@
 
 **Free tools for children, curious adults, and anyone who likes finding out how things work.** One theme runs through every workshop: teaching how systems work — taking something apart, trying it, and seeing the moving parts. Curated by Steven Powell. Built with AI assistance, human curiosity, and review.
 
-[Open Everyday Cool](https://caeled.github.io/everyday-cool/) · [Download the complete collection](https://github.com/caeled/everyday-cool/archive/refs/heads/main.zip) · [Suggest an idea](https://github.com/caeled/everyday-cool/issues/new/choose)
+[Everyday Cool](https://caeled.github.io/everyday-cool/) · [Download the complete collection](https://github.com/caeled/everyday-cool/archive/refs/heads/main.zip) · [Suggest an idea](https://github.com/caeled/everyday-cool/issues/new/choose)
 
 ## A new home, with the originals preserved
 
