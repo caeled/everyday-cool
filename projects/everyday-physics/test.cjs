@@ -124,6 +124,8 @@ assert.strictEqual(targets.length, 71, "the Game Table names seventy-one games")
 for (const t of targets)
   assert.ok(fs.existsSync(path.resolve(__dirname, t)), `the Game Table target ${t} resolves to a real file`);
 assert.ok(tableHtml.includes("The back door — read the lesson"), "every Game Table card carries its back-door lesson link");
+for (const m of tableHtml.matchAll(/<script>([\s\S]*?)<\/script>/g))
+  assert.doesNotThrow(() => new (require("node:vm").Script)(m[1]), "the Game Table script parses (a stray quote or missing comma blanks the whole Table)");
 const lessonOf = {};
 for (const m of tableHtml.matchAll(/file: '([^']+)'(?:,\s*lesson: '([^']+)')?/g))
   lessonOf[m[1]] = m[2] || m[1].replace(".html", "-lesson.html");
