@@ -71,3 +71,15 @@ Back door 144 — The Baton Box · 24 November 2026
 Back door 145 — The SNES Console · 24 November 2026
 
 `index.html` gained back door 145, The SNES Console — a Super Nintendo in a Page (Nerd Heaven; Snes9x via EmulatorJS, vendored unmodified under Steven Powell's attribution ruling, page by Muse, audit 20/20 with the receipts — including the cross-wired pad, measured at the cartridge — live in the lesson). The section heading rose from "One hundred forty-four games" to "One hundred forty-five games", verified sequential 1–145 on the page. The full measurements live in the lesson, in its home room.
+
+Back door 146 — The 6502 Bench · 24 November 2026
+
+`index.html` gained back door 146, The 6502 Bench — the Processor With Its Sleeves Rolled Up (Nerd Heaven; an original NMOS 6502 built from scratch by Muse at Steven Powell's direction, proofs 42/42 with the receipts — including the JMP-indirect page-boundary bug reproduced on purpose — live in the lesson). The section heading rose from "One hundred forty-five games" to "One hundred forty-six games". The full measurements live in the lesson, in its home room.
+
+Back door 147 — The 2600 Console · 24 November 2026
+
+`index.html` gained back door 147, The 2600 Console — a Whole Atari 2600 in a Page (Nerd Heaven; Javatari v5.0.4 by Paulo Peccin embedded unmodified, AGPL-3.0, audit 17/17 with the receipts live in the lesson). The section heading rose from "One hundred forty-six games" to "One hundred forty-seven games". The full measurements live in the lesson, in its home room.
+
+Back door 148 — The NES Console · 24 November 2026
+
+`index.html` gained back door 148, The NES Console — a Whole Nintendo in One File (Nerd Heaven; JSNES v3.0.0 by Ben Firshman inlined byte-for-byte, Apache-2.0, audit 18/18 plus three field fixes with the receipts live in the lesson). The section heading rose from "One hundred forty-seven games" to "One hundred forty-eight games", verified sequential 1–148 on the page. The full measurements live in the lesson, in its home room.
