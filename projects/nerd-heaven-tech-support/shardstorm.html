@@ -19,6 +19,8 @@
   .hud{display:flex;gap:22px;flex-wrap:wrap;font-family:ui-monospace,Consolas,monospace;font-size:14px;color:var(--dim);padding:10px 4px 2px}
   .hud b{color:var(--ink)}
   .hud .sides b{color:var(--gold)}
+  .hud button{background:#0d1322;color:var(--dim);border:1px solid var(--line);border-radius:8px;padding:3px 12px;font:inherit;cursor:pointer}
+  .hud button.on{color:var(--gold);border-color:var(--gold)}
   table.keys{border-collapse:collapse;margin:10px 0;font-size:15px}
   table.keys td{padding:3px 14px 3px 0;color:var(--dim)}
   table.keys td:first-child{color:var(--ink);font-family:ui-monospace,Consolas,monospace;white-space:nowrap}
@@ -48,6 +50,7 @@
       <span>LIVES <b id="hud-lives">3</b></span>
       <span>WAVE <b id="hud-wave">1</b></span>
       <span class="sides">SIDES ON FIELD <b id="hud-sides">0</b></span>
+      <span><button id="xray-btn" type="button">X-RAY: OFF</button></span>
       <span id="hud-msg"></span>
     </div>
   </div>
@@ -56,6 +59,7 @@
     <tr><td>← → or A / D</td><td>turn the ship</td></tr>
     <tr><td>↑ or W</td><td>thrust</td></tr>
     <tr><td>Space</td><td>fire — the bullet's line is the cut</td></tr>
+    <tr><td>F2</td><td>the X-Ray layer — chords, vectors, side counts, and the law, live</td></tr>
     <tr><td>P</td><td>pause</td></tr>
     <tr><td>Enter</td><td>start / restart after game over</td></tr>
   </table>
@@ -64,7 +68,10 @@
   side counts add to <b>n + 4</b> — the cut creates two new corners, and each piece owns both of them. Thread the
   cut exactly through two existing corners — a true diagonal — and it's n + 2 instead. Either way the counter
   keeps the honest total: watch it climb as you cut. Pieces too small to cut again (under the area floor) vaporize
-  when hit, and pay by their sides. Clear the field and the next wave brings more polygons.</div>
+  when hit, and pay by their sides. Clear the field and the next wave brings more polygons.
+  <b>Press F2</b> (or the X-RAY button) and the field turns transparent: every bullet's full chord is drawn before
+  it lands, every rock wears its side count and area, and each cut is captioned with its own arithmetic as it
+  happens.</div>
 
   <details>
     <summary>Help ▾ — how Shardstorm works, in full</summary>
@@ -80,6 +87,13 @@
     An extra ship every 10,000 points.</p>
     <p><strong>The floor.</strong> A piece whose area is under 800 square pixels can't be cut — a hit vaporizes it
     outright. Slivers a cut leaves under the floor vaporize on the spot and pay out the same way.</p>
+    <p><strong>The X-Ray layer (F2).</strong> The same treatment the Emulator X-Ray gives its little games, turned
+    on this one: dashed lines extend every live bullet's path across the whole field — the chord it will cut with;
+    arrows show every rock's drift and the ship's velocity; each rock is labelled with its side count and its area
+    in square pixels, and rocks within twice the floor turn gold as a warning. When a cut lands, a caption appears
+    at the cut site with the arithmetic — parent sides → the two pieces' sides, which law the cut obeyed
+    (n + 4, n + 3, or the true diagonal's n + 2), and the area before and after, conserved. Nothing in the X-Ray
+    changes the game; it only shows the mathematics the game was already doing.</p>
     <p><strong>Honesty notes.</strong> The rocks are convex polygons in a mixed field — triangles up to decagons,
     irregular and some of them stretched, so no two fields are alike; the split is exact polygon clipping, not a
     canned animation. Rocks pass through each other — only the ship and the bullets interact with them. Sound:
@@ -188,6 +202,9 @@ function makeRockPoly(cx, cy, sides, radius) {
 var ship, rocks, bullets, sparks, keys = {};
 var score, lives, wave, state, fireCooldown, respawnTimer, nextExtra;
 var started = false;
+var xray = false, cutNotes = [];
+function fmt(n) { return Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+function note(x, y, text, sub) { cutNotes.push({ x: x, y: y, text: text, sub: sub, life: 2.8 }); }
 
 function resetShip() {
   ship = { x: W / 2, y: H / 2, vx: 0, vy: 0, ang: -Math.PI / 2, invuln: 2.5 };
@@ -241,13 +258,18 @@ function vaporize(rock, idx) {
 function hitRock(bullet, idx) {
   var rock = rocks[idx];
   var area = polyArea(rock.pts);
-  if (area < MIN_AREA) { vaporize(rock, idx); return; }
+  var nSides = rock.pts.length, cen0 = polyCentroid(rock.pts);
+  if (area < MIN_AREA) {
+    note(cen0.x, cen0.y, nSides + ' SIDES — VAPORIZED WHOLE', 'under the ' + MIN_AREA + ' floor · +' + (nSides * 15));
+    vaporize(rock, idx); return;
+  }
   var pieces = splitByLine(rock.pts, bullet.x, bullet.y, bullet.vx, bullet.vy);
-  var kept = [];
+  var kept = [], vapSides = 0;
   for (var k = 0; k < 2; k++) {
     var piece = pieces[k];
     if (piece.length < 3 || polyArea(piece) < 1) continue;
     if (polyArea(piece) < MIN_AREA) {
+      vapSides = piece.length;
       addScore(piece.length * 15);
       var c = polyCentroid(piece);
       for (var i = 0; i < piece.length; i++) {
@@ -257,7 +279,18 @@ function hitRock(bullet, idx) {
     }
     kept.push(piece);
   }
-  if (kept.length === 2) addScore(10);
+  if (kept.length === 2) {
+    addScore(10);
+    var sa = kept[0].length, sb = kept[1].length, sum = sa + sb;
+    var law = (sum === nSides + 2) ? 'TRUE DIAGONAL · n + 2' : (sum === nSides + 3) ? 'ONE CORNER · n + 3' : 'THE ORDINARY CUT · n + 4';
+    note(cen0.x, cen0.y, nSides + ' → ' + sa + ' + ' + sb + '  ·  ' + law,
+      'area ' + fmt(area) + ' → ' + fmt(polyArea(kept[0])) + ' + ' + fmt(polyArea(kept[1])) + ' · conserved');
+  } else if (kept.length === 1 && vapSides) {
+    note(cen0.x, cen0.y, nSides + ' → ' + kept[0].length + ' + a ' + vapSides + '-sided cap, vaporized',
+      'cap under the floor · +' + (vapSides * 15));
+  } else if (kept.length === 0) {
+    note(cen0.x, cen0.y, nSides + ' → both pieces under the floor', 'vaporized where they fell');
+  }
   rocks.splice(idx, 1);
   /* push the pieces apart along the cut's perpendicular */
   var len = Math.hypot(bullet.vx, bullet.vy) || 1;
@@ -346,6 +379,11 @@ function step(dt) {
     s.x += s.vx * dt; s.y += s.vy * dt; s.life -= dt;
     if (s.life <= 0) sparks.splice(sk, 1);
   }
+  /* cut captions */
+  for (var nk = cutNotes.length - 1; nk >= 0; nk--) {
+    cutNotes[nk].life -= dt;
+    if (cutNotes[nk].life <= 0) cutNotes.splice(nk, 1);
+  }
   if (msgTimer > 0) msgTimer -= dt;
   if (rocks.length === 0 && state === 'playing') {
     wave++; flash('WAVE ' + wave);
@@ -357,15 +395,64 @@ function draw() {
   ctx.clearRect(0, 0, W, H);
   ctx.lineWidth = 1.6;
   var i, p;
+  /* X-Ray: the chords, drawn before the rocks so the field reads through them */
+  if (xray) {
+    ctx.save();
+    ctx.strokeStyle = 'rgba(126,226,255,.28)'; ctx.lineWidth = 1;
+    ctx.setLineDash([6, 9]);
+    for (i = 0; i < bullets.length; i++) {
+      var b0 = bullets[i], bl = Math.hypot(b0.vx, b0.vy) || 1, ux = b0.vx / bl, uy = b0.vy / bl;
+      ctx.beginPath();
+      ctx.moveTo(b0.x - ux * 1400, b0.y - uy * 1400);
+      ctx.lineTo(b0.x + ux * 1400, b0.y + uy * 1400);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
   /* rocks */
   ctx.strokeStyle = '#7ee2ff';
   ctx.shadowColor = 'rgba(126,226,255,.55)'; ctx.shadowBlur = 7;
   for (i = 0; i < rocks.length; i++) {
     p = rocks[i].pts;
+    if (xray && polyArea(p) < MIN_AREA * 2) ctx.strokeStyle = '#ffcf7d'; else ctx.strokeStyle = '#7ee2ff';
     ctx.beginPath();
     ctx.moveTo(p[0].x, p[0].y);
     for (var j = 1; j < p.length; j++) ctx.lineTo(p[j].x, p[j].y);
     ctx.closePath(); ctx.stroke();
+  }
+  ctx.strokeStyle = '#7ee2ff';
+  /* X-Ray: rock labels, drift arrows, ship circle + velocity, cut captions */
+  if (xray) {
+    ctx.save();
+    ctx.shadowBlur = 0;
+    for (i = 0; i < rocks.length; i++) {
+      var rk = rocks[i], cen = polyCentroid(rk.pts), ar = polyArea(rk.pts);
+      ctx.strokeStyle = 'rgba(232,236,244,.65)'; ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.moveTo(cen.x, cen.y);
+      ctx.lineTo(cen.x + rk.vx * 1.6, cen.y + rk.vy * 1.6); ctx.stroke();
+      ctx.fillStyle = '#ffcf7d'; ctx.font = '700 15px ui-monospace,Consolas,monospace'; ctx.textAlign = 'center';
+      ctx.fillText(rk.pts.length, cen.x, cen.y - 2);
+      ctx.fillStyle = 'rgba(154,167,189,.95)'; ctx.font = '10px ui-monospace,Consolas,monospace';
+      ctx.fillText(fmt(ar) + ' px²', cen.x, cen.y + 11);
+    }
+    if (state === 'playing') {
+      ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.setLineDash([4, 5]);
+      ctx.beginPath(); ctx.arc(ship.x, ship.y, 11, 0, 7); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.strokeStyle = 'rgba(232,236,244,.8)';
+      ctx.beginPath(); ctx.moveTo(ship.x, ship.y);
+      ctx.lineTo(ship.x + ship.vx * 0.6, ship.y + ship.vy * 0.6); ctx.stroke();
+    }
+    for (i = 0; i < cutNotes.length; i++) {
+      var nt = cutNotes[i];
+      ctx.globalAlpha = Math.min(1, nt.life / 1.1);
+      ctx.fillStyle = '#ffcf7d'; ctx.font = '700 15px ui-monospace,Consolas,monospace'; ctx.textAlign = 'center';
+      ctx.fillText(nt.text, nt.x, nt.y - 26);
+      ctx.fillStyle = 'rgba(232,236,244,.92)'; ctx.font = '11px ui-monospace,Consolas,monospace';
+      ctx.fillText(nt.sub, nt.x, nt.y - 9);
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
   }
   /* bullets */
   ctx.shadowBlur = 0; ctx.fillStyle = '#ffffff';
@@ -441,8 +528,16 @@ document.addEventListener('keydown', function (e) {
   if (e.code === 'ArrowUp' || e.code === 'KeyW') keys.up = true;
   if (e.code === 'Space') { keys.fire = true; e.preventDefault(); }
   if (e.code === 'KeyP' && started) state = (state === 'paused') ? 'playing' : (state === 'playing' ? 'paused' : state);
+  if (e.code === 'F2') { setXray(!xray); e.preventDefault(); }
   if (e.code === 'Enter' && state !== 'playing' && state !== 'paused') newGame();
 });
+function setXray(v) {
+  xray = v;
+  var btn = document.getElementById('xray-btn');
+  btn.textContent = xray ? 'X-RAY: ON' : 'X-RAY: OFF';
+  btn.className = xray ? 'on' : '';
+}
+document.getElementById('xray-btn').addEventListener('click', function () { setXray(!xray); });
 document.addEventListener('keyup', function (e) {
   if (e.code === 'ArrowLeft' || e.code === 'KeyA') keys.left = false;
   if (e.code === 'ArrowRight' || e.code === 'KeyD') keys.right = false;
@@ -457,7 +552,7 @@ window.__shard = {
   makeRockPoly: makeRockPoly,
   state: function () {
     return {
-      state: state, score: score, lives: lives, wave: wave,
+      state: state, score: score, lives: lives, wave: wave, xray: xray, notes: cutNotes.length,
       rocks: rocks.map(function (r) { return { sides: r.pts.length, area: Math.round(polyArea(r.pts)) }; }),
       ship: { x: Math.round(ship.x), y: Math.round(ship.y) },
       bullets: bullets.length
