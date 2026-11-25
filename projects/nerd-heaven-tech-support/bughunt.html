@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bug Hunt — the shooting gallery · Nerd Heaven</title>
+<meta name="description" content="A Duck Hunt variation for tech support: famous software bugs cross the screen, each behaving like the error it's named after. Ricochet shot vectors, an X-Ray that shows the true hitboxes, and Clippy, who ships whatever you miss.">
+<style>
+  :root{--ink:#e8ecf4;--dim:#9aa7bd;--accent:#7ee2ff;--gold:#ffcf7d;--panel:#12182b;--line:#263355}
+  *{box-sizing:border-box}
+  body{margin:0;background:#05070f;color:var(--ink);font:16px/1.55 "Segoe UI",system-ui,-apple-system,sans-serif}
+  .wrap{max-width:1020px;margin:0 auto;padding:28px 20px 60px}
+  .crumb{color:var(--gold);letter-spacing:.18em;font-size:12px;text-transform:uppercase;margin:0 0 8px}
+  h1{font-size:32px;margin:0 0 10px;line-height:1.2}
+  h1 .thin{color:var(--accent)}
+  p.lede{color:var(--dim);max-width:72ch}
+  .stage{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;margin:18px 0}
+  canvas{display:block;width:100%;height:auto;background:#070b16;border-radius:8px;cursor:crosshair}
+  .hud{display:flex;gap:22px;flex-wrap:wrap;font-family:ui-monospace,Consolas,monospace;font-size:14px;color:var(--dim);padding:10px 4px 2px}
+  .hud b{color:var(--ink)}
+  .hud button{background:#0d1322;color:var(--dim);border:1px solid var(--line);border-radius:8px;padding:3px 12px;font:inherit;cursor:pointer}
+  .hud button.on{color:var(--gold);border-color:var(--gold)}
+  table.keys{border-collapse:collapse;margin:10px 0;font-size:15px}
+  table.keys td{padding:3px 14px 3px 0;color:var(--dim)}
+  table.keys td:first-child{color:var(--ink);font-family:ui-monospace,Consolas,monospace;white-space:nowrap}
+  details{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 18px;margin:16px 0}
+  summary{cursor:pointer;font-weight:600}
+  details p,details li{color:var(--dim)}
+  details b,details strong{color:var(--ink)}
+  .note{border-left:3px solid var(--gold);background:#0d1322;padding:12px 16px;border-radius:0 10px 10px 0;margin:16px 0;color:var(--dim)}
+  .note b{color:var(--ink)}
+  footer{margin-top:34px;color:var(--dim);font-size:14px}
+  a{color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="crumb">Nerd Heaven · The Shooting Gallery</p>
+  <h1>Bug Hunt <span class="thin">— it works on my machine</span></h1>
+  <p class="lede">Steven's second variation from the same afternoon: Duck Hunt, re-cast for tech support. The ducks
+  are famous software bugs, and every bug behaves like the error it's named after — the HEISENBUG moves when you
+  observe it, the OFFBYONE's hitbox is not where the bug is drawn, the MEMORYLEAK fattens while you watch. Your
+  debugger fires real <b>shot vectors</b> that ricochet off the walls of the code window, and anything you miss
+  doesn't fly away. It <b>ships to production</b> — where Clippy is waiting to hold it up, grinning.</p>
+
+  <div class="stage">
+    <canvas id="game" width="960" height="680" aria-label="Bug Hunt game field"></canvas>
+    <div class="hud">
+      <span>SCORE <b id="hud-score">0</b></span>
+      <span>ROUND <b id="hud-round">1</b></span>
+      <span>SHOTS <b id="hud-shots">0</b></span>
+      <span>RELEASES <b id="hud-releases">♥♥♥♥♥</b></span>
+      <span>FIXED <b id="hud-fixed">0</b></span>
+      <span><button id="xray-btn" type="button">X-RAY: OFF</button></span>
+    </div>
+  </div>
+
+  <table class="keys">
+    <tr><td>Mouse</td><td>aim the debugger (it sits at the bottom of the window)</td></tr>
+    <tr><td>Click</td><td>fire — the shot travels, pierces, and ricochets up to three times</td></tr>
+    <tr><td>F2</td><td>the X-Ray layer — predicted shot path, true hitboxes, bug internals</td></tr>
+    <tr><td>Enter</td><td>start / restart</td></tr>
+  </table>
+
+  <div class="note"><b>Field guide, short version:</b> LOOKERROR freezes while your cursor is near it and darts
+  when you look away. HEISENBUG teleports the moment a shot's line passes close. OFFBYONE is hit beside itself,
+  not on itself. NULLPOINTER is only a name tag pointing at nothing. STACKOVERFLOW copies itself when you nearly
+  miss. MEMORYLEAK grows — and pays — the longer it lives. DEADLOCK travels frozen in pairs; free one and the
+  other runs. And the gold one is a <b>FEATURE</b>: shooting it costs you. Clippy ships whatever escapes — and
+  from round 3 he occasionally takes the field himself as a <b>boss bug worth 750</b>, running one of the other
+  bugs' behaviours, chosen at random. The X-Ray can see which one he's running. He cannot.</div>
+
+  <details>
+    <summary>Help ▾ — how Bug Hunt works, in full</summary>
+    <p><strong>The game.</strong> Bugs cross the code window. Click to fire the debugger's shot from the bottom
+    of the screen toward your cursor: the shot is a travelling vector, not an instant zap. It pierces every bug
+    on its line and ricochets off the side and top walls up to three times before it dies at the floor — line up
+    two bugs, or bank a shot off a wall into a third. Each round gives you a handful of shots; bugs left when the
+    shots run out make a run for it. A bug that crosses the far edge <strong>ships</strong>: you lose one of your
+    five releases, and Clippy presents the escapee. Lose all five and the build has shipped broken — game over.
+    Clearing a round pays a 250-point bonus; an extra release every 10,000 points.</p>
+    <p><strong>The roster, honestly.</strong> Each bug's behaviour is its definition, playable: a heisenbug really
+    does change when observed (it teleports when your shot's line passes within range); the off-by-one's hitbox
+    really is displaced from its body by one body-width; the lookerror only moves unobserved — park your cursor
+    near it to hold it still for the shot. The memory leak's value grows with its body. The stack overflow spawns
+    a smaller, faster copy of itself (up to three generations) whenever a shot passes close without hitting. The
+    deadlock pair cannot move while both live. The FEATURE is a decoy: −150 points and a wasted shot if you hit
+    it, and if it escapes, nothing bad happens — features ship as designed. And from round 3, <strong>CLIPPY
+    himself</strong> occasionally crosses the field as a boss bug worth 750 points: he has borrowed one of the
+    other bugs' behaviours at random — this Clippy might freeze under your cursor, that one might teleport when
+    observed. The label under him only says CLIPPY. The X-Ray, alone, can see which behaviour he's running.</p>
+    <p><strong>The X-Ray layer (F2).</strong> Draws the shot you are <em>about</em> to fire: the full predicted
+    path, ricochets and all, following your cursor. It also draws every bug's true hitbox — including the
+    OFFBYONE's real one, with a marker where its body pretends to be — the LOOKERROR's sight radius, the link
+    between a DEADLOCK pair, and the MEMORYLEAK's maximum size. After a shot, its travelled path stays on screen
+    briefly, so you can compare the prediction with what the shot actually did. The X-Ray changes nothing; it
+    only shows what the game already knows.</p>
+    <p><strong>Honesty notes.</strong> Shots are simulated in small steps so fast shots can't tunnel through
+    bugs; the prediction and the shot use the same wall rules, and the lesson's audit compares them point by
+    point. Clippy's eyes follow your cursor. He would want it that way. Sound: none. This page makes no network
+    requests and runs from a lone local file.</p>
+  </details>
+
+  <footer>
+    <p>Bug Hunt was designed by Steven Powell ("Duck Hunt, tho this one could be Bug hunt" — the dog "could be
+    a clippy," and Clippy "could even make an occasional appearance as a bug\u2026 boss level as it were") and built
+    by Muse the same day, 25 November 2026. Its lesson — what the audit measured, bug by bug — is beside it:
+    <a href="bughunt-lesson.html">the Bug Hunt lesson</a>.</p>
+    <p><a href="index.html">← Back to Nerd Heaven</a> · <a href="../../index.html">Everyday Cool hub</a></p>
+  </footer>
+</div>
+
+<script>
+"use strict";
+/* Bug Hunt — Duck Hunt re-cast for tech support.
+   The shot is a travelling vector: pierces bugs, reflects off the side/top
+   walls up to 3 times, dies at the floor. The X-Ray prediction (tracePath)
+   and the live shot use the same wall rules. */
+var W = 960, H = 680;
+var WALL_L = 8, WALL_R = 952, WALL_T = 8, FLOOR = 640;
+var TURRET = { x: 480, y: 640 };
+var SHOT_SPEED = 800, MAX_BOUNCE = 3;
+var canvas = document.getElementById('game');
+var ctx = canvas.getContext('2d');
+var cursor = { x: 480, y: 300 };
+
+function segDist(px, py, ax, ay, bx, by) {
+  var abx = bx - ax, aby = by - ay;
+  var t = ((px - ax) * abx + (py - ay) * aby) / (abx * abx + aby * aby || 1);
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (ax + abx * t), py - (ay + aby * t));
+}
+/* Predicted shot path: polyline of points from (x,y) along (dx,dy),
+   reflecting on L/R/T walls up to MAX_BOUNCE times, ending at the floor. */
+function tracePath(x, y, dx, dy) {
+  var pts = [{ x: x, y: y }], bounces = 0;
+  var cx = x, cy = y, vx = dx, vy = dy;
+  for (var guard = 0; guard < 40; guard++) {
+    var tMin = Infinity, hit = null;
+    if (vx < 0) { var t1 = (WALL_L - cx) / vx; if (t1 > 1e-9 && t1 < tMin) { tMin = t1; hit = 'L'; } }
+    if (vx > 0) { var t2 = (WALL_R - cx) / vx; if (t2 > 1e-9 && t2 < tMin) { tMin = t2; hit = 'R'; } }
+    if (vy < 0) { var t3 = (WALL_T - cy) / vy; if (t3 > 1e-9 && t3 < tMin) { tMin = t3; hit = 'T'; } }
+    if (vy > 0) { var t4 = (FLOOR - cy) / vy; if (t4 > 1e-9 && t4 < tMin) { tMin = t4; hit = 'F'; } }
+    if (hit === null) break;
+    cx += vx * tMin; cy += vy * tMin;
+    pts.push({ x: cx, y: cy });
+    if (hit === 'F') break;
+    bounces++;
+    if (bounces > MAX_BOUNCE) break;
+    if (hit === 'L' || hit === 'R') vx = -vx; else vy = -vy;
+  }
+  return pts;
+}
+
+/* ---------- bugs ---------- */
+var VALUES = { BOHRBUG: 100, LOOKERROR: 250, OFFBYONE: 300, NULLPOINTER: 300, HEISENBUG: 400, STACKOVERFLOW: 200, DEADLOCK: 250, FEATURE: -150, CLIPPY: 750 };
+var COLORS = { BOHRBUG: '#9fe870', LOOKERROR: '#7ee2ff', OFFBYONE: '#ffb3c7', NULLPOINTER: '#c9d4e8', HEISENBUG: '#c792ff', STACKOVERFLOW: '#ff9d5c', MEMORYLEAK: '#5ce8c3', DEADLOCK: '#8ab6ff', FEATURE: '#ffcf7d', CLIPPY: '#e8ecf4' };
+var MIMICS = ['BOHRBUG', 'LOOKERROR', 'OFFBYONE', 'HEISENBUG', 'NULLPOINTER', 'STACKOVERFLOW', 'MEMORYLEAK'];
+var bugs = [], nextBugId = 1, nextPairId = 1;
+function effType(b) { return b.type === 'CLIPPY' ? b.mimic : b.type; }
+function hitCenter(b) {
+  if (effType(b) === 'OFFBYONE') return { x: b.x + b.r * 1.6, y: b.y };
+  return { x: b.x, y: b.y };
+}
+function bugValue(b) {
+  if (b.type === 'CLIPPY') return 750;
+  if (b.type === 'MEMORYLEAK') return 100 + Math.round(Math.max(0, b.r - 16) * 12);
+  if (b.type === 'STACKOVERFLOW') return Math.max(50, 200 - b.gen * 75);
+  return VALUES[b.type];
+}
+function makeBug(type, x, y, vx, vy, opts) {
+  opts = opts || {};
+  var b = {
+    id: nextBugId++, type: type, x: x, y: y, vx: vx, vy: vy,
+    r: opts.r || (type === 'CLIPPY' ? 21 : 17), gen: opts.gen || 0, pairId: opts.pairId || 0, freed: false,
+    mimic: type === 'CLIPPY' ? MIMICS[Math.floor(Math.random() * MIMICS.length)] : null,
+    phase: Math.random() * 6.28, fleeing: false, nearMissedBy: 0, bornAt: perfNow()
+  };
+  bugs.push(b);
+  return b;
+}
+function perfNow() { return performance.now() / 1000; }
+
+/* ---------- game state ---------- */
+var score, round, shotsLeft, releases, fixedCount, state, started = false;
+var spawnQueue = [], spawnTimer = 0, roundTimer = 0, nextExtraAt;
+var shot = null, splats = [], notes = [], clippy = null, trail = null;
+var xray = false;
+function note(x, y, text, sub, color) { notes.push({ x: x, y: y, text: text, sub: sub || '', color: color || '#ffcf7d', life: 2.4 }); }
+var CLIPPY_LINES = ['Works on my machine!', 'It looks like you\u2019re trying to ship to production!', 'This change has been deployed.', 'Have you tried turning it off and on again?', 'That\u2019s not a bug in MY build.'];
+function newGame() {
+  score = 0; round = 0; releases = 5; fixedCount = 0; nextExtraAt = 10000;
+  bugs = []; splats = []; notes = []; shot = null; clippy = null; trail = null;
+  started = true;
+  nextRound();
+}
+function roundComp(r) {
+  var pool = ['BOHRBUG', 'BOHRBUG'];
+  if (r >= 2) pool.push('LOOKERROR', 'OFFBYONE', 'FEATURE');
+  if (r >= 3) pool.push('NULLPOINTER', 'STACKOVERFLOW');
+  if (r >= 4) pool.push('MEMORYLEAK', 'DEADLOCK');
+  if (r >= 5) pool.push('HEISENBUG');
+  var n = Math.min(3 + r, 10), comp = [];
+  for (var i = 0; i < n; i++) comp.push(pool[Math.floor(Math.random() * pool.length)]);
+  if (r >= 2 && comp.indexOf('FEATURE') === -1 && Math.random() < 0.6) comp[0] = 'FEATURE';
+  /* the boss: from round 3, a Clippy occasionally takes a slot — it runs one
+     of the other bugs' behaviours, chosen at random when it appears */
+  if (r >= 3 && Math.random() < 0.35) comp[comp.length - 1] = 'CLIPPY';
+  return comp;
+}
+function nextRound() {
+  round++;
+  shotsLeft = Math.min(4 + Math.floor((round - 1) / 2), 8);
+  spawnQueue = roundComp(round);
+  spawnTimer = 0.6;
+  state = 'playing';
+  note(W / 2, 120, 'ROUND ' + round, spawnQueue.length + ' bugs in the build', '#7ee2ff');
+}
+function spawnNext() {
+  var type = spawnQueue.shift();
+  var fromLeft = Math.random() < 0.5;
+  var speed = (55 + Math.random() * 40) * (1 + round * 0.04);
+  var x = fromLeft ? -40 : W + 40;
+  var y = 90 + Math.random() * 330;
+  var vx = (fromLeft ? 1 : -1) * speed;
+  var vy = (Math.random() - 0.5) * 36;
+  if (type === 'DEADLOCK') {
+    var pid = nextPairId++;
+    makeBug('DEADLOCK', x, y, vx, vy, { pairId: pid });
+    makeBug('DEADLOCK', x - vx * 0.55, y + 44, vx, vy, { pairId: pid });
+  } else {
+    makeBug(type, x, y, vx, vy, {});
+  }
+}
+
+/* ---------- firing & the shot ---------- */
+function addScore(n) {
+  score += n;
+  if (score >= nextExtraAt) { releases++; nextExtraAt += 10000; note(W / 2, 90, 'EXTRA RELEASE', '', '#9fe870'); }
+}
+function fire(tx, ty) {
+  if (state !== 'playing' || shot || shotsLeft <= 0) return false;
+  var dx = tx - TURRET.x, dy = ty - TURRET.y;
+  var len = Math.hypot(dx, dy);
+  if (len < 12 || dy > -8) return false;
+  dx /= len; dy /= len;
+  shotsLeft--;
+  /* HEISENBUG (and a mimicking Clippy) moves when observed: if the shot's
+     predicted line passes within 54 px of it, it teleports before arrival */
+  var path = tracePath(TURRET.x, TURRET.y - 14, dx, dy);
+  for (var i = 0; i < bugs.length; i++) {
+    var b = bugs[i];
+    if (effType(b) !== 'HEISENBUG') continue;
+    var hc = hitCenter(b), near = false;
+    for (var s = 0; s < path.length - 1; s++) {
+      if (segDist(hc.x, hc.y, path[s].x, path[s].y, path[s + 1].x, path[s + 1].y) < 54) { near = true; break; }
+    }
+    if (near) {
+      b.x = 130 + Math.random() * 700; b.y = 70 + Math.random() * 300;
+      note(b.x, b.y - 30, 'OBSERVED — IT MOVED', b.type === 'CLIPPY' ? 'CLIPPY, running HEISENBUG' : 'HEISENBUG', '#c792ff');
+    }
+  }
+  shot = {
+    x: TURRET.x, y: TURRET.y - 14, vx: dx * SHOT_SPEED, vy: dy * SHOT_SPEED,
+    bounces: 0, path: [{ x: TURRET.x, y: TURRET.y - 14 }], dead: false, nearMiss: {}
+  };
+  return true;
+}
+function squashBug(b, idx) {
+  var val = bugValue(b);
+  if (b.type === 'FEATURE') {
+    score = Math.max(0, score + val);
+    note(b.x, b.y - 24, 'NOT A BUG — IT\u2019S A FEATURE', val + ' points', '#ff9d5c');
+  } else {
+    addScore(val);
+    fixedCount++;
+    note(b.x, b.y - 24, 'FIXED: ' + b.type, '+' + val, '#9fe870');
+    if (effType(b) === 'DEADLOCK' && b.pairId) {
+      for (var i = 0; i < bugs.length; i++) {
+        if (bugs[i].pairId === b.pairId && bugs[i].id !== b.id) bugs[i].freed = true;
+      }
+    }
+  }
+  for (var p = 0; p < 10; p++) {
+    splats.push({ x: b.x, y: b.y, vx: (Math.random() - 0.5) * 190, vy: (Math.random() - 0.5) * 190, life: 0.5, color: COLORS[b.type] });
+  }
+  bugs.splice(idx, 1);
+}
+function endShot() {
+  if (!shot) return;
+  /* STACKOVERFLOW copies itself on a near miss (generations capped at 3) */
+  var pending = [];
+  for (var i = 0; i < bugs.length; i++) {
+    var b = bugs[i];
+    if (effType(b) === 'STACKOVERFLOW' && b.gen < 3 && shot.nearMiss[b.id]) {
+      pending.push(b);
+    }
+  }
+  /* the completed path lingers briefly so the X-Ray can compare it with the
+     prediction — including the terminal point the shot died on */
+  trail = { path: shot.path.concat([{ x: shot.x, y: shot.y }]), life: 1.4 };
+  shot = null;
+  for (var j = 0; j < pending.length; j++) {
+    var src = pending[j];
+    if (bugs.indexOf(src) === -1) continue;
+    var copy = makeBug(src.type, src.x + 26, src.y + 14, src.vx * 1.2, src.vy, { r: src.r * 0.75, gen: src.gen + 1, mimic: src.mimic });
+    copy.mimic = src.mimic;
+    note(src.x, src.y - 28, 'IT COPIED ITSELF', 'STACKOVERFLOW gen ' + (src.gen + 1), '#ff9d5c');
+  }
+}
+function stepShot(dt) {
+  if (!shot) return;
+  var dist = SHOT_SPEED * dt, steps = Math.max(1, Math.ceil(dist / 7)), sub = dist / steps;
+  for (var s = 0; s < steps && shot; s++) {
+    var sp = Math.hypot(shot.vx, shot.vy);
+    shot.x += (shot.vx / sp) * sub;
+    shot.y += (shot.vy / sp) * sub;
+    /* bug collisions — piercing */
+    for (var i = bugs.length - 1; i >= 0; i--) {
+      var b = bugs[i], hc = hitCenter(b);
+      var d = Math.hypot(shot.x - hc.x, shot.y - hc.y);
+      if (d < b.r) { squashBug(b, i); }
+      else if (effType(b) === 'STACKOVERFLOW' && d < b.r + 24) { shot.nearMiss[b.id] = true; }
+    }
+    if (!shot) break;
+    /* walls */
+    if (shot.x <= WALL_L || shot.x >= WALL_R || shot.y <= WALL_T) {
+      shot.path.push({ x: shot.x, y: shot.y });
+      shot.bounces++;
+      if (shot.bounces > MAX_BOUNCE) { endShot(); break; }
+      if (shot.x <= WALL_L) { shot.x = WALL_L; shot.vx = Math.abs(shot.vx); }
+      if (shot.x >= WALL_R) { shot.x = WALL_R; shot.vx = -Math.abs(shot.vx); }
+      if (shot.y <= WALL_T) { shot.y = WALL_T; shot.vy = Math.abs(shot.vy); }
+    } else if (shot.y >= FLOOR) {
+      shot.path.push({ x: shot.x, y: shot.y });
+      endShot();
+      break;
+    }
+  }
+}
+
+/* ---------- bugs & rounds ---------- */
+function bugFactor(b, now) {
+  var t = effType(b);
+  if (b.fleeing) return 2.2;
+  if (t === 'LOOKERROR') return Math.hypot(cursor.x - b.x, cursor.y - b.y) < 115 ? 0 : 2.2;
+  if (t === 'DEADLOCK') {
+    if (b.freed) return 1.6;
+    for (var i = 0; i < bugs.length; i++) if (bugs[i].pairId === b.pairId && bugs[i].id !== b.id) return 0;
+    return 1.6;
+  }
+  if (t === 'MEMORYLEAK') return Math.max(0.45, Math.min(1, 17 / b.r));
+  return 1;
+}
+function shipBug(b, idx) {
+  if (b.type === 'FEATURE') {
+    note(b.x > W / 2 ? W - 190 : 190, 150, 'FEATURE SHIPPED', 'as designed', '#ffcf7d');
+  } else {
+    releases--;
+    clippy = { bugType: b.type, line: CLIPPY_LINES[Math.floor(Math.random() * CLIPPY_LINES.length)], life: 2.4 };
+    if (releases <= 0) { state = 'over'; }
+  }
+  bugs.splice(idx, 1);
+}
+function step(dt) {
+  var now = perfNow();
+  if (state === 'playing') {
+    if (spawnQueue.length && bugs.length < 5) {
+      spawnTimer -= dt;
+      if (spawnTimer <= 0) { spawnNext(); spawnTimer = 1.3; }
+    }
+    if (!shot && shotsLeft <= 0 && bugs.length) {
+      for (var f = 0; f < bugs.length; f++) bugs[f].fleeing = true;
+    }
+    stepShot(dt);
+    for (var i = bugs.length - 1; i >= 0; i--) {
+      var b = bugs[i], t = effType(b);
+      if (t === 'MEMORYLEAK') b.r = Math.min(46, b.r + 2.2 * dt);
+      var fac = bugFactor(b, now);
+      b.x += b.vx * fac * dt;
+      b.y += (b.vy + Math.sin(now * 2.1 + b.phase) * 24) * fac * dt;
+      if (b.y < 46) { b.y = 46; b.vy = Math.abs(b.vy); }
+      if (b.y > FLOOR - 60) { b.y = FLOOR - 60; b.vy = -Math.abs(b.vy); }
+      if (b.x < -70 || b.x > W + 70 || b.y < -70) shipBug(b, i);
+    }
+    if (!spawnQueue.length && !bugs.length && !shot && state === 'playing') {
+      addScore(250);
+      note(W / 2, 150, 'ROUND ' + round + ' CLEAR', '+250 · all bugs fixed', '#9fe870');
+      nextRound();
+    }
+  }
+  for (var s2 = splats.length - 1; s2 >= 0; s2--) {
+    var sp2 = splats[s2];
+    sp2.x += sp2.vx * dt; sp2.y += sp2.vy * dt; sp2.life -= dt;
+    if (sp2.life <= 0) splats.splice(s2, 1);
+  }
+  for (var n2 = notes.length - 1; n2 >= 0; n2--) {
+    notes[n2].life -= dt;
+    if (notes[n2].life <= 0) notes.splice(n2, 1);
+  }
+  if (clippy) { clippy.life -= dt; if (clippy.life <= 0) clippy = null; }
+  if (trail) { trail.life -= dt; if (trail.life <= 0) trail = null; }
+}
+
+/* ---------- drawing ---------- */
+var CODE_LINES = ['if (user = null) {', '  login(user);', '}', 'for (i = 0; i <= n; i++)', '  sum += a[i];', 'catch (e) { /* ignore */ }', 'TODO: fix before ship', 'while (true) { }', 'return true; // trust me', 'x = x + 1; // ???', 'delete customer; // oops', 'if (debug = true)', '  ship(it);', '// works on my machine', 'temp = temp2; // final', 'hack() { goto hack; }'];
+function drawClippyFigure(x, y, s, eyeTx, eyeTy) {
+  ctx.save();
+  ctx.translate(x, y); ctx.scale(s, s);
+  ctx.strokeStyle = '#c9d4e8'; ctx.lineWidth = 4.5; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.ellipse(0, 2, 13, 24, 0, 0, 7); ctx.stroke();
+  ctx.beginPath(); ctx.ellipse(0, -3, 6.5, 15, 0, 0, 7); ctx.stroke();
+  var ex = Math.max(-2, Math.min(2, (eyeTx - x) / 60)), ey = Math.max(-1.6, Math.min(1.6, (eyeTy - y) / 60));
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath(); ctx.arc(-6, -16, 4.6, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.arc(6, -16, 4.6, 0, 7); ctx.fill();
+  ctx.fillStyle = '#101623';
+  ctx.beginPath(); ctx.arc(-6 + ex, -16 + ey, 2.1, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.arc(6 + ex, -16 + ey, 2.1, 0, 7); ctx.fill();
+  ctx.restore();
+}
+function drawBug(b, now) {
+  var t = effType(b);
+  ctx.save();
+  ctx.translate(b.x, b.y);
+  if (b.type === 'CLIPPY') {
+    drawClippyFigure(0, Math.sin(now * 2 + b.phase) * 3, 1.05, cursor.x, cursor.y);
+  } else if (t === 'NULLPOINTER') {
+    ctx.fillStyle = 'rgba(201,212,232,.75)';
+    ctx.font = '11px ui-monospace,Consolas,monospace'; ctx.textAlign = 'center';
+    ctx.fillText('\u2192 null', 0, 4);
+  } else {
+    var col = COLORS[b.type], dir = b.vx >= 0 ? 1 : -1;
+    if (b.type === 'FEATURE') {
+      ctx.fillStyle = 'rgba(255,207,125,.5)';
+      ctx.beginPath(); ctx.ellipse(-6, -8, 13, 7, -0.6, 0, 7); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(6, -8, 13, 7, 0.6, 0, 7); ctx.fill();
+    }
+    ctx.strokeStyle = col; ctx.lineWidth = 1.6;
+    for (var leg = 0; leg < 3; leg++) {
+      var lx = -b.r * 0.5 + leg * b.r * 0.5, wig = Math.sin(now * 14 + b.phase + leg * 1.7) * 3.4;
+      ctx.beginPath(); ctx.moveTo(lx, b.r * 0.4); ctx.lineTo(lx - 3, b.r * 0.95 + wig); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(lx, b.r * 0.4); ctx.lineTo(lx + 3, b.r * 0.95 - wig); ctx.stroke();
+    }
+    ctx.fillStyle = '#0a0f1e';
+    ctx.strokeStyle = col; ctx.lineWidth = 1.8;
+    ctx.beginPath(); ctx.ellipse(0, 0, b.r * 0.98, b.r * 0.8, 0, 0, 7); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.arc(dir * b.r * 0.82, -b.r * 0.12, b.r * 0.42, 0, 7); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(dir * b.r * 0.95, -b.r * 0.4);
+    ctx.quadraticCurveTo(dir * b.r * 1.35, -b.r * 0.85, dir * b.r * 1.5, -b.r * 0.6 + Math.sin(now * 6 + b.phase) * 2);
+    ctx.stroke();
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath(); ctx.arc(dir * b.r * 0.9, -b.r * 0.2, 2.4, 0, 7); ctx.fill();
+  }
+  ctx.restore();
+  /* name tag */
+  ctx.fillStyle = b.type === 'CLIPPY' ? '#e8ecf4' : COLORS[b.type];
+  ctx.font = '700 9.5px ui-monospace,Consolas,monospace'; ctx.textAlign = 'center';
+  ctx.fillText(b.type, b.x, b.y + b.r + 15);
+  if (xray && b.type === 'CLIPPY') {
+    ctx.fillStyle = '#ffcf7d'; ctx.font = '10px ui-monospace,Consolas,monospace';
+    ctx.fillText('running: ' + b.mimic, b.x, b.y + b.r + 28);
+  }
+}
+function draw() {
+  var now = perfNow();
+  ctx.clearRect(0, 0, W, H);
+  /* code-window backdrop */
+  ctx.font = '12px ui-monospace,Consolas,monospace'; ctx.textAlign = 'left';
+  for (var ln = 0; ln < 19; ln++) {
+    var ly = 30 + ln * 34;
+    ctx.fillStyle = 'rgba(154,167,189,.20)';
+    ctx.fillText(String(ln + 1), 14, ly);
+    ctx.fillStyle = 'rgba(126,226,255,.10)';
+    ctx.fillText(CODE_LINES[ln % CODE_LINES.length], 52, ly);
+  }
+  ctx.strokeStyle = 'rgba(38,51,85,.9)';
+  ctx.beginPath(); ctx.moveTo(44, 0); ctx.lineTo(44, FLOOR); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0, FLOOR); ctx.lineTo(W, FLOOR); ctx.stroke();
+  /* X-Ray: predicted aim path */
+  if (xray && state === 'playing' && !shot) {
+    var dx = cursor.x - TURRET.x, dy = cursor.y - (TURRET.y - 14);
+    var dl = Math.hypot(dx, dy);
+    if (dl > 4 && dy < 0) {
+      var pts = tracePath(TURRET.x, TURRET.y - 14, dx / dl, dy / dl);
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255,207,125,.55)'; ctx.lineWidth = 1.2; ctx.setLineDash([5, 8]);
+      ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y);
+      for (var pp = 1; pp < pts.length; pp++) ctx.lineTo(pts[pp].x, pts[pp].y);
+      ctx.stroke(); ctx.restore();
+    }
+  }
+  /* X-Ray: internals */
+  if (xray) {
+    ctx.save();
+    for (var xi = 0; xi < bugs.length; xi++) {
+      var xb = bugs[xi], xt = effType(xb), xh = hitCenter(xb);
+      ctx.strokeStyle = COLORS[xb.type]; ctx.globalAlpha = 0.75; ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.arc(xh.x, xh.y, xb.r, 0, 7); ctx.stroke();
+      if (xt === 'OFFBYONE') {
+        ctx.globalAlpha = 0.9; ctx.strokeStyle = '#ff5c7a';
+        ctx.beginPath();
+        ctx.moveTo(xb.x - 6, xb.y - 6); ctx.lineTo(xb.x + 6, xb.y + 6);
+        ctx.moveTo(xb.x + 6, xb.y - 6); ctx.lineTo(xb.x - 6, xb.y + 6);
+        ctx.stroke();
+        ctx.setLineDash([3, 5]);
+        ctx.beginPath(); ctx.moveTo(xb.x, xb.y); ctx.lineTo(xh.x, xh.y); ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      if (xt === 'LOOKERROR') {
+        ctx.globalAlpha = 0.25; ctx.strokeStyle = '#7ee2ff';
+        ctx.beginPath(); ctx.arc(xb.x, xb.y, 115, 0, 7); ctx.stroke();
+      }
+      if (xt === 'MEMORYLEAK') {
+        ctx.globalAlpha = 0.4; ctx.strokeStyle = '#5ce8c3'; ctx.setLineDash([4, 6]);
+        ctx.beginPath(); ctx.arc(xb.x, xb.y, 46, 0, 7); ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      ctx.globalAlpha = 1;
+    }
+    for (var di = 0; di < bugs.length; di++) {
+      var db = bugs[di];
+      if (effType(db) !== 'DEADLOCK' || !db.pairId) continue;
+      for (var dj = di + 1; dj < bugs.length; dj++) {
+        if (bugs[dj].pairId === db.pairId) {
+          ctx.strokeStyle = 'rgba(138,182,255,.6)'; ctx.lineWidth = 1.4;
+          ctx.beginPath(); ctx.moveTo(db.x, db.y); ctx.lineTo(bugs[dj].x, bugs[dj].y); ctx.stroke();
+        }
+      }
+    }
+    ctx.restore();
+  }
+  /* bugs */
+  for (var bi = 0; bi < bugs.length; bi++) drawBug(bugs[bi], now);
+  /* turret */
+  var aim = Math.atan2(cursor.y - TURRET.y, cursor.x - TURRET.x);
+  ctx.save();
+  ctx.translate(TURRET.x, TURRET.y);
+  ctx.fillStyle = '#1a2440'; ctx.strokeStyle = '#7ee2ff'; ctx.lineWidth = 1.6;
+  ctx.beginPath(); ctx.moveTo(-20, 0); ctx.lineTo(20, 0); ctx.lineTo(12, -14); ctx.lineTo(-12, -14); ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.rotate(aim + Math.PI / 2);
+  ctx.fillStyle = '#7ee2ff';
+  ctx.fillRect(-2.5, -26, 5, 18);
+  ctx.restore();
+  ctx.fillStyle = '#9aa7bd'; ctx.font = '700 9px ui-monospace,Consolas,monospace'; ctx.textAlign = 'center';
+  ctx.fillText('DEBUGGER', TURRET.x, TURRET.y + 14);
+  /* the shot + its travelled path */
+  if (shot) {
+    if (xray && shot.path.length > 1) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255,207,125,.4)'; ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.moveTo(shot.path[0].x, shot.path[0].y);
+      for (var tp = 1; tp < shot.path.length; tp++) ctx.lineTo(shot.path[tp].x, shot.path[tp].y);
+      ctx.lineTo(shot.x, shot.y); ctx.stroke(); ctx.restore();
+    }
+    ctx.fillStyle = '#ffffff';
+    ctx.shadowColor = 'rgba(255,255,255,.8)'; ctx.shadowBlur = 8;
+    ctx.beginPath(); ctx.arc(shot.x, shot.y, 3.4, 0, 7); ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+  /* the completed path, lingering for comparison (X-Ray) */
+  if (!shot && xray && trail && trail.path.length > 1) {
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, trail.life / 1.4) * 0.6;
+    ctx.strokeStyle = '#ffcf7d'; ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.moveTo(trail.path[0].x, trail.path[0].y);
+    for (var lp = 1; lp < trail.path.length; lp++) ctx.lineTo(trail.path[lp].x, trail.path[lp].y);
+    ctx.stroke(); ctx.restore();
+  }
+  /* splats */
+  for (var si = 0; si < splats.length; si++) {
+    var sp3 = splats[si];
+    ctx.globalAlpha = Math.max(0, sp3.life / 0.5);
+    ctx.fillStyle = sp3.color;
+    ctx.fillRect(sp3.x - 2, sp3.y - 2, 4, 4);
+  }
+  ctx.globalAlpha = 1;
+  /* Clippy presents the escapee */
+  if (clippy) {
+    var rise = Math.min(1, (2.4 - clippy.life) / 0.3);
+    var cy2 = FLOOR - 64 * rise;
+    drawClippyFigure(120, cy2, 1.5, cursor.x, cursor.y);
+    ctx.fillStyle = 'rgba(13,19,34,.92)';
+    ctx.strokeStyle = '#ffcf7d'; ctx.lineWidth = 1.2;
+    var bx = 152, by = cy2 - 52, bw = 330, bh = 52;
+    ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 9); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#ffcf7d'; ctx.font = '700 13px ui-monospace,Consolas,monospace'; ctx.textAlign = 'left';
+    ctx.fillText('SHIPPED: ' + clippy.bugType, bx + 12, by + 20);
+    ctx.fillStyle = '#e8ecf4'; ctx.font = '12.5px "Segoe UI",system-ui,sans-serif';
+    ctx.fillText(clippy.line, bx + 12, by + 39);
+  }
+  /* captions */
+  ctx.textAlign = 'center';
+  for (var ni = 0; ni < notes.length; ni++) {
+    var nt = notes[ni];
+    ctx.globalAlpha = Math.min(1, nt.life / 1.1);
+    ctx.fillStyle = nt.color; ctx.font = '700 15px ui-monospace,Consolas,monospace';
+    ctx.fillText(nt.text, nt.x, nt.y);
+    if (nt.sub) {
+      ctx.fillStyle = 'rgba(232,236,244,.92)'; ctx.font = '11px ui-monospace,Consolas,monospace';
+      ctx.fillText(nt.sub, nt.x, nt.y + 15);
+    }
+  }
+  ctx.globalAlpha = 1;
+  /* overlays */
+  ctx.fillStyle = '#e8ecf4'; ctx.font = '600 30px "Segoe UI",system-ui,sans-serif';
+  if (!started) {
+    ctx.fillText('BUG HUNT', W / 2, H / 2 - 40);
+    ctx.font = '17px "Segoe UI",system-ui,sans-serif'; ctx.fillStyle = '#9aa7bd';
+    ctx.fillText('Click or press ENTER to start fixing. Whatever you miss, Clippy ships.', W / 2, H / 2 - 6);
+  } else if (state === 'over') {
+    ctx.fillText('THE BUILD HAS SHIPPED', W / 2, H / 2 - 30);
+    ctx.font = '17px "Segoe UI",system-ui,sans-serif'; ctx.fillStyle = '#9aa7bd';
+    ctx.fillText('Final score ' + score + ' · ' + fixedCount + ' bugs fixed · press ENTER to start a new sprint', W / 2, H / 2 + 6);
+  }
+  /* HUD */
+  document.getElementById('hud-score').textContent = score;
+  document.getElementById('hud-round').textContent = Math.max(1, round);
+  document.getElementById('hud-shots').textContent = shotsLeft;
+  document.getElementById('hud-releases').textContent = releases > 0 ? '\u2665'.repeat(Math.min(releases, 10)) : '—';
+  document.getElementById('hud-fixed').textContent = fixedCount;
+}
+
+/* ---------- input & loop ---------- */
+function canvasPos(e) {
+  var rect = canvas.getBoundingClientRect();
+  return { x: (e.clientX - rect.left) * (W / rect.width), y: (e.clientY - rect.top) * (H / rect.height) };
+}
+canvas.addEventListener('mousemove', function (e) { cursor = canvasPos(e); });
+canvas.addEventListener('click', function (e) {
+  cursor = canvasPos(e);
+  if (!started || state === 'over') { newGame(); return; }
+  fire(cursor.x, cursor.y);
+});
+function setXray(v) {
+  xray = v;
+  var btn = document.getElementById('xray-btn');
+  btn.textContent = xray ? 'X-RAY: ON' : 'X-RAY: OFF';
+  btn.className = xray ? 'on' : '';
+}
+document.getElementById('xray-btn').addEventListener('click', function () { setXray(!xray); });
+document.addEventListener('keydown', function (e) {
+  if (e.code === 'F2') { setXray(!xray); e.preventDefault(); }
+  if (e.code === 'Enter' && (!started || state === 'over')) newGame();
+});
+bugs = []; splats = []; notes = []; score = 0; round = 0; shotsLeft = 0; releases = 5; fixedCount = 0; state = 'ready';
+var lastT = performance.now();
+function frame(nowMs) {
+  var dt = Math.min(1 / 30, (nowMs - lastT) / 1000);
+  lastT = nowMs;
+  step(dt);
+  draw();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+/* test hooks for the audit (drive the shipped code, change nothing) */
+window.__bug = {
+  tracePath: tracePath,
+  hitCenter: hitCenter,
+  effType: effType,
+  bugValue: bugValue,
+  state: function () {
+    return {
+      state: state, score: score, round: round, shotsLeft: shotsLeft, releases: releases,
+      fixed: fixedCount, xray: xray, clippy: clippy ? clippy.bugType : null,
+      bugs: bugs.map(function (b) {
+        var hc = hitCenter(b);
+        return { id: b.id, type: b.type, mimic: b.mimic, eff: effType(b), x: Math.round(b.x), y: Math.round(b.y), r: Math.round(b.r * 10) / 10, hitX: Math.round(hc.x), hitY: Math.round(hc.y), value: bugValue(b), gen: b.gen, pairId: b.pairId };
+      }),
+      shotActive: !!shot,
+      shotPath: shot ? shot.path : null,
+      trail: trail ? { points: trail.path.length, life: Math.round(trail.life * 100) / 100, last: trail.path[trail.path.length - 1] } : null
+    };
+  },
+  start: function () { newGame(); },
+  spawn: function (type, x, y, vx, vy, opts) {
+    var b = makeBug(type, x, y, vx, vy, opts || {});
+    if (opts && opts.mimic) b.mimic = opts.mimic;
+    return b.id;
+  },
+  fireAt: function (tx, ty) { return fire(tx, ty); },
+  setCursor: function (x, y) { cursor = { x: x, y: y }; },
+  clearBugs: function () { bugs = []; spawnQueue = []; },
+  setXray: function (v) { setXray(v); }
+};
+</script>
+</body>
+</html>
