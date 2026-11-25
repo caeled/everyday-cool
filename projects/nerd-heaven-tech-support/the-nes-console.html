@@ -99,6 +99,17 @@
     color:var(--text);font-family:var(--mono);font-size:11.5px;padding:9px 11px;resize:vertical}
   .baton .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:10px}
   .baton .count{font-size:12.5px;color:var(--dim);font-family:var(--mono)}
+  .shelf{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin:18px 0}
+  .shelf h2{font-size:18px;margin:0 0 6px}
+  .shelf p{color:#c9d4f2;font-size:14px;margin:6px 0}
+  .shelf p strong{color:var(--text)}
+  .shelf .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:10px}
+  .shelf a.btn{text-decoration:none;display:inline-block}
+  .shelf input[type="url"]{flex:1;min-width:240px;background:var(--panel2);border:1px solid var(--border);border-radius:9px;
+    color:var(--text);font-family:var(--mono);font-size:12.5px;padding:9px 11px}
+  .shelfstatus{font-size:13.5px;color:var(--dim);margin-top:10px;min-height:1.5em}
+  .shelfstatus b{color:var(--mint)}
+  .shelfstatus .err{color:var(--rose)}
   .keys{display:grid;grid-template-columns:1fr 1fr;gap:4px 22px;font-size:13.5px;color:#c9d4f2;margin:10px 0}
   .keys b{color:var(--text);font-family:var(--mono);font-weight:600;font-size:12.5px}
   @media (max-width:560px){.keys{grid-template-columns:1fr}}
@@ -153,7 +164,8 @@
       <h3>The fine print</h3>
       <ul>
         <li>JSNES is a solid, simpler emulator core — not a cycle-perfect one. A few games that lean on exact hardware timing may glitch or refuse; the lesson says which kinds and why.</li>
-        <li>No games are included, linked, or downloaded by this page — by design, and permanently. Homebrew you wrote, backups you made, test ROMs: those are yours to insert.</li>
+        <li>No games are included with this page or downloaded by it — by design, and permanently. Homebrew you wrote, backups you made, test ROMs: those are yours to insert.</li>
+      <li>The <strong>public shelf</strong> below the console is the one place this page points at games at all: it links out to the Internet Archive's own pages, where the cartridges stay on the Archive's shelves and play in the Archive's own player. Looking up a shelf link is the only time this page talks to the network, and it talks to the Archive only.</li>
         <li>“NES” and “Nintendo Entertainment System” are trademarks of Nintendo. This is a fan-made console page for playing your own cartridges, in descriptive use only.</li>
       </ul>
     </div>
@@ -217,6 +229,31 @@
     <span><b>Z</b> — B button</span><span><b>Enter</b> — Start</span>
     <span><b>Right Ctrl</b> — Select</span><span><b>gamepad</b> — just works</span>
   </div>
+
+  <section class="shelf" aria-label="The public shelf — Internet Archive cartridges">
+    <h2>📚 Or borrow from the public shelf</h2>
+    <p>The cartridges on this shelf live at the <strong>Internet Archive</strong> — a public
+    library of software — and are served by the Archive, from the Archive. We host no games
+    here; this page only opens the door. Your own library never leaves your machine, and
+    nothing you borrow is kept here either.</p>
+    <p>Why a door, and not the slot? The Archive's file shelves don't currently let other
+    pages take books down — their servers send no permission header, and browsers enforce
+    that absolutely — so a shelf cartridge can't be loaded into this console directly today.
+    Press a title and it opens on the Archive's own page, where the Archive's own player
+    runs it in their house. The day the Archive opens that header, these same buttons will
+    load the game right here.</p>
+    <div class="row">
+      <a class="btn" href="https://archive.org/details/micro-mages" target="_blank" rel="noopener">Micro Mages — public-domain demo</a>
+      <a class="btn" href="https://archive.org/details/micro-mages" target="_blank" rel="noopener">Micro Mages: Second Quest — public-domain (same item page)</a>
+      <a class="btn" href="https://archive.org/details/zelda_nes_2" target="_blank" rel="noopener">The Legend of Zelda</a>
+    </div>
+    <div class="row">
+      <input type="url" id="shelf-link" placeholder="Paste any archive.org link — an item page or a file link" aria-label="Paste an Internet Archive link" />
+      <button class="btn primary" id="shelf-go" type="button">Look it up</button>
+    </div>
+    <p class="shelfstatus" id="shelf-status"></p>
+    <div class="row" id="shelf-results"></div>
+  </section>
 
   <section class="baton" aria-label="Challenge baton — save states">
     <h2>🏃 The challenge baton</h2>
@@ -637,6 +674,119 @@
 
   /* exposed for the page's own audit drive */
   window.__nesConsole = { browser: browser, isLoaded: function(){ return loaded; } };
+})();
+</script>
+<script>
+/* ===== The public shelf — interim form (added 2026-11-24) =====
+   The Internet Archive's METADATA api sends Access-Control-Allow-Origin: *,
+   so this page may resolve any Archive link to the item's cartridge files.
+   The Archive's FILE servers send no CORS header at all, so the cartridge
+   bytes themselves may not be fetched into this page — on any console.
+   The shelf therefore ships as a door, not a slot: resolve, then hand off
+   to the Archive's own player page.
+   UPGRADE PATH: the day archive.org's file servers send that header, only
+   shelfHandoff() below changes — it will fetch the resolved file's bytes
+   and hand them to this console's own load path (the same arrayBuffer ->
+   binary string -> loadROM path the local slot above uses). Everything
+   else in this block — parsing, resolution, the file list, the failure
+   sentences — stays exactly as it is. */
+(function(){
+  'use strict';
+  var MINE = ['.nes'];
+  var OTHER = { '.smc': 'a Super Nintendo file', '.sfc': 'a Super Nintendo file', '.a26': 'an Atari 2600 file' };
+  var OTHER_PAGE = { '.smc': 'the-snes-console.html', '.sfc': 'the-snes-console.html', '.a26': 'the-2600-console.html' };
+  var OTHER_NAME = { '.smc': 'The SNES Console', '.sfc': 'The SNES Console', '.a26': 'The 2600 Console' };
+  var statusEl = document.getElementById('shelf-status');
+  var resultsEl = document.getElementById('shelf-results');
+  var inputEl = document.getElementById('shelf-link');
+  function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function say(html){ statusEl.innerHTML = html; }
+  function extOf(name){ var m = /\.([A-Za-z0-9]+)$/.exec(name || ''); return m ? '.' + m[1].toLowerCase() : ''; }
+  function fmtSize(n){ n = parseInt(n, 10); if (!isFinite(n)) return ''; if (n < 1024) return n + ' bytes';
+    if (n < 1048576) return Math.round(n / 1024) + ' KB'; return (n / 1048576).toFixed(2).replace(/\.?0+$/, '') + ' MB'; }
+  /* INTERIM HAND-OFF: opens the Archive's own player page for the item.
+     This is the one function the upgrade path rewrites (see header). */
+  function shelfHandoff(itemId){
+    window.open('https://archive.org/details/' + encodeURIComponent(itemId), '_blank', 'noopener');
+  }
+  function presentFiles(itemId, title, files){
+    resultsEl.innerHTML = '';
+    files.forEach(function(f){
+      var a = document.createElement('a');
+      a.className = 'btn'; a.href = 'https://archive.org/details/' + encodeURIComponent(itemId);
+      a.target = '_blank'; a.rel = 'noopener';
+      a.textContent = f.name + (f.size ? ' (' + fmtSize(f.size) + ')' : '');
+      a.addEventListener('click', function(ev){ ev.preventDefault(); shelfHandoff(itemId); });
+      resultsEl.appendChild(a);
+    });
+    say('<b>Found on that shelf:</b> ' + esc(title || itemId) + ' — ' +
+      (files.length === 1 ? 'one cartridge' : files.length + ' cartridges') +
+      ' this console can read. Press one and it opens at the Archive, in their house.');
+  }
+  function wrongSystem(itemId, file){
+    var ext = extOf(file);
+    say('<span class="err">That cartridge belongs to a different machine</span> — ' + esc(file) +
+      ' is ' + OTHER[ext] + ', and this is the NES console. ' +
+      '<a href="' + OTHER_PAGE[ext] + '">' + OTHER_NAME[ext] + ' is one shelf over →</a>');
+  }
+  function resolve(itemId, pastedUrl){
+    say('Asking the Archive about that shelf…');
+    resultsEl.innerHTML = '';
+    fetch('https://archive.org/metadata/' + encodeURIComponent(itemId))
+      .then(function(r){ if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(function(data){
+        var files = (data && data.files) || [];
+        var title = data && data.metadata && data.metadata.title;
+        var mine = files.filter(function(f){ return MINE.indexOf(extOf(f.name)) !== -1; });
+        if (mine.length){ presentFiles(itemId, title, mine); return; }
+        var zip = files.filter(function(f){ return extOf(f.name) === '.zip'; })[0];
+        if (zip){
+          say('<span class="err">That one is zipped up.</span> <code>' + esc(zip.name) + '</code> is a zip, and this console reads ' +
+            'bare cartridges only. The Archive page offers the same game unzipped under Download Options — or pick a shelf title marked “bare cartridge”. ' +
+            '<a href="https://archive.org/details/' + encodeURIComponent(itemId) + '" target="_blank" rel="noopener">Its page at the Archive →</a>');
+          return;
+        }
+        var other = files.filter(function(f){ return OTHER[extOf(f.name)]; })[0];
+        if (other){ wrongSystem(itemId, other.name); return; }
+        say('<span class="err">That shelf item carries no cartridge file at all</span> — some items are scans and manuals. ' +
+          '<a href="https://archive.org/details/' + encodeURIComponent(itemId) + '" target="_blank" rel="noopener">Its page at the Archive shows everything it does hold →</a>');
+      })
+      .catch(function(){
+        say('<span class="err">The Archive didn’t answer for that link</span> — their catalog may be busy, or that may not be an item page. ' +
+          '<a href="' + esc(pastedUrl) + '" target="_blank" rel="noopener">The page you pasted is here →</a>');
+      });
+  }
+  function lookup(){
+    var raw = (inputEl.value || '').trim();
+    resultsEl.innerHTML = '';
+    if (!raw){ say('Paste an archive.org link first — an item page, or a link to a cartridge file on one.'); return; }
+    var dl = /archive\.org\/download\/([^/?#]+)\/([^?#]+)/.exec(raw);
+    if (dl){
+      var itemId = decodeURIComponent(dl[1]), file = decodeURIComponent(dl[2]), ext = extOf(file);
+      if (MINE.indexOf(ext) !== -1){ presentFiles(itemId, itemId, [{ name: file }]); return; }
+      if (ext === '.zip'){
+        say('<span class="err">That link points at a zip.</span> <code>' + esc(file) + '</code> is a zip, and this console reads bare cartridges only. ' +
+          'The Archive page offers the same game unzipped under Download Options. ' +
+          '<a href="https://archive.org/details/' + encodeURIComponent(itemId) + '" target="_blank" rel="noopener">Its page at the Archive →</a>');
+        return;
+      }
+      if (OTHER[ext]){ wrongSystem(itemId, file); return; }
+      say('<span class="err">That’s not a cartridge this console can read.</span> The link resolves to <code>' + esc(file) + '</code> — ' +
+        'this console reads bare <code>.nes</code> cartridges. Paste a different link, or browse the shelf above.');
+      return;
+    }
+    var det = /archive\.org\/details\/([^/?#]+)/.exec(raw);
+    if (det){ resolve(decodeURIComponent(det[1]), raw); return; }
+    if (/archive\.org/.test(raw)){
+      say('<span class="err">I couldn’t read that as an Archive item link.</span> Paste an item page ' +
+        '(<code>archive.org/details/…</code>) or a file link (<code>archive.org/download/…</code>) and I’ll look it up.');
+      return;
+    }
+    say('<span class="err">That link isn’t an Internet Archive link</span> — the shelf only borrows from archive.org. ' +
+      'Your own cartridges still load in the slot above, as always.');
+  }
+  document.getElementById('shelf-go').addEventListener('click', lookup);
+  inputEl.addEventListener('keydown', function(ev){ if (ev.key === 'Enter'){ ev.preventDefault(); lookup(); } });
 })();
 </script>
 </body>

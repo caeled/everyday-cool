@@ -55,6 +55,16 @@
   .step{background:rgba(16,26,51,.65);border:1px solid var(--border);border-radius:11px;padding:10px 14px;font-size:14px;color:#c9d4f2;line-height:1.5}
   .step b{color:var(--text)}
   .step code{font-family:var(--mono);color:var(--amber);font-size:12.5px}
+  .shelfrow{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:10px}
+  .shelfrow input{flex:1;min-width:240px;background:#0a1020;border:1px solid var(--border);border-radius:9px;
+    color:var(--text);font-family:var(--mono);font-size:12.5px;padding:9px 11px}
+  .shelfbtn{text-decoration:none;border:1px solid var(--border);border-radius:9px;padding:7px 13px;color:var(--text);
+    font-size:13.5px;background:rgba(16,26,51,.65);cursor:pointer;font-family:inherit}
+  .shelfbtn:hover{border-color:var(--cyan)}
+  .shelfstatus{color:var(--dim);font-size:13px;line-height:1.55;margin:10px 0 0;min-height:1.5em}
+  .shelfstatus b{color:var(--mint)}
+  .shelfstatus .err{color:var(--rose)}
+  .shelfstatus code{font-family:var(--mono);color:var(--amber);font-size:12.5px}
   footer{color:var(--dim);font-size:12px;text-align:center;padding:10px 0 22px;line-height:1.6}
 
 @media (prefers-reduced-motion: reduce) {
@@ -89,8 +99,9 @@
         file picker can browse it like any other.</li>
         <li><b>Your cartridges never leave your machine.</b> The emulator reads the file
         locally, in this browser. Nothing is uploaded, nothing is sent anywhere, and this
-        page makes no network requests of its own — the audit on the lesson page counted
-        them: zero.</li>
+        page itself makes no network requests of its own — the audit on the lesson page counted
+        them: zero. The one exception is the public-shelf block under the console, and only
+        when you use it: looking up a shelf link talks to the Internet Archive, and nowhere else.</li>
       </ul>
       <h3>Playing</h3>
       <ul>
@@ -163,6 +174,31 @@
   </div>
 
   <div class="panel" style="margin-top:14px">
+    <h2><b>Or borrow from the public shelf</b> — the Internet Archive's cartridges</h2>
+    <p class="note">The cartridges on this shelf live at the <b>Internet Archive</b> — a public
+    library of software — and are served by the Archive, from the Archive. We host no games
+    here; this page only opens the door. Your own library never leaves your machine, and
+    nothing you borrow is kept here either.</p>
+    <p class="note">Why a door, and not the slot? The Archive's file shelves don't currently let other
+    pages take books down — their servers send no permission header, and browsers enforce
+    that absolutely — so a shelf cartridge can't be loaded into this console directly today.
+    Press a title and it opens on the Archive's own page, where the Archive's own player
+    runs it in their house. The day the Archive opens that header, these same buttons will
+    load the game right here.</p>
+    <div class="shelfrow">
+      <a class="shelfbtn" href="https://archive.org/details/Moon_Patrol_1983_CCE_C-1006" target="_blank" rel="noopener">Moon Patrol</a>
+      <a class="shelfbtn" href="https://archive.org/details/Oystron_1998_Xype_Piero_Cavina" target="_blank" rel="noopener">Oystron — homebrew</a>
+      <a class="shelfbtn" href="https://archive.org/details/Halo_Atari_2600" target="_blank" rel="noopener">Halo 2600 — homebrew</a>
+    </div>
+    <div class="shelfrow">
+      <input type="url" id="shelf-link" placeholder="Paste any archive.org link — an item page or a file link" aria-label="Paste an Internet Archive link" />
+      <button class="shelfbtn" id="shelf-go" type="button">Look it up</button>
+    </div>
+    <p class="shelfstatus" id="shelf-status"></p>
+    <div class="shelfrow" id="shelf-results"></div>
+  </div>
+
+  <div class="panel">
     <h2><b>The challenge baton</b> — hand someone your worst moment</h2>
     <p class="note">Twitch games don't take turns the way The Relay does — but a frozen moment
     does. Play until the screen is full of trouble, open the power menu → <b>Save State →
@@ -192,5 +228,104 @@
   <footer>The 2600 Console · Nerd Heaven · Everyday Cool — console page built by Muse at Steven Powell's direction.<br>
   Emulator: Javatari by Paulo Peccin, open source (AGPL-3.0), embedded unmodified. Bring your own cartridges — they never leave your machine.</footer>
 </div>
+<script>
+/* ===== The public shelf — interim form (added 2026-11-24) =====
+   The Internet Archive's METADATA api sends Access-Control-Allow-Origin: *,
+   so this page may resolve any Archive link to the item's cartridge files.
+   The Archive's FILE servers send no CORS header at all, so the cartridge
+   bytes themselves may not be fetched into this page — on any console.
+   The shelf therefore ships as a door, not a slot: resolve, then hand off
+   to the Archive's own player page.
+   UPGRADE PATH: the day archive.org's file servers send that header, only
+   shelfHandoff() below changes — it will hand the resolved file's URL to
+   Javatari's own URL loader (the readFromURL path upstream already ships),
+   unmodified. Everything else in this block — parsing, resolution, the
+   file list, the failure sentences — stays exactly as it is. */
+(function(){
+  'use strict';
+  var MINE = ['.bin', '.a26', '.rom', '.zip'];
+  var OTHER = { '.nes': 'a Nintendo (NES) file', '.smc': 'a Super Nintendo file', '.sfc': 'a Super Nintendo file' };
+  var OTHER_PAGE = { '.nes': 'the-nes-console.html', '.smc': 'the-snes-console.html', '.sfc': 'the-snes-console.html' };
+  var OTHER_NAME = { '.nes': 'The NES Console', '.smc': 'The SNES Console', '.sfc': 'The SNES Console' };
+  var statusEl = document.getElementById('shelf-status');
+  var resultsEl = document.getElementById('shelf-results');
+  var inputEl = document.getElementById('shelf-link');
+  function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function say(html){ statusEl.innerHTML = html; }
+  function extOf(name){ var m = /\.([A-Za-z0-9]+)$/.exec(name || ''); return m ? '.' + m[1].toLowerCase() : ''; }
+  function fmtSize(n){ n = parseInt(n, 10); if (!isFinite(n)) return ''; if (n < 1024) return n + ' bytes';
+    if (n < 1048576) return Math.round(n / 1024) + ' KB'; return (n / 1048576).toFixed(2).replace(/\.?0+$/, '') + ' MB'; }
+  /* INTERIM HAND-OFF: opens the Archive's own player page for the item.
+     This is the one function the upgrade path rewrites (see header). */
+  function shelfHandoff(itemId){
+    window.open('https://archive.org/details/' + encodeURIComponent(itemId), '_blank', 'noopener');
+  }
+  function presentFiles(itemId, title, files){
+    resultsEl.innerHTML = '';
+    files.forEach(function(f){
+      var a = document.createElement('a');
+      a.className = 'shelfbtn'; a.href = 'https://archive.org/details/' + encodeURIComponent(itemId);
+      a.target = '_blank'; a.rel = 'noopener';
+      a.textContent = f.name + (f.size ? ' (' + fmtSize(f.size) + ')' : '');
+      a.addEventListener('click', function(ev){ ev.preventDefault(); shelfHandoff(itemId); });
+      resultsEl.appendChild(a);
+    });
+    say('<b>Found on that shelf:</b> ' + esc(title || itemId) + ' — ' +
+      (files.length === 1 ? 'one cartridge' : files.length + ' cartridges') +
+      ' this console can read. Press one and it opens at the Archive, in their house.');
+  }
+  function wrongSystem(itemId, file){
+    var ext = extOf(file);
+    say('<span class="err">That cartridge belongs to a different machine</span> — ' + esc(file) +
+      ' is ' + OTHER[ext] + ', and this is the 2600 console. ' +
+      '<a href="' + OTHER_PAGE[ext] + '">' + OTHER_NAME[ext] + ' is one shelf over →</a>');
+  }
+  function resolve(itemId, pastedUrl){
+    say('Asking the Archive about that shelf…');
+    resultsEl.innerHTML = '';
+    fetch('https://archive.org/metadata/' + encodeURIComponent(itemId))
+      .then(function(r){ if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(function(data){
+        var files = (data && data.files) || [];
+        var title = data && data.metadata && data.metadata.title;
+        var mine = files.filter(function(f){ return MINE.indexOf(extOf(f.name)) !== -1; });
+        if (mine.length){ presentFiles(itemId, title, mine); return; }
+        var other = files.filter(function(f){ return OTHER[extOf(f.name)]; })[0];
+        if (other){ wrongSystem(itemId, other.name); return; }
+        say('<span class="err">That shelf item carries no cartridge file at all</span> — some items are scans and manuals. ' +
+          '<a href="https://archive.org/details/' + encodeURIComponent(itemId) + '" target="_blank" rel="noopener">Its page at the Archive shows everything it does hold →</a>');
+      })
+      .catch(function(){
+        say('<span class="err">The Archive didn’t answer for that link</span> — their catalog may be busy, or that may not be an item page. ' +
+          '<a href="' + esc(pastedUrl) + '" target="_blank" rel="noopener">The page you pasted is here →</a>');
+      });
+  }
+  function lookup(){
+    var raw = (inputEl.value || '').trim();
+    resultsEl.innerHTML = '';
+    if (!raw){ say('Paste an archive.org link first — an item page, or a link to a cartridge file on one.'); return; }
+    var dl = /archive\.org\/download\/([^/?#]+)\/([^?#]+)/.exec(raw);
+    if (dl){
+      var itemId = decodeURIComponent(dl[1]), file = decodeURIComponent(dl[2]), ext = extOf(file);
+      if (MINE.indexOf(ext) !== -1){ presentFiles(itemId, itemId, [{ name: file }]); return; }
+      if (OTHER[ext]){ wrongSystem(itemId, file); return; }
+      say('<span class="err">That’s not a cartridge this console can read.</span> The link resolves to <code>' + esc(file) + '</code> — ' +
+        'this console reads <code>.bin</code>, <code>.a26</code> and <code>.rom</code> cartridges (and zips holding one). Paste a different link, or browse the shelf above.');
+      return;
+    }
+    var det = /archive\.org\/details\/([^/?#]+)/.exec(raw);
+    if (det){ resolve(decodeURIComponent(det[1]), raw); return; }
+    if (/archive\.org/.test(raw)){
+      say('<span class="err">I couldn’t read that as an Archive item link.</span> Paste an item page ' +
+        '(<code>archive.org/details/…</code>) or a file link (<code>archive.org/download/…</code>) and I’ll look it up.');
+      return;
+    }
+    say('<span class="err">That link isn’t an Internet Archive link</span> — the shelf only borrows from archive.org. ' +
+      'Your own cartridges still load in the slot above, as always.');
+  }
+  document.getElementById('shelf-go').addEventListener('click', lookup);
+  inputEl.addEventListener('keydown', function(ev){ if (ev.key === 'Enter'){ ev.preventDefault(); lookup(); } });
+})();
+</script>
 </body>
 </html>
