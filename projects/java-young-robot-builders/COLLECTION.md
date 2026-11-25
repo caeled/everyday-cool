@@ -83,3 +83,7 @@ Back door 147 — The 2600 Console · 24 November 2026
 Back door 148 — The NES Console · 24 November 2026
 
 `index.html` gained back door 148, The NES Console — a Whole Nintendo in One File (Nerd Heaven; JSNES v3.0.0 by Ben Firshman inlined byte-for-byte, Apache-2.0, audit 18/18 plus three field fixes with the receipts live in the lesson). The section heading rose from "One hundred forty-seven games" to "One hundred forty-eight games", verified sequential 1–148 on the page. The full measurements live in the lesson, in its home room.
+
+## BACK DOOR 160: DipoleLab · 25 November 2026
+
+Back door added for the Radio Room's DipoleLab lesson; heading count to one hundred sixty. Changed files: `index.html`, `COLLECTION.md`.
