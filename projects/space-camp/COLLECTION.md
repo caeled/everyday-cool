@@ -11,3 +11,7 @@ Banner added November 15, 2026: space-camp-banner.jpg (AI/robots theme), part of
 Documentation update (20 November 2026): at Steven Powell's direction, `space-camp.html` gained a professional Documentation & source panel with the room README, GitHub source, sources and limitations, workshop download, collection documentation index, and curator profile link. Changed files: `space-camp.html`, `COLLECTION.md`. The addition is documentation and navigation only; no lesson content or workshop behaviour was changed.
 
 Staleness fix, 22 November 2026: `space-camp.html` — the "still ahead" sentence updated: on Flight 15 the Starbase tower caught Ship 42 returning from orbit on 14 November 2026, the first catch of a Starship upper stage; rapid reflight of both stages and in-orbit propellant transfer remain ahead. The page's reviewed-on line now reads 22 November 2026.
+
+## Radio telescope plan link · 25 November 2026
+
+The sister-room paragraph in `space-camp.html` now links the Backyard Radio Telescope Plan's own page (Tonight's Sky, Rev 2) instead of the Rev 1 PDF directly. Changed files: `space-camp.html`, `COLLECTION.md`.
