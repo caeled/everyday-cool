@@ -129,6 +129,7 @@ def scan_games():
                 "title": str(m.get("title", name)),
                 "page": page,
                 "folder": folder,
+                "dir": name,
                 "blurb": str(m.get("blurb", "")),
                 "stateName": str(m.get("stateName", "state code")),
                 "turnEnds": str(m.get("turnEnds", "paste-code")),
@@ -149,6 +150,46 @@ def game_page_path(page_name):
     for g in scan_games():
         if g["page"] == page_name:
             return os.path.join(g["folder"], page_name)
+    return None
+
+
+# Static assets inside a game folder — most games are a single page, but a
+# game that is a small machine room of files (an emulator rack, say) needs
+# its folder served too. Only files inside a discovered game's folder are
+# reachable, and only under /games/<folder>/… — ".." cannot escape.
+ASSET_TYPES = {
+    ".html": "text/html; charset=utf-8",
+    ".js": "text/javascript; charset=utf-8",
+    ".css": "text/css; charset=utf-8",
+    ".json": "application/json; charset=utf-8",
+    ".txt": "text/plain; charset=utf-8",
+    ".md": "text/plain; charset=utf-8",
+    ".data": "application/octet-stream",
+    ".wasm": "application/wasm",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".svg": "image/svg+xml",
+    ".ico": "image/x-icon",
+    ".woff": "font/woff",
+    ".woff2": "font/woff2",
+}
+
+
+def game_asset_path(rest):
+    """Map 'folder/sub/path' (the part after /games/) to a real file inside
+    that game's folder, or None."""
+    parts = [p for p in rest.split("/") if p not in ("", ".")]
+    if len(parts) < 2 or any(p == ".." for p in parts):
+        return None
+    for g in scan_games():
+        if g["dir"] == parts[0]:
+            folder = os.path.realpath(g["folder"])
+            target = os.path.realpath(os.path.join(folder, *parts[1:]))
+            if target.startswith(folder + os.sep) and os.path.isfile(target):
+                return target
+            return None
     return None
 
 
@@ -267,7 +308,8 @@ def home_page(addresses):
                   ('<span class="pill">' + esc(g["players"]) +
                    ' players</span>' if g["players"] else '') +
                   '<br><span class="small">' + esc(g["blurb"]) + '</span><br>'
-                  '<a class="btn small white" href="/games/' + esc(g["page"]) +
+                  '<a class="btn small white" href="/games/' + esc(g["dir"]) +
+                  '/' + esc(g["page"]) +
                   '">Open the game page</a></div>')
 
     sess_html = ""
@@ -389,7 +431,7 @@ def play_page(code):
     g = find_game(s["gameId"])
     gtitle = g["title"] if g else s["gameId"]
     state_name = g["stateName"] if g else "state code"
-    game_link = ('/games/' + esc(g["page"])) if g else '/'
+    game_link = ('/games/' + esc(g["dir"]) + '/' + esc(g["page"])) if g else '/'
 
     pills = ""
     for i, p in enumerate(s["players"]):
@@ -631,12 +673,26 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         sys.stderr.write("· %s %s\n" % (self.command, self.path))
 
-    def _send(self, status, body, content_type="text/html; charset=utf-8"):
+    def _send(self, status, body, content_type="text/html; charset=utf-8",
+              isolate=False):
         if isinstance(body, str):
             body = body.encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
+        if isolate:
+            # Cross-origin isolation for the game routes: some passengers
+            # (the DOS Console's DOSBox Pure core) are threaded builds that
+            # hard-require it — they need SharedArrayBuffer, which a browser
+            # only hands out to an isolated page. The box is served from
+            # localhost / the home network, a secure context, so a game page
+            # served from here can genuinely be isolated; a static host that
+            # cannot set these headers (GitHub Pages) cannot run such a core
+            # at all. Scoped to /games/… so the session API and the box's own
+            # pages are untouched.
+            self.send_header("Cross-Origin-Opener-Policy", "same-origin")
+            self.send_header("Cross-Origin-Embedder-Policy", "require-corp")
+            self.send_header("Cross-Origin-Resource-Policy", "same-origin")
         self.end_headers()
         self.wfile.write(body)
 
@@ -678,10 +734,23 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, page)
             return
         if path.startswith("/games/"):
-            page_path = game_page_path(path[len("/games/"):])
+            rest = path[len("/games/"):]
+            if "/" in rest:
+                asset = game_asset_path(rest)
+                if asset:
+                    ext = os.path.splitext(asset)[1].lower()
+                    with open(asset, "rb") as f:
+                        self._send(200, f.read(),
+                                   ASSET_TYPES.get(
+                                       ext, "application/octet-stream"),
+                                   isolate=True)
+                else:
+                    self._send(404, "No such game file.")
+                return
+            page_path = game_page_path(rest)
             if page_path and os.path.exists(page_path):
                 with open(page_path, "rb") as f:
-                    self._send(200, f.read())
+                    self._send(200, f.read(), isolate=True)
             else:
                 self._send(404, "No such game page.")
             return
