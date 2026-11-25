@@ -87,3 +87,7 @@ Back door 148 — The NES Console · 24 November 2026
 ## BACK DOOR 160: DipoleLab · 25 November 2026
 
 Back door added for the Radio Room's DipoleLab lesson; heading count to one hundred sixty. Changed files: `index.html`, `COLLECTION.md`.
+
+## BACK DOOR 161: LuxLab · 25 November 2026
+
+Back door added for Everyday Physics' LuxLab lesson; heading count to one hundred sixty-one. Changed files: `index.html`, `COLLECTION.md`.

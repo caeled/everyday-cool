@@ -121,3 +121,7 @@ Shadowline, 25 November 2026: `shadowline.html` and `shadowline-lesson.html` —
 ## Shelf: DipoleLab lesson · 25 November 2026
 
 Shelf line added for the Radio Room's DipoleLab lesson (Google Antigravity's antenna workbench, audited exact, nine bends fixed under Steven's sanction); shelf count to one hundred sixty-one, service worker to `nerd-heaven-v51`. Changed files: `index.html`, `sw.js`, `COLLECTION.md`.
+
+## Shelf: LuxLab lesson · 25 November 2026
+
+Shelf line added for Everyday Physics' LuxLab lesson (Antigravity's optics workbench, two audits, seventeen sanctioned fixes); shelf count to one hundred sixty-two, service worker to `nerd-heaven-v52`. Changed files: `index.html`, `sw.js`, `COLLECTION.md`.
