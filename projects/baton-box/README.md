@@ -13,15 +13,8 @@ days.
 
 The box understands **no game**. Any game that can pack its state into a
 blob and say whose turn is next can ride it. **The Relay** — Steven
-Powell's asynchronous courier-bot game, from Nerd Heaven — is passenger
-#1, not the only one. The full author contract is in
-[CONTRACT.md](CONTRACT.md).
-
-This project is the Baton Box's home in the Everyday Cool collection:
-the project ZIP (`downloads/baton-box.zip`) *is* the install — unzip it
-anywhere and the folder runs as below. The collection's landing page
-(`index.html`) carries the same setup and join notes in plain language,
-and `baton-box-lesson.html` carries the design and the audit receipts.
+Powell's asynchronous courier-bot game — is passenger #1, not the only
+one. The full author contract is in [CONTRACT.md](CONTRACT.md).
 
 Zero dependencies: **Python 3 standard library only.** No build step, no
 internet needed, works on Windows, Mac, and Linux.
@@ -42,13 +35,13 @@ internet needed, works on Windows, Mac, and Linux.
    - **Mac/Linux:** in a terminal in this folder, `python3 baton_box.py`
      (plain `python baton_box.py` also works on many systems)
 4. The box prints its addresses and serves a home page at
-   **`http://<host-address>:8765`** (default port **8765**; override
+   **`http://<host-address>:8917`** (default port **8917**; override
    with the `BATON_BOX_PORT` environment variable). Leave the window
    open while you play — that window *is* the box. Ctrl+C or closing it
    puts the box away; games are saved and return next start.
 
 **Players:** join the host's Wi-Fi, open the address, type the 6-letter
-**game code**, play. The box's own help page (served at `/help`)
+**game code**, play. The box's own [/help page](#) (served at `/help`)
 explains every step in plain words — it's written for a family at a
 kitchen table or a teacher with ten minutes before class, and it's the
 same text summarized below.
@@ -90,35 +83,27 @@ manifest format, and the JSON API: [CONTRACT.md](CONTRACT.md).
 
 | File | Size | What it is |
 |---|---|---|
-| `index.html` | — | The collection landing page: what the box is, the setup and join notes, the contract in brief. |
-| `baton-box-lesson.html` | — | The back-door lesson: origin, design, and the audit receipts. |
 | `baton_box.py` | 36,372 B | The whole server: storage, API, and all pages (home, session, help, host list), inline. Stdlib only. |
 | `games/the-relay/the-relay.html` | 85,725 B | A **copy** of The Relay client, served by the box. See provenance below. |
 | `games/the-relay/manifest.json` | 343 B | The Relay's manifest — passenger #1. |
-| `games/the-relay/index.html`, `games/the-relay/the-relay-lesson.html` | — | Collection-side redirect stubs for the two links in the served client's topbar (its room index and its lesson, which live in Nerd Heaven). Collection packaging only; the standalone box doesn't have them. |
 | `CONTRACT.md` | 5,550 B | The contract for future game authors + API reference. |
 | `selftest.py` | 8,700 B | End-to-end HTTP self-test (see results below). |
 | `start-baton-box.bat` | 419 B | Windows double-click starter. |
-| `sessions.json` | *(created at runtime)* | All sessions, written atomically after every change. This is the backup file — copy it somewhere safe now and then. Delete it to empty the box. Not part of the download. |
+| `sessions.json` | *(created at runtime)* | All sessions, written atomically after every change. This is the backup file — copy it somewhere safe now and then. Delete it to empty the box. |
 
 ## The Relay copy — provenance
 
-`games/the-relay/the-relay.html` is a byte-for-byte **copy** of The
-Relay client as ported for the collection, made 2026-11-24 so the box
-can serve the game on the local network:
+`games/the-relay/the-relay.html` is a byte-for-byte **copy** of the
+collection's client, made 2026-11-24 so the box can serve the game on
+the local network:
 
-- Authoritative home: `projects/nerd-heaven-tech-support/the-relay.html`
-  in the Everyday Cool collection.
-- sha256 of the served copy:
-  `db090d66934ab146ac96be0dcb545a90938e2e7a64cfb811ffa29c0634dcf996`
+- Source: `~/workspace/everyday-cool/projects/nerd-heaven-tech-support/the-relay.html`
+  (the Everyday Cool collection remains the authoritative version)
+- sha256: `db090d66934ab146ac96be0dcb545a90938e2e7a64cfb811ffa29c0634dcf996`
 - The self-test re-verifies the served bytes against this hash.
-- The collection's living page has since gained collection furniture
-  (the room's sibling links; a card pointing at this project) that the
-  served copy deliberately lacks — the game code is identical; only the
-  furniture differs.
 
-If the collection's Relay game code is updated, re-copy the file here
-and update the hash above.
+If the collection's Relay is updated, re-copy the file here and update
+the hash above.
 
 ## Test results
 

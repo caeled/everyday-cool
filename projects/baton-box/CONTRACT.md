@@ -98,7 +98,7 @@ game, `test-echo`, registered by manifest alone.
 
 ## The API (for tools and future clients)
 
-All JSON. Base: `http://<host>:8765`.
+All JSON. Base: `http://<host>:8917`.
 
 - `GET /api/games` — the shelf.
 - `GET /api/sessions` — all sessions (summaries + current blob).

@@ -36,7 +36,7 @@ from urllib.parse import urlparse, parse_qs
 HERE = os.path.dirname(os.path.abspath(__file__))
 GAMES_DIR = os.path.join(HERE, "games")
 STORE_PATH = os.path.join(HERE, "sessions.json")
-PORT = int(os.environ.get("BATON_BOX_PORT", "8765"))
+PORT = int(os.environ.get("BATON_BOX_PORT", "8917"))
 HISTORY_KEEP = 10                 # how many handed-back blobs to remember
 MAX_BODY = 5 * 1024 * 1024        # biggest state blob / request we accept
 CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"   # no 0/O/1/I/L look-alikes
@@ -590,7 +590,7 @@ that window open</strong> — that window <em>is</em> the box. Closing it
 (or pressing Ctrl+C) puts the box away; your games are saved in the
 folder and come back next time you start it.</li>
 <li>The box's home page shows the <strong>address</strong> to give
-players (it looks like http://192.168.1.20:8765 — your numbers will
+players (it looks like http://192.168.1.20:8917 — your numbers will
 differ). Players must be on the <strong>same Wi-Fi or network</strong>
 as the host computer.</li>
 <li>Start a game from the home page, then tell the players the address
@@ -753,6 +753,9 @@ class Handler(BaseHTTPRequestHandler):
                     self._send(200, f.read(), isolate=True)
             else:
                 self._send(404, "No such game page.")
+            return
+        if path == "/api/ping":
+            self._json(200, {"service": "baton-box", "ok": True})
             return
         if path == "/api/games":
             self._json(200, {"games": [
