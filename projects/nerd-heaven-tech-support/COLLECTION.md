@@ -388,3 +388,23 @@ can't send a backslash) is stated in the lesson. Wiring: shelf lesson
 entry (intro count to one hundred sixty-nine), Full Index entry (440),
 sitemap (493). CONFIG.SYS gets its own future pack on a bootable drive
 image, where those lines truly run — noted in the lesson.
+
+**26 November 2026 (morning, the template) — pack template + the "C"
+Builder.** Steven's authoring workflow ("all I have to do is build the
+c… from some type of template") and his in-machine lesson idea ("write
+lessons inside the box as small executables you plant") landed as
+`packs/pack-template/`: a skeleton drive (`packs/pack-template/drive/README.TXT`
+with the scenario in bracketed slots; `packs/pack-template/drive/TUTOR.BAT`,
+a batch-file tutor engine — stages that say, PAUSE, check by IF EXIST,
+advance or hint — with a working sample course), `packs/pack-template/AUTHORING.txt`
+(the seven authoring steps, the RESCAN truth, and the git zip-ignore
+trap), and `packs/pack-template/Build-C.ps1` — the "C" Builder:
+PowerShell, pick a template, add files/folders, export the pack zip
+with the drive at its root (written for Windows PowerShell 5.1+,
+unrun — Steven's run is its receipt). The template drive ships as
+`packs/pack-template.zip`. Tutor audit on the shipped Workbench: title
+gate, stage text, fail branch with hint, pass branch advancing to
+stage two, 0 exceptions; the audit's mid-run file-write needed DOS's
+directory cache understood (checks see in-machine work at once —
+stated in AUTHORING.txt). The Workbench lesson gained the template
+section. Force-add applies to the template zip as to all pack zips.
