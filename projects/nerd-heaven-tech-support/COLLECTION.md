@@ -323,3 +323,26 @@ is slow, and Chrome's directory confirmation would scare visitors. The
 folder card's stale bundle-era line was refreshed to the streaming
 wording in the same pass. Audit: warning hidden at load, button reveals
 it without opening the picker, Not now hides it, 0 exceptions.
+
+**26 November 2026 (morning, the reading room) — door four: Rescue files,
+and the shelf note.** Steven's observation, verbatim in the lesson: the
+console can mount a folder copied off a real machine's C: drive and let
+you see the data — and with a way back out, it is a data-recovery tool.
+`the-dos-console.html` gained door four: List what's on the drive
+(ci.fsTree, the engine's own tree; .jsdos internals excluded), tick
+files (filter + 400-row render cap), Download the ticked files as a zip
+(ci.fsReadFile per file, a small stored-zip writer in the page, browser
+download as dos-rescue.zip). The ci-ready handler now stashes the
+CommandInterface page-wide (dosCi) for the door. Help gained the
+door-four block, including the honest interplay: the list shows what is
+IN the machine — lazy folders must be loaded before their files can be
+rescued. Audit on the shipped page: skeleton listed 5 files (deferred
+WAD honestly absent); after loading GAMES from the lazy panel, 6 files;
+DOOM1.WAD + AUTOEXEC.BAT rescued byte-identical to the source drive;
+0 exceptions. The Nerd Heaven shelf card for the console (index.html)
+was rewritten — it still carried the pre-swap "playable home is the
+Baton Box" text — to the current engine, the lazy drive, and Steven's
+field-use note ("a lesson that turned into a support tool"); the old
+lesson-list entry gained a dated superseded-in-part note rather than a
+rewrite. Same page edits applied to the Baton Box passenger and
+standalone copies.

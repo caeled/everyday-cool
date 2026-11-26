@@ -133,6 +133,8 @@
 #lazy-panel{margin:10px 0;padding:12px 14px;border:1px solid rgba(140,160,200,.35);border-radius:12px}
 #lazy-panel .lazy-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:6px 0}
 #folder-warning{margin:10px 0;padding:10px 12px;border:1px solid rgba(140,160,200,.35);border-radius:12px}
+.rescue-row{display:block;padding:2px 0}
+#rescue-list{max-height:260px;overflow:auto;margin:8px 0}
 </style>
 <link rel="stylesheet" href="jsdos-dos/js-dos.css">
 </head>
@@ -173,6 +175,13 @@
       <ul>
         <li>The button opens <strong>The Oregon Trail (1990)</strong> — and the field under it opens any other item — <em>in the Internet Archive's own player, in a new tab</em>. The shelf is theirs, and for now the books are read in their house: the Archive's file servers don't currently give web pages permission to fetch the software itself, so no page — this one included — can honestly load it from there directly. The day the Archive opens those headers, this same door becomes a load-here door with no redesign. The lesson carries the evidence.</li>
         <li>What the console <em>can</em> do with the Archive today: look the item up (their catalogue answers pages like this one freely), confirm it's really there, and take you straight to it.</li>
+      </ul>
+      <h3>Door four — Rescue files</h3>
+      <ul>
+        <li>Mount a drive, then <strong>List what's on the drive</strong>: the console reads the mounted drive's own directory and shows every file with its size. Tick the files you want, filter the list by folder or file type if the drive is big, and <strong>Download the ticked files as a zip</strong> — the console reads them out of the machine and builds the zip in your browser. Nothing is uploaded; the zip lands in your downloads like any file.</li>
+        <li>The field use: a folder copied off a real machine's C: drive — through a USB adapter, off a disk that still spins — mounts here, and its data can be opened by the very programs that wrote it, then carried out through this door. That is the support bench's reading room. A physically dying disk needs its imaging step (ddrescue and friends) before the console ever sees it; this door rescues files from a readable copy, it does not resurrect hardware.</li>
+        <li>The list shows what is <em>in the machine</em> right now — with a lazy drive, a file still waiting in the panel is not rescuable until its folder is loaded. Load the folder, then list again.</li>
+        <li>A rescue set is a handful of files, not the whole drive — the zip is built in the browser's memory, so keep a set modest and make several trips for a big haul.</li>
       </ul>
       <h3>Saves</h3>
       <ul>
@@ -313,6 +322,33 @@
     <p class="status" id="shelf-status" style="margin-bottom:0"></p>
   </section>
 
+  <section class="door" aria-label="Rescue files from the drive">
+    <h2>🧰 Rescue files — copy them back out</h2>
+    <p>The drive you mount may be a copy of a real machine's C: — an old disk
+    read through an adapter, kept as a folder. This door is the way back:
+    list what is on the mounted drive, tick the files you need, and the
+    console reads them out and hands them to you as a zip in your
+    downloads. The original software stays the reader; this door is the
+    carrying case. It rescues files from a readable copy — a physically
+    dying disk still needs its imaging step first.</p>
+    <div class="row">
+      <button class="btn" id="btn-rescue-list" type="button" disabled>List what's on the drive</button>
+      <span class="fname" id="rescue-note">Mount a drive first — this door opens once the machine is running.</span>
+    </div>
+    <div id="rescue-tools" hidden>
+      <div class="row">
+        <input type="text" id="rescue-filter" spellcheck="false" autocomplete="off"
+               placeholder="Filter the list — a folder or a file type, like GAMES or .WAD" />
+        <button class="btn" id="btn-rescue-all" type="button">Tick everything shown</button>
+      </div>
+      <div id="rescue-list"></div>
+      <p class="status" id="rescue-status"></p>
+      <div class="row">
+        <button class="btn primary" id="btn-rescue-get" type="button">Download the ticked files as a zip</button>
+      </div>
+    </div>
+  </section>
+
   <div class="keys" aria-label="Keyboard notes">
     <span><b>Click the screen, then type</b> — DOS reads your real keyboard</span>
     <span><b>Enter · Backspace · arrows · F-keys · Esc</b> — straight to DOS</span>
@@ -341,6 +377,7 @@
   var statusEl = document.getElementById('status');
   var shelfStatusEl = document.getElementById('shelf-status');
   var booted = false, started = false, bootName = '';
+  var dosCi = null;
 
   function say(html){ statusEl.innerHTML = html; }
   function sayShelf(html){ shelfStatusEl.innerHTML = html; }
@@ -636,6 +673,10 @@
           onEvent: function(event, ci){
             if (event === 'ci-ready') {
               started = true;
+              dosCi = ci;
+              if (window.__dosConsole) window.__dosConsole.ciRef = ci;
+              var _rl = document.getElementById('btn-rescue-list');
+              if (_rl) { _rl.disabled = false; document.getElementById('rescue-note').textContent = 'The machine is running — list the drive when you are ready.'; }
               if (onReady) { onReady(ci); return; }
               say(mode === 'prompt'
                 ? '<b>Now running:</b> your C: drive is mounted and the prompt is yours. Click the screen and type — DIR is a good first word.'
@@ -917,6 +958,124 @@
     if (n >= 1048576) return (n / 1048576).toFixed(1) + ' MB';
     if (n >= 1024) return (n / 1024).toFixed(0) + ' KB';
     return n + ' bytes';
+  }
+
+  /* ---- door four: rescue files ----
+     The way back out. The same filesystem channel that streamed the
+     drive in can list it (fsTree) and read files back (fsReadFile);
+     the ticked files are zipped by a small stored-zip writer here and
+     handed to the browser as a download. Nothing is uploaded — the
+     zip is built on the visitor's machine like everything else here. */
+  var rescueFiles = [], rescueTicked = {};
+  document.getElementById('btn-rescue-list').addEventListener('click', function(){
+    if (!dosCi) return;
+    var st = document.getElementById('rescue-status');
+    dosCi.fsTree().then(function(tree){
+      rescueFiles = [];
+      (function walk(node, prefix){
+        (node.nodes || []).forEach(function(n){
+          var p = prefix ? prefix + '/' + n.name : n.name;
+          if (n.nodes) walk(n, p);
+          else if (p.indexOf('.jsdos/') !== 0) rescueFiles.push({ path: p, size: n.size || 0 });
+        });
+      })(tree, '');
+      rescueFiles.sort(function(a, b){ return a.path < b.path ? -1 : 1; });
+      document.getElementById('rescue-tools').hidden = false;
+      renderRescueList();
+      document.getElementById('rescue-status').textContent =
+        rescueFiles.length.toLocaleString() + ' files on the drive. Tick the ones to rescue.';
+    }).catch(function(e){
+      document.getElementById('rescue-tools').hidden = false;
+      st.textContent = 'The list could not be read: ' + (e && e.message ? e.message : e);
+    });
+  });
+
+  function renderRescueList(){
+    var q = document.getElementById('rescue-filter').value.trim().toUpperCase();
+    var list = document.getElementById('rescue-list');
+    list.innerHTML = '';
+    var shown = 0, matched = 0;
+    rescueFiles.forEach(function(f){
+      if (q && f.path.toUpperCase().indexOf(q) < 0) return;
+      matched++;
+      if (shown >= 400) return;
+      shown++;
+      var label = document.createElement('label');
+      label.className = 'rescue-row';
+      var cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = !!rescueTicked[f.path];
+      cb.setAttribute('data-path', f.path);
+      cb.addEventListener('change', function(){ rescueTicked[f.path] = cb.checked; });
+      label.appendChild(cb);
+      label.appendChild(document.createTextNode(' ' + f.path + ' — ' + fmtSize(f.size)));
+      list.appendChild(label);
+    });
+    if (matched > shown) {
+      var more = document.createElement('p');
+      more.className = 'status';
+      more.textContent = 'Showing the first ' + shown + ' of ' + matched.toLocaleString() + ' matches — the filter narrows the list.';
+      list.appendChild(more);
+    }
+  }
+  document.getElementById('rescue-filter').addEventListener('input', renderRescueList);
+  document.getElementById('btn-rescue-all').addEventListener('click', function(){
+    var q = document.getElementById('rescue-filter').value.trim().toUpperCase();
+    rescueFiles.forEach(function(f){
+      if (!q || f.path.toUpperCase().indexOf(q) >= 0) rescueTicked[f.path] = true;
+    });
+    renderRescueList();
+  });
+
+  document.getElementById('btn-rescue-get').addEventListener('click', function(){
+    var st = document.getElementById('rescue-status');
+    var paths = Object.keys(rescueTicked).filter(function(p){ return rescueTicked[p]; });
+    if (!paths.length) { st.textContent = 'Nothing is ticked yet — tick at least one file.'; return; }
+    st.textContent = 'Reading ' + paths.length + ' file(s) out of the drive…';
+    var got = [], chain = Promise.resolve();
+    paths.forEach(function(p){
+      chain = chain.then(function(){
+        return dosCi.fsReadFile(p).then(function(data){
+          got.push({ name: p, data: data instanceof Uint8Array ? data : new Uint8Array(data) });
+        });
+      });
+    });
+    chain.then(function(){
+      var blob = buildRescueZip(got);
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'dos-rescue.zip';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      st.textContent = 'Rescued: ' + got.length + ' file(s), ' + fmtSize(blob.size) + ' in the zip — dos-rescue.zip is in your downloads.';
+    }).catch(function(e){
+      st.textContent = 'The rescue stopped: ' + (e && e.message ? e.message : e);
+    });
+  });
+
+  function buildRescueZip(files){
+    var enc = new TextEncoder(), parts = [], centrals = [], offset = 0;
+    files.forEach(function(f){
+      var name = enc.encode(f.name), data = f.data, crc = crc32(data);
+      var h = new DataView(new ArrayBuffer(30));
+      h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(12, 0x21, true);
+      h.setUint32(14, crc, true); h.setUint32(18, data.length, true); h.setUint32(22, data.length, true);
+      h.setUint16(26, name.length, true);
+      parts.push(new Uint8Array(h.buffer)); parts.push(name); parts.push(data);
+      var c = new DataView(new ArrayBuffer(46));
+      c.setUint32(0, 0x02014b50, true); c.setUint16(4, 20, true); c.setUint16(6, 20, true); c.setUint16(14, 0x21, true);
+      c.setUint32(16, crc, true); c.setUint32(20, data.length, true); c.setUint32(24, data.length, true);
+      c.setUint16(28, name.length, true); c.setUint32(42, offset, true);
+      centrals.push(new Uint8Array(c.buffer)); centrals.push(name);
+      offset += 30 + name.length + data.length;
+    });
+    var cdStart = offset, cdSize = 0;
+    centrals.forEach(function(p){ cdSize += p.length; });
+    var e = new DataView(new ArrayBuffer(22));
+    e.setUint32(0, 0x06054b50, true); e.setUint16(8, files.length, true); e.setUint16(10, files.length, true);
+    e.setUint32(12, cdSize, true); e.setUint32(16, cdStart, true);
+    return new Blob(parts.concat(centrals, [new Uint8Array(e.buffer)]), { type: 'application/zip' });
   }
 
   /* ---- door two: one game ---- */

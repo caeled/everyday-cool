@@ -81,3 +81,9 @@ Console's lesson for the full record.
 The same folder-button warning panel as Nerd Heaven's console, applied to
 `games/the-dos-console/the-dos-console.html` in step (Steven's text,
 verbatim). See the DOS Console's lesson for the record.
+
+**26 November 2026 (morning, the reading room) — DOS passenger: rescue
+door.** The same door-four build as Nerd Heaven's console, applied to
+`games/the-dos-console/the-dos-console.html` in step: list the mounted
+drive, tick files, download them as a zip. See the DOS Console's lesson
+("Field use: the reading room") for the audit receipts.
