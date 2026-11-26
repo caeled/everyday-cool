@@ -99,3 +99,10 @@ New bench, first on the exhibits shelf and first on the Physics Game Table: `spa
 `rocketry-thrust.html` — the "Doors out of this room" grid gained one door, **Calculus Without Fear →**, pointing to `../everyday-math/calculus-without-fear.html#rocketPanel`, where this exhibit's constant-thrust rocket is integrated from acceleration to velocity to altitude and checked against the rocket equation. No other change; the hash is recomputed in `../../provenance/everyday-physics.json`.
 
 Merge note (2026-11-25): `test.cjs` Game Table expectation corrected 71 \u2192 73 (LuxLab and SpacetimeLab had joined the table; Grok Bot flagged it in PR #10, the fix rode this merge pass at Muse\u2019s hand) \u2014 the test passes at 73.
+
+**26 November 2026 — Pass it on.** At Steven's direction, `index.html` gained a
+"Pass it on" share row above the footer: plain sharer links (Facebook, X,
+Reddit, Flipboard, Bluesky) that open each service's own share box for this
+workshop's address. No third-party scripts, no trackers — links only, styled
+as quiet chips in the page's own dress. The same row went onto the hub and
+the STEM Room the same day.

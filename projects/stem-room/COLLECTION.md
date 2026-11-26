@@ -31,3 +31,10 @@ Thirteenth door, added 20 November 2026: Everyday Light joined the bench at Stev
 `index.html` gained a card after Everyday Computing: "The Emulator Box — visiting from
 Nerd Heaven", pointing learners at the eleven consoles and at the Machine Path on the
 Learning Paths page. The consoles themselves stay in Nerd Heaven; this is a door, not a move.
+
+**26 November 2026 — Pass it on.** At Steven's direction, `index.html` gained a
+"Pass it on" share row above the footer: plain sharer links (Facebook, X,
+Reddit, Flipboard, Bluesky) that open each service's own share box for this
+room's address. No third-party scripts, no trackers — links only, styled as
+quiet chips in the page's own dress. The same row went onto the hub and
+Everyday Physics the same day.
