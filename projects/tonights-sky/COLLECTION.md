@@ -52,3 +52,11 @@ light on the whole Bench board.
 buttons and sliders — the whole game plays by tap), part of the collection-wide pass Steven
 asked for on 2026-11-25.
 
+## Addendum — 2026-11-26: The fence sign tells the truth now
+
+`backyard-radio-telescope-banner.webp` was edited in place (an image edit, everything else in
+the scene untouched): the wooden sign's invented dates — "For Grandpa — 1954–2023", which the
+image model made up — now read "For Grandpa Henry / WA6ZMV · since 1956 / We finally listened
+to the stars". Henry Douglas Powell, WA6ZMV, was a ham from 1956 until his death in 2006; the
+sign now carries his callsign and his real start year instead of invented ones. Verified by
+reading the edited sign at full zoom before shipping.
