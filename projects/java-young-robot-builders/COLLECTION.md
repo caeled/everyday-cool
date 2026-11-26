@@ -95,3 +95,8 @@ Back door added for Everyday Physics' LuxLab lesson; heading count to one hundre
 ## BACK DOOR 162: SpacetimeLab · 25 November 2026
 
 Back door added for Everyday Physics' SpacetimeLab lesson; heading count to one hundred sixty-two. Changed files: `index.html`, `COLLECTION.md`.
+
+
+## 2026-11-25 — Back door 163: Is the Earth Flat?
+
+`index.html`: BACK DOOR 163 card for the Is the Earth Flat? lesson (Tonight's Sky); heading now one hundred sixty-three games.

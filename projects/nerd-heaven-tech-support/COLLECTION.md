@@ -133,3 +133,8 @@ At Steven's sandbox note ("rocks should bounce off each other"), `shardstorm.htm
 ## Shelf: SpacetimeLab lesson · 25 November 2026
 
 Shelf line added for Everyday Physics' SpacetimeLab lesson (Antigravity's gravitational-wave workbench; audit with one failed chapter and twenty-one sanctioned fixes); shelf count to one hundred sixty-three, service worker to `nerd-heaven-v53`. Changed files: `index.html`, `sw.js`, `COLLECTION.md`.
+
+
+## 2026-11-25 — Is the Earth Flat? lesson on the shelf
+
+`index.html`: shelf line for the Is the Earth Flat? lesson (Tonight's Sky) at the head of the shelf; intro count now one hundred sixty-four lessons. `sw.js`: cache bumped to nerd-heaven-v54.
