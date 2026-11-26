@@ -366,3 +366,25 @@ hundred sixty-eight lessons; the console page gained a cross-link line
 to the workbench. The Full Index's two stale DOS Console descriptions
 (Pure-era text, found in this pass) were corrected to the current
 engine, and the sitemap gained both new URLs.
+
+**26 November 2026 (morning, Pack 001) — the first lesson pack.** At
+Steven's direction, the Workbench gained lesson packs: a C: drive with a
+starting state, the drive as homework. Pack 001 — The Broken Boot lives
+at `packs/pack-001-the-broken-boot/drive/` (eight small files:
+`packs/pack-001-the-broken-boot/drive/AUTOEXEC.BAT` with the planted
+fault — PATH C:\;C:\TOOL for the real TOOLS folder — plus START.BAT,
+TOOLS/REPORT.BAT, TOOLS/BACKUP.BAT, README.TXT, NOTES.TXT,
+WORK/ORDERS.TXT, WORK/PAD.TXT), shipped as
+`packs/pack-001-the-broken-boot.zip` (drive contents at the zip root,
+2,351 bytes), with its lesson at `pack-001-the-broken-boot-lesson.html`:
+the bench method worked in full, both fix methods, Steven's
+break-it-on-purpose experiments, and the AUTOEXEC.BAT lineage (every OS
+still runs a startup script; a PATH typo is the same phone call in any
+era). Audit on the shipped Workbench: fault reproduced verbatim
+("Illegal command: REPORT."), PATH printed the typo, the folder-method
+fix read back byte-for-byte, and the repaired AUTOEXEC ran the workday
+clean — report printed in full; the audit's one limit (injected keys
+can't send a backslash) is stated in the lesson. Wiring: shelf lesson
+entry (intro count to one hundred sixty-nine), Full Index entry (440),
+sitemap (493). CONFIG.SYS gets its own future pack on a bootable drive
+image, where those lines truly run — noted in the lesson.
