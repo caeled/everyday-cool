@@ -76,3 +76,8 @@ same folder-key upgrade as Nerd Heaven's console, applied to
 `games/the-dos-console/the-dos-console.html` in step: skeleton-first
 loading with an on-demand panel for the big folders. See the DOS
 Console's lesson for the full record.
+
+**26 November 2026 (morning, last piece) — DOS passenger: pre-warning.**
+The same folder-button warning panel as Nerd Heaven's console, applied to
+`games/the-dos-console/the-dos-console.html` in step (Steven's text,
+verbatim). See the DOS Console's lesson for the record.

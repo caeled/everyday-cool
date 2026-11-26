@@ -310,3 +310,16 @@ status, panel, group math (root 36 MB deferred, GAMES WAD deferred,
 DOOM.EXE promoted as its folder's smallest), the panel's own Load button
 streamed the WAD, two on-screen rescan cycles, 0 exceptions. Same edit
 applied to the Baton Box passenger and standalone copies.
+
+**26 November 2026 (morning, last piece) — warn about the warning.** At
+Steven's direction, `the-dos-console.html`'s folder button now shows an
+in-page notice before the picker opens, carrying his text verbatim:
+"With a larger drive start up may take a minute or two, and you may get a
+browser message about uploading a lot of files. What it is doing is
+uploading the directory into the VM that runs the emulator. No files are
+copied off your machine" — with Pick the folder / Not now buttons. His
+field report behind it: the full C: pick (47,191 files) worked, startup
+is slow, and Chrome's directory confirmation would scare visitors. The
+folder card's stale bundle-era line was refreshed to the streaming
+wording in the same pass. Audit: warning hidden at load, button reveals
+it without opening the picker, Not now hides it, 0 exceptions.
