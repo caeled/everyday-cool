@@ -100,3 +100,8 @@ Back door added for Everyday Physics' SpacetimeLab lesson; heading count to one 
 ## 2026-11-25 — Back door 163: Is the Earth Flat?
 
 `index.html`: BACK DOOR 163 card for the Is the Earth Flat? lesson (Tonight's Sky); heading now one hundred sixty-three games.
+## BACK DOOR 163: Hear the Hydrogen Line · 25 November 2026
+
+Back door added for Tonight's Sky's Hear the Hydrogen Line lesson; heading count to one hundred sixty-three. Changed files: `index.html`, `COLLECTION.md`.
+
+Merge note (2026-11-25): the Hydrogen Line back-door card from PR #11 arrived numbered 163, but 163 had gone to Is the Earth Flat? on main the same evening — the card was renumbered BACK DOOR 164 in the merge, and the heading now reads one hundred sixty-four games. `index.html` carries the change.

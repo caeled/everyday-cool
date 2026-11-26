@@ -138,3 +138,8 @@ Shelf line added for Everyday Physics' SpacetimeLab lesson (Antigravity's gravit
 ## 2026-11-25 — Is the Earth Flat? lesson on the shelf
 
 `index.html`: shelf line for the Is the Earth Flat? lesson (Tonight's Sky) at the head of the shelf; intro count now one hundred sixty-four lessons. `sw.js`: cache bumped to nerd-heaven-v54.
+## Shelf: Hear the Hydrogen Line lesson · 25 November 2026
+
+Shelf line added for Tonight's Sky's Hear the Hydrogen Line lesson (Grok Bot's companion to the Backyard Radio Telescope Plan; sixteen built-in proofs); shelf count to one hundred sixty-four, service worker to `nerd-heaven-v54`. Changed files: `index.html`, `sw.js`, `COLLECTION.md`.
+
+Merge note (2026-11-25): PR #11\u2019s Hydrogen Line shelf line joined the shelf below Is the Earth Flat?; the intro count is now one hundred sixty-five lessons and `sw.js` is at nerd-heaven-v55. `index.html` and `sw.js` carry the changes.
