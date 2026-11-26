@@ -30,3 +30,5 @@ The plan grew a page of its own: `backyard-radio-telescope.html` carries the com
 ## 2026-11-25 — Is the Earth Flat? (Steven's original, Muse build)
 
 New: `is-the-earth-flat.html` (the game: five classic proofs benched, deflection deck, Final Experiment finale) and `is-the-earth-flat-lesson.html` (the audit: 25/25 checks, every figure recomputed independently, full play-through driven through the real controls). `index.html` gained the game's card at the head of the grid. Designed by Steven Powell from the public arguments; built by Muse.
+
+Intro added 2026-11-25: Steven\u2019s own words on assumption-as-map now open `is-the-earth-flat.html` as the designer\u2019s note, verbatim at his standing rule.
