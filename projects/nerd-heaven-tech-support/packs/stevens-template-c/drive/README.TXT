@@ -12,6 +12,11 @@ His, word for word, byte for byte:
   WINSETUP\AUTOEXEC.BAT, WINSETUP\AUTOEXEC.BAK
 
 Free software, working and extracted:
+  DOS\ - a real DOS: the FreeDOS 1.4 base (kernel,
+  FreeCom shell, HIMEMX, Edit, MEM, CTMouse and the
+  core utilities) laid in around Steven's own three
+  files. DOS\FREEDOS.TXT is the manifest; the original
+  packages, sources included, ride beside the template.
   NET\ - the whole Pack 002 network layer: Realtek's
   PNPPD packet driver, Crynwr utilities, WINPKT, and the
   complete mTCP stack. NET\SOURCES.TXT lists the
@@ -20,8 +25,6 @@ Free software, working and extracted:
   setup with narration, one real command at a time.
 
 Yours to supply (the slots):
-  DOS\      your DOS system files - his folder carries
-             his CD-ROM configuration as the spec.
   WINDOWS\  your Windows 3.x install.
   WINSETUP\ your Windows setup files.
   Each slot has a SLOT.TXT saying what belongs there.
@@ -44,9 +47,14 @@ DOSBox or DOSBox-X on a desktop. Two honest notes:
      are the empty slots
      announcing themselves. The machine still lands at a
      working C:\ prompt, and NET works as-is.
-  2. On a bootable setup (real DOS, a DOSBox-X boot
-     disk), CONFIG.SYS runs and this is his machine
-     exactly as he specced it.
+  2. On a bootable setup (a DOSBox-X boot disk, real
+     hardware), a boot sector wants KERNEL.SYS at the
+     root of a bootable disk - making that image is
+     the bootable-disk project. When this drive does
+     boot for real, CONFIG.SYS at the root is Steven's,
+     and DOS\FREEDOS.TXT names the two lines of his
+     that point at Microsoft names (HIMEM, MOUSE) and
+     their FreeDOS counterparts here.
 
 Steven Powell built the original. The template was
 assembled, with the slots labelled, by Muse,
