@@ -72,3 +72,6 @@ uniquely holds the Geometry Lab and the feature-rich Tempest Steven ordered
 into the survivor, then retire `games/tempest.html` to a redirect — is boarded on the
 Bench as a separate, confirmed step, because it rewrites a page the family plays.
 `index.html` changed (one line of the PAGES map).
+
+
+Forum link (26 November 2026): `index.html` gained the collection's Join our Forum line (Steven's Google Group — anyone may ask to join, members post), the feedback door he asked to have everywhere.

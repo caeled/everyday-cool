@@ -95,3 +95,6 @@ longer kill the start-up sequence; verified headlessly, zero exceptions, telemet
 This pass also gave `gausslab.html`'s lesson its two standing shelf lines — Nerd Heaven's shelf and
 the Java back door 166 (see those projects' notes); the GaussLab files themselves are unchanged.
 
+
+
+Forum link (26 November 2026): `index.html` gained the collection's Join our Forum line (Steven's Google Group — anyone may ask to join, members post), the feedback door he asked to have everywhere.

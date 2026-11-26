@@ -16,3 +16,6 @@ Files: `index.html`, `everyday-motors.html`, `everyday-motors-lesson.html`, `eve
 
 - 24 November 2026: `index.html` banner display constrained to a 300 px centred figure at Steven's direction (the full-width banner read as huge); the image file itself is unchanged.
 - 24 November 2026: `everyday-sensors.html` viewport normalized — the restrictive `maximum-scale=1.0, user-scalable=no` (which blocks pinch-zoom) removed, matching the form Grok's PR #8 applied to the older pages. A fifth sanctioned change to this file, after the four audit repairs above. Grok spotted the leftover while updating PR #9 and flagged it rather than folding it into his own PR; Steven sanctioned the fix in-house the same day.
+
+
+Forum link (26 November 2026): `index.html` gained the collection's Join our Forum line (Steven's Google Group — anyone may ask to join, members post), the feedback door he asked to have everywhere.

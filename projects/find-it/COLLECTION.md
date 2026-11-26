@@ -15,3 +15,6 @@ Documentation update, 20 November 2026: `index.html`, `style.css`, `README.md`, 
 The same documentation update also added a Steve's Profile link (Steven Powell's LinkedIn) at the foot of the Help section — `index.html` and `style.css`.
 
 Cross-link (21 November 2026): at Steven Powell's direction, the Keep Going shelf in `index.html` gained an entry for A Library's Shelf It! (`../a-library/dewey-game.html`) — this room finds places by name; the Library's new subject search finds books by subject and kicks out the Dewey number — and the game's search panel links back to this room. Changed files: `index.html`, `COLLECTION.md`.
+
+
+Forum link (26 November 2026): `index.html` gained the collection's Join our Forum line (Steven's Google Group — anyone may ask to join, members post), the feedback door he asked to have everywhere.

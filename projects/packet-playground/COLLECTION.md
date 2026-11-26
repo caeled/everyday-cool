@@ -17,3 +17,6 @@ mis-sort lane; both pars (hours, dollars) computed live by Dijkstra. Audit 11/11
 shipped page (independent Dijkstra agrees; closed hub never offered; a button-driven
 delivery lands exactly on par; the mis-sort demonstrably loops). `index.html` gained
 section 08; Dad's Arcade gained its card beside Route It's (192 games / 192 lessons).
+
+
+Forum link (26 November 2026): `index.html` gained the collection's Join our Forum line (Steven's Google Group — anyone may ask to join, members post), the feedback door he asked to have everywhere.

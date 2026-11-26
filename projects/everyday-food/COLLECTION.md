@@ -7,3 +7,6 @@ The room's headline is the tongue-map audit — the collection's "useful map, no
 Files: `index.html`, `food.js`, `app.js`, `style.css`, `README.md`, `THIRD-PARTY.md`, `COLLECTION.md`, `test.cjs`, `LICENSE`, `LICENSE-CONTENT.md`, and `everyday-food-banner.jpg`.
 
 Banner: `everyday-food-banner.jpg` (2736×912) is AI-generated art made for this room on 20 November 2026: the collection's friendly robot character in a chef's hat and apron at a camp kitchen in the woods, tasting from a wooden spoon over a steaming pot, with a lidded cast-iron Dutch oven, glowing charcoal briquettes, and potted dandelion and plantain plants on the bench beside it — warm storybook watercolour style, no text.
+
+
+Forum link (26 November 2026): `index.html` gained the collection's Join our Forum line (Steven's Google Group — anyone may ask to join, members post), the feedback door he asked to have everywhere.

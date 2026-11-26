@@ -48,3 +48,6 @@ New featured bench at the top of the room: `dipolelab.html` — Google Antigravi
 sliders; only fine tuning uses the arrow keys), part of the collection-wide pass Steven asked
 for on 2026-11-25.
 
+
+
+Forum link (26 November 2026): `index.html` gained the collection's Join our Forum line (Steven's Google Group — anyone may ask to join, members post), the feedback door he asked to have everywhere.

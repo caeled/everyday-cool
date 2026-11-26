@@ -15,3 +15,6 @@ Banner: `everyday-time-banner.jpg`, AI-generated watercolor to the concept in St
 The room ships web-first, as the recent STEM rooms have: it reaches the desktop app in a later release, not this one.
 
 Cross-link added 20 November 2026: when Everyday Light joined the collection — the third of Steven's wave-2 picks — this room's sundial section gained its return link to Light's shadows-through-the-day bench, which is this dial's geometry walked around a compass instead of squeezed into hour lines: a stick's shadow by the hour and the season — `index.html` and `COLLECTION.md`. No bench, lesson, or behaviour changed.
+
+
+Forum link (26 November 2026): `index.html` gained the collection's Join our Forum line (Steven's Google Group — anyone may ask to join, members post), the feedback door he asked to have everywhere.

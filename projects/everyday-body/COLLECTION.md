@@ -73,3 +73,6 @@ Tail, a redirect bench, and a resonance bench, relating the forms to reflection,
 Skip, and pool — Steven's "digital taichi" family. Audit 17/17 on the shipped page; two
 defects caught and fixed pre-ship (the theory readout's circle radius; a first-frame clock
 guard), both documented in the lesson. `index.html` gained the exhibit's section first.
+
+
+Forum link (26 November 2026): `index.html` gained the collection's Join our Forum line (Steven's Google Group — anyone may ask to join, members post), the feedback door he asked to have everywhere.

@@ -115,3 +115,6 @@ workbench, audited 283/283 + 26/26 geometry), and the section heading count rose
 sixty-six. The standing precedent question from the GaussLab integration — shelf lines or not — was
 settled by Steven's green light on the whole Bench board.
 
+
+
+Forum link (26 November 2026): `index.html` gained the collection's Join our Forum line (Steven's Google Group — anyone may ask to join, members post), the feedback door he asked to have everywhere.

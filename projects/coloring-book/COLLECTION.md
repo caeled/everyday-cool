@@ -9,3 +9,6 @@ Field note, 22 November 2026: the Canny-style upgrade above was driven by the cu
 `coloring-book-lesson.html` is the back door: eye-hand coordination as the real curriculum — Fitts's law stated properly, the graded patch sizes as deliberate practice, and the lineage Steven states for this collection (Solitaire taught drag-and-drop, Minesweeper taught the mouse buttons; these fills teach aim) — plus how the photo conversion and the paint-bucket walk work, and an honest box naming the limits (converted outlines are only as clean as the photo's contrast; the preloaded pages are vector and the photo pages are raster, filled by two different engines for that reason).
 
 Files: `index.html`, `coloring-book-lesson.html`, `README.md`, `COLLECTION.md`. No banner yet; one can join the collection-wide banner pass later.
+
+
+Forum link (26 November 2026): `index.html` gained the collection's Join our Forum line (Steven's Google Group — anyone may ask to join, members post), the feedback door he asked to have everywhere.

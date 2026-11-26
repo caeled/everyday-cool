@@ -60,3 +60,6 @@ image model made up — now read "For Grandpa Henry / WA6ZMV · since 1956 / We 
 to the stars". Henry Douglas Powell, WA6ZMV, was a ham from 1956 until his death in 2006; the
 sign now carries his callsign and his real start year instead of invented ones. Verified by
 reading the edited sign at full zoom before shipping.
+
+
+Forum link (26 November 2026): `index.html` gained the collection's Join our Forum line (Steven's Google Group — anyone may ask to join, members post), the feedback door he asked to have everywhere.

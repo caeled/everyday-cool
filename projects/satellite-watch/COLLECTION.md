@@ -17,3 +17,6 @@ Cross-link (24 November 2026): `index.html` gained one line in "05 / KEEP GOING"
 ## Radio telescope plan link · 25 November 2026
 
 The sister-room paragraph in `index.html` now links the Backyard Radio Telescope Plan's own page (Tonight's Sky, Rev 2) instead of the Rev 1 PDF directly. Changed files: `index.html`, `COLLECTION.md`.
+
+
+Forum link (26 November 2026): `index.html` gained the collection's Join our Forum line (Steven's Google Group — anyone may ask to join, members post), the feedback door he asked to have everywhere.
