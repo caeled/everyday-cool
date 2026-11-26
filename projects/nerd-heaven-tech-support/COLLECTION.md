@@ -229,3 +229,21 @@ Archive's own player, the door's original form. The section copy and the Help en
 describe the working door instead of the promised one. Audit 5/5 against the shipped
 page + a live box (bytes byte-identical to the Archive's own file, md5 0177edd3…).
 `the-apple-iie-console-lesson.html` carries the addendum.
+
+## Addendum — 2026-11-26: the SNES engine swap
+
+At Steven Powell's direction (Batch D, called 2026-11-26), `the-snes-console.html`
+changed engines: EmulatorJS out, Nostalgist.js v0.23.0 + the libretro snes9x core
+(RetroArch web build v1.22.2) in. New folder `nostalgist-snes/` carries
+`nostalgist.umd.js`, `snes9x_libretro.js`, `snes9x_libretro.wasm`,
+`LICENSE-nostalgist-mit.txt`, `LICENSE-snes9x.txt`, and `VENDORED.md` — all
+upstream files unmodified. The page's pad bindings are now set explicitly in the
+core's RetroArch configuration (same printed table) and were re-measured at the
+cartridge after the rebuild: a fresh pad-decoder fixture, calibrated against the
+outgoing page, produced identical signatures for all twelve keys on the new page.
+State codes moved to the `SNESSTATE2:` prefix (engine-stamped; the lesson
+explains). `the-snes-console-lesson.html` gained the dated swap note and a new
+footer; `THIRD-PARTY.md` gained the swap paragraph; `sw.js` cache bumped to
+nerd-heaven-v58. The standalone Baton Box's copy of the console was synced to the new page
+and engine room the same night (the collection's Baton Box project carries
+no SNES passenger).
