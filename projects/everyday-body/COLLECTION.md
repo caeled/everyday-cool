@@ -63,3 +63,13 @@ Later the same day, the Biology Wave's eighth and final lab arrived and was inte
 Headline audit results, printed in full in the lessons: Mitosis & Genetics is the most quantitatively honest lab of the wave — chromosome/chromatid bookkeeping exact (G₂: 6 chromosomes / 12 chromatids; the classic trap avoided), bulk Punnett ratios on 3:1 / 1:2:1 / 9:3:3:1 within sampling noise (N = 20,000 per cross), Hardy–Weinberg equilibrium held at p = 0.600000 for 180 generations with selection, mutation, and drift each matching theory; its only false claims are a mode button labelled "Meiosis (2n→4n)" and meiosis nondisjunction gametes labelled "Trisomy (n+1 = 4)". Lenia is the real thing — update rule, kernel, and growth function verified against Chan's mathematics to float precision (max difference 2.9×10⁻⁷ over 65,536 cells; kernel sums to 0.99999996), and Orbium is a true constant-velocity soliton gliding at 0.64 cells/step — but the Geminium Twin is extinct by step ≈31 under its own preset, the "Hydro Swimmer" is a stationary oscillator, and Orbium survives only at σ = 0.017, not the σ = 0.015 its code comment calls canonical.
 
 Wiring in this pass: `index.html` gained the two cards and its Biology Wave block now reads "eight labs and an artificial-life zoo"; `README.md` gained a completion section; Dad's Arcade and the Nerd Heaven shelf and Java back doors rose with the whole mixed delivery (see the collection commit). Reference bank: ~/workspace/your_files/biology-five-references_2026-11-23.md, Appendix 2 of the same date (6 further sources, all curl-verified 200).
+
+## Addendum — 2026-11-26: Tai Chi Forms
+
+New house exhibit at Steven Powell's direction (his idea, named in the Everyday Cool ideas
+chat): `tai-chi-forms.html` + `tai-chi-forms-lesson.html` + `tai-chi-forms-banner.webp`
+(AI-generated watercolor banner, disclosed on the page). The four gates of Grasp the Bird's
+Tail, a redirect bench, and a resonance bench, relating the forms to reflection, resonance,
+Skip, and pool — Steven's "digital taichi" family. Audit 17/17 on the shipped page; two
+defects caught and fixed pre-ship (the theory readout's circle radius; a first-frame clock
+guard), both documented in the lesson. `index.html` gained the exhibit's section first.
