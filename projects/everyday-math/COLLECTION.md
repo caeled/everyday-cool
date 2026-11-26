@@ -84,3 +84,14 @@ Wiring in this pass: `index.html` gained the GaussLab card at the top of the Dee
 Wiring in this pass: `index.html` gained a Calculus Without Fear card after the Trigonometry card in the Deep Dives section (heading now "The deep dives — algebra, geometry, trigonometry, calculus."); the sibling footers of `algebra-deep-dive.html`, `geometry-deep-dive.html` and `trigonometry-deep-dive.html` gained a Calculus link; `README.md` gained a Calculus Without Fear section; Dad's Arcade gained a card (188 → 189 games / lessons); the Full Index gained the two pages (427 → 429), and its two GaussLab entries' icons were corrected from literal `\U0001f…` escapes (which JavaScript prints as text) to the emoji themselves; `sitemap.xml` gained the two URLs (469 → 471); Rocketry & Thrust gained a "Calculus Without Fear →" door; Numbers in the Wild's Deep Dives line gained a Calculus link; this note was appended; and the hashes for the added and changed files were recomputed in `provenance/everyday-math.json`. By the GaussLab precedent, the Nerd Heaven shelf and the Java back doors are not wired for the deep-dive family.
 
 Merge pass (2026-11-25): PR #10 merged into a main that had moved (Flat Earth + Hydrogen Line). At Steven\u2019s direction the rocket sentence was corrected in the merge: `calculus-without-fear.html` and `calculus-without-fear-lesson.html` no longer call the bench\u2019s stripped model the Rocketry & Thrust rocket (hash chains in the lesson); the Arcade card and Full Index entry were corrected to match. Count syncs: Full Index 433, sitemap 475, Arcade 190/190.
+
+## Addendum — 2026-11-25 (late): Batch C sanctions applied
+
+Under Steven's green light on the whole Bench board, the Pathfinding Arena's documented start-up
+crash was fixed and recorded in its lesson with a hash chain: `graph-pathfinding-arena.html`
+(`updateTelemetry` returns early when no solver exists yet — the Network Lab preset load can no
+longer kill the start-up sequence; verified headlessly, zero exceptions, telemetry populates) and
+`graph-pathfinding-arena-lesson.html`. FALSE 2 and the heuristic labelling remain as documented.
+This pass also gave `gausslab.html`'s lesson its two standing shelf lines — Nerd Heaven's shelf and
+the Java back door 166 (see those projects' notes); the GaussLab files themselves are unchanged.
+

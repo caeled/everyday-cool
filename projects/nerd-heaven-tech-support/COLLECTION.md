@@ -179,3 +179,15 @@ population) and the stated bends (fixed tick, tick-boundary clicks, a sixty-seco
 drawing clock deliberately left unseeded as presentation only). Phase 2 is complete: all three of
 Steven's originals now carry the recorder.
 
+## Addendum — 2026-11-25 (late): Batch C sanctions applied
+
+Under Steven's green light on the whole Bench board, three documented guest defects were fixed and
+recorded in their lessons with hash chains: `raft-consensus-sim.html` (`stepDown` clears `votedFor`
+only when the term actually increases — Election Safety's side door closed; verified against the
+shipped function) and `raft-consensus-sim-lesson.html`; `raytracer-pipeline-lab.html` (`sampleSky`
+clamps `dy` to [−1, 1] — the permanent NaN pixels in studio/sunset skies are gone; in-range colours
+verified identical) and `raytracer-pipeline-lab-lesson.html`. Also this pass: `index.html` gained the
+GaussLab shelf line (sixty-seven lessons), `sw.js` cache bumped to v57 for it, and
+`the-dos-console.html` gained a "Starting the Baton Box from the shell" pointer (port 8917 and the
+console's through-the-box address).
+

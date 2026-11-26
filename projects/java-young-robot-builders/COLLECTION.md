@@ -107,3 +107,11 @@ Back door added for Tonight's Sky's Hear the Hydrogen Line lesson; heading count
 Merge note (2026-11-25): the Hydrogen Line back-door card from PR #11 arrived numbered 163, but 163 had gone to Is the Earth Flat? on main the same evening — the card was renumbered BACK DOOR 164 in the merge, and the heading now reads one hundred sixty-four games. `index.html` carries the change.
 
 Back door 165 (2026-11-25): X-Ray Time Machine lesson card added at the head of `index.html`; heading now reads one hundred sixty-five games.
+
+## Addendum — 2026-11-25 (late): Back door 166 — GaussLab
+
+`index.html` gained card BACK DOOR 166 / EVERYDAY MATH for GaussLab (Antigravity's matrix
+workbench, audited 283/283 + 26/26 geometry), and the section heading count rose to one hundred
+sixty-six. The standing precedent question from the GaussLab integration — shelf lines or not — was
+settled by Steven's green light on the whole Bench board.
+
