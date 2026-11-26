@@ -217,3 +217,15 @@ following render) caught and fixed before shipping. `the-6502-bench-lesson.html`
 section and the receipts. `shardstorm-lesson.html` gained the designer's own words, verbatim,
 at the end of its flight-recorder section — the Tai Chi note (25 November 2026): thrust as aim,
 redirection, "digitial taichi" as the name for the family.
+
+## Addendum — 2026-11-26: The Oregon Trail door keeps its promise (IIe one-click fetch)
+
+`the-apple-iie-console.html`: the Oregon Trail button now tries the Baton Box first —
+same-origin `/api/disks/oregon-trail` when the box serves the page, else
+`http://localhost:8917/api/disks/oregon-trail` when a box is running on the visitor's
+machine — and on success hands the fetched disk to the machine's own loader and presses
+Boot: one click, fetched-inserted-booted. With no box answering it falls back to the
+Archive's own player, the door's original form. The section copy and the Help entry now
+describe the working door instead of the promised one. Audit 5/5 against the shipped
+page + a live box (bytes byte-identical to the Archive's own file, md5 0177edd3…).
+`the-apple-iie-console-lesson.html` carries the addendum.

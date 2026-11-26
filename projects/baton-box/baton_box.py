@@ -28,6 +28,7 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
+import urllib.request
 
 # --------------------------------------------------------------------------
 # Configuration
@@ -35,6 +36,49 @@ from urllib.parse import urlparse, parse_qs
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 GAMES_DIR = os.path.join(HERE, "games")
+
+DISKS_DIR = os.path.join(HERE, "disks")
+
+# The disk shelf: a small ALLOWLIST of public disk images the box will
+# fetch server-side and hand to a console page. A web page cannot fetch
+# these itself — the Internet Archive's file servers send no CORS
+# permission — but the box is a program on your own machine, not a web
+# page, so it can fetch the file the way a browser download would, cache
+# it under disks/, and serve it locally. Only the entries below can ever
+# be fetched: this is a shelf, not a proxy. Nothing is hosted or
+# redistributed by the collection; the file comes from the Archive at
+# click time, exactly as its own player would fetch it.
+DISKS = {
+    "oregon-trail": {
+        "url": "https://archive.org/download/MECC_A157_v14_4amCrack/00playable.dsk",
+        "filename": "The Oregon Trail (MECC, 1985).dsk",
+        "size": 143360,
+    },
+}
+
+
+def fetch_disk(disk_id):
+    """Return (bytes, filename) for an allowlisted disk, fetching and
+    caching it on first ask. Raises ValueError for an unknown id and
+    OSError for a fetch that fails or arrives the wrong size."""
+    spec = DISKS.get(disk_id)
+    if spec is None:
+        raise ValueError("No disk with that id.")
+    cache = os.path.join(DISKS_DIR, disk_id + ".dsk")
+    if os.path.exists(cache) and os.path.getsize(cache) == spec["size"]:
+        with open(cache, "rb") as f:
+            return f.read(), spec["filename"]
+    req = urllib.request.Request(spec["url"],
+                                 headers={"User-Agent": "BatonBox/1.0"})
+    with urllib.request.urlopen(req, timeout=30) as r:
+        data = r.read()
+    if len(data) != spec["size"]:
+        raise OSError("The fetched disk is %d bytes; the shelf expects %d."
+                      % (len(data), spec["size"]))
+    os.makedirs(DISKS_DIR, exist_ok=True)
+    with open(cache, "wb") as f:
+        f.write(data)
+    return data, spec["filename"]
 STORE_PATH = os.path.join(HERE, "sessions.json")
 PORT = int(os.environ.get("BATON_BOX_PORT", "8917"))
 HISTORY_KEEP = 10                 # how many handed-back blobs to remember
@@ -674,12 +718,18 @@ class Handler(BaseHTTPRequestHandler):
         sys.stderr.write("· %s %s\n" % (self.command, self.path))
 
     def _send(self, status, body, content_type="text/html; charset=utf-8",
-              isolate=False):
+              isolate=False, cors=False):
         if isinstance(body, str):
             body = body.encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
+        if cors:
+            # The disk shelf serves one public, allowlisted file; a
+            # console page hosted elsewhere (the collection's own site)
+            # may fetch it from the box on this machine. GET only, no
+            # state, nothing private is ever served with this header.
+            self.send_header("Access-Control-Allow-Origin", "*")
         if isolate:
             # Cross-origin isolation for the game routes: some passengers
             # (the DOS Console's DOSBox Pure core) are threaded builds that
@@ -763,6 +813,27 @@ class Handler(BaseHTTPRequestHandler):
                  "blurb": g["blurb"], "stateName": g["stateName"],
                  "turnEnds": g["turnEnds"], "players": g["players"]}
                 for g in scan_games()]})
+            return
+        if path.startswith("/api/disks/"):
+            disk_id = path[len("/api/disks/"):].strip("/").lower()
+            try:
+                data, filename = fetch_disk(disk_id)
+            except ValueError:
+                self._json(404, {"error": "No disk with that id."})
+                return
+            except Exception as e:  # fetch failed: say so plainly
+                self._send(502, json.dumps(
+                    {"error": "The box could not fetch that disk: %s" % e}),
+                    "application/json; charset=utf-8", cors=True)
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "application/octet-stream")
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Content-Disposition",
+                             'attachment; filename="%s"' % filename)
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(data)
             return
         if path == "/api/sessions":
             with _lock:
