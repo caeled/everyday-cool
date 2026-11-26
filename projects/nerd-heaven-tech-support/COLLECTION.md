@@ -133,3 +133,7 @@ At Steven's sandbox note ("rocks should bounce off each other"), `shardstorm.htm
 ## Shelf: SpacetimeLab lesson · 25 November 2026
 
 Shelf line added for Everyday Physics' SpacetimeLab lesson (Antigravity's gravitational-wave workbench; audit with one failed chapter and twenty-one sanctioned fixes); shelf count to one hundred sixty-three, service worker to `nerd-heaven-v53`. Changed files: `index.html`, `sw.js`, `COLLECTION.md`.
+
+## Shelf: Hear the Hydrogen Line lesson · 25 November 2026
+
+Shelf line added for Tonight's Sky's Hear the Hydrogen Line lesson (Grok Bot's companion to the Backyard Radio Telescope Plan; sixteen built-in proofs); shelf count to one hundred sixty-four, service worker to `nerd-heaven-v54`. Changed files: `index.html`, `sw.js`, `COLLECTION.md`.

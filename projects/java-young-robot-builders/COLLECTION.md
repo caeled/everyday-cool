@@ -95,3 +95,7 @@ Back door added for Everyday Physics' LuxLab lesson; heading count to one hundre
 ## BACK DOOR 162: SpacetimeLab · 25 November 2026
 
 Back door added for Everyday Physics' SpacetimeLab lesson; heading count to one hundred sixty-two. Changed files: `index.html`, `COLLECTION.md`.
+
+## BACK DOOR 163: Hear the Hydrogen Line · 25 November 2026
+
+Back door added for Tonight's Sky's Hear the Hydrogen Line lesson; heading count to one hundred sixty-three. Changed files: `index.html`, `COLLECTION.md`.
