@@ -31,6 +31,17 @@
   .note b{color:var(--ink)}
   footer{margin-top:34px;color:var(--dim);font-size:14px}
   a{color:var(--accent)}
+  .tm{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin:0 0 18px}
+  .tm-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:6px 0}
+  .tm-title{color:var(--gold);letter-spacing:.12em;font-size:13px}
+  .tm input[type=range]{width:100%}
+  .tm button{background:#0d1322;color:var(--dim);border:1px solid var(--line);border-radius:8px;padding:4px 12px;font:inherit;cursor:pointer}
+  .tm button:hover{color:var(--ink)}
+  .tm select{background:#0d1322;color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:4px 8px;font:inherit}
+  .tm-msg{color:var(--dim);font-size:14px;margin:6px 0}
+  .tm-grow{flex:1}
+  .tm-events{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0}
+  .tm-events button{font-size:12px;padding:2px 8px}
 </style>
 </head>
 <body>
@@ -53,6 +64,43 @@
       <span>FIXED <b id="hud-fixed">0</b></span>
       <span><button id="xray-btn" type="button">X-RAY: OFF</button></span>
     </div>
+  </div>
+
+  <div class="tm" id="tm-panel">
+    <div class="tm-row">
+      <b class="tm-title">FLIGHT RECORDER — THE TIME MACHINE, FITTED</b>
+      <span id="tm-time">TICK 0 / 0</span>
+      <span id="tm-mode">no hunt recorded</span>
+    </div>
+    <input id="tm-slider" type="range" min="0" max="0" value="0" step="1" aria-label="Recorder timeline">
+    <div class="tm-row">
+      <button id="tm-play" type="button">▶ Play</button>
+      <button id="tm-step" type="button">One tick</button>
+      <button id="tm-back" type="button">↶ Back 5 seconds</button>
+      <button id="tm-start" type="button">|← Start</button>
+      <span class="tm-grow"></span>
+      <button id="tm-live" type="button">Return to live hunt</button>
+      <button id="tm-verify" type="button">Verify this recording</button>
+    </div>
+    <div class="tm-row">
+      <label>From the fork:
+        <select id="tm-branch-mode">
+          <option value="live">Branch — hunt it myself from here</option>
+          <option value="same">Branch — unchanged replay</option>
+          <option value="straight">Branch — straight-shot debugger (no ricochet)</option>
+          <option value="predict">Predict — the score in three seconds</option>
+        </select>
+      </label>
+      <button id="tm-branch" type="button">Branch</button>
+      <span id="tm-pred" hidden>Three seconds after the fork the score will be…
+        <label><input type="radio" name="tm-pred-choice" value="up"> higher</label>
+        <label><input type="radio" name="tm-pred-choice" value="down"> lower</label>
+        <label><input type="radio" name="tm-pred-choice" value="same"> exactly the same</label>
+      </span>
+    </div>
+    <div class="tm-events" id="tm-events"></div>
+    <p class="tm-msg" id="tm-msg">Start a hunt — the recorder starts with the game. The build is seeded now: the same round can be hunted twice, and the second hunt can argue with the first. Your cursor is part of the recording — a LOOKERROR can see it coming.</p>
+    <p class="tm-msg" id="tm-pred-answer"></p>
   </div>
 
   <table class="keys">
@@ -173,8 +221,8 @@ function makeBug(type, x, y, vx, vy, opts) {
   var b = {
     id: nextBugId++, type: type, x: x, y: y, vx: vx, vy: vy,
     r: opts.r || (type === 'CLIPPY' ? 21 : 17), gen: opts.gen || 0, pairId: opts.pairId || 0, freed: false,
-    mimic: type === 'CLIPPY' ? MIMICS[Math.floor(Math.random() * MIMICS.length)] : null,
-    phase: Math.random() * 6.28, fleeing: false, nearMissedBy: 0, bornAt: perfNow()
+    mimic: type === 'CLIPPY' ? MIMICS[Math.floor(rnd() * MIMICS.length)] : null,
+    phase: rnd() * 6.28, fleeing: false, nearMissedBy: 0, bornAt: simNow
   };
   bugs.push(b);
   return b;
@@ -186,13 +234,18 @@ var score, round, shotsLeft, releases, fixedCount, state, started = false;
 var spawnQueue = [], spawnTimer = 0, roundTimer = 0, nextExtraAt;
 var shot = null, splats = [], notes = [], clippy = null, trail = null;
 var xray = false;
-function note(x, y, text, sub, color) { notes.push({ x: x, y: y, text: text, sub: sub || '', color: color || '#ffcf7d', life: 2.4 }); }
+/* TIME MACHINE CORE — the seeded stream, carried in the recorder's snapshot */
+var rngS = 1;
+function rnd() { rngS = (Math.imul(rngS, 1664525) + 1013904223) >>> 0; return rngS / 4294967296; }
+function note(x, y, text, sub, color) { notes.push({ x: x, y: y, text: text, sub: sub || '', color: color || '#ffcf7d', life: 2.4 }); if (typeof tmNote === 'function') tmNote(text); }
 var CLIPPY_LINES = ['Works on my machine!', 'It looks like you\u2019re trying to ship to production!', 'This change has been deployed.', 'Have you tried turning it off and on again?', 'That\u2019s not a bug in MY build.'];
 function newGame() {
+  tmSeedRun();
   score = 0; round = 0; releases = 5; fixedCount = 0; nextExtraAt = 10000;
   bugs = []; splats = []; notes = []; shot = null; clippy = null; trail = null;
   started = true;
   nextRound();
+  tmReset();
 }
 function roundComp(r) {
   var pool = ['BOHRBUG', 'BOHRBUG'];
@@ -201,11 +254,11 @@ function roundComp(r) {
   if (r >= 4) pool.push('MEMORYLEAK', 'DEADLOCK');
   if (r >= 5) pool.push('HEISENBUG');
   var n = Math.min(3 + r, 10), comp = [];
-  for (var i = 0; i < n; i++) comp.push(pool[Math.floor(Math.random() * pool.length)]);
-  if (r >= 2 && comp.indexOf('FEATURE') === -1 && Math.random() < 0.6) comp[0] = 'FEATURE';
+  for (var i = 0; i < n; i++) comp.push(pool[Math.floor(rnd() * pool.length)]);
+  if (r >= 2 && comp.indexOf('FEATURE') === -1 && rnd() < 0.6) comp[0] = 'FEATURE';
   /* the boss: from round 3, a Clippy occasionally takes a slot — it runs one
      of the other bugs' behaviours, chosen at random when it appears */
-  if (r >= 3 && Math.random() < 0.35) comp[comp.length - 1] = 'CLIPPY';
+  if (r >= 3 && rnd() < 0.35) comp[comp.length - 1] = 'CLIPPY';
   return comp;
 }
 function nextRound() {
@@ -218,12 +271,12 @@ function nextRound() {
 }
 function spawnNext() {
   var type = spawnQueue.shift();
-  var fromLeft = Math.random() < 0.5;
-  var speed = (55 + Math.random() * 40) * (1 + round * 0.04);
+  var fromLeft = rnd() < 0.5;
+  var speed = (55 + rnd() * 40) * (1 + round * 0.04);
   var x = fromLeft ? -40 : W + 40;
-  var y = 90 + Math.random() * 330;
+  var y = 90 + rnd() * 330;
   var vx = (fromLeft ? 1 : -1) * speed;
-  var vy = (Math.random() - 0.5) * 36;
+  var vy = (rnd() - 0.5) * 36;
   if (type === 'DEADLOCK') {
     var pid = nextPairId++;
     makeBug('DEADLOCK', x, y, vx, vy, { pairId: pid });
@@ -256,7 +309,7 @@ function fire(tx, ty) {
       if (segDist(hc.x, hc.y, path[s].x, path[s].y, path[s + 1].x, path[s + 1].y) < 54) { near = true; break; }
     }
     if (near) {
-      b.x = 130 + Math.random() * 700; b.y = 70 + Math.random() * 300;
+      b.x = 130 + rnd() * 700; b.y = 70 + rnd() * 300;
       note(b.x, b.y - 30, 'OBSERVED — IT MOVED', b.type === 'CLIPPY' ? 'CLIPPY, running HEISENBUG' : 'HEISENBUG', '#c792ff');
     }
   }
@@ -282,7 +335,7 @@ function squashBug(b, idx) {
     }
   }
   for (var p = 0; p < 10; p++) {
-    splats.push({ x: b.x, y: b.y, vx: (Math.random() - 0.5) * 190, vy: (Math.random() - 0.5) * 190, life: 0.5, color: COLORS[b.type] });
+    splats.push({ x: b.x, y: b.y, vx: (rnd() - 0.5) * 190, vy: (rnd() - 0.5) * 190, life: 0.5, color: COLORS[b.type] });
   }
   bugs.splice(idx, 1);
 }
@@ -325,6 +378,7 @@ function stepShot(dt) {
     if (!shot) break;
     /* walls */
     if (shot.x <= WALL_L || shot.x >= WALL_R || shot.y <= WALL_T) {
+      if (straight) { shot.path.push({ x: shot.x, y: shot.y }); endShot(); break; }
       shot.path.push({ x: shot.x, y: shot.y });
       shot.bounces++;
       if (shot.bounces > MAX_BOUNCE) { endShot(); break; }
@@ -357,13 +411,13 @@ function shipBug(b, idx) {
     note(b.x > W / 2 ? W - 190 : 190, 150, 'FEATURE SHIPPED', 'as designed', '#ffcf7d');
   } else {
     releases--;
-    clippy = { bugType: b.type, line: CLIPPY_LINES[Math.floor(Math.random() * CLIPPY_LINES.length)], life: 2.4 };
+    clippy = { bugType: b.type, line: CLIPPY_LINES[Math.floor(rnd() * CLIPPY_LINES.length)], life: 2.4 };
     if (releases <= 0) { state = 'over'; }
   }
   bugs.splice(idx, 1);
 }
 function step(dt) {
-  var now = perfNow();
+  var now = simNow;
   if (state === 'playing') {
     if (spawnQueue.length && bugs.length < 5) {
       spawnTimer -= dt;
@@ -532,6 +586,12 @@ function draw() {
   }
   /* bugs */
   for (var bi = 0; bi < bugs.length; bi++) drawBug(bugs[bi], now);
+  if (tmGhostBugs) {
+    ctx.save(); ctx.setLineDash([5, 4]); ctx.strokeStyle = '#ffcf7d'; ctx.lineWidth = 1.6;
+    for (var gi = 0; gi < tmGhostBugs.length; gi++) { var gb = tmGhostBugs[gi]; ctx.beginPath(); ctx.arc(gb.x, gb.y, gb.r, 0, 7); ctx.stroke(); }
+    if (tmGhostShot) { ctx.setLineDash([]); ctx.fillStyle = '#ffcf7d'; ctx.beginPath(); ctx.arc(tmGhostShot.x, tmGhostShot.y, 4, 0, 7); ctx.fill(); }
+    ctx.restore();
+  }
   /* turret */
   var aim = Math.atan2(cursor.y - TURRET.y, cursor.x - TURRET.x);
   ctx.save();
@@ -630,7 +690,7 @@ canvas.addEventListener('mousemove', function (e) { cursor = canvasPos(e); });
 canvas.addEventListener('click', function (e) {
   cursor = canvasPos(e);
   if (!started || state === 'over') { newGame(); return; }
-  fire(cursor.x, cursor.y);
+  tmClickQueue.push({ x: Math.round(cursor.x * 10) / 10, y: Math.round(cursor.y * 10) / 10 });
 });
 function setXray(v) {
   xray = v;
@@ -648,11 +708,254 @@ var lastT = performance.now();
 function frame(nowMs) {
   var dt = Math.min(1 / 30, (nowMs - lastT) / 1000);
   lastT = nowMs;
-  step(dt);
+  if (tmMode === 'view' || (tmMode === 'branch' && tmBranchMode !== 'live')) {
+    if (tmPlaying) {
+      var end = (tmMode === 'branch' && tmBranchHist) ? tmBranchFork + tmBranchHist.length - 1 : tmHist.length - 1;
+      tmSeek(Math.min(tmCursor + 1, end));
+      tmPlaying = tmCursor < end;
+      tmSync();
+    }
+  } else {
+    acc += dt;
+    var n = 0;
+    while (acc >= TICK && n < 12) {
+      acc -= TICK; n++;
+      if (tmMode === 'branch') { tmBranchTickLive(); if (state === 'over') { tmMode = 'view'; tmPlaying = false; tmSync(); break; } }
+      else if (started && state !== 'over') tmTickLive();
+      else tmStepOnce();
+    }
+    if (n === 12) acc = 0;
+  }
   draw();
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
+
+
+/* ================= THE FLIGHT RECORDER — the Time Machine, fitted ======
+   Same adoption contract as the X-Ray Time Machine core: a fixed tick, a
+   seeded stream carried in the snapshot, fully serialisable state, inputs
+   as plain data. Bug Hunt needed three conversions the other games didn't:
+   its bugs wobbled on the wall clock (performance.now), so the step now
+   reads a tick clock; its controller is the mouse — the cursor is an
+   input (a LOOKERROR can see it coming), and a click is an input that
+   lands on a tick boundary; and its Clippy lines and bug phases all draw
+   from the one seeded stream. */
+var TICK = 1 / 60, tick = 0, simNow = 0, acc = 0, gamesStarted = 0;
+var straight = false;
+var TM_CAP = 3600; /* 60 seconds of hunt */
+var tmHist = [], tmInputs = [], tmEvents = [];
+var tmMode = 'live'; /* live | view | branch */
+var tmCursor = 0, tmPlaying = false, tmFree = false;
+var tmBranchHist = null, tmBranchFork = 0, tmBranchMode = 'same', tmGhostBugs = null, tmGhostShot = null;
+var tmDriveQueue = [], tmClickQueue = [];
+function tmSampleInput() {
+  return { cx: Math.round(cursor.x * 10) / 10, cy: Math.round(cursor.y * 10) / 10, f: tmClickQueue.length ? tmClickQueue.shift() : null };
+}
+function tmApplyInput(inp) {
+  cursor = { x: inp.cx, y: inp.cy };
+  if (inp.f) fire(inp.f[0], inp.f[1]);
+}
+function tmStepOnce() { simNow += TICK; step(TICK); tick++; }
+function tmSnapshot() {
+  return JSON.parse(JSON.stringify({
+    score: score, round: round, shotsLeft: shotsLeft, releases: releases, fixedCount: fixedCount,
+    state: state, started: started, spawnQueue: spawnQueue, spawnTimer: spawnTimer, roundTimer: roundTimer,
+    nextExtraAt: nextExtraAt, shot: shot, splats: splats, notes: notes, clippy: clippy, trail: trail,
+    bugs: bugs, nextBugId: nextBugId, nextPairId: nextPairId,
+    rngS: rngS, tick: tick, simNow: simNow, straight: straight
+  }));
+}
+function tmRestore(s) {
+  var c = JSON.parse(JSON.stringify(s));
+  score = c.score; round = c.round; shotsLeft = c.shotsLeft; releases = c.releases; fixedCount = c.fixedCount;
+  state = c.state; started = c.started; spawnQueue = c.spawnQueue; spawnTimer = c.spawnTimer; roundTimer = c.roundTimer;
+  nextExtraAt = c.nextExtraAt; shot = c.shot; splats = c.splats; notes = c.notes; clippy = c.clippy; trail = c.trail;
+  bugs = c.bugs; nextBugId = c.nextBugId; nextPairId = c.nextPairId;
+  rngS = c.rngS; tick = c.tick; simNow = c.simNow; straight = c.straight;
+}
+function tmHashOf(s) {
+  var x = JSON.stringify(s), h = 0;
+  for (var i = 0; i < x.length; i++) h = (Math.imul(h, 31) + x.charCodeAt(i)) | 0;
+  return h;
+}
+var tmSimulating = false;
+function tmNote(text) {
+  if (tmMode !== 'live' || tmFree || tmSimulating) return;
+  if (tmEvents.length && tmEvents[tmEvents.length - 1].tick === tick + 1 && tmEvents[tmEvents.length - 1].text === text) return;
+  tmEvents.push({ tick: tick + 1, text: text });
+  if (tmEvents.length > 240) tmEvents.shift();
+  tmRenderEvents();
+}
+function tmSeedRun() {
+  rngS = (20261125 + gamesStarted * 7919) >>> 0; gamesStarted++;
+}
+function tmReset() {
+  tick = 0; simNow = 0; acc = 0; straight = false;
+  tmHist = [tmSnapshot()]; tmInputs = []; tmEvents = [];
+  tmMode = 'live'; tmCursor = 0; tmPlaying = false; tmFree = false;
+  tmBranchHist = null; tmGhostBugs = null; tmGhostShot = null; tmDriveQueue = []; tmClickQueue = [];
+  tmSync();
+}
+function tmTickLive() {
+  var inp = tmDriveQueue.length ? tmDriveQueue.shift() : tmSampleInput();
+  tmApplyInput(inp);
+  tmStepOnce();
+  if (!tmFree) {
+    tmInputs.push(inp);
+    tmHist.push(tmSnapshot());
+    tmCursor = tmHist.length - 1;
+    if (tmHist.length > TM_CAP) { tmFree = true; tmMsg('Recorder full — 60 seconds held. The hunt continues unrecorded; branch and verify cover the held minute.'); }
+  }
+  tmSync();
+}
+function tmSimFrom(baseSnap, inputs, rule) {
+  var saved = tmSnapshot();
+  tmSimulating = true;
+  tmRestore(baseSnap);
+  var hist = [tmSnapshot()];
+  for (var i = 0; i < inputs.length; i++) {
+    if (rule === 'straight') straight = true;
+    tmApplyInput(inputs[i]);
+    tmStepOnce();
+    hist.push(tmSnapshot());
+    if (state === 'over') break;
+  }
+  tmRestore(saved);
+  tmSimulating = false;
+  return hist;
+}
+function tmVerify() {
+  if (tmHist.length < 2) return { ok: false, checked: 0, msg: 'nothing recorded yet' };
+  var inputs = tmInputs.slice(0, tmHist.length - 1);
+  var sim = tmSimFrom(tmHist[0], inputs, 'same');
+  var n = Math.min(sim.length, tmHist.length), ok = 0;
+  for (var i = 0; i < n; i++) { if (tmHashOf(sim[i]) === tmHashOf(tmHist[i])) ok++; else break; }
+  return { ok: ok === n && sim.length === tmHist.length, checked: ok, of: tmHist.length };
+}
+function tmSetGhost(snap) {
+  if (!snap) { tmGhostBugs = null; tmGhostShot = null; return; }
+  tmGhostBugs = snap.bugs.map(function (b) { var hc = hitCenter(b); return { x: hc.x, y: hc.y, r: b.r }; });
+  tmGhostShot = snap.shot ? { x: snap.shot.x, y: snap.shot.y } : null;
+}
+function tmSeek(i) {
+  i = Math.max(0, Math.min(i, tmHist.length - 1));
+  tmCursor = i; tmPlaying = false;
+  if (tmMode === 'branch' && tmBranchHist) {
+    var bi = Math.max(0, Math.min(i - tmBranchFork, tmBranchHist.length - 1));
+    tmRestore(tmBranchHist[bi]);
+    tmSetGhost(tmHist[Math.min(i, tmHist.length - 1)]);
+  } else {
+    tmRestore(tmHist[i]);
+    tmSetGhost(null);
+  }
+  tmSync();
+}
+function tmBranch(mode) {
+  if (tmHist.length < 2) { tmMsg('Nothing to branch yet — hunt first.'); return null; }
+  var fork = tmCursor;
+  tmBranchFork = fork; tmBranchMode = mode;
+  if (mode === 'live') {
+    tmBranchHist = [JSON.parse(JSON.stringify(tmHist[fork]))];
+    tmMode = 'branch';
+    tmRestore(tmBranchHist[0]);
+    tmSetGhost(tmHist[fork]);
+    tmMsg('Branched at tick ' + fork + ' — hunt it yourself from here. The original bugs hang beside yours as gold rings.');
+    tmSync();
+    return { fork: fork, mode: mode };
+  }
+  var inputs = tmInputs.slice(fork);
+  var hist = tmSimFrom(tmHist[fork], inputs, mode === 'straight' ? 'straight' : 'same');
+  tmBranchHist = hist; tmMode = 'branch';
+  tmSeek(fork);
+  tmMsg(mode === 'straight'
+    ? 'Branched at tick ' + fork + ' with a straight-shot debugger — no ricochet: a shot dies at the first wall. Same clicks, same bugs; watch the bank shots the original made that this one can\'t.'
+    : 'Unchanged replay branched at tick ' + fork + ' — it should sit exactly inside the gold rings, tick for tick. If it ever doesn\'t, the recorder is lying and the Verify button will say so.');
+  tmSync();
+  return { fork: fork, mode: mode, states: hist.length };
+}
+function tmBranchTickLive() {
+  var inp = tmDriveQueue.length ? tmDriveQueue.shift() : tmSampleInput();
+  tmApplyInput(inp);
+  tmStepOnce();
+  tmBranchHist.push(tmSnapshot());
+  tmCursor = tmBranchFork + tmBranchHist.length - 1;
+  tmSetGhost(tmHist[Math.min(tmCursor, tmHist.length - 1)]);
+  tmSync();
+}
+/* ---------- panel ---------- */
+function tmEl(id) { return document.getElementById(id); }
+function tmMsg(t) { var m = tmEl('tm-msg'); if (m) m.textContent = t; }
+function tmRenderEvents() {
+  var box = tmEl('tm-events'); if (!box) return;
+  box.innerHTML = '';
+  tmEvents.slice(-14).forEach(function (ev) {
+    var b = document.createElement('button');
+    b.type = 'button'; b.textContent = ev.text + ' · ' + ev.tick;
+    b.addEventListener('click', function () { if (tmMode === 'live') { tmMode = 'view'; } tmSeek(ev.tick); });
+    box.appendChild(b);
+  });
+}
+function tmSync() {
+  var total = tmMode === 'branch' && tmBranchHist ? tmBranchFork + tmBranchHist.length - 1 : tmHist.length - 1;
+  var sl = tmEl('tm-slider');
+  if (sl) { sl.max = Math.max(0, total); if (+sl.value !== tmCursor && document.activeElement !== sl) sl.value = tmCursor; }
+  var tt = tmEl('tm-time'); if (tt) tt.textContent = 'TICK ' + tmCursor + ' / ' + Math.max(0, total);
+  var md = tmEl('tm-mode');
+  if (md) md.textContent = tmFree ? 'recorder full — hunting unrecorded' : tmMode === 'live' ? (tmHist.length > 1 ? 'recording' : 'no hunt recorded') : tmMode === 'view' ? 'reviewing the recording' : 'on a branch (' + tmBranchMode + ')';
+  var pl = tmEl('tm-play'); if (pl) pl.textContent = tmPlaying ? '⏸ Pause' : '▶ Play';
+}
+function tmReturnLive() {
+  if (!tmHist.length) return;
+  tmMode = 'live'; tmBranchHist = null; tmSetGhost(null); tmPlaying = false;
+  tmRestore(tmHist[tmHist.length - 1]);
+  tmCursor = tmHist.length - 1;
+  tmMsg('Back on the live hunt, at its latest tick.');
+  tmSync();
+}
+var tmPanelReady = setInterval(function () {
+  if (!tmEl('tm-slider')) return;
+  clearInterval(tmPanelReady);
+  tmEl('tm-slider').addEventListener('input', function () { if (tmMode === 'live') tmMode = 'view'; tmSeek(+tmEl('tm-slider').value); });
+  tmEl('tm-play').addEventListener('click', function () { tmPlaying = !tmPlaying; tmSync(); });
+  tmEl('tm-step').addEventListener('click', function () { if (tmMode === 'live') tmMode = 'view'; tmSeek(tmCursor + 1); });
+  tmEl('tm-back').addEventListener('click', function () { if (tmMode === 'live') tmMode = 'view'; tmSeek(tmCursor - 300); });
+  tmEl('tm-start').addEventListener('click', function () { if (tmMode === 'live') tmMode = 'view'; tmSeek(tmBranchHist && tmMode === 'branch' ? tmBranchFork : 0); });
+  tmEl('tm-live').addEventListener('click', tmReturnLive);
+  tmEl('tm-verify').addEventListener('click', function () {
+    var v = tmVerify();
+    tmMsg(v.ok ? 'Verified — the recording replays exactly, ' + v.checked + ' of ' + v.of + ' states identical, bugs, bounces and Clippy lines and all.' : 'Verify stopped at state ' + v.checked + ' of ' + v.of + ' — the recording and the replay disagree there.');
+  });
+  tmEl('tm-branch').addEventListener('click', function () {
+    var mode = tmEl('tm-branch-mode').value;
+    var pred = tmEl('tm-pred');
+    if (mode === 'predict' && !tmPendingPredict) {
+      pred.hidden = false;
+      tmMsg('Prediction armed: pick where the score will be three seconds after the fork, then press Branch.');
+      tmPendingPredict = true;
+      return;
+    }
+    tmDoBranch(mode);
+  });
+}, 50);
+var tmPendingPredict = false;
+function tmDoBranch(mode) {
+  if (tmPendingPredict) {
+    var choice = document.querySelector('input[name="tm-pred-choice"]:checked');
+    var forkSnap = tmHist[tmCursor];
+    var inputs = tmInputs.slice(tmCursor, tmCursor + 180);
+    var sim = tmSimFrom(forkSnap, inputs, 'same');
+    var endScore = sim.length ? sim[sim.length - 1].score : forkSnap.score;
+    var startScore = forkSnap.score;
+    var actual = endScore > startScore ? 'up' : (endScore < startScore ? 'down' : 'same');
+    var label = { down: 'lower', up: 'higher', same: 'exactly the same' }[actual];
+    var secs = ((sim.length - 1) / 60).toFixed(1);
+    tmEl('tm-pred-answer').textContent = secs + ' seconds on, the score read ' + endScore + ' — ' + label + ' than the fork\'s ' + startScore + '.' + (choice ? (choice.value === actual ? ' Your prediction called it.' : ' Your prediction said otherwise — rewind and watch which click, bounce, or shipped FEATURE moved it.') : '');
+    tmPendingPredict = false;
+    tmEl('tm-pred').hidden = true;
+  }
+  return tmBranch(mode === 'predict' ? 'same' : mode);
+}
 
 /* test hooks for the audit (drive the shipped code, change nothing) */
 window.__bug = {
@@ -684,6 +987,24 @@ window.__bug = {
   clearBugs: function () { bugs = []; spawnQueue = []; },
   setXray: function (v) { setXray(v); }
 };
+Object.assign(window.__bug, {
+  tmStart: function (inputs) { newGame(); if (inputs) for (var i = 0; i < inputs.length; i++) tmDriveQueue.push(inputs[i]); },
+  tmDrive: function (inputs) { for (var i = 0; i < inputs.length; i++) tmDriveQueue.push(inputs[i]); },
+  tmTick: function () { return tick; },
+  tmLen: function () { return tmHist.length; },
+  tmHash: function (i) { return tmHashOf(tmHist[Math.max(0, Math.min(i, tmHist.length - 1))]); },
+  tmBaseHash: function () { return tmHashOf(tmHist[0]); },
+  tmState: function () { var s = tmSnapshot(); return { tick: s.tick, state: s.state, score: s.score, round: s.round, fixed: s.fixedCount, bugs: s.bugs.length, straight: s.straight }; },
+  tmVerify: function () { return tmVerify(); },
+  tmSeek: function (i) { if (tmMode === 'live') tmMode = 'view'; tmSeek(i); },
+  tmBranch: function (mode) { return tmBranch(mode); },
+  tmBranchHash: function (i) { return tmBranchHist ? tmHashOf(tmBranchHist[Math.max(0, Math.min(i, tmBranchHist.length - 1))]) : null; },
+  tmBranchLen: function () { return tmBranchHist ? tmBranchHist.length : 0; },
+  tmCursor: function () { return tmCursor; },
+  tmEvents: function () { return tmEvents.slice(); },
+  tmInputs: function () { return tmInputs.slice(); },
+  tmReturnLive: function () { tmReturnLive(); }
+});
 </script>
 </body>
 </html>

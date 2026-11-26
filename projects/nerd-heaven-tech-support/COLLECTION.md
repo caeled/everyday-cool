@@ -164,3 +164,18 @@ unchanged branch identical at 969/969 states; the thirsty branch's gauge exactly
 ticks after the fork with position unchanged; cross-load determinism at the opening state and tick
 300) and the stated bends (fixed tick, a sixty-second recorder cap, prediction judged on altitude).
 
+## Addendum — 2026-11-25 (late): the flight recorder, fitted to Bug Hunt
+
+`bughunt.html` was retrofitted with the X-Ray Time Machine's flight recorder — the third fitting, after
+Shardstorm and Shadowline: a fixed 1/60-second tick, all fourteen `Math.random()` calls seeded, the bug
+wobble moved off the wall clock onto a tick clock, the mouse treated as the recorded controller it is
+(cursor position per tick; clicks land on tick boundaries), serialisable snapshots, and a recorder
+panel with rewind, event chips, unchanged/live branches, a **straight-shot** branch (no ricochet), a
+three-second score prediction, and gold-ring ghosts of the original bugs. `bughunt-lesson.html` gained
+a "The flight recorder — the Time Machine, fitted" section with the audit receipts (a 1,021-state
+adaptive hunt verified 1,021/1,021; cross-load determinism at the opening state, tick 300, and the
+recording's end; an unchanged branch identical at 819/819; the straight-shot branch diverging in bug
+population) and the stated bends (fixed tick, tick-boundary clicks, a sixty-second cap, and the
+drawing clock deliberately left unseeded as presentation only). Phase 2 is complete: all three of
+Steven's originals now carry the recorder.
+
