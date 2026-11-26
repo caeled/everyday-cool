@@ -30,6 +30,19 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 import urllib.request
 
+# Windows field fix (2026-11-26): this box prints a banner with emoji in
+# it, and on a US Windows machine Python's standard output — when the app
+# spawns the box with its output piped away — uses the cp1252 code page,
+# which cannot encode those characters. The box died on its very first
+# print, exit code 1, before it ever served a page: the app's panel just
+# said "stopped as soon as it started," and the real error went nowhere.
+# Speak UTF-8 and replace anything unprintable instead of dying on it.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 # --------------------------------------------------------------------------
 # Configuration
 # --------------------------------------------------------------------------

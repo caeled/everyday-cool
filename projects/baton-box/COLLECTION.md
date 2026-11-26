@@ -41,3 +41,15 @@ the mount-the-folder door (`buildBootZipFromFiles`, `mountFolder`) —
 after the one-shot `file.arrayBuffer()` read failed on a real archive in
 the Emulator Box app's WebView2. The standalone Baton Box's copy of the
 page carries the identical engine fix.
+
+Addendum (2026-11-26, the banner that killed the box): on Steven's
+Windows machine the box died the instant the apps started it — exit
+code 1, no error shown. Cause, reproduced under a forced cp1252
+encoding: `baton_box.py` prints a banner containing emoji, and with its
+output piped away (how the apps spawn it) Python writes in the Windows
+code page, which cannot encode them — UnicodeEncodeError on the first
+print, before the server ever served. `baton_box.py` now reconfigures
+stdout/stderr to UTF-8 with errors replaced at startup. The standalone
+Baton Box carries the identical file (byte-identical, as always). This
+was also the unresolved Dad's Arcade panel failure of 2026-11-25: same
+spawn, same death — the panel's "flash" was the box dying.
