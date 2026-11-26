@@ -152,7 +152,7 @@
       empty, the way the real one did: <strong>you bring the software.</strong></p>
       <h3>Door one — Mount your C:</h3>
       <ul>
-        <li>This is the door for a whole DOS archive kept the way DOS people keep one: <strong>one folder that is a C: drive</strong>. Zip that folder — right-click it, <em>Send to → Compressed (zipped) folder</em> — and pick the zip here.</li>
+        <li>This is the door for a whole DOS archive kept the way DOS people keep one: <strong>one folder that is a C: drive</strong>. Pick the folder itself — the DOSBox way, no zip needed — or zip that folder (right-click it, <em>Send to → Compressed (zipped) folder</em>) and pick the zip. Both keys open the same door.</li>
         <li>The console mounts the zip as drive <strong>C:</strong> and boots to a real DOS prompt, <code>C:\&gt;</code>. No auto-run, nothing launched for you. <code>DIR</code>, <code>CD</code>, and typing a program's name work the way they did in 1990, because it is DOS in there.</li>
         <li>How it works, honestly: DOSBox Pure loads a small boot file named <code>CONSOLE.CONF</code>. This page writes that file for you — in your browser, around your own files — and rebuilds the zip with it added. <strong>Nothing is uploaded.</strong> The rebuilt zip never leaves your machine; the emulator reads it right there.</li>
         <li>Your zip can be as big as your archive. The console's zip tools are small, though: plain <code>.zip</code> only — no ZIP64, no password-protected entries. The status line will tell you in plain words if a zip can't ride.</li>
@@ -231,7 +231,7 @@
         <button class="btn" type="button" id="btn-popback" hidden>⤡ Pop back in</button>
       </div>
     </div>
-    <p class="status" id="status">The console is built and waiting. <b>Mount your C:</b> below is the front door — zip your drive folder and pick it.</p>
+    <p class="status" id="status">The console is built and waiting. <b>Mount your C:</b> below is the front door — pick the drive folder itself, or a zip of it.</p>
   </section>
 
   <div class="doors">
@@ -246,6 +246,14 @@
         <input type="file" id="drive-file" accept=".zip,application/zip" />
         <span class="filename" id="drive-name">no drive mounted</span>
       </div>
+      <div class="row">
+        <button class="btn" id="btn-mount-folder" type="button">…or mount the folder itself…</button>
+        <input type="file" id="folder-file" webkitdirectory />
+      </div>
+      <p>The folder door is the DOSBox way: pick the drive folder itself, no zip.
+      The console reads its files here in your browser and builds the same boot
+      drive in memory — nothing is uploaded, and the folder on your disk is
+      never touched.</p>
     </section>
 
     <section class="door" aria-label="Load one game">
@@ -473,6 +481,62 @@
     return new Blob(parts, { type: 'application/zip' });
   }
 
+  /* The folder door's builder: the same boot zip, assembled from loose
+     files instead of copied zip entries. Files ride STORED (no
+     compression) — DOSBox Pure reads stored entries directly, and the
+     bytes are already on the visitor's machine. */
+  function buildBootZipFromFiles(dataEntries, confText){
+    var confBytes = new TextEncoder().encode(confText);
+    var enc = new TextEncoder();
+    var parts = [], centrals = [], offset = 0;
+    function local(crc, dataLen, usize){
+      var h = new DataView(new ArrayBuffer(30));
+      h.setUint32(0, 0x04034b50, true);
+      h.setUint16(4, 20, true);
+      h.setUint32(14, crc, true);
+      h.setUint32(18, dataLen, true);
+      h.setUint32(22, usize, true);
+      return new Uint8Array(h.buffer);
+    }
+    function central(crc, dataLen, usize, nameLen, off){
+      var h = new DataView(new ArrayBuffer(46));
+      h.setUint32(0, 0x02014b50, true);
+      h.setUint16(4, 20, true);
+      h.setUint16(6, 20, true);
+      h.setUint32(16, crc, true);
+      h.setUint32(20, dataLen, true);
+      h.setUint32(24, usize, true);
+      h.setUint16(28, nameLen, true);
+      h.setUint32(42, off, true);
+      return new Uint8Array(h.buffer);
+    }
+    function finishLocal(h, nameLen){ var dv = new DataView(h.buffer); dv.setUint16(12, 0x21, true); dv.setUint16(26, nameLen, true); return h; }
+    function finishCentral(h, nameLen){ var dv = new DataView(h.buffer); dv.setUint16(14, 0x21, true); return h; }
+    var all = [{ name: 'CONSOLE.CONF', data: confBytes }].concat(dataEntries);
+    all.forEach(function(e){
+      var nameBytes = enc.encode(e.name);
+      var crc = crc32(e.data);
+      var lh = finishLocal(local(crc, e.data.length, e.data.length), nameBytes.length);
+      parts.push(lh, nameBytes, e.data);
+      centrals.push({ crc: crc, len: e.data.length, nameBytes: nameBytes, off: offset });
+      offset += lh.length + nameBytes.length + e.data.length;
+    });
+    var cdStart = offset;
+    centrals.forEach(function(c){
+      var ch = finishCentral(central(c.crc, c.len, c.len, c.nameBytes.length, c.off), c.nameBytes.length);
+      parts.push(ch, c.nameBytes);
+      offset += ch.length + c.nameBytes.length;
+    });
+    var eocd = new DataView(new ArrayBuffer(22));
+    eocd.setUint32(0, 0x06054b50, true);
+    eocd.setUint16(8, all.length, true);
+    eocd.setUint16(10, all.length, true);
+    eocd.setUint32(12, offset - cdStart, true);
+    eocd.setUint32(16, cdStart, true);
+    parts.push(new Uint8Array(eocd.buffer));
+    return new Blob(parts, { type: 'application/zip' });
+  }
+
   function zipErrorSentence(err){
     if (err && err.message === 'notazip')
       return '<span class="err">That file isn\'t a zip.</span> DOS archives travel as .zip files — a folder\'s worth of files in one wrapper. Zip the folder itself and pick the zip.';
@@ -484,7 +548,7 @@
   }
 
   /* ================= the boot file ================= */
-  function buildConf(mode, runText){
+  function buildConf(mode, runText, srcWord){
     var lines = [
       '; CONSOLE.CONF - written by The DOS Console web page, in your browser.',
       '; DOSBox Pure loads this file and runs the [autoexec] lines below.',
@@ -506,7 +570,7 @@
       'C:'
     ];
     if (mode === 'prompt') {
-      lines.push('ECHO This is your C: drive, mounted from your own zip.');
+      lines.push('ECHO This is your C: drive, mounted from your own ' + (srcWord || 'zip') + '.');
       lines.push('ECHO DIR, CD and your programs are yours from here.');
     } else {
       var t = (runText || '').trim();
@@ -523,26 +587,32 @@
     if (!isolated()) { say(ISOLATION_SENTENCE); return; }
     var blob;
     try {
-      blob = buildBootZip(zipBuf, entries, buildConf(mode, runText));
+      blob = buildBootZip(zipBuf, entries, buildConf(mode, runText, 'zip'));
     } catch (e) {
       say(zipErrorSentence(e));
       return;
     }
+    startMachine(blob, origFile.name, origFile.size, mode);
+  }
+
+  function startMachine(blob, displayName, displaySize, mode){
+    if (booted) return;
     booted = true;
-    bootName = origFile.name;
+    bootName = displayName;
     document.getElementById('slotface').style.display = 'none';
     document.getElementById('game').style.display = 'block';
     document.getElementById('btn-mount').disabled = true;
+    var _mf = document.getElementById('btn-mount-folder'); if (_mf) _mf.disabled = true;
     document.getElementById('btn-game').disabled = true;
     document.getElementById('btn-run').disabled = true;
-    say('Starting the machine with <b>' + esc(origFile.name) + '</b> (' +
-        origFile.size.toLocaleString() + ' bytes) mounted as C: — read from your machine, kept on your machine…');
+    say('Starting the machine with <b>' + esc(displayName) + '</b> (' +
+        displaySize.toLocaleString() + ' bytes) mounted as C: — read from your machine, kept on your machine…');
 
-    var bootFile = new File([blob], origFile.name, { type: 'application/zip' });
+    var bootFile = new File([blob], displayName, { type: 'application/zip' });
     window.EJS_player = "#game";
     window.EJS_core = "dos";
     window.EJS_gameUrl = bootFile;
-    window.EJS_gameName = origFile.name.replace(/\.[^.]*$/, "");
+    window.EJS_gameName = displayName.replace(/\.[^.]*$/, "");
     window.EJS_pathtodata = "emulatorjs-dos/data/";
     window.EJS_threads = true;
     window.EJS_startOnLoaded = true;
@@ -565,8 +635,30 @@
     document.body.appendChild(s);
   }
 
+  /* Read a File in slices rather than one gulp. A single arrayBuffer() call
+     on a very large archive is exactly where some browsers — the app's
+     WebView2 among them — refuse the read outright (a NotReadableError
+     blaming "permission problems") even for a healthy file on a healthy
+     disk; it cost a real archive its mount on 2026-11-26 before this fix.
+     Slices keep every individual read small; the bytes land in one buffer
+     either way. */
+  function readFileChunked(file){
+    var CHUNK = 16 * 1024 * 1024;
+    var out = new ArrayBuffer(file.size), view = new Uint8Array(out), off = 0;
+    function next(){
+      if (off >= file.size) return Promise.resolve(out);
+      var end = Math.min(file.size, off + CHUNK);
+      return file.slice(off, end).arrayBuffer().then(function(buf){
+        view.set(new Uint8Array(buf), off);
+        off = end;
+        return next();
+      });
+    }
+    return next();
+  }
+
   function readZip(file){
-    return file.arrayBuffer().then(function(buf){
+    return readFileChunked(file).then(function(buf){
       var entries = parseZip(buf);
       if (!entries.length) throw new Error('empty');
       return { buf: buf, entries: entries };
@@ -583,11 +675,67 @@
   document.getElementById('btn-mount').addEventListener('click', function(){ driveFileEl.click(); });
   driveFileEl.addEventListener('change', function(){
     var f = driveFileEl.files[0];
-    driveFileEl.value = '';
-    if (!f || booted) return;
+    if (!f || booted) { driveFileEl.value = ''; return; }
     document.getElementById('drive-name').textContent = f.name;
-    readZip(f).then(function(z){ if (z) boot(z.buf, z.entries, f, 'prompt', ''); });
+    var zp = readZip(f);
+    driveFileEl.value = '';
+    zp.then(function(z){ if (z) boot(z.buf, z.entries, f, 'prompt', ''); });
   });
+
+  /* ---- door one, second key: mount the folder itself ----
+     The DOSBox way, added 2026-11-26 at Steven's word: DOSBox mounts a
+     folder, so this door takes the folder itself — no zip. The browser
+     cannot see a folder path (that part is the platform, not a choice),
+     but a directory picker hands the page every file in the folder with
+     its relative path, and the page builds the same boot drive from
+     those files in memory. Nothing is uploaded; the folder on disk is
+     never touched. */
+  var folderFileEl = document.getElementById('folder-file');
+  document.getElementById('btn-mount-folder').addEventListener('click', function(){ folderFileEl.click(); });
+  folderFileEl.addEventListener('change', function(){
+    var files = Array.prototype.slice.call(folderFileEl.files || []);
+    folderFileEl.value = '';
+    if (!files.length || booted) return;
+    mountFolder(files);
+  });
+
+  function mountFolder(files){
+    var items = [], total = 0;
+    files.forEach(function(f){
+      var rel = f.webkitRelativePath || f.name;
+      var slash = rel.indexOf('/');
+      var inner = slash >= 0 ? rel.slice(slash + 1) : rel;
+      if (!inner) return;
+      items.push({ file: f, name: inner.replace(/\\/g, '/') });
+      total += f.size;
+    });
+    if (!items.length) {
+      say('<span class="err">That folder looks empty</span> — pick the folder that IS the drive: the one holding COMMAND.COM and your games.');
+      return;
+    }
+    document.getElementById('drive-name').textContent = items.length.toLocaleString() + ' files, straight from the folder';
+    say('Reading <b>' + items.length.toLocaleString() + ' files</b> from your folder — on your machine, nothing uploaded…');
+    var dataEntries = [], chain = Promise.resolve();
+    items.forEach(function(it){
+      chain = chain.then(function(){
+        return readFileChunked(it.file).then(function(buf){
+          dataEntries.push({ name: it.name, data: new Uint8Array(buf) });
+        });
+      });
+    });
+    chain.then(function(){
+      if (booted) return;
+      if (!isolated()) { say(ISOLATION_SENTENCE); return; }
+      var blob;
+      try {
+        blob = buildBootZipFromFiles(dataEntries, buildConf('prompt', '', 'folder'));
+      } catch (e) {
+        say(zipErrorSentence(e));
+        return;
+      }
+      startMachine(blob, 'drive-folder.zip', total, 'prompt');
+    }).catch(function(e){ say(zipErrorSentence(e)); });
+  }
 
   /* ---- door two: one game ---- */
   var gameFileEl = document.getElementById('game-file');
@@ -595,10 +743,11 @@
   document.getElementById('btn-game').addEventListener('click', function(){ gameFileEl.click(); });
   gameFileEl.addEventListener('change', function(){
     var f = gameFileEl.files[0];
-    gameFileEl.value = '';
-    if (!f || booted) return;
+    if (!f || booted) { gameFileEl.value = ''; return; }
     document.getElementById('game-name').textContent = f.name;
-    readZip(f).then(function(z){
+    var zp = readZip(f);
+    gameFileEl.value = '';
+    zp.then(function(z){
       if (!z) return;
       var exes = z.entries.filter(function(e){ return /\.(exe|com|bat)$/i.test(e.name) && !/\/$/.test(e.name); })
         .map(function(e){ return e.name.replace(/\//g, '\\'); });
@@ -802,6 +951,7 @@
     isolated: isolated,
     emulator: function(){ return window.EJS_emulator || null; },
     parseZip: function(buf){ return parseZip(buf); },
+    mountFolderFiles: function(files){ mountFolder(files); },
     buildConf: buildConf,
     buildBootZip: function(buf, conf){ return buildBootZip(buf, parseZip(buf), conf); }
   };

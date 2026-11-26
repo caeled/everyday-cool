@@ -247,3 +247,19 @@ footer; `THIRD-PARTY.md` gained the swap paragraph; `sw.js` cache bumped to
 nerd-heaven-v58. The standalone Baton Box's copy of the console was synced to the new page
 and engine room the same night (the collection's Baton Box project carries
 no SNES passenger).
+
+Addendum (2026-11-26, the DOS mount fix): Steven's first run of the DOS
+Console in the Emulator Box app refused his known-good C: zip with a
+NotReadableError — the page read the whole archive in one
+`file.arrayBuffer()` call, which the app's WebView2 refuses for very large
+files. `the-dos-console.html` now reads every file in 16 MB slices
+(`readFileChunked`), starts the read before the picker input is cleared,
+and door one gained a second key at Steven's word — mount the folder
+itself (`webkitdirectory` + `buildBootZipFromFiles` + `mountFolder`),
+the DOSBox way, no zip. Boot flow split into `boot()` / `startMachine()`;
+`buildConf` names the source (zip/folder). Audit: a 42 MB test drive
+reached the DOS prompt through both doors headlessly. The lesson gained
+the dated failure-and-fix section in `the-dos-console-lesson.html`;
+`sw.js` cache bumped to nerd-heaven-v59. The same engine fix was applied
+to the Baton Box's own copy of the page and to this collection's Baton
+Box passenger copy.

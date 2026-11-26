@@ -33,3 +33,11 @@ Archive, size-verified, and cached under `disks/`. It exists because the Archive
 servers send no CORS permission — no web page can fetch the disk — while the box, a
 program on the visitor's own machine, can. The Apple IIe console's Oregon Trail door is
 its first customer. The server file stays byte-identical with the standalone Baton Box.
+
+Addendum (2026-11-26): the DOS passenger copy at
+`games/the-dos-console/the-dos-console.html` received the same mount fix
+as the Nerd Heaven original — sliced file reads (`readFileChunked`) and
+the mount-the-folder door (`buildBootZipFromFiles`, `mountFolder`) —
+after the one-shot `file.arrayBuffer()` read failed on a real archive in
+the Emulator Box app's WebView2. The standalone Baton Box's copy of the
+page carries the identical engine fix.
