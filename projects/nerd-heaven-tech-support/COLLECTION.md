@@ -346,3 +346,23 @@ field-use note ("a lesson that turned into a support tool"); the old
 lesson-list entry gained a dated superseded-in-part note rather than a
 rewrite. Same page edits applied to the Baton Box passenger and
 standalone copies.
+
+**26 November 2026 (morning, the workbench) — The DOS Workbench.** At
+Steven's direction ("a page that just loads right into the dos emulator…
+a real honest to god OS you can play with"), the console gained a twin:
+`the-dos-workbench.html`, derived from `the-dos-console.html` with the
+same machinery and a workbench posture — it boots DOS by itself at page
+load onto DOSBox's built-in Z: drive (an empty bundle: just a boot
+conf), waits at a live prompt, and mounting any drive stops the running
+machine and restarts onto it (Dos handle kept, fresh host element per
+launch; the door buttons stay live so drives can be swapped).
+`the-dos-workbench-lesson.html` carries the difference (exhibit vs
+bench), the audit receipts (unassisted boot to Z:\> with DOSBox's own
+autoexec visibly run; restart onto the 42 MB test drive — skeleton,
+fsTree, rescue armed; 0 exceptions), and the honest bends. Wiring: the
+room shelf (`index.html`) gained the workbench card under the console's,
+a lesson entry in the shelf list, and the intro count moved to one
+hundred sixty-eight lessons; the console page gained a cross-link line
+to the workbench. The Full Index's two stale DOS Console descriptions
+(Pure-era text, found in this pass) were corrected to the current
+engine, and the sitemap gained both new URLs.

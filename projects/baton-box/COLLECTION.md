@@ -87,3 +87,8 @@ door.** The same door-four build as Nerd Heaven's console, applied to
 `games/the-dos-console/the-dos-console.html` in step: list the mounted
 drive, tick files, download them as a zip. See the DOS Console's lesson
 ("Field use: the reading room") for the audit receipts.
+
+**26 November 2026 (morning, the workbench) — DOS passenger: cross-link.**
+`games/the-dos-console/the-dos-console.html` gained the workbench
+cross-link line (absolute live URL, as the passenger's family links
+run). The DOS Workbench itself lives in Nerd Heaven; see its lesson.
