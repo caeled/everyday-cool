@@ -31,6 +31,17 @@
   .note b{color:var(--ink)}
   footer{margin-top:34px;color:var(--dim);font-size:14px}
   a{color:var(--accent)}
+  .tm{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin:0 0 18px}
+  .tm-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:6px 0}
+  .tm-title{color:var(--gold);letter-spacing:.12em;font-size:13px}
+  .tm input[type=range]{width:100%}
+  .tm button{background:#0d1322;color:var(--dim);border:1px solid var(--line);border-radius:8px;padding:4px 12px;font:inherit;cursor:pointer}
+  .tm button:hover{color:var(--ink)}
+  .tm select{background:#0d1322;color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:4px 8px;font:inherit}
+  .tm-msg{color:var(--dim);font-size:14px;margin:6px 0}
+  .tm-grow{flex:1}
+  .tm-events{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0}
+  .tm-events button{font-size:12px;padding:2px 8px}
 </style>
 </head>
 <body>
@@ -54,6 +65,43 @@
       <span><button id="xray-btn" type="button">X-RAY: OFF</button></span>
       <span><button id="inst-btn" type="button">INSTRUMENTS: FULL</button></span>
     </div>
+  </div>
+
+  <div class="tm" id="tm-panel">
+    <div class="tm-row">
+      <b class="tm-title">FLIGHT RECORDER — THE TIME MACHINE, FITTED</b>
+      <span id="tm-time">TICK 0 / 0</span>
+      <span id="tm-mode">no flight recorded</span>
+    </div>
+    <input id="tm-slider" type="range" min="0" max="0" value="0" step="1" aria-label="Recorder timeline">
+    <div class="tm-row">
+      <button id="tm-play" type="button">▶ Play</button>
+      <button id="tm-step" type="button">One tick</button>
+      <button id="tm-back" type="button">↶ Back 5 seconds</button>
+      <button id="tm-start" type="button">|← Start</button>
+      <span class="tm-grow"></span>
+      <button id="tm-live" type="button">Return to live flight</button>
+      <button id="tm-verify" type="button">Verify this recording</button>
+    </div>
+    <div class="tm-row">
+      <label>From the fork:
+        <select id="tm-branch-mode">
+          <option value="live">Branch — fly it myself from here</option>
+          <option value="same">Branch — unchanged replay</option>
+          <option value="thirsty">Branch — thirsty ship (fuel burns ×2)</option>
+          <option value="predict">Predict — altitude in two seconds</option>
+        </select>
+      </label>
+      <button id="tm-branch" type="button">Branch</button>
+      <span id="tm-pred" hidden>Two seconds after the fork the ship will be…
+        <label><input type="radio" name="tm-pred-choice" value="up"> higher</label>
+        <label><input type="radio" name="tm-pred-choice" value="down"> lower</label>
+        <label><input type="radio" name="tm-pred-choice" value="same"> about the same</label>
+      </span>
+    </div>
+    <div class="tm-events" id="tm-events"></div>
+    <p class="tm-msg" id="tm-msg">Press ENTER to fly — the recorder starts with the game. The course is seeded now: the same sector can be flown twice, and the second flight can argue with the first.</p>
+    <p class="tm-msg" id="tm-pred-answer"></p>
   </div>
 
   <table class="keys">
@@ -139,9 +187,13 @@ var nextSpawnAt = 120, lastWallAt = -999, lastGapCentre = 24;
 var xray = false, inst = 'full';
 var keys = { left: false, right: false, up: false, down: false, fire: false };
 var fireCd = 0;
+/* TIME MACHINE CORE — the seeded stream, carried in the recorder's snapshot */
+var rngS = 1;
+function rnd() { rngS = (Math.imul(rngS, 1664525) + 1013904223) >>> 0; return rngS / 4294967296; }
 function perfNow() { return performance.now() / 1000; }
 function note(x, y, text, sub, color) {
   notes.push({ x: x, y: y, text: text, sub: sub || '', color: color || '#ffcf7d', life: 2.2 });
+  if (typeof tmNote === 'function') tmNote(text);
 }
 function addScore(n) {
   score += n;
@@ -150,27 +202,27 @@ function addScore(n) {
 
 /* ---------- the world ahead ---------- */
 function spawnAhead() {
-  var u = 175, roll = Math.random();
+  var u = 175, roll = rnd();
   var sinceWall = dist - lastWallAt;
   if (roll < 0.42 && sinceWall > 130) {
     /* a wall: gap centre placed so the demanded climb/dive is always
        reachable — max shift 16 units, at least 130 units to do it in */
-    var centre = Math.max(10, Math.min(38, lastGapCentre + (Math.random() * 32 - 16)));
+    var centre = Math.max(10, Math.min(38, lastGapCentre + (rnd() * 32 - 16)));
     obstacles.push({ type: 'wall', at: dist + u, gapLo: centre - GAP_H / 2, gapHi: centre + GAP_H / 2, passed: false });
     lastWallAt = dist; lastGapCentre = centre;
-    nextSpawnAt = dist + 58 + Math.random() * 30;
+    nextSpawnAt = dist + 58 + rnd() * 30;
   } else if (roll < 0.68) {
-    obstacles.push({ type: 'tower', at: dist + u, lat: Math.round(Math.random() * 64 - 32), h: 10 + Math.round(Math.random() * 20), hw: 6, passed: false });
-    nextSpawnAt = dist + 40 + Math.random() * 30;
+    obstacles.push({ type: 'tower', at: dist + u, lat: Math.round(rnd() * 64 - 32), h: 10 + Math.round(rnd() * 20), hw: 6, passed: false });
+    nextSpawnAt = dist + 40 + rnd() * 30;
   } else if (roll < 0.82) {
-    obstacles.push({ type: 'barrier', at: dist + u, lat: Math.round(Math.random() * 44 - 22), h: 8, hw: 17, passed: false });
-    nextSpawnAt = dist + 40 + Math.random() * 26;
+    obstacles.push({ type: 'barrier', at: dist + u, lat: Math.round(rnd() * 44 - 22), h: 8, hw: 17, passed: false });
+    nextSpawnAt = dist + 40 + rnd() * 26;
   } else if (roll < 0.92) {
-    obstacles.push({ type: 'drum', at: dist + u, lat: Math.round(Math.random() * 72 - 36), passed: false });
-    nextSpawnAt = dist + 30 + Math.random() * 24;
+    obstacles.push({ type: 'drum', at: dist + u, lat: Math.round(rnd() * 72 - 36), passed: false });
+    nextSpawnAt = dist + 30 + rnd() * 24;
   } else {
-    obstacles.push({ type: 'turret', at: dist + u, lat: Math.round(Math.random() * 72 - 36), passed: false });
-    nextSpawnAt = dist + 34 + Math.random() * 24;
+    obstacles.push({ type: 'turret', at: dist + u, lat: Math.round(rnd() * 72 - 36), passed: false });
+    nextSpawnAt = dist + 34 + rnd() * 24;
   }
 }
 function newGame() {
@@ -180,13 +232,14 @@ function newGame() {
   obstacles = []; bullets = []; splats = []; notes = [];
   nextSpawnAt = 130; lastWallAt = -999; lastGapCentre = 24;
   invuln = 0; dead = false; lastDistPaid = 0;
+  tmReset();
 }
 function crash(why) {
   if (invuln > 0 || dead) return;
   dead = true; respawnT = 1.2; ships--;
   var p = project(lat, 0, alt);
   for (var i = 0; i < 16; i++) {
-    splats.push({ x: p.x, y: p.y, vx: (Math.random() - 0.5) * 260, vy: (Math.random() - 0.5) * 260, life: 0.7, color: '#ff9d5c' });
+    splats.push({ x: p.x, y: p.y, vx: (rnd() - 0.5) * 260, vy: (rnd() - 0.5) * 260, life: 0.7, color: '#ff9d5c' });
   }
   note(480, 200, 'CRASHED', why, '#ff5c7a');
   if (ships <= 0) state = 'over';
@@ -223,7 +276,7 @@ function step(dt) {
       dist += speed * dt;
       var dp = Math.floor(dist / 4);
       if (dp > lastDistPaid) { score += dp - lastDistPaid; lastDistPaid = dp; if (score >= nextExtraAt) { ships++; nextExtraAt += 10000; note(480, 120, 'EXTRA SHIP', '', '#9fe870'); } }
-      fuel -= 2.2 * dt;
+      fuel -= (thirsty ? 4.4 : 2.2) * dt;
       if (fuel <= 0) { fuel = 0; valt -= 34 * dt; if (alt <= 0.4) { alt = 0; crash('out of fuel'); } }
       if (invuln > 0) invuln -= dt;
       var newSector = 1 + Math.floor(dist / 900);
@@ -403,6 +456,7 @@ function draw() {
   if (!dead && started) {
     var blink = invuln > 0 && Math.floor(now * 9) % 2 === 0;
     if (!blink) drawShipShape(shipP, '#0a0f1e', '#7ee2ff');
+    if (tmGhostPos) { var gp = project(tmGhostPos.lat, 0, tmGhostPos.alt); ctx.save(); ctx.setLineDash([5, 4]); drawShipShape(gp, null, '#ffcf7d'); ctx.restore(); }
   }
   /* X-Ray: drop-line + readout */
   if (xray && !dead) {
@@ -542,11 +596,245 @@ var lastT = performance.now();
 function frame(nowMs) {
   var dt = Math.min(1 / 30, (nowMs - lastT) / 1000);
   lastT = nowMs;
-  if (state !== 'paused') step(dt);
+  if (state !== 'paused') {
+    if (tmMode === 'view' || (tmMode === 'branch' && tmBranchMode !== 'live')) {
+      if (tmPlaying) {
+        var end = (tmMode === 'branch' && tmBranchHist) ? tmBranchFork + tmBranchHist.length - 1 : tmHist.length - 1;
+        tmSeek(Math.min(tmCursor + 1, end));
+        tmPlaying = tmCursor < end;
+        tmSync();
+      }
+    } else {
+      acc += dt;
+      var n = 0;
+      while (acc >= TICK && n < 12) {
+        acc -= TICK; n++;
+        if (tmMode === 'branch') { tmBranchTickLive(); if (state === 'over') { tmMode = 'view'; tmPlaying = false; tmSync(); break; } }
+        else if (started && state !== 'over') tmTickLive();
+        else { step(TICK); tick++; }
+      }
+      if (n === 12) acc = 0;
+    }
+  }
   draw();
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
+
+
+/* ================= THE FLIGHT RECORDER — the Time Machine, fitted ======
+   Same adoption contract as the X-Ray Time Machine core: a fixed tick, a
+   seeded stream carried in the snapshot, fully serialisable state, inputs
+   as plain data. Shadowline's course was always generated ahead of the
+   ship; seeding the generator makes a course a thing you can replay,
+   branch, and argue with — the same sector, flown twice, is now a
+   controlled experiment instead of a memory. */
+var TICK = 1 / 60, tick = 0, acc = 0, gamesStarted = 0;
+var thirsty = false;
+var TM_CAP = 3600; /* 60 seconds of flight */
+var tmHist = [], tmInputs = [], tmEvents = [];
+var tmMode = 'live'; /* live | view | branch */
+var tmCursor = 0, tmPlaying = false, tmFree = false;
+var tmBranchHist = null, tmBranchFork = 0, tmBranchMode = 'same', tmGhostPos = null;
+var tmDriveQueue = [];
+function tmSampleInput() { return { l: keys.left, r: keys.right, u: keys.up, d: keys.down, f: keys.fire }; }
+function tmApplyInput(inp) { keys.left = !!inp.l; keys.right = !!inp.r; keys.up = !!inp.u; keys.down = !!inp.d; keys.fire = !!inp.f; }
+function tmSnapshot() {
+  return JSON.parse(JSON.stringify({
+    state: state, started: started, score: score, ships: ships, sector: sector, dist: dist,
+    nextExtraAt: nextExtraAt, lastDistPaid: lastDistPaid, lat: lat, alt: alt, vlat: vlat, valt: valt,
+    fuel: fuel, speed: speed, invuln: invuln, respawnT: respawnT, dead: dead,
+    obstacles: obstacles, bullets: bullets, splats: splats, notes: notes,
+    nextSpawnAt: nextSpawnAt, lastWallAt: lastWallAt, lastGapCentre: lastGapCentre,
+    fireCd: fireCd, rngS: rngS, tick: tick, thirsty: thirsty
+  }));
+}
+function tmRestore(s) {
+  var c = JSON.parse(JSON.stringify(s));
+  state = c.state; started = c.started; score = c.score; ships = c.ships; sector = c.sector; dist = c.dist;
+  nextExtraAt = c.nextExtraAt; lastDistPaid = c.lastDistPaid; lat = c.lat; alt = c.alt; vlat = c.vlat; valt = c.valt;
+  fuel = c.fuel; speed = c.speed; invuln = c.invuln; respawnT = c.respawnT; dead = c.dead;
+  obstacles = c.obstacles; bullets = c.bullets; splats = c.splats; notes = c.notes;
+  nextSpawnAt = c.nextSpawnAt; lastWallAt = c.lastWallAt; lastGapCentre = c.lastGapCentre;
+  fireCd = c.fireCd; rngS = c.rngS; tick = c.tick; thirsty = c.thirsty;
+}
+function tmHashOf(s) {
+  var x = JSON.stringify(s), h = 0;
+  for (var i = 0; i < x.length; i++) h = (Math.imul(h, 31) + x.charCodeAt(i)) | 0;
+  return h;
+}
+var tmSimulating = false;
+function tmNote(text) {
+  if (tmMode !== 'live' || tmFree || tmSimulating) return;
+  if (tmEvents.length && tmEvents[tmEvents.length - 1].tick === tick + 1 && tmEvents[tmEvents.length - 1].text === text) return;
+  tmEvents.push({ tick: tick + 1, text: text }); /* the note exists in the state the step is producing */
+  if (tmEvents.length > 240) tmEvents.shift();
+  tmRenderEvents();
+}
+function tmReset() {
+  tick = 0; acc = 0; thirsty = false;
+  rngS = (20261125 + gamesStarted * 7919) >>> 0; gamesStarted++;
+  tmHist = [tmSnapshot()]; tmInputs = []; tmEvents = [];
+  tmMode = 'live'; tmCursor = 0; tmPlaying = false; tmFree = false;
+  tmBranchHist = null; tmGhostPos = null; tmDriveQueue = [];
+  tmSync();
+}
+function tmTickLive() {
+  var inp = tmDriveQueue.length ? tmDriveQueue.shift() : tmSampleInput();
+  tmApplyInput(inp);
+  step(TICK); tick++;
+  if (!tmFree) {
+    tmInputs.push(inp);
+    tmHist.push(tmSnapshot());
+    tmCursor = tmHist.length - 1;
+    if (tmHist.length > TM_CAP) { tmFree = true; tmMsg('Recorder full — 60 seconds held. The flight continues unrecorded; branch and verify cover the held minute.'); }
+  }
+  if (state === 'over') { /* recording ends with the run */ }
+  tmSync();
+}
+function tmSimFrom(baseSnap, inputs, rule) {
+  var saved = tmSnapshot();
+  tmSimulating = true;
+  tmRestore(baseSnap);
+  var hist = [tmSnapshot()];
+  for (var i = 0; i < inputs.length; i++) {
+    if (rule === 'thirsty') thirsty = true;
+    tmApplyInput(inputs[i]);
+    step(TICK); tick++;
+    hist.push(tmSnapshot());
+    if (state === 'over') break;
+  }
+  tmRestore(saved);
+  tmSimulating = false;
+  return hist;
+}
+function tmVerify() {
+  if (tmHist.length < 2) return { ok: false, checked: 0, msg: 'nothing recorded yet' };
+  var inputs = tmInputs.slice(0, tmHist.length - 1);
+  var sim = tmSimFrom(tmHist[0], inputs, 'same');
+  var n = Math.min(sim.length, tmHist.length), ok = 0;
+  for (var i = 0; i < n; i++) { if (tmHashOf(sim[i]) === tmHashOf(tmHist[i])) ok++; else break; }
+  return { ok: ok === n && sim.length === tmHist.length, checked: ok, of: tmHist.length };
+}
+function tmSeek(i) {
+  i = Math.max(0, Math.min(i, tmHist.length - 1));
+  tmCursor = i; tmPlaying = false;
+  if (tmMode === 'branch' && tmBranchHist) {
+    var bi = Math.max(0, Math.min(i - tmBranchFork, tmBranchHist.length - 1));
+    tmRestore(tmBranchHist[bi]);
+    var g = tmHist[Math.min(i, tmHist.length - 1)];
+    tmGhostPos = g ? { lat: g.lat, alt: g.alt } : null;
+  } else {
+    tmRestore(tmHist[i]);
+    tmGhostPos = null;
+  }
+  tmSync();
+}
+function tmBranch(mode) {
+  if (tmHist.length < 2) { tmMsg('Nothing to branch yet — fly first.'); return null; }
+  var fork = tmCursor;
+  tmBranchFork = fork; tmBranchMode = mode;
+  if (mode === 'live') {
+    tmBranchHist = [JSON.parse(JSON.stringify(tmHist[fork]))];
+    tmMode = 'branch';
+    tmRestore(tmBranchHist[0]);
+    tmMsg('Branched at tick ' + fork + ' — fly it yourself from here. The original flies beside you as a gold ghost.');
+    tmSync();
+    return { fork: fork, mode: mode };
+  }
+  var inputs = tmInputs.slice(fork);
+  var hist = tmSimFrom(tmHist[fork], inputs, mode === 'thirsty' ? 'thirsty' : 'same');
+  tmBranchHist = hist; tmMode = 'branch';
+  tmSeek(fork);
+  tmMsg(mode === 'thirsty'
+    ? 'Branched at tick ' + fork + ' with a thirsty ship — fuel burns twice as fast from the fork. Same stick, same course; watch the gauge argue with the ghost.'
+    : 'Unchanged replay branched at tick ' + fork + ' — it should sit exactly on the ghost, tick for tick. If it ever doesn\'t, the recorder is lying and the Verify button will say so.');
+  tmSync();
+  return { fork: fork, mode: mode, states: hist.length };
+}
+function tmBranchTickLive() {
+  var inp = tmDriveQueue.length ? tmDriveQueue.shift() : tmSampleInput();
+  tmApplyInput(inp);
+  step(TICK); tick++;
+  tmBranchHist.push(tmSnapshot());
+  tmCursor = tmBranchFork + tmBranchHist.length - 1;
+  var g = tmHist[Math.min(tmCursor, tmHist.length - 1)];
+  tmGhostPos = g ? { lat: g.lat, alt: g.alt } : null;
+  tmSync();
+}
+/* ---------- panel ---------- */
+function tmEl(id) { return document.getElementById(id); }
+function tmMsg(t) { var m = tmEl('tm-msg'); if (m) m.textContent = t; }
+function tmRenderEvents() {
+  var box = tmEl('tm-events'); if (!box) return;
+  box.innerHTML = '';
+  tmEvents.slice(-14).forEach(function (ev) {
+    var b = document.createElement('button');
+    b.type = 'button'; b.textContent = ev.text + ' · ' + ev.tick;
+    b.addEventListener('click', function () { if (tmMode === 'live') { tmMode = 'view'; } tmSeek(ev.tick); });
+    box.appendChild(b);
+  });
+}
+function tmSync() {
+  var total = tmMode === 'branch' && tmBranchHist ? tmBranchFork + tmBranchHist.length - 1 : tmHist.length - 1;
+  var sl = tmEl('tm-slider');
+  if (sl) { sl.max = Math.max(0, total); if (+sl.value !== tmCursor && document.activeElement !== sl) sl.value = tmCursor; }
+  var tt = tmEl('tm-time'); if (tt) tt.textContent = 'TICK ' + tmCursor + ' / ' + Math.max(0, total);
+  var md = tmEl('tm-mode');
+  if (md) md.textContent = tmFree ? 'recorder full — flying unrecorded' : tmMode === 'live' ? (tmHist.length > 1 ? 'recording' : 'no flight recorded') : tmMode === 'view' ? 'reviewing the recording' : 'on a branch (' + tmBranchMode + ')';
+  var pl = tmEl('tm-play'); if (pl) pl.textContent = tmPlaying ? '⏸ Pause' : '▶ Play';
+}
+function tmReturnLive() {
+  if (!tmHist.length) return;
+  tmMode = 'live'; tmBranchHist = null; tmGhostPos = null; tmPlaying = false;
+  tmRestore(tmHist[tmHist.length - 1]);
+  tmCursor = tmHist.length - 1;
+  tmMsg('Back on the live flight, at its latest tick.');
+  tmSync();
+}
+var tmPanelReady = setInterval(function () {
+  if (!tmEl('tm-slider')) return;
+  clearInterval(tmPanelReady);
+  tmEl('tm-slider').addEventListener('input', function () { if (tmMode === 'live') tmMode = 'view'; tmSeek(+tmEl('tm-slider').value); });
+  tmEl('tm-play').addEventListener('click', function () { tmPlaying = !tmPlaying; tmSync(); });
+  tmEl('tm-step').addEventListener('click', function () { if (tmMode === 'live') tmMode = 'view'; tmSeek(tmCursor + 1); });
+  tmEl('tm-back').addEventListener('click', function () { if (tmMode === 'live') tmMode = 'view'; tmSeek(tmCursor - 300); });
+  tmEl('tm-start').addEventListener('click', function () { if (tmMode === 'live') tmMode = 'view'; tmSeek(tmBranchHist && tmMode === 'branch' ? tmBranchFork : 0); });
+  tmEl('tm-live').addEventListener('click', tmReturnLive);
+  tmEl('tm-verify').addEventListener('click', function () {
+    var v = tmVerify();
+    tmMsg(v.ok ? 'Verified — the recording replays exactly, ' + v.checked + ' of ' + v.of + ' states identical, course and all.' : 'Verify stopped at state ' + v.checked + ' of ' + v.of + ' — the recording and the replay disagree there.');
+  });
+  tmEl('tm-branch').addEventListener('click', function () {
+    var mode = tmEl('tm-branch-mode').value;
+    var pred = tmEl('tm-pred');
+    if (mode === 'predict' && !tmPendingPredict) {
+      pred.hidden = false;
+      tmMsg('Prediction armed: pick where the ship will be two seconds after the fork, then press Branch.');
+      tmPendingPredict = true;
+      return;
+    }
+    tmDoBranch(mode);
+  });
+}, 50);
+var tmPendingPredict = false;
+function tmDoBranch(mode) {
+  if (tmPendingPredict) {
+    var choice = document.querySelector('input[name="tm-pred-choice"]:checked');
+    var forkSnap = tmHist[tmCursor];
+    var inputs = tmInputs.slice(tmCursor, tmCursor + 120);
+    var sim = tmSimFrom(forkSnap, inputs, 'same');
+    var endAlt = sim.length ? sim[sim.length - 1].alt : forkSnap.alt;
+    var startAlt = forkSnap.alt;
+    var actual = endAlt > startAlt + 1.5 ? 'up' : (endAlt < startAlt - 1.5 ? 'down' : 'same');
+    var label = { down: 'lower', up: 'higher', same: 'about the same height' }[actual];
+    var secs = ((sim.length - 1) / 60).toFixed(1);
+    tmEl('tm-pred-answer').textContent = secs + ' seconds on, the ship was at altitude ' + endAlt.toFixed(1) + ' — ' + label + ' than the fork\'s ' + startAlt.toFixed(1) + '.' + (choice ? (choice.value === actual ? ' Your prediction called it.' : ' Your prediction said otherwise — the recorded stick had other plans, and now you can rewind and watch exactly where they diverged.') : '');
+    tmPendingPredict = false;
+    tmEl('tm-pred').hidden = true;
+  }
+  return tmBranch(mode === 'predict' ? 'same' : mode);
+}
 
 /* test hooks for the audit (drive the shipped code, change nothing) */
 window.__shadow = {
@@ -583,6 +871,23 @@ window.__shadow = {
   setKeys: function (k) { for (var p in k) keys[p] = k[p]; },
   fire: function () { if (bullets.length < 3) bullets.push({ rel: 2, lat: lat, alt: alt }); }
 };
+Object.assign(window.__shadow, {
+  tmStart: function (inputs) { newGame(); if (inputs) for (var i = 0; i < inputs.length; i++) tmDriveQueue.push(inputs[i]); },
+  tmDrive: function (inputs) { for (var i = 0; i < inputs.length; i++) tmDriveQueue.push(inputs[i]); },
+  tmTick: function () { return tick; },
+  tmLen: function () { return tmHist.length; },
+  tmHash: function (i) { return tmHashOf(tmHist[Math.max(0, Math.min(i, tmHist.length - 1))]); },
+  tmBaseHash: function () { return tmHashOf(tmHist[0]); },
+  tmState: function () { var s = tmSnapshot(); return { tick: s.tick, state: s.state, score: s.score, ships: s.ships, dist: Math.round(s.dist * 10) / 10, lat: Math.round(s.lat * 100) / 100, alt: Math.round(s.alt * 100) / 100, fuel: Math.round(s.fuel * 100) / 100, obstacles: s.obstacles.length, thirsty: s.thirsty }; },
+  tmVerify: function () { return tmVerify(); },
+  tmSeek: function (i) { if (tmMode === 'live') tmMode = 'view'; tmSeek(i); },
+  tmBranch: function (mode) { return tmBranch(mode); },
+  tmBranchHash: function (i) { return tmBranchHist ? tmHashOf(tmBranchHist[Math.max(0, Math.min(i, tmBranchHist.length - 1))]) : null; },
+  tmBranchLen: function () { return tmBranchHist ? tmBranchHist.length : 0; },
+  tmCursor: function () { return tmCursor; },
+  tmEvents: function () { return tmEvents.slice(); },
+  tmReturnLive: function () { tmReturnLive(); }
+});
 </script>
 </body>
 </html>

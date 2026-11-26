@@ -149,3 +149,18 @@ Shelf line added for Tonight's Sky's Hear the Hydrogen Line lesson (Grok Bot's c
 Merge note (2026-11-25): PR #11\u2019s Hydrogen Line shelf line joined the shelf below Is the Earth Flat?; the intro count is now one hundred sixty-five lessons and `sw.js` is at nerd-heaven-v55. `index.html` and `sw.js` carry the changes.
 
 X-Ray Time Machine (2026-11-25): designed by ChatGPT (proposal + proof test, audited PASS on the three pre-set criteria), built by Muse from the test’s spine at Steven’s direction and audited again as a finished exhibit (recordings replay state-for-state; the Recoil Experiment docks engine-off; seeded mid-flight respawns exact). Files: `xray-time-machine.html`, `xray-time-machine-lesson.html`, `xray-time-machine-banner.webp` (banner drawn for the exhibit: the orange recorder, the forking trajectory). Shelf line added to `index.html` (166 lessons) and `sw.js` bumped to nerd-heaven-v56.
+
+## Addendum — 2026-11-25 (late): the flight recorder, fitted to Shadowline
+
+`shadowline.html` was retrofitted with the X-Ray Time Machine's flight recorder — the second fitting,
+after Shardstorm's earlier the same night: a fixed 1/60-second tick replaces the variable frame step,
+all fourteen `Math.random()` calls (course generation and crash sparks) became a seeded LCG whose
+state rides in every snapshot, the full game state became a serialisable snapshot/restore, and a
+recorder panel under the stage offers rewind, event chips fed by the game's own captions, an unchanged
+replay, a live branch, a two-second altitude prediction, and a **thirsty ship** branch (fuel burn
+doubled from the fork). `shadowline-lesson.html` gained a "The flight recorder — the Time Machine,
+fitted" section with the audit receipts (a 1,119-state scripted flight verified 1,119/1,119; an
+unchanged branch identical at 969/969 states; the thirsty branch's gauge exactly 2.200 lower sixty
+ticks after the fork with position unchanged; cross-load determinism at the opening state and tick
+300) and the stated bends (fixed tick, a sixty-second recorder cap, prediction judged on altitude).
+
