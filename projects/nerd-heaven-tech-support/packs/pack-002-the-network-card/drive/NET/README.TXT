@@ -39,6 +39,8 @@ Everything you need is in this folder:
                Crynwr collection they came from is the
                period canon.
   WINPKT.COM   For the Windows layer - see TRUMPET.TXT.
+  NETWALK.BAT - the guided bring-up: this whole setup,
+                run as a narrated batch file. Type NETWALK.
   TRUMPET.TXT
 
 One honest note before you start. This console's machine
