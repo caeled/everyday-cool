@@ -94,6 +94,23 @@
   .pass{color:var(--phos)} .fail{color:var(--red)}
   label.fld{font-size:12.5px;color:var(--phos-dim);display:flex;flex-direction:column;gap:4px}
   label.fld input{width:110px}
+
+.xrRegs{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;font-size:13px}
+.xrLamps{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;align-items:center}
+.lamp{display:inline-block;min-width:2em;text-align:center;border:1px solid var(--line);border-radius:6px;padding:3px 0;font-size:12px;color:var(--faint);background:var(--panel2)}
+.lamp.on{background:var(--amber);color:#14100a;font-weight:700}
+.xrMem,.xrTrace{font-family:ui-monospace,Consolas,monospace;font-size:12px;line-height:1.55;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:10px 12px;overflow:auto;white-space:pre;color:var(--ink)}
+.xrMem{max-height:300px}.xrTrace{max-height:260px}
+.xrMem .b{display:inline-block;width:2.3ch;text-align:center}
+.xrMem .b.chg{background:var(--amber);color:#14100a;font-weight:700;border-radius:3px}
+.xrMem .b.dim{opacity:.32}
+.xrMem .b.sp{outline:1px solid var(--amber);border-radius:3px}
+.xrMem .addr{color:var(--faint)}
+.xrMem .asc{color:var(--faint)}
+.chgVal{color:var(--amber);font-weight:700}
+.watchChip{display:inline-block;border:1px solid var(--line);background:var(--panel2);border-radius:999px;padding:2px 10px;font-size:12.5px;margin:2px 4px 2px 0}
+.watchChip b{color:var(--amber)}
+.watchChip button{margin-left:6px;padding:0 4px}
 </style>
 </head>
 <body>
@@ -130,6 +147,7 @@
       <ul>
         <li><strong>Run</strong> executes in fast chunks until the program parks itself (a <code>JMP</code> to its own address), hits an instruction budget of 2,000,000 (the polite way this bench says “endless loop”), or you press <strong>Stop</strong>.</li>
         <li><strong>Step</strong> runs one instruction; <strong>Step ×100</strong> runs a hundred. The register readout follows every step.</li>
+        <li><strong>The CPU X-Ray</strong> (Bench 1&frac12;, below the machine) watches the chip think: live registers and flag lamps, the last instruction taken apart &mdash; disassembly, effective address, cycles charged &mdash; a trace of the last 200 instructions, a memory watcher, a watch list, one breakpoint, and a slow gear. Every value is read from the real CPU; nothing is staged.</li>
         <li><strong>Reset</strong> restarts the CPU from the reset vector and keeps memory. <strong>Cold boot</strong> wipes all 64 KB, restores the vectors, and resets.</li>
         <li>Programs end by parking: <code>DONE: JMP DONE</code>. That is this bench's halt.</li>
       </ul>
@@ -238,6 +256,72 @@
         <pre class="out dim" id="printer" style="max-height:110px">— printer is quiet —</pre>
         <div class="row"><button id="btnPrintClear">Clear printer</button></div>
       </div>
+    </div>
+  </section>
+
+
+  <section class="bench" aria-labelledby="xrayTitle">
+    <h2 id="xrayTitle"><span class="no">BENCH 1&frac12;</span>CPU X-Ray</h2>
+    <p>The microscope for Bench 1. Everything below is read from the real CPU and the real
+    RAM after every step &mdash; registers, flags, cycles, the instruction stream itself.
+    Nothing is staged: the disassembly comes from the same opcode table the CPU executes
+    from, and the memory watcher reads <code>ram[]</code> directly, never the soft
+    switches, so watching the machine can never eat a keystroke.</p>
+    <div class="row">
+      <button id="xrToggle">X-Ray: on</button>
+      <span class="status" id="xrStatus" style="margin-top:0">Watching. Step the machine, or run it slow, and watch it think.</span>
+    </div>
+    <div id="xrBody">
+      <div class="xrRegs" id="xrRegs"></div>
+      <div class="xrLamps" id="xrLamps"></div>
+      <p style="margin-top:10px"><b>Last:</b> <span id="xrLast">&mdash;</span><br/>
+      <b>Effective address:</b> <span id="xrEA">&mdash;</span><br/>
+      <b>Next:</b> <span id="xrNext">&mdash;</span></p>
+      <div class="row">
+        <button id="xrStep1">Step</button>
+        <button id="xrStep10">Step &times;10</button>
+        <button id="xrStep100">Step &times;100</button>
+        <span style="align-self:center;color:var(--faint);font-size:13px">Advance cycles:</span>
+        <button class="xrCycBtn" data-n="1">1</button>
+        <button class="xrCycBtn" data-n="10">10</button>
+        <button class="xrCycBtn" data-n="100">100</button>
+        <span class="status" id="xrCycStatus" style="margin-top:0"></span>
+      </div>
+      <div class="row">
+        <label class="fld">Breakpoint $<input type="text" id="xrBpAddr" value="8000" size="5" /></label>
+        <button id="xrBpRun">Run to breakpoint</button>
+        <button id="xrChangeRun">Run until a watched byte changes</button>
+        <button id="xrSlow">Run slow (&asymp;60 steps/s)</button>
+        <button id="xrSlowStop" disabled>Stop slow</button>
+      </div>
+      <p style="margin-top:12px"><b>Watch list</b> <span style="color:var(--faint)">(up to 8 addresses, always in view)</span></p>
+      <div id="xrWatchRow"></div>
+      <div class="row">
+        <label class="fld">Address $<input type="text" id="xrWatchAddr" value="0000" size="5" /></label>
+        <button id="xrWatchAdd">Add to watch list</button>
+      </div>
+      <p style="margin-top:12px"><b>Memory watcher</b></p>
+      <div class="row">
+        <select id="xrWinSel" aria-label="Memory window">
+          <option value="zp">Zero page ($0000&ndash;$00FF)</option>
+          <option value="stack">Stack page ($0100&ndash;$01FF)</option>
+          <option value="screen">Screen RAM ($0400&ndash;$07FF)</option>
+          <option value="custom">Custom start (256 bytes)</option>
+        </select>
+        <label class="fld">Start $<input type="text" id="xrWinAddr" value="0400" size="5" /></label>
+      </div>
+      <pre class="xrMem" id="xrMem"></pre>
+      <p style="margin-top:12px"><b>Trace</b> <span style="color:var(--faint)">(the last 200 instructions, as executed)</span></p>
+      <pre class="xrTrace" id="xrTrace"></pre>
+      <div class="row"><button id="xrCopy">Copy trace</button></div>
+      <p style="color:var(--faint);font-size:13px;margin-top:12px">Honest limits, printed on the
+      instrument: instructions execute atomically, so &ldquo;advance 10 cycles&rdquo; may land on 11 or 12
+      &mdash; the panel shows requested vs. actual. There is no sub-instruction bus timing to show;
+      the core does not model it. A store that writes the byte already there leaves no flash in the
+      watcher (it diffs values, it does not intercept writes). The B lamp shows the bit as stored in
+      the P byte &mdash; B has no life inside the CPU; it exists as pushed by PHP and BRK. And one
+      genuine rarity: decimal mode here is real &mdash; the core does BCD ADC/SBC, so the D lamp is
+      honest too. The big Run button runs free; the breakpoint belongs to its own button above.</p>
     </div>
   </section>
 
@@ -1928,6 +2012,320 @@ if (typeof window !== 'undefined') window.BENCH6502 = BENCH6502;
     $('proofOut').textContent = lines.join('\n');
     render();
   });
+
+  /* ================= CPU X-Ray (Bench 1½) =================
+     An observing layer over the real CPU. The core does not change:
+     a prototype-level wrapper watches the UI machine's CPU only
+     (marked __xrayWatched), recomputes the disassembly and the
+     effective address from ram[] before each step, and diffs ram[]
+     after it. ram[] is read directly, never machine.read(), so the
+     watcher can never pop the keyboard queue at $C010. */
+  var XR = {
+    on: true, full: false, manual: false, trace: [], instr: 0, lastCyc: 0,
+    winStart: 0x0000, winLen: 256, watch: [], bpTimer: null, slowTimer: null,
+    prevWin: null, prevRegs: null, watchPrev: {}, flashSet: null,
+    lastEA: '—', lastDis: '—', collapsed: 0, collapsedLast: ''
+  };
+  function xrDisasm(pc){
+    pc &= 0xFFFF;
+    var op = machine.ram[pc];
+    var ins = OPCODES[op];
+    if (!ins) return { text: '??? — unofficial opcode ' + hx2(op) + ' (the CPU halts here)', size: 1, op: op, mnem: null, mode: 'imp', base: 0, b1: 0, w: 0 };
+    var mnem = ins[0], mode = ins[1], base = ins[2];
+    var b1 = machine.ram[(pc + 1) & 0xFFFF], b2 = machine.ram[(pc + 2) & 0xFFFF];
+    var w = b1 | (b2 << 8), operand = '';
+    switch (mode){
+      case 'acc': operand = 'A'; break;
+      case 'imm': operand = '#' + hx2(b1); break;
+      case 'zp': operand = hx2(b1); break;
+      case 'zpx': operand = hx2(b1) + ',X'; break;
+      case 'zpy': operand = hx2(b1) + ',Y'; break;
+      case 'abs': operand = hx4(w); break;
+      case 'abx': operand = hx4(w) + ',X'; break;
+      case 'aby': operand = hx4(w) + ',Y'; break;
+      case 'ind': operand = '(' + hx4(w) + ')'; break;
+      case 'izx': operand = '(' + hx2(b1) + ',X)'; break;
+      case 'izy': operand = '(' + hx2(b1) + '),Y'; break;
+      case 'rel': operand = hx4((pc + 2 + (b1 < 0x80 ? b1 : b1 - 0x100)) & 0xFFFF); break;
+    }
+    return { text: mnem + (operand ? ' ' + operand : ''), size: MODE_SIZE[mode], op: op, mnem: mnem, mode: mode, base: base, b1: b1, w: w };
+  }
+  function xrEA(pc, d){
+    var c = machine.cpu, ram = machine.ram;
+    switch (d.mode){
+      case 'imm': return (pc + 1) & 0xFFFF;
+      case 'zp': return d.b1;
+      case 'zpx': return (d.b1 + c.x) & 0xFF;
+      case 'zpy': return (d.b1 + c.y) & 0xFF;
+      case 'abs': return d.w;
+      case 'abx': return (d.w + c.x) & 0xFFFF;
+      case 'aby': return (d.w + c.y) & 0xFFFF;
+      case 'ind': { var p = d.w; return ram[p] | (ram[(p & 0xFF00) | ((p + 1) & 0xFF)] << 8); }
+      case 'izx': { var zp = (d.b1 + c.x) & 0xFF; return ram[zp] | (ram[(zp + 1) & 0xFF] << 8); }
+      case 'izy': { var zp2 = d.b1; var base = ram[zp2] | (ram[(zp2 + 1) & 0xFF] << 8); return (base + c.y) & 0xFFFF; }
+      case 'rel': return (pc + 2 + (d.b1 < 0x80 ? d.b1 : d.b1 - 0x100)) & 0xFFFF;
+    }
+    return null;
+  }
+  var rawStep = CPU.prototype.step;
+  CPU.prototype.step = function(){
+    if (!this.__xrayWatched || !XR.on) return rawStep.call(this);
+    var cpu = this, pc0 = cpu.pc;
+    var full = XR.full || !timer;
+    var d = xrDisasm(pc0);
+    var ea = xrEA(pc0, d);
+    var valBefore = (ea !== null && d.mode !== 'imm' && d.mode !== 'rel') ? machine.ram[ea] : null;
+    var winBefore = full ? machine.ram.slice(XR.winStart, XR.winStart + XR.winLen) : null;
+    var cyc = rawStep.call(this);
+    XR.instr++; XR.lastCyc = cyc;
+    var note = '—';
+    if (ea !== null){
+      if (d.mode === 'imm') note = 'the value ' + hx2(d.b1) + ' itself';
+      else if (d.mode === 'rel') note = (cpu.pc === ea ? 'taken → ' : 'not taken · target ') + hx4(ea);
+      else if (d.mnem === 'STA' || d.mnem === 'STX' || d.mnem === 'STY') note = 'wrote ' + hx2(machine.ram[ea]) + ' to ' + hx4(ea);
+      else if ((d.mnem === 'ASL' || d.mnem === 'LSR' || d.mnem === 'ROL' || d.mnem === 'ROR' || d.mnem === 'INC' || d.mnem === 'DEC') && d.mode !== 'acc')
+        note = 'read ' + hx2(valBefore) + ', wrote ' + hx2(machine.ram[ea]) + ' at ' + hx4(ea);
+      else if (d.mnem === 'JMP' || d.mnem === 'JSR') note = 'target ' + hx4(ea);
+      else note = 'read ' + hx2(valBefore) + ' from ' + hx4(ea);
+    }
+    XR.lastEA = note;
+    XR.lastDis = hx4(pc0) + '  ' + d.text + '  (' + d.base + ' base' + (cyc !== d.base ? ', ' + cyc + ' charged' : '') + ')';
+    if (full){
+      var line = hx4(pc0) + '  ' + (d.text + '            ').slice(0, 14) +
+        'A=' + hx2(cpu.a) + ' X=' + hx2(cpu.x) + ' Y=' + hx2(cpu.y) + ' SP=' + hx2(cpu.sp) +
+        '  ' + flagStr(cpu.p) + '  +' + cyc + 'c';
+      XR.trace.push(line); if (XR.trace.length > 200) XR.trace.shift();
+      XR.prevWin = winBefore;
+      var fs = {};
+      for (var fi = 0; fi < XR.winLen; fi++) if (machine.ram[XR.winStart + fi] !== winBefore[fi]) fs[fi] = 1;
+      XR.flashSet = fs;
+      if (XR.manual) xrayRender();
+    } else {
+      XR.collapsed++; XR.collapsedLast = hx4(pc0) + '  ' + d.text;
+    }
+    return cyc;
+  };
+  function xrRenderWatcher(flash){
+    var out = [], start = XR.winStart, len = XR.winLen, ram = machine.ram;
+    var spAddr = 0x100 | machine.cpu.sp;
+    for (var r = 0; r < len; r += 16){
+      var addr = start + r;
+      var bytes = '', asc = '';
+      for (var i = 0; i < 16 && r + i < len; i++){
+        var a = addr + i, v = ram[a];
+        var cls = 'b' + (flash && flash[a - start] ? ' chg' : '') +
+          (start === 0x100 && a > spAddr ? ' dim' : '') + (start === 0x100 && a === spAddr ? ' sp' : '');
+        bytes += '<span class="' + cls + '">' + (v < 16 ? '0' : '') + v.toString(16).toUpperCase() + '</span> ';
+        asc += (v >= 32 && v < 127) ? String.fromCharCode(v) : '.';
+      }
+      out.push('<span class="addr">' + hx4(addr) + '</span>  ' + bytes + ' <span class="asc">' + asc.replace(/</g, '&lt;') + '</span>');
+    }
+    $('xrMem').innerHTML = out.join('\n');
+  }
+  function xrayRender(){
+    if (!XR.on) return;
+    var c = machine.cpu;
+    var regs = [['A', c.a], ['X', c.x], ['Y', c.y], ['SP', c.sp], ['PC', c.pc]];
+    var html = '';
+    for (var i = 0; i < regs.length; i++){
+      var changed = XR.prevRegs && XR.prevRegs[i] !== regs[i][1];
+      html += '<span class="reg">' + regs[i][0] + ' <b class="' + (changed ? 'chgVal' : '') + '">' +
+        (regs[i][0] === 'PC' ? hx4(regs[i][1]) : hx2(regs[i][1])) + '</b></span>';
+    }
+    html += '<span class="reg">P <b>' + hx2(c.p) + '</b></span>' +
+      '<span class="reg">CYCLES <b>' + c.cycles.toLocaleString('en-US') + '</b></span>' +
+      '<span class="reg">LAST <b>+' + XR.lastCyc + '</b></span>' +
+      '<span class="reg">SINCE OPEN <b>' + XR.instr.toLocaleString('en-US') + '</b></span>';
+    $('xrRegs').innerHTML = html;
+    XR.prevRegs = [c.a, c.x, c.y, c.sp, c.pc];
+    var flags = [['N', F_N], ['V', F_V], ['U', F_U], ['B', F_B], ['D', F_D], ['I', F_I], ['Z', F_Z], ['C', F_C]];
+    var names = { N: 'Negative', V: 'Overflow', U: 'Unused (always 1)', B: 'Break (as stored / as pushed)', D: 'Decimal', I: 'Interrupt disable', Z: 'Zero', C: 'Carry' };
+    var lh = '<span style="color:var(--faint);font-size:13px">Flags</span> ';
+    for (var j = 0; j < flags.length; j++)
+      lh += '<span class="lamp' + (c.p & flags[j][1] ? ' on' : '') + '" title="' + names[flags[j][0]] + '">' + flags[j][0] + '</span>';
+    $('xrLamps').innerHTML = lh;
+    $('xrLast').textContent = c.halted && XR.instr === 0 ? '—' : XR.lastDis;
+    $('xrEA').textContent = XR.lastEA;
+    $('xrNext').textContent = c.halted ? ('STOPPED — ' + c.haltReason) : (hx4(c.pc) + '  ' + xrDisasm(c.pc).text);
+    var flash = XR.flashSet;
+    if (!flash && XR.prevWin){
+      flash = {};
+      for (var k = 0; k < XR.winLen; k++) if (machine.ram[XR.winStart + k] !== XR.prevWin[k]) flash[k] = 1;
+    }
+    xrRenderWatcher(flash);
+    XR.prevWin = machine.ram.slice(XR.winStart, XR.winStart + XR.winLen);
+    var wr = '';
+    for (var w = 0; w < XR.watch.length; w++){
+      var wa = XR.watch[w], wv = machine.ram[wa];
+      var wchg = XR.watchPrev[wa] !== undefined && XR.watchPrev[wa] !== wv;
+      wr += '<span class="watchChip">' + hx4(wa) + ' = <b class="' + (wchg ? 'chgVal' : '') + '">' + hx2(wv) + '</b>' +
+        '<button type="button" data-watch-rm="' + wa + '" title="Remove">×</button></span>';
+      XR.watchPrev[wa] = wv;
+    }
+    $('xrWatchRow').innerHTML = wr || '<span style="color:var(--faint);font-size:13px">Nothing watched yet — add an address and it stays in view whatever window is open.</span>';
+    var rmBtns = $('xrWatchRow').querySelectorAll('[data-watch-rm]');
+    for (var q = 0; q < rmBtns.length; q++) rmBtns[q].addEventListener('click', function(){
+      var a = parseInt(this.getAttribute('data-watch-rm'), 10);
+      XR.watch = XR.watch.filter(function(v){ return v !== a; });
+      delete XR.watchPrev[a]; xrayRender();
+    });
+    var tr = $('xrTrace');
+    tr.textContent = XR.trace.join('\n');
+    tr.scrollTop = tr.scrollHeight;
+  }
+  var rawRender = render;
+  render = function(){
+    rawRender();
+    if (XR.on){
+      if (XR.collapsed){
+        XR.trace.push('… ' + XR.collapsed.toLocaleString('en-US') + ' instructions (fast run) — last: ' + XR.collapsedLast);
+        if (XR.trace.length > 200) XR.trace.shift();
+        XR.collapsed = 0;
+      }
+      xrayRender();
+    }
+  };
+  function xrStopLoops(){
+    if (XR.bpTimer){ clearInterval(XR.bpTimer); XR.bpTimer = null; }
+    if (XR.slowTimer){ clearInterval(XR.slowTimer); XR.slowTimer = null; $('xrSlowStop').disabled = true; }
+  }
+  function xrStepN(n){
+    xrStopLoops(); stopRun();
+    machine.cpu.halted = false; machine.cpu.haltReason = '';
+    XR.full = true; XR.manual = true;
+    for (var i = 0; i < n && !machine.cpu.halted; i++) machine.cpu.step();
+    XR.full = false; XR.manual = false;
+    render();
+    if (machine.cpu.halted) setStatus($('xrStatus'), machine.cpu.haltReason, 'ok');
+  }
+  $('xrToggle').addEventListener('click', function(){
+    XR.on = !XR.on;
+    this.textContent = 'X-Ray: ' + (XR.on ? 'on' : 'off');
+    $('xrBody').style.display = XR.on ? '' : 'none';
+    if (XR.on){ XR.prevWin = null; XR.prevRegs = null; xrayRender(); }
+    else xrStopLoops();
+  });
+  $('xrStep1').addEventListener('click', function(){ xrStepN(1); });
+  $('xrStep10').addEventListener('click', function(){ xrStepN(10); });
+  $('xrStep100').addEventListener('click', function(){ xrStepN(100); });
+  var cycBtns = document.querySelectorAll('.xrCycBtn');
+  for (var ci = 0; ci < cycBtns.length; ci++) cycBtns[ci].addEventListener('click', function(){
+    var want = parseInt(this.getAttribute('data-n'), 10);
+    xrStopLoops(); stopRun();
+    machine.cpu.halted = false; machine.cpu.haltReason = '';
+    XR.full = true; XR.manual = true;
+    var got = 0, guard = 0;
+    while (got < want && !machine.cpu.halted && guard < 100000){ got += machine.cpu.step(); guard++; }
+    XR.full = false; XR.manual = false;
+    render();
+    setStatus($('xrCycStatus'), 'Requested ' + want + ' cycles, consumed ' + got + ' — instructions are atomic, so a cycle step can overshoot.', 'ok');
+  });
+  $('xrBpRun').addEventListener('click', function(){
+    var bp = parseHex('xrBpAddr', 0x8000);
+    xrStopLoops(); stopRun();
+    machine.cpu.halted = false; machine.cpu.haltReason = '';
+    if (machine.cpu.pc === bp){ setStatus($('xrStatus'), 'Already standing on the breakpoint ' + hx4(bp) + '.', 'ok'); return; }
+    XR.full = true;
+    var total = 0;
+    XR.bpTimer = setInterval(function(){
+      var n = 0;
+      while (!machine.cpu.halted && machine.cpu.pc !== bp && n < 2000 && total < 2000000){ machine.cpu.step(); n++; total++; }
+      render();
+      if (machine.cpu.pc === bp){
+        xrStopLoops(); XR.full = false;
+        setStatus($('xrStatus'), 'Breakpoint reached at ' + hx4(bp) + ' after ' + total.toLocaleString('en-US') + ' instructions.', 'ok');
+      } else if (machine.cpu.halted){
+        xrStopLoops(); XR.full = false;
+        setStatus($('xrStatus'), machine.cpu.haltReason, 'ok');
+      } else if (total >= 2000000){
+        xrStopLoops(); XR.full = false;
+        setStatus($('xrStatus'), 'Ran 2,000,000 instructions without reaching ' + hx4(bp) + ' — the inherited safety cap stopped the run.', 'ok');
+      }
+    }, 10);
+  });
+  $('xrChangeRun').addEventListener('click', function(){
+    if (!XR.watch.length){ setStatus($('xrStatus'), 'Add at least one address to the watch list first — this run stops when one of them changes.', 'err'); return; }
+    xrStopLoops(); stopRun();
+    machine.cpu.halted = false; machine.cpu.haltReason = '';
+    var before = {};
+    for (var i = 0; i < XR.watch.length; i++) before[XR.watch[i]] = machine.ram[XR.watch[i]];
+    XR.full = true;
+    var total = 0;
+    XR.bpTimer = setInterval(function(){
+      var n = 0, changedAddr = null;
+      while (!machine.cpu.halted && n < 2000 && total < 2000000){
+        machine.cpu.step(); n++; total++;
+        for (var w = 0; w < XR.watch.length; w++) if (machine.ram[XR.watch[w]] !== before[XR.watch[w]]){ changedAddr = XR.watch[w]; break; }
+        if (changedAddr !== null) break;
+      }
+      render();
+      if (changedAddr !== null){
+        xrStopLoops(); XR.full = false;
+        setStatus($('xrStatus'), hx4(changedAddr) + ' changed: ' + hx2(before[changedAddr]) + ' → ' + hx2(machine.ram[changedAddr]) + ' after ' + total.toLocaleString('en-US') + ' instructions.', 'ok');
+      } else if (machine.cpu.halted){
+        xrStopLoops(); XR.full = false;
+        setStatus($('xrStatus'), machine.cpu.haltReason, 'ok');
+      } else if (total >= 2000000){
+        xrStopLoops(); XR.full = false;
+        setStatus($('xrStatus'), 'Ran 2,000,000 instructions and no watched byte changed — the inherited safety cap stopped the run.', 'ok');
+      }
+    }, 10);
+  });
+  $('xrSlow').addEventListener('click', function(){
+    xrStopLoops(); stopRun();
+    machine.cpu.halted = false; machine.cpu.haltReason = '';
+    $('xrSlowStop').disabled = false;
+    XR.slowTimer = setInterval(function(){
+      XR.full = true; XR.manual = true; machine.cpu.step(); XR.full = false; XR.manual = false;
+      render();
+      if (machine.cpu.halted){ xrStopLoops(); setStatus($('xrStatus'), machine.cpu.haltReason, 'ok'); }
+    }, 16);
+  });
+  $('xrSlowStop').addEventListener('click', function(){ xrStopLoops(); setStatus($('xrStatus'), 'Slow run stopped at ' + hx4(machine.cpu.pc) + '.', 'ok'); });
+  $('xrWinSel').addEventListener('change', function(){
+    var v = this.value;
+    if (v === 'zp'){ XR.winStart = 0x0000; XR.winLen = 256; }
+    else if (v === 'stack'){ XR.winStart = 0x0100; XR.winLen = 256; }
+    else if (v === 'screen'){ XR.winStart = 0x0400; XR.winLen = 1024; }
+    else { XR.winStart = parseHex('xrWinAddr', 0x0400); XR.winLen = 256; }
+    XR.prevWin = null; XR.flashSet = null; xrayRender();
+  });
+  $('xrWinAddr').addEventListener('change', function(){
+    if ($('xrWinSel').value === 'custom'){ XR.winStart = parseHex('xrWinAddr', 0x0400); XR.winLen = 256; XR.prevWin = null; XR.flashSet = null; xrayRender(); }
+  });
+  $('xrWatchAdd').addEventListener('click', function(){
+    var a = parseHex('xrWatchAddr', 0);
+    if (XR.watch.indexOf(a) >= 0){ setStatus($('xrStatus'), hx4(a) + ' is already on the watch list.', 'ok'); return; }
+    if (XR.watch.length >= 8){ setStatus($('xrStatus'), 'The watch list holds 8 — remove one to add another.', 'err'); return; }
+    XR.watch.push(a); xrayRender();
+    setStatus($('xrStatus'), 'Watching ' + hx4(a) + ' — now ' + hx2(machine.ram[a]) + '.', 'ok');
+  });
+  $('xrCopy').addEventListener('click', function(){
+    var text = XR.trace.join('\n');
+    function done(ok){ setStatus($('xrStatus'), ok ? 'Trace copied — ' + XR.trace.length + ' lines.' : 'Copy failed in this browser — the trace is on screen to select by hand.', ok ? 'ok' : 'err'); }
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(function(){ done(true); }, function(){ done(false); });
+    else {
+      var ta = document.createElement('textarea');
+      ta.value = text; document.body.appendChild(ta); ta.select();
+      var ok = false; try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+      document.body.removeChild(ta); done(ok);
+    }
+  });
+  $('btnCold').addEventListener('click', function(){
+    xrStopLoops();
+    XR.trace = []; XR.instr = 0; XR.lastCyc = 0; XR.watch = []; XR.watchPrev = {};
+    XR.prevWin = null; XR.prevRegs = null; XR.lastEA = '—'; XR.lastDis = '—'; XR.collapsed = 0; XR.flashSet = null;
+    machine.cpu.__xrayWatched = true;
+    xrayRender();
+  });
+  $('btnReset').addEventListener('click', function(){
+    XR.trace = []; XR.collapsed = 0;
+    xrayRender();
+  });
+  machine.cpu.__xrayWatched = true;
+  XR.prevWin = machine.ram.slice(XR.winStart, XR.winStart + XR.winLen);
+  window.__xray = { XR: XR, disasm: xrDisasm, ea: xrEA, machine: machine, render: xrayRender };
+  xrayRender();
 
   render();
 })();

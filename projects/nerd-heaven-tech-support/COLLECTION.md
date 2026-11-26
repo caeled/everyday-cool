@@ -203,3 +203,17 @@ the game needs a keyboard, where that is the truth: `shardstorm.html`, `shadowli
 `the-snes-console.html`, `the-dos-console.html`, `the-mame-console.html`. Directions only —
 real touch controls for the keyboard games remain a separate, larger build.
 
+## Addendum — 2026-11-26: CPU X-Ray fitted to the 6502 Bench; a designer's note
+
+`the-6502-bench.html` gained Bench 1½, the **CPU X-Ray** (Steven's name pick, 2026-11-25):
+live registers and flag lamps, last/next disassembly with effective address and base-vs-charged
+cycles, a 200-instruction trace with copy button, a memory watcher (zero page / stack / screen /
+custom) whose changed bytes flash, a watch list of up to 8, one breakpoint, run-until-watched-
+change, cycle stepping, and a slow gear — all observed from outside the untouched CPU core, the
+watcher diffing `ram[]` directly so it can never pop the keyboard queue. Audited 25/25 against
+the shipped page (fixture predictions, disassembler round-trips, watcher and keyboard integrity,
+breakpoint, cycle overshoot, slow-gear trace sums); one defect (the change flash erased by the
+following render) caught and fixed before shipping. `the-6502-bench-lesson.html` carries the
+section and the receipts. `shardstorm-lesson.html` gained the designer's own words, verbatim,
+at the end of its flight-recorder section — the Tai Chi note (25 November 2026): thrust as aim,
+redirection, "digitial taichi" as the name for the family.
