@@ -167,7 +167,7 @@
         <li>This is the door for a whole DOS archive kept the way DOS people keep one: <strong>one folder that is a C: drive</strong>. Pick the folder itself — the DOSBox way, no zip needed — or zip that folder (right-click it, <em>Send to → Compressed (zipped) folder</em>) and pick the zip. Both keys open the same door.</li>
         <li>The console mounts the zip as drive <strong>C:</strong> and boots to a real DOS prompt, <code>C:\&gt;</code>. No auto-run, nothing launched for you. <code>DIR</code>, <code>CD</code>, and typing a program's name work the way they did in 1990, because it is DOS in there.</li>
         <li>How it works, honestly: the folder key starts the machine empty and copies your files in one by one — nothing is ever held all at once, so a drive of any size your machine's memory can hold will ride. The zip key builds one package — a <em>bundle</em>: your files plus one small boot file, <code>.jsdos/dosbox.conf</code>, which this page writes for you in your browser. Either way the first commands mount the drive as <code>C:</code> and hand you the prompt. <strong>Nothing is uploaded.</strong> Everything happens on your machine and never leaves it.</li>
-        <li><strong>The lazy drive:</strong> pick a big folder and the folder key loads its <em>skeleton</em> first — every folder, and every file up to 256 KB — so the prompt and the whole directory tree are yours in seconds. The big folders wait in a panel under the screen with their true sizes; load one when you want it and it streams in, the way DOS read a disk: on demand. Until a folder is loaded, DOS sees it as empty — the panel, not the DIR, is the truth about what is in.</li>
+        <li><strong>The lazy drive:</strong> pick a big folder and the folder key loads its <em>skeleton</em> first — every folder, and every file up to 256 KB — so the prompt and the whole directory tree are yours in seconds. The big folders wait in a panel under the screen with their true sizes; load one when you want it and it streams in, the way DOS read a disk: on demand. Until a folder is loaded, DOS sees it as empty — the panel, not the DIR, is the truth about what is in. Loads are counted as they go: the panel shows how much of the drive is in the machine, and a load that would push the total past about 1.5 GB stops and says why before it starts — past roughly 2 GB the emulator can die silently, which reads as a freeze. Nothing is blocked; the load just asks once.</li>
         <li>A zip has to fit in one piece in the browser — about 2 GB is the ceiling, and that limit is the browser's, not this page's. The folder has no such ceiling: when an archive outgrows zips, pick the folder. The console's zip tools are small, though: plain <code>.zip</code> only — no ZIP64, no password-protected entries. The status line will tell you in plain words if a zip can't ride.</li>
       </ul>
       <h3>Door two — one game, straight in</h3>
@@ -896,7 +896,9 @@
       groups.push({ name: folder, items: byFolder[folder], size: size, loaded: false, btn: null });
     });
     groups.sort(function(a, b){ return b.size - a.size; });
-    lazy = { ci: ci, groups: groups, busy: true };
+    var skelBytes = 0; skeleton.forEach(function(f){ skelBytes += ((f.file && f.file.size) || f.size || 0); });
+    var totalBytes = skelBytes; groups.forEach(function(g){ totalBytes += g.size; });
+    lazy = { ci: ci, groups: groups, busy: true, bytesIn: skelBytes, totalBytes: totalBytes, allArmed: false };
     if (window.__dosConsole) window.__dosConsole.lazyRef = lazy;
     streamFiles(ci, skeleton, 'the skeleton', function(){
       lazy.busy = false;
@@ -917,6 +919,15 @@
     if (all) all.disabled = b;
   }
 
+  var LAZY_WARN_AT = 1610612736; /* 1.5 GB held in the machine at once */
+  function updateLazyTotal(){
+    var el = document.getElementById('lazy-total');
+    if (el && lazy) el.textContent = 'In the machine so far: ' + fmtSize(lazy.bytesIn) + ' of ' + fmtSize(lazy.totalBytes) + ' on this drive.';
+  }
+  function lazyWarn(what, projected){
+    say('<b>A word before that load.</b> ' + what + ' would take the machine to about <b>' + fmtSize(projected) + '</b> held in memory. The drive lives in the memory of the emulator, and somewhere past 2 GB the machine can die silently \u2014 the page stays alive and the prompt simply stops answering, which reads as a freeze. The lazy way is the fix: load a folder when you need it, not all of them at once. If you mean to load it anyway, click the same button again.');
+  }
+
   function renderLazyPanel(){
     var panel = document.getElementById('lazy-panel');
     panel.innerHTML = '';
@@ -924,6 +935,10 @@
     head.innerHTML = '<b>The lazy drive.</b> This drive arrived as a skeleton — every folder, and every file up to ' +
       (SKELETON_MAX / 1024) + ' KB, is already in. The folders below hold the big files; until one is loaded, DOS sees it as an empty folder. Load what you want, when you want it — the way DOS read a disk.';
     panel.appendChild(head);
+    var totLine = document.createElement('p');
+    totLine.id = 'lazy-total'; totLine.className = 'status';
+    panel.appendChild(totLine);
+    updateLazyTotal();
     lazy.groups.forEach(function(g){
       var row = document.createElement('p');
       row.className = 'lazy-row';
@@ -949,25 +964,44 @@
 
   function loadLazyGroup(g){
     if (!lazy || lazy.busy || g.loaded) return;
+    var projected = lazy.bytesIn + g.size;
+    if (projected > LAZY_WARN_AT && !g.armed) {
+      g.armed = true;
+      if (g.btn) g.btn.textContent = 'Load ' + g.name + ' anyway';
+      lazyWarn('<b>' + esc(g.name) + '</b> (' + fmtSize(g.size) + ')', projected);
+      return;
+    }
     lazyBusy(true);
     streamFiles(lazy.ci, g.items, g.name, function(){
       g.loaded = true;
-      if (g.btn) g.btn.textContent = g.name + ' is in ✓';
+      lazy.bytesIn += g.size;
+      if (g.btn) g.btn.textContent = g.name + ' is in \u2713';
       lazyBusy(false);
-      say('<b>' + esc(g.name) + '</b> is in — ' + g.items.length.toLocaleString() + ' files copied and the drive rescanned. It is simply there now, at the prompt.');
+      updateLazyTotal();
+      say('<b>' + esc(g.name) + '</b> is in \u2014 ' + g.items.length.toLocaleString() + ' files copied and the drive rescanned. It is simply there now, at the prompt.');
     });
   }
 
   function loadLazyAll(){
     if (!lazy || lazy.busy) return;
     var rest = lazy.groups.filter(function(g){ return !g.loaded; });
+    var restBytes = 0; rest.forEach(function(g){ restBytes += g.size; });
+    var projectedAll = lazy.bytesIn + restBytes;
+    if (projectedAll > LAZY_WARN_AT && !lazy.allArmed) {
+      lazy.allArmed = true;
+      var allBtn = document.getElementById('lazy-all');
+      if (allBtn) allBtn.textContent = 'Load everything anyway';
+      lazyWarn('<b>Everything still out</b> (' + fmtSize(restBytes) + ')', projectedAll);
+      return;
+    }
     (function next(){
       var g = rest.shift();
-      if (!g) { lazyBusy(false); say('<b>Everything is in.</b> The whole drive, at the prompt.'); return; }
+      if (!g) { lazyBusy(false); updateLazyTotal(); say('<b>Everything is in.</b> The whole drive, at the prompt.'); return; }
       lazyBusy(true);
       streamFiles(lazy.ci, g.items, g.name, function(){
         g.loaded = true;
-        if (g.btn) { g.btn.textContent = g.name + ' is in ✓'; g.btn.disabled = true; }
+        lazy.bytesIn += g.size;
+        if (g.btn) { g.btn.textContent = g.name + ' is in \u2713'; g.btn.disabled = true; }
         next();
       });
     })();
@@ -1266,6 +1300,12 @@
     });
   }
   bootEmpty();
+
+  /* Clicking the screen hands the keyboard to the machine. */
+  document.getElementById('screenbox').addEventListener('click', function(){
+    var c = document.querySelector('#game canvas');
+    if (c) { if (!c.hasAttribute('tabindex')) c.setAttribute('tabindex', '-1'); c.focus({ preventScroll: true }); }
+  });
 
   window.__dosConsole = {
     isStarted: function(){ return started; },

@@ -92,3 +92,5 @@ drive, tick files, download them as a zip. See the DOS Console's lesson
 `games/the-dos-console/the-dos-console.html` gained the workbench
 cross-link line (absolute live URL, as the passenger's family links
 run). The DOS Workbench itself lives in Nerd Heaven; see its lesson.
+
+- Counted-load guard (2026-11-26, later): the DOS Console passenger page (`games/the-dos-console/the-dos-console.html`) received the same lazy-drive memory guard as the Nerd Heaven originals — running in-machine total in the panel, a plain-words stop before any load whose projected total passes 1.5 GB with a "…anyway" second click to proceed, and click-the-screen canvas focus. Steven's full-drive field report and the audit receipts are recorded in the Nerd Heaven project's COLLECTION.md and the console lesson's "The counted load" section.
