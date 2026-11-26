@@ -23,6 +23,9 @@ Free software, working and extracted:
   original archives. NET\NETWALK.BAT is the guided
   bring-up: CD \NET, then NETWALK, and it runs the
   setup with narration, one real command at a time.
+  NET\BBS.TXT is the phone book -- boards that still
+  answer on telnet, drawn from the Telnet BBS Guide;
+  on a card machine, TELNET is all it takes.
 
 Yours to supply (the slots):
   WINDOWS\  your Windows 3.x install.

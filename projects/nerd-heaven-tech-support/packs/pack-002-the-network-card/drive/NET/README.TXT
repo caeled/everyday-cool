@@ -39,6 +39,9 @@ Everything you need is in this folder:
                Crynwr collection they came from is the
                period canon.
   WINPKT.COM   For the Windows layer - see TRUMPET.TXT.
+  BBS.TXT - the phone book: boards that still answer on telnet,
+                drawn from the Telnet BBS Guide. On a machine with
+                a card, TELNET is all it takes.
   NETWALK.BAT - the guided bring-up: this whole setup,
                 run as a narrated batch file. Type NETWALK.
   TRUMPET.TXT
