@@ -63,6 +63,7 @@
       <span class="sides">SIDES ON FIELD <b id="hud-sides">0</b></span>
       <span><button id="xray-btn" type="button">X-RAY: OFF</button></span>
       <span><button id="chords-btn" type="button">CHORDS: ON</button></span>
+      <span><button id="mode-btn" type="button">MODE: FLOW</button></span>
       <span id="hud-msg"></span>
     </div>
   </div>
@@ -110,6 +111,7 @@
     <tr><td>Space</td><td>fire — the bullet's line is the cut</td></tr>
     <tr><td>F2</td><td>the X-Ray layer — chords, vectors, side counts, and the law, live</td></tr>
     <tr><td>T</td><td>show / hide the X-Ray's full-screen chord lines — visualize the cut yourself</td></tr>
+    <tr><td>M</td><td>switch mode between runs — FLOW (the bump law above) or 3 LIVES (any full contact costs a ship)</td></tr>
     <tr><td>P</td><td>pause</td></tr>
     <tr><td>Flight recorder</td><td>the panel under the field — rewind the run, branch it, verify it</td></tr>
     <tr><td>Enter</td><td>start / restart after game over</td></tr>
@@ -148,6 +150,7 @@
     a bump you're untouchable for three-quarters of a second so one contact can't machine-gun you. Steven's
     play-test verdict stands as the design note: before this, the ship had a magical station-keeping ability.
     It doesn't anymore.</p>
+    <p><strong>Two laws of contact (26 November 2026).</strong> The bump law above is <b>Flow</b>, the default, unchanged. Steven asked for the other classic: a <b>3 Lives</b> mode, switched with the MODE button or the M key between runs, where any full contact with a rock costs a ship — no closing-speed test, no damage meter, a life lost whole, the way Asteroids dealt it. Three ships, an extra at 10,000 as always, and the mode keeps your best score on this machine, shown on the title and game-over screens — a run you can measure yourself against, and a number a friend has to beat. The flight recorder logs which law a run was flown under, so a replayed run is judged by its own rules.</p>
     <p><strong>Rock on rock.</strong> Rocks are bodies too — they no longer drift through each other. When two
     rocks meet they trade momentum along the line between their centres, with the same mass rule (area) and the
     same spring (restitution 0.55) as a ship bump, and they are pushed apart so they cannot rest overlapped.
@@ -304,6 +307,8 @@ function makeRockPoly(cx, cy, sides, radius) {
 /* ---------- game state ---------- */
 var ship, rocks, bullets, sparks, keys = {};
 var score, lives, wave, state, fireCooldown, respawnTimer, nextExtra;
+var mode = 'flow', bestLives = 0;
+try { bestLives = Number(localStorage.getItem('shardstorm-best-lives')) || 0; } catch (e) {}
 var started = false;
 var xray = false, chords = true, cutNotes = [];
 function fmt(n) { return Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
@@ -418,7 +423,7 @@ function hitRock(bullet, idx) {
 function tmSnapshot() {
   return JSON.parse(JSON.stringify({
     ship: ship, rocks: rocks, bullets: bullets, sparks: sparks, cutNotes: cutNotes,
-    score: score, lives: lives, wave: wave, state: state, fireCooldown: fireCooldown,
+    score: score, lives: lives, wave: wave, state: state, mode: mode, fireCooldown: fireCooldown,
     respawnTimer: respawnTimer, nextExtra: nextExtra, msgTimer: msgTimer, msgText: msgText,
     rng: rngState, tick: tickCount, started: started, recoilOn: recoilOn
   }));
@@ -426,7 +431,7 @@ function tmSnapshot() {
 function tmRestore(s) {
   var c = JSON.parse(JSON.stringify(s));
   ship = c.ship; rocks = c.rocks; bullets = c.bullets; sparks = c.sparks; cutNotes = c.cutNotes;
-  score = c.score; lives = c.lives; wave = c.wave; state = c.state; fireCooldown = c.fireCooldown;
+  score = c.score; lives = c.lives; wave = c.wave; state = c.state; mode = c.mode || 'flow'; syncModeBtn(); fireCooldown = c.fireCooldown;
   respawnTimer = c.respawnTimer; nextExtra = c.nextExtra; msgTimer = c.msgTimer; msgText = c.msgText;
   rngState = c.rng; tickCount = c.tick; started = c.started; recoilOn = c.recoilOn;
 }
@@ -620,13 +625,13 @@ function step(dt) {
         var rvx = ship.vx - rk.vx, rvy = ship.vy - rk.vy;
         var vn = rvx * bnx + rvy * bny;
         var closing = -vn;
-        if (closing > 160) {
+        if (mode === 'lives' || closing > 160) {
           lives--;
           for (var si = 0; si < 14; si++) {
             var va2 = rnd() * Math.PI * 2, sp2 = 40 + rnd() * 120;
             sparks.push({ x: ship.x, y: ship.y, vx: Math.cos(va2) * sp2, vy: Math.sin(va2) * sp2, life: 0.8 });
           }
-          if (lives <= 0) { state = 'over'; }
+          if (lives <= 0) { state = 'over'; if (mode === 'lives' && score > bestLives) { bestLives = score; try { localStorage.setItem('shardstorm-best-lives', String(bestLives)); } catch (e) {} } }
           else { resetShip(); }
         } else {
           var mShip = 1, mRock = Math.max(0.35, polyArea(rk.pts) / 2500);
@@ -823,10 +828,13 @@ function draw() {
     ctx.fillText('SHARDSTORM', W / 2, H / 2 - 30);
     ctx.font = '17px "Segoe UI",system-ui,sans-serif'; ctx.fillStyle = '#9aa7bd';
     ctx.fillText('Press ENTER to play — every bullet draws the chord that cuts.', W / 2, H / 2 + 6);
+    ctx.font = '15px "Segoe UI",system-ui,sans-serif';
+    ctx.fillText(mode === 'lives' ? 'MODE: 3 LIVES — any full contact costs a ship. Best: ' + bestLives + ' · M switches mode' : 'MODE: FLOW — bumps trade momentum; only a spear-hit costs a ship · M switches to 3 LIVES', W / 2, H / 2 + 32);
   } else if (state === 'over') {
     ctx.fillText('GAME OVER', W / 2, H / 2 - 24);
     ctx.font = '17px "Segoe UI",system-ui,sans-serif'; ctx.fillStyle = '#9aa7bd';
     ctx.fillText('Final score ' + score + ' · press ENTER to play again', W / 2, H / 2 + 12);
+    if (mode === 'lives') ctx.fillText('BEST (3 LIVES): ' + bestLives, W / 2, H / 2 + 38);
   } else if (state === 'paused') {
     ctx.fillText('PAUSED', W / 2, H / 2);
   }
@@ -883,6 +891,7 @@ document.addEventListener('keydown', function (e) {
   if (e.code === 'KeyP' && started) state = (state === 'paused') ? 'playing' : (state === 'playing' ? 'paused' : state);
   if (e.code === 'F2') { setXray(!xray); e.preventDefault(); }
   if (e.code === 'KeyT') { setChords(!chords); }
+  if (e.code === 'KeyM' && state !== 'playing' && state !== 'paused') setMode(mode === 'lives' ? 'flow' : 'lives');
   if (e.code === 'Enter' && state !== 'playing' && state !== 'paused') newGame();
 });
 function setXray(v) {
@@ -892,6 +901,16 @@ function setXray(v) {
   btn.className = xray ? 'on' : '';
 }
 document.getElementById('xray-btn').addEventListener('click', function () { setXray(!xray); });
+function syncModeBtn() {
+  var btn = document.getElementById('mode-btn');
+  btn.textContent = mode === 'lives' ? 'MODE: 3 LIVES' : 'MODE: FLOW';
+  btn.className = mode === 'lives' ? 'on' : '';
+}
+function setMode(m) {
+  if (state === 'playing' || state === 'paused') { flash('MODE SWITCHES BETWEEN RUNS'); return; }
+  mode = m; syncModeBtn();
+}
+document.getElementById('mode-btn').addEventListener('click', function () { setMode(mode === 'lives' ? 'flow' : 'lives'); });
 function setChords(v) {
   chords = v;
   var btn = document.getElementById('chords-btn');
@@ -939,7 +958,7 @@ window.__shard = {
   makeRockPoly: makeRockPoly,
   state: function () {
     return {
-      state: state, score: score, lives: lives, wave: wave, xray: xray, chords: chords, notes: cutNotes.length,
+      state: state, score: score, lives: lives, wave: wave, mode: mode, bestLives: bestLives, xray: xray, chords: chords, notes: cutNotes.length,
       rocks: rocks.map(function (r) { var c = polyCentroid(r.pts); return { sides: r.pts.length, area: Math.round(polyArea(r.pts)), cx: Math.round(c.x), cy: Math.round(c.y), vx: Math.round(r.vx * 10) / 10, vy: Math.round(r.vy * 10) / 10 }; }),
       ship: { x: Math.round(ship.x), y: Math.round(ship.y), vx: Math.round(ship.vx * 10) / 10, vy: Math.round(ship.vy * 10) / 10 },
       bullets: bullets.length
@@ -948,6 +967,7 @@ window.__shard = {
   start: function () { newGame(); },
   setXray: function (v) { setXray(v); },
   setChords: function (v) { setChords(v); },
+  setMode: function (m) { setMode(m); },
   addRock: function (pts, vx, vy) { rocks.push({ pts: pts, vx: vx || 0, vy: vy || 0, spin: 0 }); },
   fireAt: function (x, y, dx, dy) { bullets.push({ x: x, y: y, vx: dx, vy: dy, life: 2 }); },
   clearRocks: function () { rocks = []; },
