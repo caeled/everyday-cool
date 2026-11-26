@@ -63,3 +63,10 @@ backend, license), the doors build .jsdos bundles in the browser, and the
 page no longer needs this box's isolation headers to run: it now plays
 anywhere, and the box is its relay home rather than its life support. The
 standalone Baton Box carries the identical page and rack.
+
+**26 November 2026 (later) — DOS passenger: the folder door streams.** The
+same size-wall fix as Nerd Heaven's console, applied to
+`games/the-dos-console/the-dos-console.html` in step: folder key boots a
+conf-only bundle and streams the picked folder into the running machine
+file by file, then types RESCAN itself; zip key refuses single zips over
+2 GB in plain words. See the DOS Console's lesson for the full record.

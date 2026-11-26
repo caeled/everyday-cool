@@ -281,3 +281,17 @@ the story are in `the-dos-console-lesson.html`, the provenance paragraph in
 `THIRD-PARTY.md`, and `sw.js` is bumped to nerd-heaven-v60. The same swap
 was applied to the Baton Box's own copy of the page and to this collection's
 Baton Box passenger copy, each with its own `jsdos-dos/` rack.
+
+**26 November 2026 (later) — the folder door streams.** Steven's whole-drive
+zip (2,220,069,881 B) hit the browser's one-piece buffer ceiling
+(2^31 − 1) — js-dos answered "offset is out of bounds". `the-dos-console.html`:
+the folder key now boots a conf-only bundle and streams the picked folder
+into the running machine file by file (`ci.fsWriteFile` on each file's
+stream), then types RESCAN itself so DOSBox clears its drive cache and sees
+the arrived files; the zip key refuses single zips over 2 GB in plain words
+and points at the folder key; Help's door-one bullets rewritten to match.
+`the-dos-console-lesson.html` gained the dated section "The size wall, and
+the streaming door". Audit: the shipped page's folder door streamed the
+42 MB test drive, page-typed `rescan` answered "Drive cache cleared.",
+0 exceptions. The same page edit was applied to the Baton Box passenger
+copy and the standalone box copy.

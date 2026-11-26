@@ -157,8 +157,8 @@
       <ul>
         <li>This is the door for a whole DOS archive kept the way DOS people keep one: <strong>one folder that is a C: drive</strong>. Pick the folder itself — the DOSBox way, no zip needed — or zip that folder (right-click it, <em>Send to → Compressed (zipped) folder</em>) and pick the zip. Both keys open the same door.</li>
         <li>The console mounts the zip as drive <strong>C:</strong> and boots to a real DOS prompt, <code>C:\&gt;</code>. No auto-run, nothing launched for you. <code>DIR</code>, <code>CD</code>, and typing a program's name work the way they did in 1990, because it is DOS in there.</li>
-        <li>How it works, honestly: the player loads a package called a <em>bundle</em> — your files plus one small boot file, <code>.jsdos/dosbox.conf</code>, which this page writes for you in your browser. Its first commands mount the package as <code>C:</code> and hand you the prompt. <strong>Nothing is uploaded.</strong> The bundle is built on your machine and never leaves it.</li>
-        <li>Your zip can be as big as your archive. The console's zip tools are small, though: plain <code>.zip</code> only — no ZIP64, no password-protected entries. The status line will tell you in plain words if a zip can't ride.</li>
+        <li>How it works, honestly: the folder key starts the machine empty and copies your files in one by one — nothing is ever held all at once, so a drive of any size your machine's memory can hold will ride. The zip key builds one package — a <em>bundle</em>: your files plus one small boot file, <code>.jsdos/dosbox.conf</code>, which this page writes for you in your browser. Either way the first commands mount the drive as <code>C:</code> and hand you the prompt. <strong>Nothing is uploaded.</strong> Everything happens on your machine and never leaves it.</li>
+        <li>A zip has to fit in one piece in the browser — about 2 GB is the ceiling, and that limit is the browser's, not this page's. The folder has no such ceiling: when an archive outgrows zips, pick the folder. The console's zip tools are small, though: plain <code>.zip</code> only — no ZIP64, no password-protected entries. The status line will tell you in plain words if a zip can't ride.</li>
       </ul>
       <h3>Door two — one game, straight in</h3>
       <ul>
@@ -600,7 +600,7 @@
     startMachine(blob, origFile.name, origFile.size, mode);
   }
 
-  function startMachine(blob, displayName, displaySize, mode){
+  function startMachine(blob, displayName, displaySize, mode, onReady){
     if (booted) return;
     booted = true;
     bootName = displayName;
@@ -621,9 +621,10 @@
           url: url,
           autoStart: true,
           pathPrefix: 'jsdos-dos/emulators/',
-          onEvent: function(event){
+          onEvent: function(event, ci){
             if (event === 'ci-ready') {
               started = true;
+              if (onReady) { onReady(ci); return; }
               say(mode === 'prompt'
                 ? '<b>Now running:</b> your C: drive is mounted and the prompt is yours. Click the screen and type — DIR is a good first word.'
                 : '<b>Now running:</b> ' + esc(bootName) + ' — to use a different drive or game, reload the page.');
@@ -686,6 +687,11 @@
     var f = driveFileEl.files[0];
     if (!f || booted) { driveFileEl.value = ''; return; }
     document.getElementById('drive-name').textContent = f.name;
+    if (f.size > 2000000000) {
+      driveFileEl.value = '';
+      say('<span class="err">That zip is ' + (f.size / 1073741824).toFixed(2) + ' GB</span> — past what a browser can hold in one piece (about 2 GB), so no page can mount it as a single file. The folder key has no such limit: pick the folder itself with the button above and it copies in file by file.');
+      return;
+    }
     var zp = readZip(f);
     driveFileEl.value = '';
     zp.then(function(z){ if (z) boot(z.buf, z.entries, f, 'prompt', ''); });
@@ -723,26 +729,51 @@
       return;
     }
     document.getElementById('drive-name').textContent = items.length.toLocaleString() + ' files, straight from the folder';
-    say('Reading <b>' + items.length.toLocaleString() + ' files</b> from your folder — on your machine, nothing uploaded…');
-    var dataEntries = [], chain = Promise.resolve();
-    items.forEach(function(it){
-      chain = chain.then(function(){
-        return readFileChunked(it.file).then(function(buf){
-          dataEntries.push({ name: it.name, data: new Uint8Array(buf) });
-        });
-      });
-    });
-    chain.then(function(){
-      if (booted) return;
-      var blob;
-      try {
-        blob = buildBootZipFromFiles(dataEntries, buildConf('prompt', '', 'folder'));
-      } catch (e) {
-        say(zipErrorSentence(e));
+    say('Starting the machine, then copying <b>' + items.length.toLocaleString() + ' files</b> in one by one — on your machine, nothing uploaded…');
+    var blob;
+    try {
+      blob = buildBootZipFromFiles([], buildConf('prompt', '', 'folder'));
+    } catch (e) {
+      say(zipErrorSentence(e));
+      return;
+    }
+    startMachine(blob, 'your drive folder', total, 'stream', function(ci){ streamDriveIn(ci, items); });
+  }
+
+  /* Copy a picked folder into the running machine, file by file. The
+     bundle route made the browser hold the whole drive at once (the
+     files, then the bundle built from them) and died at the browser's
+     one-piece ceiling — Steven's 2.2 GB whole-drive zip is where that
+     wall showed, 2026-11-26. Streaming holds one file at a time; the
+     ceiling becomes the machine's memory instead. DOSBox caches its
+     drive listing at boot, so when the copy finishes the console types
+     RESCAN itself — that is what shows DOSBox the files that arrived
+     after the mount. */
+  function streamDriveIn(ci, items){
+    var i = 0, lastSay = 0;
+    function step(){
+      if (i >= items.length) {
+        try { ci.simulateKeyPress(82, 69, 83, 67, 65, 78, 257); } catch (e) {}
+        say('<b>Now running:</b> your C: drive is mounted and the prompt is yours. Click the screen and type — DIR is a good first word.');
         return;
       }
-      startMachine(blob, 'drive-folder.zip', total, 'prompt');
-    }).catch(function(e){ say(zipErrorSentence(e)); });
+      var it = items[i];
+      var now = Date.now();
+      if (i === 0 || i % 25 === 0 || now - lastSay > 700) {
+        lastSay = now;
+        say('Copying your drive in — file ' + (i + 1).toLocaleString() + ' of ' + items.length.toLocaleString() + ' (<b>' + esc(it.name) + '</b>)…');
+      }
+      var data = (it.file.stream && typeof it.file.stream === 'function') ? it.file.stream()
+        : readFileChunked(it.file).then(function(buf){ return new Uint8Array(buf); });
+      Promise.resolve(data).then(function(d){
+        return ci.fsWriteFile(it.name, d);
+      }).then(function(){
+        i++; step();
+      }).catch(function(e){
+        say('<span class="err">The copy stopped</span> at <b>' + esc(it.name) + '</b>: ' + esc(e && e.message ? e.message : e) + ' — the machine is at the prompt with the files that made it in. A drive also needs the memory to hold it; closing other tabs is the honest fix.');
+      });
+    }
+    step();
   }
 
   /* ---- door two: one game ---- */
