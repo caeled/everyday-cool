@@ -130,6 +130,8 @@
   .keys b{color:var(--text);font-family:var(--mono);font-weight:600;font-size:12.5px}
   @media (max-width:560px){.keys{grid-template-columns:1fr}}
   footer{color:var(--dim);font-size:12px;margin-top:26px;text-align:center;line-height:1.7}
+#lazy-panel{margin:10px 0;padding:12px 14px;border:1px solid rgba(140,160,200,.35);border-radius:12px}
+#lazy-panel .lazy-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:6px 0}
 </style>
 <link rel="stylesheet" href="jsdos-dos/js-dos.css">
 </head>
@@ -158,6 +160,7 @@
         <li>This is the door for a whole DOS archive kept the way DOS people keep one: <strong>one folder that is a C: drive</strong>. Pick the folder itself — the DOSBox way, no zip needed — or zip that folder (right-click it, <em>Send to → Compressed (zipped) folder</em>) and pick the zip. Both keys open the same door.</li>
         <li>The console mounts the zip as drive <strong>C:</strong> and boots to a real DOS prompt, <code>C:\&gt;</code>. No auto-run, nothing launched for you. <code>DIR</code>, <code>CD</code>, and typing a program's name work the way they did in 1990, because it is DOS in there.</li>
         <li>How it works, honestly: the folder key starts the machine empty and copies your files in one by one — nothing is ever held all at once, so a drive of any size your machine's memory can hold will ride. The zip key builds one package — a <em>bundle</em>: your files plus one small boot file, <code>.jsdos/dosbox.conf</code>, which this page writes for you in your browser. Either way the first commands mount the drive as <code>C:</code> and hand you the prompt. <strong>Nothing is uploaded.</strong> Everything happens on your machine and never leaves it.</li>
+        <li><strong>The lazy drive:</strong> pick a big folder and the folder key loads its <em>skeleton</em> first — every folder, and every file up to 256 KB — so the prompt and the whole directory tree are yours in seconds. The big folders wait in a panel under the screen with their true sizes; load one when you want it and it streams in, the way DOS read a disk: on demand. Until a folder is loaded, DOS sees it as empty — the panel, not the DIR, is the truth about what is in.</li>
         <li>A zip has to fit in one piece in the browser — about 2 GB is the ceiling, and that limit is the browser's, not this page's. The folder has no such ceiling: when an archive outgrows zips, pick the folder. The console's zip tools are small, though: plain <code>.zip</code> only — no ZIP64, no password-protected entries. The status line will tell you in plain words if a zip can't ride.</li>
       </ul>
       <h3>Door two — one game, straight in</h3>
@@ -234,6 +237,7 @@
       </div>
     </div>
     <p class="status" id="status">The console is built and waiting. <b>Mount your C:</b> below is the front door — pick the drive folder itself, or a zip of it.</p>
+    <div id="lazy-panel" hidden></div>
   </section>
 
   <div class="doors">
@@ -737,7 +741,7 @@
       say(zipErrorSentence(e));
       return;
     }
-    startMachine(blob, 'your drive folder', total, 'stream', function(ci){ streamDriveIn(ci, items); });
+    startMachine(blob, 'your drive folder', total, 'stream', function(ci){ startLazyDrive(ci, items); });
   }
 
   /* Copy a picked folder into the running machine, file by file. The
@@ -749,19 +753,19 @@
      drive listing at boot, so when the copy finishes the console types
      RESCAN itself — that is what shows DOSBox the files that arrived
      after the mount. */
-  function streamDriveIn(ci, items){
+  function streamFiles(ci, list, label, done){
     var i = 0, lastSay = 0;
     function step(){
-      if (i >= items.length) {
+      if (i >= list.length) {
         try { ci.simulateKeyPress(82, 69, 83, 67, 65, 78, 257); } catch (e) {}
-        say('<b>Now running:</b> your C: drive is mounted and the prompt is yours. Click the screen and type — DIR is a good first word.');
+        done();
         return;
       }
-      var it = items[i];
+      var it = list[i];
       var now = Date.now();
       if (i === 0 || i % 25 === 0 || now - lastSay > 700) {
         lastSay = now;
-        say('Copying your drive in — file ' + (i + 1).toLocaleString() + ' of ' + items.length.toLocaleString() + ' (<b>' + esc(it.name) + '</b>)…');
+        say('Copying ' + esc(label) + ' in — file ' + (i + 1).toLocaleString() + ' of ' + list.length.toLocaleString() + ' (<b>' + esc(it.name) + '</b>)…');
       }
       var data = (it.file.stream && typeof it.file.stream === 'function') ? it.file.stream()
         : readFileChunked(it.file).then(function(buf){ return new Uint8Array(buf); });
@@ -770,10 +774,132 @@
       }).then(function(){
         i++; step();
       }).catch(function(e){
-        say('<span class="err">The copy stopped</span> at <b>' + esc(it.name) + '</b>: ' + esc(e && e.message ? e.message : e) + ' — the machine is at the prompt with the files that made it in. A drive also needs the memory to hold it; closing other tabs is the honest fix.');
+        lazyBusy(false);
+        say('<span class="err">The copy stopped</span> at <b>' + esc(it.name) + '</b>: ' + esc(e && e.message ? e.message : e) + ' — the machine keeps what made it in. A drive also needs the memory to hold it; closing other tabs is the honest fix.');
       });
     }
     step();
+  }
+
+  /* The lazy drive — Steven's design (2026-11-26): "load the directory of
+     the big C, then only load a subfolder if needed — the way DOS did."
+     The skeleton (every folder, every file up to SKELETON_MAX, and each
+     folder's smallest file so no folder arrives empty) streams in first
+     and the prompt is live in seconds; the big folders wait in a panel
+     under the screen and stream in on demand, each followed by the
+     console's own typed RESCAN. Until a folder is loaded, DOS sees it
+     as an empty folder — the panel is the truth about what is in. */
+  var SKELETON_MAX = 262144;
+  var lazy = null;
+
+  function topOf(name){
+    var i = name.indexOf('/');
+    return i >= 0 ? name.slice(0, i) : '(drive root)';
+  }
+
+  function startLazyDrive(ci, items){
+    var skeleton = [], deferred = [];
+    items.forEach(function(it){ (it.file.size <= SKELETON_MAX ? skeleton : deferred).push(it); });
+    var skelFolders = {};
+    skeleton.forEach(function(it){ skelFolders[topOf(it.name)] = true; });
+    var byFolder = {};
+    deferred.forEach(function(it){ var k = topOf(it.name); (byFolder[k] = byFolder[k] || []).push(it); });
+    Object.keys(byFolder).forEach(function(folder){
+      if (!skelFolders[folder] && byFolder[folder].length) {
+        var smallest = byFolder[folder].reduce(function(a, b){ return a.file.size <= b.file.size ? a : b; });
+        byFolder[folder].splice(byFolder[folder].indexOf(smallest), 1);
+        skeleton.push(smallest);
+      }
+    });
+    var groups = [];
+    Object.keys(byFolder).forEach(function(folder){
+      if (!byFolder[folder].length) return;
+      var size = byFolder[folder].reduce(function(n, it){ return n + it.file.size; }, 0);
+      groups.push({ name: folder, items: byFolder[folder], size: size, loaded: false, btn: null });
+    });
+    groups.sort(function(a, b){ return b.size - a.size; });
+    lazy = { ci: ci, groups: groups, busy: true };
+    if (window.__dosConsole) window.__dosConsole.lazyRef = lazy;
+    streamFiles(ci, skeleton, 'the skeleton', function(){
+      lazy.busy = false;
+      if (!groups.length) {
+        say('<b>Now running:</b> your C: drive is mounted and the prompt is yours. Click the screen and type — DIR is a good first word.');
+        return;
+      }
+      say('<b>Now running:</b> your C: drive\'s skeleton is in — the folders and the small files are real, and the prompt is yours. The big folders wait in the panel under the screen; load one when you want it.');
+      renderLazyPanel();
+    });
+  }
+
+  function lazyBusy(b){
+    if (!lazy) return;
+    lazy.busy = b;
+    lazy.groups.forEach(function(g){ if (g.btn) g.btn.disabled = b || g.loaded; });
+    var all = document.getElementById('lazy-all');
+    if (all) all.disabled = b;
+  }
+
+  function renderLazyPanel(){
+    var panel = document.getElementById('lazy-panel');
+    panel.innerHTML = '';
+    var head = document.createElement('p');
+    head.innerHTML = '<b>The lazy drive.</b> This drive arrived as a skeleton — every folder, and every file up to ' +
+      (SKELETON_MAX / 1024) + ' KB, is already in. The folders below hold the big files; until one is loaded, DOS sees it as an empty folder. Load what you want, when you want it — the way DOS read a disk.';
+    panel.appendChild(head);
+    lazy.groups.forEach(function(g){
+      var row = document.createElement('p');
+      row.className = 'lazy-row';
+      var label = document.createElement('span');
+      label.innerHTML = '<b>' + esc(g.name) + '</b> — ' + g.items.length.toLocaleString() + ' files, ' + fmtSize(g.size);
+      var btn = document.createElement('button');
+      btn.type = 'button'; btn.className = 'btn'; btn.textContent = 'Load ' + g.name;
+      btn.addEventListener('click', function(){ loadLazyGroup(g); });
+      g.btn = btn;
+      row.appendChild(label);
+      row.appendChild(document.createTextNode(' '));
+      row.appendChild(btn);
+      panel.appendChild(row);
+    });
+    if (lazy.groups.length > 1) {
+      var all = document.createElement('button');
+      all.type = 'button'; all.className = 'btn'; all.id = 'lazy-all'; all.textContent = 'Load everything';
+      all.addEventListener('click', loadLazyAll);
+      panel.appendChild(all);
+    }
+    panel.hidden = false;
+  }
+
+  function loadLazyGroup(g){
+    if (!lazy || lazy.busy || g.loaded) return;
+    lazyBusy(true);
+    streamFiles(lazy.ci, g.items, g.name, function(){
+      g.loaded = true;
+      if (g.btn) g.btn.textContent = g.name + ' is in ✓';
+      lazyBusy(false);
+      say('<b>' + esc(g.name) + '</b> is in — ' + g.items.length.toLocaleString() + ' files copied and the drive rescanned. It is simply there now, at the prompt.');
+    });
+  }
+
+  function loadLazyAll(){
+    if (!lazy || lazy.busy) return;
+    var rest = lazy.groups.filter(function(g){ return !g.loaded; });
+    (function next(){
+      var g = rest.shift();
+      if (!g) { lazyBusy(false); say('<b>Everything is in.</b> The whole drive, at the prompt.'); return; }
+      lazyBusy(true);
+      streamFiles(lazy.ci, g.items, g.name, function(){
+        g.loaded = true;
+        if (g.btn) { g.btn.textContent = g.name + ' is in ✓'; g.btn.disabled = true; }
+        next();
+      });
+    })();
+  }
+
+  function fmtSize(n){
+    if (n >= 1073741824) return (n / 1073741824).toFixed(2) + ' GB';
+    if (n >= 1048576) return (n / 1048576).toFixed(1) + ' MB';
+    if (n >= 1024) return (n / 1024).toFixed(0) + ' KB';
+    return n + ' bytes';
   }
 
   /* ---- door two: one game ---- */

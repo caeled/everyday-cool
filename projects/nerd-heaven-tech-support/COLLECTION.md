@@ -295,3 +295,18 @@ the streaming door". Audit: the shipped page's folder door streamed the
 42 MB test drive, page-typed `rescan` answered "Drive cache cleared.",
 0 exceptions. The same page edit was applied to the Baton Box passenger
 copy and the standalone box copy.
+
+**26 November 2026 (later still) — the lazy drive.** Steven's design: load
+the directory of the big C:, then load a subfolder only if needed — "the
+way DOS did". `the-dos-console.html`: the folder key now partitions the
+picked drive into a skeleton (every folder, every file ≤ 256 KB, and each
+folder's smallest file) and deferred groups by top-level folder; the
+skeleton streams in first, and a panel under the screen (`lazy-panel`)
+offers each big folder with its true size and a Load button (plus Load
+everything), each load ending in the console's self-typed RESCAN. Help
+gained the lazy-drive bullet; `the-dos-console-lesson.html` gained the
+dated section "The lazy drive". Audit on the shipped page: skeleton
+status, panel, group math (root 36 MB deferred, GAMES WAD deferred,
+DOOM.EXE promoted as its folder's smallest), the panel's own Load button
+streamed the WAD, two on-screen rescan cycles, 0 exceptions. Same edit
+applied to the Baton Box passenger and standalone copies.

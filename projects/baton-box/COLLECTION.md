@@ -70,3 +70,9 @@ same size-wall fix as Nerd Heaven's console, applied to
 conf-only bundle and streams the picked folder into the running machine
 file by file, then types RESCAN itself; zip key refuses single zips over
 2 GB in plain words. See the DOS Console's lesson for the full record.
+
+**26 November 2026 (later still) — DOS passenger: the lazy drive.** The
+same folder-key upgrade as Nerd Heaven's console, applied to
+`games/the-dos-console/the-dos-console.html` in step: skeleton-first
+loading with an on-demand panel for the big folders. See the DOS
+Console's lesson for the full record.
