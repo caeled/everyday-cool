@@ -191,3 +191,15 @@ GaussLab shelf line (sixty-seven lessons), `sw.js` cache bumped to v57 for it, a
 `the-dos-console.html` gained a "Starting the Baton Box from the shell" pointer (port 8917 and the
 console's through-the-box address).
 
+## Addendum — 2026-11-26 (00:0x): Touch directions pass
+
+Steven's note (2026-11-25, 23:48): the PWA versions of some games are hard to figure out on
+tablets; some need "touch screen" directions. Fifteen pages in this room gained an honest
+"On a touch screen:" line in their Help, each stating what a tap actually does there — or that
+the game needs a keyboard, where that is the truth: `shardstorm.html`, `shadowline.html`,
+`bughunt.html`, `xray-time-machine.html`, `the-6502-bench.html`, `the-apple-iie-console.html`,
+`the-vectrex-console.html`, `the-2600-console.html`, `the-5200-console.html`,
+`the-7800-console.html`, `the-genesis-console.html`, `the-nes-console.html`,
+`the-snes-console.html`, `the-dos-console.html`, `the-mame-console.html`. Directions only —
+real touch controls for the keyboard games remain a separate, larger build.
+

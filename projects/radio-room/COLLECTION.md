@@ -41,3 +41,10 @@ The sister-room list in `index.html` now links the Backyard Radio Telescope Plan
 ## DipoleLab · 25 November 2026
 
 New featured bench at the top of the room: `dipolelab.html` — Google Antigravity's ten-chapter antennas, polarization & ham-radio workbench (six labs, 26-term glossary), delivered as a single self-contained file (sha256 `c1a74bdd…`) and audited independently by Muse: computational core exact everywhere measured (468/f at eight bands, Jones-product polarization, Malus I0/8, complex-Gamma SWR, both IARU S-meter standards, current license roadmap). Nine bends (invented vertical elevation pattern, self-inconsistent Yagi gain estimate, resistance-only Smith chart, FDTD/Maxwell labels on a phasor renderer, a 1000x watt slip, four more copy/label items) fixed under Steven's explicit sanction — eleven edits, hash chain `c1a74bdd` → `aa476275` recorded in `dipolelab-lesson.html` — plus `dipolelab-banner.webp` placed at the bench's top at wiring (final file sha256 `e111b128…`, 138,445 bytes; the banner's wave-ribbon caption says "vertical oscillation" under a horizontal wire — flagged to Steven before use, approved by him as made, and owned in the lesson). The lesson `dipolelab-lesson.html` carries the full receipts. Featured section added to `index.html`; also carded on Dad's Arcade and listed in Nerd Heaven and the Java back doors. Changed files: `dipolelab.html`, `dipolelab-lesson.html`, `dipolelab-banner.webp`, `index.html`, `COLLECTION.md`.
+
+## Addendum — 2026-11-26: Touch directions pass
+
+`skip.html` gained an honest "On a touch screen:" line in its Help (the rig is buttons and
+sliders; only fine tuning uses the arrow keys), part of the collection-wide pass Steven asked
+for on 2026-11-25.
+

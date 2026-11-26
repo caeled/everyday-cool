@@ -46,3 +46,9 @@ matching the Hydrogen Line lesson's own figure. `hydrogen-line-lesson.html`'s pa
 the plan's figure was updated to record the correction. Steven's call, executed under his green
 light on the whole Bench board.
 
+## Addendum — 2026-11-26: Touch directions pass
+
+`is-the-earth-flat.html` gained an "On a touch screen:" line in its Help (every bench is
+buttons and sliders — the whole game plays by tap), part of the collection-wide pass Steven
+asked for on 2026-11-25.
+
