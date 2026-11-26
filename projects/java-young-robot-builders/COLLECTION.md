@@ -91,3 +91,7 @@ Back door added for the Radio Room's DipoleLab lesson; heading count to one hund
 ## BACK DOOR 161: LuxLab · 25 November 2026
 
 Back door added for Everyday Physics' LuxLab lesson; heading count to one hundred sixty-one. Changed files: `index.html`, `COLLECTION.md`.
+
+## BACK DOOR 162: SpacetimeLab · 25 November 2026
+
+Back door added for Everyday Physics' SpacetimeLab lesson; heading count to one hundred sixty-two. Changed files: `index.html`, `COLLECTION.md`.

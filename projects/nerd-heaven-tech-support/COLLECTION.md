@@ -129,3 +129,7 @@ Shelf line added for Everyday Physics' LuxLab lesson (Antigravity's optics workb
 ## Shardstorm: rock-on-rock collisions · 25 November 2026
 
 At Steven's sandbox note ("rocks should bounce off each other"), `shardstorm.html` gained a pairwise rock-collision pass: circle-of-mean-radius bodies, the ship bump's mass model and restitution (0.55), inverse-mass positional separation, BOUNCE captions under the X-Ray, and rock centroids/velocities added to the test hooks. Audit: equal hexagons separated at exactly 0.55 × closing speed with closest approach exactly rA + rB; an unequal pair matched the impulse formula (25 → 14.2, −10 → +33.4) with momentum conserved. `shardstorm-lesson.html` gained the "Rock on rock" section. Changed files: `shardstorm.html`, `shardstorm-lesson.html`, `COLLECTION.md`.
+
+## Shelf: SpacetimeLab lesson · 25 November 2026
+
+Shelf line added for Everyday Physics' SpacetimeLab lesson (Antigravity's gravitational-wave workbench; audit with one failed chapter and twenty-one sanctioned fixes); shelf count to one hundred sixty-three, service worker to `nerd-heaven-v53`. Changed files: `index.html`, `sw.js`, `COLLECTION.md`.
