@@ -263,3 +263,21 @@ the dated failure-and-fix section in `the-dos-console-lesson.html`;
 `sw.js` cache bumped to nerd-heaven-v59. The same engine fix was applied
 to the Baton Box's own copy of the page and to this collection's Baton
 Box passenger copy.
+
+**26 November 2026 — the DOS engine swap (js-dos).** Steven's field test of
+the folder door found the wall behind it: DOSBox Pure is threaded-only, so
+the console could not switch on in the app window, on the Pages site, or as
+a lone file — only through the Baton Box's headers. At his word ("we need to
+rethink how everything gets loaded"), the engine was swapped to DOSBox via
+the js-dos player (v8.5.4, GPL-2.0), which is not threaded and runs anywhere.
+`the-dos-console.html` was rebuilt around it: the doors now package files as
+.jsdos bundles in the browser (directory entries first — measured rule), the
+generated conf lives at `.jsdos/dosbox.conf` and mounts C: explicitly, the
+isolation refusal and the State Code baton door are gone (the player's own
+save button keeps sessions), and the page loads `jsdos-dos/js-dos.js` with
+`jsdos-dos/js-dos.css`. New rack `jsdos-dos/` (player + `emulators/`
+DOSBox backend + `LICENSE-gpl-2.0.txt`), vendored unmodified; the audit and
+the story are in `the-dos-console-lesson.html`, the provenance paragraph in
+`THIRD-PARTY.md`, and `sw.js` is bumped to nerd-heaven-v60. The same swap
+was applied to the Baton Box's own copy of the page and to this collection's
+Baton Box passenger copy, each with its own `jsdos-dos/` rack.

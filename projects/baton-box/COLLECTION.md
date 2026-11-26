@@ -53,3 +53,13 @@ stdout/stderr to UTF-8 with errors replaced at startup. The standalone
 Baton Box carries the identical file (byte-identical, as always). This
 was also the unresolved Dad's Arcade panel failure of 2026-11-25: same
 spawn, same death — the panel's "flash" was the box dying.
+
+**26 November 2026 — the DOS passenger's engine swap.** The passenger copy
+of the DOS Console (`games/the-dos-console/the-dos-console.html`) received
+the same engine swap as the Nerd Heaven original: DOSBox Pure/EmulatorJS
+out, DOSBox via the js-dos player (v8.5.4) in — its rack rides inside the
+game folder at `games/the-dos-console/jsdos-dos/` (player, `emulators/`
+backend, license), the doors build .jsdos bundles in the browser, and the
+page no longer needs this box's isolation headers to run: it now plays
+anywhere, and the box is its relay home rather than its life support. The
+standalone Baton Box carries the identical page and rack.
