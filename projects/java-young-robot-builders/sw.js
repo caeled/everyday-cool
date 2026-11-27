@@ -1,6 +1,6 @@
 /* Robot Builders service worker: caches the course shell so the workshop
    works offline after the first visit. It never touches other origins. */
-const CACHE = "robot-builders-v1";
+const CACHE = "robot-builders-v2";
 const SHELL = [
   "./",
   "./index.html",

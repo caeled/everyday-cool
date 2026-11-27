@@ -75,3 +75,6 @@ Bench as a separate, confirmed step, because it rewrites a page the family plays
 
 
 Forum link (26 November 2026): `index.html` gained the collection's Join our Forum line (Steven's Google Group — anyone may ask to join, members post), the feedback door he asked to have everywhere.
+
+
+Collection sweep (26 November 2026): `sw.js` cache bumped flynns-arcade-v1 -> flynns-arcade-v2. The v1 cache predated the Breakout pick landing, so returning visitors could be served the pre-pick room — the stale-room class.

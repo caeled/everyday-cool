@@ -45,6 +45,14 @@ How to read the result (the short version):
 
 import os
 import sys
+
+# Windows consoles default to cp1252 and crash printing non-ASCII
+# (the Baton Box banner bug, 26 Nov 2026) - pin output to UTF-8.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
 import zipfile
 
 FINGERPRINTS = ("pacman.zip", "dkong.zip", "neogeo.zip")

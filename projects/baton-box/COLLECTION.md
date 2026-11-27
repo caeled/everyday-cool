@@ -97,3 +97,6 @@ run). The DOS Workbench itself lives in Nerd Heaven; see its lesson.
 
 
 Forum link (26 November 2026): `index.html` gained the collection's Join our Forum line (Steven's Google Group — anyone may ask to join, members post), the feedback door he asked to have everywhere.
+
+
+Collection sweep (26 November 2026): `selftest.py` gained the UTF-8 stdout/stderr guard (the server already had it) — the cp1252 class that crashed the server on its own banner.

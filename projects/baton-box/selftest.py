@@ -19,6 +19,14 @@ import os
 import shutil
 import subprocess
 import sys
+
+# Windows consoles default to cp1252 and crash printing non-ASCII
+# (the Baton Box banner bug, 26 Nov 2026) - pin output to UTF-8.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
 import tempfile
 import time
 import urllib.request

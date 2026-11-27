@@ -437,3 +437,6 @@ The BBS Door (26 November 2026, evening): at Steven's word — "a door that step
 
 
 Join our Forum (26 November 2026, evening): Steven opened the Everyday Cool forum (a Google Group — anyone may ask to join, members post) and the link went up across the collection's main doors: the hub footer (via tools/build-hub.py, with a changelog entry), Dad's Arcade, Learning Paths, Documentation, the STEM Room and Everyday Physics share blocks, and in Nerd Heaven the shelf sidebar (`index.html`), `the-dos-workbench.html`, `the-bbs-door.html`, `the-bbs-phone-book.html`, and the BBS guide page — the collection's own room, run on the guide's rules. `sw.js` advances to nerd-heaven-v78.
+
+
+Collection sweep (26 November 2026): `mame-romset-diagnostic.py` gained the UTF-8 stdout/stderr guard — the cp1252 class that crashed the Baton Box on its own banner. No behaviour change on UTF-8 systems.

@@ -118,3 +118,6 @@ settled by Steven's green light on the whole Bench board.
 
 
 Forum link (26 November 2026): `index.html` gained the collection's Join our Forum line (Steven's Google Group — anyone may ask to join, members post), the feedback door he asked to have everywhere.
+
+
+Collection sweep (26 November 2026): `sw.js` cache bumped robot-builders-v1 -> robot-builders-v2. The v1 cache had never been bumped while the shelf grew, so returning visitors could be served the first-visit shell indefinitely — the stale-room class.
