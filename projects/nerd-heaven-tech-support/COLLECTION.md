@@ -440,3 +440,5 @@ Join our Forum (26 November 2026, evening): Steven opened the Everyday Cool foru
 
 
 Collection sweep (26 November 2026): `mame-romset-diagnostic.py` gained the UTF-8 stdout/stderr guard — the cp1252 class that crashed the Baton Box on its own banner. No behaviour change on UTF-8 systems.
+
+Bug Hunt graphics pass, 27 November 2026: at Steven's direction (`bughunt.html` sha256 5a893d07df842554… -> 2eae50016b3b6da9…) the rendering layer only was refreshed — gradient backdrop + vignette, shaded shells/jointed legs/glossy eyes on the bugs, shaded turret with glowing muzzle, shot streaks, shard-and-ring splats, and a rebuilt `drawClippyFigure` (metallic wire, eyes on top tracking the cursor, raised eyebrows) with the boss crossing at scale 1.3 so a Clippy appearance reads as Clippy. No logic, behaviour, value, or timing code touched. Proof: a control drive — identical inputs through the game's own flight recorder against the pre-pass file and the refreshed file — returned identical results, recorder verify 523/523 on both. `bughunt-lesson.html` carries a dated addendum; the shelf's service worker cache moves to nerd-heaven-v79.
