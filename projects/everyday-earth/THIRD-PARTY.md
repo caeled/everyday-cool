@@ -37,3 +37,7 @@ Fifteen destinations in four groups, each checked live on 19 November 2026: eigh
 - Soil and rock times are **ranges and orders of magnitude**, never single dates.
 - The barometer's thresholds are **rules of thumb**, and the weather section's standing line is that a forecast is a probability, not a promise.
 - The rock sorter holds **nine rocks** chosen for everyday encounters, not the hundreds a geology course would name; the field method (crystals, layers, bands) is the transferable part.
+
+## The deep dives (added 27 November 2026)
+
+Three long-form pages — `earthquake-science-deep-dive.html`, `water-cycle-deep-dive.html`, `grand-canyon-geology-deep-dive.html`, with Markdown manuscripts of the same names — were delivered as finished exhibits and are shelved unedited. Their science is mainstream textbook material: elastic rebound theory and PREM (earthquakes), the USGS/NASA hydrologic inventory and residence-time framework (water cycle), and the standard Grand Canyon stratigraphic and thermochronology literature, including Karlstrom et al. 2014 on the composite canyon (geology). Two rendering dependencies ride along with the pages as delivered: **KaTeX** (0.16.11, MIT) for the mathematics and **Mermaid** (11) for the diagrams, both loaded from the jsDelivr CDN at view time — so the equations and diagrams need a network connection, while the six embedded figures in each dive and all of the text work offline.
