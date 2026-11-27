@@ -38,3 +38,5 @@ Reddit, Flipboard, Bluesky) that open each service's own share box for this
 room's address. No third-party scripts, no trackers — links only, styled as
 quiet chips in the page's own dress. The same row went onto the hub and
 Everyday Physics the same day.
+
+The Photography Workbench, 27 November 2026: the STEM Room gained its fourteenth workshop. `index.html` gained the workbench's card (standing first among the workshop cards) and the room's counts moved thirteen -> fourteen throughout (workshops, doors, and Earth's "the other thirteen"); the two other "twelve"s on the page — a twelve-hue wheel and twelve brain regions — are not room counts and were left alone. The workbench itself is catalogued as its own project (photography-workbench) with `hubParent: stem-room`.

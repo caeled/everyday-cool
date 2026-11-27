@@ -1,0 +1,11 @@
+# Collection Notes — The Photography Workbench
+
+Built 27 November 2026 from Steven Powell's idea ("a whole new workbench... The Photography Work bench. Everything and anything you wanated to explore about photography" — spelling his, preserved in the commit of record) and his banner direction: an AI with parts of cameras and imaging tools putting something together, an image projected on something. Files: `index.html`, `photo.js`, `style.css`, `banner.jpg`, `README.md`, `THIRD-PARTY.md`, `LICENSE`, `LICENSE-CONTENT.md`.
+
+The banner: AI-generated watercolor — the plush keeper at a bench of camera parts (aperture iris laid out like a sun, film canisters, a camera shell, a light meter, a folded tripod, a bellows camera) holding the assembled camera, a landscape projected on a screen behind. Steven's verdict on seeing it is the receipt that matters; the graphic, in his words, "almost writes itself."
+
+Audit (Muse, 27 November 2026): the page's engines were driven headlessly and every printed value compared against an independent computation. EV: f/16 at 1/125, ISO 100 against the EV-15 scene = -0.034 stops (sunny 16's own rounding); f/2.8 at 1/250, ISO 400 = -6.063 stops. Angle of view at 50 mm full frame: 39.60° / 26.99° / 46.79° (horizontal / vertical / diagonal). Depth of field: 50 mm f/8 at 3 m gives hyperfocal 10.83 m, sharp 2.36 m to 4.13 m; 35 mm f/2 at 1.5 m gives hyperfocal 21.16 m, sharp 1.40 m to 1.61 m. Inverse square at 2 m: 0.250 of the 1 m light, 2.00 stops. All matched exactly. The exposure animation (a perpetual requestAnimationFrame loop) is gated off under the page's ?audit=1 mode, which renders one frame and prints the audit block; in a real browser the loop is the bench working as intended.
+
+Shelf links: eight Wikipedia articles and one internal door (Everyday Light), each external link curl-verified live on the day (title checked). A Cambridge in Colour card was drafted and then NOT shelved — the site answers a bot check instead of its title from this bench, so it could not be verified; a verified Golden ratio card stands in its place.
+
+Placement: the fourteenth workshop of the STEM Room (`hubParent: stem-room`); its card stands first on the STEM Room's page, and the room's counts moved thirteen -> fourteen.
