@@ -1,0 +1,1013 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Network Packet Journey — Interactive End-to-End Protocol Microscope</title>
+<style>
+  :root {
+    --bg: #060a14;
+    --panel: #0e1628;
+    --card: #131e36;
+    --border: rgba(148, 179, 255, 0.18);
+    --text: #eef3ff;
+    --dim: #94a3b8;
+    --app: #34d399;
+    --tls: #fbbf24;
+    --tcp: #a78bfa;
+    --ip: #38bdf8;
+    --eth: #fb7185;
+    --crc: #f87171;
+    --phy: #2dd4bf;
+    --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  header {
+    padding: 13px 22px;
+    background: linear-gradient(90deg, #0a1224, #131f3b);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  header h1 { font-size: 1.22rem; display: flex; align-items: center; gap: 10px; }
+  header .pill {
+    font-size: 0.72rem; font-family: var(--mono);
+    background: rgba(56,189,248,0.14); color: var(--ip);
+    border: 1px solid rgba(56,189,248,0.35); padding: 2px 8px; border-radius: 999px;
+  }
+  header p { font-size: 0.8rem; color: var(--dim); margin-top: 2px; }
+  .msg-bar {
+    display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  }
+  .msg-bar input[type=text] {
+    background: #070d1a; color: var(--app); border: 1px solid rgba(52,211,153,0.4);
+    border-radius: 8px; padding: 7px 11px; font-family: var(--mono); font-size: 0.85rem;
+    width: 265px; outline: none;
+  }
+  .msg-bar input[type=text]:focus { border-color: var(--app); box-shadow: 0 0 12px rgba(52,211,153,0.2); }
+  .btn {
+    background: rgba(255,255,255,0.06); color: var(--text); border: 1px solid var(--border);
+    padding: 7px 12px; border-radius: 8px; font-size: 0.8rem; font-weight: 600;
+    cursor: pointer; transition: 0.15s;
+  }
+  .btn:hover { background: rgba(56,189,248,0.16); border-color: var(--ip); }
+  .btn.primary { background: linear-gradient(135deg, #0284c7, #2563eb); border-color: var(--ip); color: #fff; }
+  .btn.danger { background: rgba(248,113,113,0.14); border-color: var(--crc); color: #fecaca; }
+  .btn.danger.on { background: #dc2626; color: #fff; box-shadow: 0 0 14px rgba(220,38,38,0.4); }
+  .btn.active { background: rgba(52,211,153,0.18); border-color: var(--app); color: var(--app); }
+
+  main {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+    padding: 14px 18px;
+    max-width: 1620px;
+    width: 100%;
+    margin: 0 auto;
+  }
+  .toolbar {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    padding: 10px 14px; display: flex; flex-wrap: wrap; align-items: center;
+    justify-content: space-between; gap: 10px;
+  }
+  .ctrl-group { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+  .ctrl-label { font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--dim); font-weight: 700; margin-right: 2px; }
+  select {
+    background: #070d1a; color: var(--text); border: 1px solid var(--border);
+    border-radius: 7px; padding: 6px 9px; font-size: 0.8rem; font-family: var(--mono);
+  }
+
+  /* Interactive 9-Stage Stepper Strip */
+  .stepper {
+    display: grid;
+    grid-template-columns: repeat(9, 1fr);
+    gap: 6px;
+  }
+  @media (max-width: 1100px) { .stepper { grid-template-columns: repeat(3, 1fr); } }
+  .step-btn {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 9px;
+    padding: 7px 6px; text-align: center; cursor: pointer; transition: 0.15s;
+    color: var(--dim); font-size: 0.75rem; line-height: 1.25;
+  }
+  .step-btn strong { display: block; color: var(--text); font-size: 0.78rem; margin-bottom: 2px; }
+  .step-btn:hover { border-color: rgba(148,179,255,0.45); }
+  .step-btn.active {
+    background: rgba(56,189,248,0.16); border-color: var(--ip);
+    box-shadow: 0 0 16px rgba(56,189,248,0.2);
+  }
+  .step-btn.active strong { color: var(--ip); }
+
+  /* Topology + Signal Canvas */
+  .visual-grid {
+    display: grid;
+    grid-template-columns: 1.55fr 1fr;
+    gap: 12px;
+  }
+  @media (max-width: 1040px) { .visual-grid { grid-template-columns: 1fr; } }
+  .panel-card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    padding: 12px; display: flex; flex-direction: column; gap: 8px;
+  }
+  .panel-head {
+    display: flex; justify-content: space-between; align-items: center; gap: 8px;
+  }
+  .panel-head h2 { font-size: 0.92rem; color: var(--text); }
+  .panel-head span { font-size: 0.75rem; font-family: var(--mono); color: var(--dim); }
+  canvas {
+    width: 100%; height: 245px; background: #050912; border-radius: 9px;
+    border: 1px solid rgba(148,179,255,0.12); display: block;
+  }
+
+  /* Packet Microscope */
+  .microscope {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    padding: 14px 16px; display: flex; flex-direction: column; gap: 12px;
+  }
+  .encap-bar {
+    display: flex; gap: 5px; flex-wrap: wrap; align-items: stretch;
+  }
+  .pkt-block {
+    flex: 1 1 auto; min-width: 82px; padding: 9px 10px; border-radius: 8px;
+    border: 2px solid transparent; cursor: pointer; transition: 0.15s;
+    text-align: center; position: relative;
+  }
+  .pkt-block .tag { font-size: 0.73rem; font-weight: 800; letter-spacing: 0.04em; }
+  .pkt-block .sz { font-size: 0.7rem; font-family: var(--mono); opacity: 0.85; margin-top: 2px; }
+  .pkt-block.mutated::after {
+    content: "CHANGED"; position: absolute; top: -8px; right: 6px;
+    background: #d97706; color: #fff; font-size: 0.6rem; font-weight: 800;
+    padding: 1px 5px; border-radius: 4px; font-family: var(--mono);
+  }
+  .pkt-block.selected { transform: translateY(-2px); box-shadow: 0 0 18px rgba(255,255,255,0.16); }
+  .pkt-block.dimmed { opacity: 0.25; border-style: dashed; }
+
+  .b-phy { background: rgba(45,212,191,0.14); border-color: var(--phy); color: var(--phy); }
+  .b-eth { background: rgba(251,113,133,0.14); border-color: var(--eth); color: var(--eth); }
+  .b-ip  { background: rgba(56,189,248,0.14); border-color: var(--ip); color: var(--ip); }
+  .b-tcp { background: rgba(167,139,250,0.14); border-color: var(--tcp); color: var(--tcp); }
+  .b-tls { background: rgba(251,191,36,0.14); border-color: var(--tls); color: var(--tls); }
+  .b-app { background: rgba(52,211,153,0.14); border-color: var(--app); color: var(--app); }
+  .b-crc { background: rgba(248,113,113,0.16); border-color: var(--crc); color: var(--crc); }
+
+  .inspect-grid {
+    display: grid;
+    grid-template-columns: 1.25fr 1fr 1fr;
+    gap: 12px;
+  }
+  @media (max-width: 1000px) { .inspect-grid { grid-template-columns: 1fr; } }
+  .subcard {
+    background: var(--card); border: 1px solid var(--border); border-radius: 9px;
+    padding: 12px; display: flex; flex-direction: column; gap: 6px;
+  }
+  .subcard h3 {
+    font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--ip); border-bottom: 1px solid var(--border); padding-bottom: 5px;
+  }
+  .kv-row {
+    display: flex; justify-content: space-between; gap: 8px;
+    font-size: 0.79rem; font-family: var(--mono); padding: 3px 0;
+    border-bottom: 1px dashed rgba(148,163,184,0.12);
+  }
+  .kv-row .k { color: var(--dim); }
+  .kv-row .v { color: var(--text); font-weight: 700; text-align: right; }
+  .kv-row.changed .v { color: var(--tls); }
+  .kv-row.error .v { color: var(--crc); }
+  .kv-row.ok .v { color: var(--app); }
+  .hex-dump {
+    font-family: var(--mono); font-size: 0.76rem; line-height: 1.55;
+    color: #cbd5e1; background: #070c18; padding: 9px; border-radius: 7px;
+    border: 1px solid rgba(148,179,255,0.12); word-break: break-all;
+    max-height: 165px; overflow-y: auto;
+  }
+  .hex-dump .err-bit { background: #dc2626; color: #fff; padding: 0 3px; border-radius: 3px; font-weight: 800; }
+  .narrative {
+    font-size: 0.85rem; line-height: 1.55; color: #cbd5e1;
+  }
+  .narrative strong { color: #fff; }
+  .status-banner {
+    padding: 8px 12px; border-radius: 8px; font-size: 0.81rem; font-weight: 600;
+    font-family: var(--mono);
+  }
+  .st-ok { background: rgba(52,211,153,0.14); border: 1px solid var(--app); color: var(--app); }
+  .st-warn { background: rgba(251,191,36,0.14); border: 1px solid var(--tls); color: var(--tls); }
+  .st-err { background: rgba(248,113,113,0.16); border: 1px solid var(--crc); color: #fecaca; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Network Packet Journey &amp; Protocol Microscope <span class="pill">LIVE BIT-LEVEL SIMULATOR</span></h1>
+    <p>Follow your own message from App &rarr; TLS 1.3 &rarr; TCP &rarr; IP &rarr; Ethernet &rarr; Physical Wire &rarr; Routers &rarr; Server B</p>
+  </div>
+  <div class="msg-bar">
+    <input type="text" id="msg-input" value="Hello Quantum World! Transfer $42" maxlength="64" />
+    <button class="btn primary" id="btn-send">Transmit &amp; Reset</button>
+  </div>
+</header>
+<figure style="margin:18px 0">
+  <img src="packet-journey-banner.jpg" alt="Watercolor banner: the keeper at a brass tap whose stream dissolves into glowing data packets being sucked into a coiled network cable" style="width:100%;height:auto;border-radius:12px;display:block">
+  <figcaption style="font-size:.9rem;opacity:.85;margin-top:6px">The tap runs, the stream is cut into packets, and the wire drinks them. Banner: AI watercolor, generated with Muse at Steven's direction. The exhibit below is by Antigravity, the science division.</figcaption>
+</figure>
+
+
+<main>
+  <!-- Interactive Control Bar -->
+  <div class="toolbar">
+    <div class="ctrl-group">
+      <button class="btn" id="btn-prev">&larr; Prev Hop</button>
+      <button class="btn primary" id="btn-play">&#9654; Auto-Play</button>
+      <button class="btn" id="btn-next">Next Hop &rarr;</button>
+      <span class="ctrl-label" style="margin-left:8px;">Segment:</span>
+      <select id="seg-select">
+        <option value="0">TCP Seg #1</option>
+        <option value="1">TCP Seg #2</option>
+        <option value="2">TCP Seg #3</option>
+      </select>
+      <span class="ctrl-label" style="margin-left:6px;">Physical Medium:</span>
+      <select id="phy-select">
+        <option value="manchester">Copper Ethernet (Manchester)</option>
+        <option value="pam4">100G Copper/Optical (PAM-4)</option>
+        <option value="fiber">Fiber Optic (Laser OOK)</option>
+      </select>
+    </div>
+    <div class="ctrl-group">
+      <button class="btn active" id="btn-tls">&#128274; TLS 1.3: ON</button>
+      <button class="btn active" id="btn-fec">&#128737; FEC (Hamming): ON</button>
+      <button class="btn danger" id="btn-flip">&#9889; Flip Wire Bit</button>
+      <button class="btn danger" id="btn-drop">&#128165; Drop Seg #2</button>
+      <button class="btn danger" id="btn-tamper">&#128373; Active Tamper</button>
+    </div>
+  </div>
+
+  <!-- 9 Interactive Locations Along the Network -->
+  <div class="stepper" id="stepper"></div>
+
+  <!-- Live Network Topology Canvas + Physical Oscilloscope -->
+  <div class="visual-grid">
+    <div class="panel-card">
+      <div class="panel-head">
+        <h2>End-to-End Network Path (Click Any Node or Wire to Inspect!)</h2>
+        <span id="topo-badge">Stage 1 of 9</span>
+      </div>
+      <canvas id="topo-canvas"></canvas>
+    </div>
+    <div class="panel-card">
+      <div class="panel-head">
+        <h2>Physical Signal Oscilloscope (Live Frame Bits on Wire)</h2>
+        <span id="phy-badge">Manchester IEEE 802.3</span>
+      </div>
+      <canvas id="phy-canvas"></canvas>
+    </div>
+  </div>
+
+  <!-- Live Packet Microscope -->
+  <section class="microscope">
+    <div class="panel-head">
+      <h2 id="stage-title">Stage 1: Host A — Application Layer (L7)</h2>
+      <span id="stage-meta">Click any protocol header block below to inspect its exact fields &amp; hex bytes</span>
+    </div>
+
+    <div id="status-banner" class="status-banner st-ok"></div>
+
+    <!-- Nested Encapsulation Strip -->
+    <div class="encap-bar" id="encap-bar"></div>
+
+    <!-- 3-Column Deep Inspector -->
+    <div class="inspect-grid">
+      <div class="subcard">
+        <h3>What Happens at This Location</h3>
+        <div class="narrative" id="narrative-box"></div>
+      </div>
+      <div class="subcard">
+        <h3 id="fields-title">Header Fields Inspector</h3>
+        <div id="fields-box"></div>
+      </div>
+      <div class="subcard">
+        <h3 id="hex-title">Live Wire Bytes (Hex &amp; Binary)</h3>
+        <div class="hex-dump" id="hex-box"></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+const STAGES = [
+  { id: 0, short: "1. App Data",   loc: "Host A (L7)",      title: "Stage 1: Host A — Application Layer (Plaintext Message)" },
+  { id: 1, short: "2. TLS 1.3",    loc: "Host A (L6)",      title: "Stage 2: Host A — TLS 1.3 AEAD Encryption & Auth Tag" },
+  { id: 2, short: "3. TCP Segs",   loc: "Host A (L4)",      title: "Stage 3: Host A — TCP Segmentation, Seq Numbers & Checksum" },
+  { id: 3, short: "4. IP + Eth",   loc: "Host A (L3/L2)",   title: "Stage 4: Host A — IPv4 Routing Header, Ethernet Frame & CRC-32" },
+  { id: 4, short: "5. Wire PHY",   loc: "LAN Cable (L1)",   title: "Stage 5: Physical Transduction — Bits Become Voltage / Light Pulses" },
+  { id: 5, short: "6. NAT Router", loc: "Home Router",      title: "Stage 6: Home NAT Router — L2 Rewrite, Private→Public IP, TTL 64→63" },
+  { id: 6, short: "7. ISP Core",   loc: "ISP Backbone",     title: "Stage 7: ISP Core Router — BGP Forwarding, TTL 63→62 & Wire Exposure" },
+  { id: 7, short: "8. NIC & TCP",  loc: "Server B (L1→L4)", title: "Stage 8: Server B — FEC/CRC-32 Check, Out-of-Order TCP Reassembly" },
+  { id: 8, short: "9. Decrypt",    loc: "Server B (L6→L7)", title: "Stage 9: Server B — AEAD Tag Verify, TLS Decryption & App Delivery" }
+];
+
+const sim = {
+  stage: 0,
+  playing: false,
+  segIdx: 0,
+  phyMode: 'manchester',
+  tlsOn: true,
+  fecOn: true,
+  bitFlip: false,
+  dropSeg2: false,
+  tamper: false,
+  selectedBlock: 'app',
+  message: "Hello Quantum World! Transfer $42",
+  t: 0,
+  packetModel: null
+};
+
+// Real IEEE 802.3 CRC-32 implementation!
+const CRC_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let i = 0; i < 256; i++) {
+    let c = i;
+    for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    t[i] = c >>> 0;
+  }
+  return t;
+})();
+function crc32(bytes) {
+  let c = 0xFFFFFFFF;
+  for (let i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+function hex8(b) { return b.toString(16).padStart(2, '0').toUpperCase(); }
+function hex32(n) { return '0x' + (n >>> 0).toString(16).padStart(8, '0').toUpperCase(); }
+function bin8(b) { return b.toString(2).padStart(8, '0'); }
+
+// Deterministic AES-CTR-like stream cipher + 16-byte AEAD tag for live visual demonstration
+function keystreamByte(segIdx, idx) {
+  let x = ((segIdx + 1) * 0x9E3779B1 ^ (idx + 17) * 0x85EBCA6B) >>> 0;
+  x = Math.imul(x ^ (x >>> 15), 0x2C1B3C6D) >>> 0;
+  return (x ^ (x >>> 12)) & 0xFF;
+}
+
+function buildModel() {
+  const raw = Array.from(new TextEncoder().encode(sim.message || "Hello World!"));
+  // Split into 3 TCP segments!
+  const chunkSz = Math.max(1, Math.ceil(raw.length / 3));
+  const segs = [0, 1, 2].map(i => {
+    const plain = raw.slice(i * chunkSz, (i + 1) * chunkSz);
+    if (plain.length === 0) plain.push(0x20);
+    const cipher = plain.map((b, k) => b ^ keystreamByte(i, k));
+    const wirePayload = sim.tlsOn ? cipher.slice() : plain.slice();
+    // 16-byte AEAD authentication tag derived from key + ciphertext
+    const tagHash1 = crc32([0x54, 0x4C, 0x53, i, ...cipher]);
+    const tagHash2 = crc32([0x47, 0x43, 0x4D, i, ...cipher.slice().reverse()]);
+    const tag = [
+      (tagHash1 >>> 24)&255, (tagHash1 >>> 16)&255, (tagHash1 >>> 8)&255, tagHash1&255,
+      (tagHash2 >>> 24)&255, (tagHash2 >>> 16)&255, (tagHash2 >>> 8)&255, tagHash2&255
+    ];
+    const seq = 1001 + i * chunkSz;
+    return { idx: i, seq, plain, cipher, wirePayload, tag, text: new TextDecoder().decode(new Uint8Array(plain)) };
+  });
+  sim.packetModel = { raw, segs };
+}
+
+function getHopState() {
+  const seg = sim.packetModel.segs[sim.segIdx];
+  const st = sim.stage;
+  // Determine L2/L3/L4 mutations by stage!
+  const postNAT = st >= 5;
+  const postISP = st >= 6;
+  const srcMAC = postISP ? "EE:55:90:12:4A:01" : (postNAT ? "CC:33:88:1F:20:09" : "AA:11:4B:7E:01:C2");
+  const dstMAC = postISP ? "FF:66:00:D4:91:77" : (postNAT ? "DD:44:72:A0:08:11" : "BB:22:00:1A:79:01");
+  const srcIP  = postNAT ? "73.15.8.2" : "192.168.1.42";
+  const dstIP  = "93.184.216.34";
+  const srcPort = postNAT ? 40118 : 51422;
+  const dstPort = 443;
+  const ttl = postISP ? 62 : (postNAT ? 63 : 64);
+
+  // Build actual payload bytes at this hop (applying bit-flip or active tamper!)
+  const payload = seg.wirePayload.slice();
+  let bitFlippedHere = false;
+  let tamperedHere = false;
+  if (sim.bitFlip && st >= 4) {
+    // Flip 1 bit in byte 0 on wire! (If FEC is ON and we reach stage 7+, FEC heals it!)
+    if (!(sim.fecOn && st >= 7)) {
+      payload[0] ^= 0x04;
+      bitFlippedHere = true;
+    }
+  }
+  if (sim.tamper && st >= 6) {
+    // Active attacker at ISP flips a byte AND recomputes CRC-32 so L2 doesn't notice!
+    payload[payload.length - 1] ^= 0xFF;
+    tamperedHere = true;
+  }
+
+  // Compute CRC-32 over clean frame vs received frame
+  const hdrSeed = [ttl, srcPort & 255, postNAT ? 73 : 192, postISP ? 0xEE : (postNAT ? 0xCC : 0xAA)];
+  const cleanPayload = tamperedHere ? payload : seg.wirePayload; // Attacker recomputes CRC-32!
+  const expectedCRC = crc32([...hdrSeed, ...cleanPayload, ...seg.tag]);
+  const receivedCRC = crc32([...hdrSeed, ...payload, ...seg.tag]);
+  const crcMismatch = (st >= 7) && (expectedCRC !== receivedCRC);
+  const fecHealed = sim.bitFlip && sim.fecOn && st >= 7;
+  const aeadFailed = sim.tamper && sim.tlsOn && st >= 8;
+  const segDropped = sim.dropSeg2 && sim.segIdx === 1 && st >= 6;
+
+  return {
+    seg, srcMAC, dstMAC, srcIP, dstIP, srcPort, dstPort, ttl,
+    payload, expectedCRC, receivedCRC, crcMismatch, fecHealed,
+    aeadFailed, tamperedHere, bitFlippedHere, segDropped, postNAT, postISP
+  };
+}
+
+// =====================================================================
+// RENDER STEPPER & PACKET MICROSCOPE DOM
+// =====================================================================
+function renderUI() {
+  buildModel();
+  const h = getHopState();
+  const st = sim.stage;
+
+  // Stepper buttons
+  const stepEl = document.getElementById('stepper');
+  stepEl.innerHTML = STAGES.map(s =>
+    `<button class="step-btn ${s.id === st ? 'active' : ''}" data-st="${s.id}"><strong>${s.short}</strong>${s.loc}</button>`
+  ).join('');
+  stepEl.querySelectorAll('button').forEach(b => b.onclick = () => {
+    sim.stage = parseInt(b.dataset.st);
+    autoSelectBlock();
+    renderUI();
+  });
+
+  // Update toggles
+  document.getElementById('btn-tls').className = 'btn ' + (sim.tlsOn ? 'active' : '');
+  document.getElementById('btn-tls').innerHTML = sim.tlsOn ? '&#128274; TLS 1.3: ON' : '&#128275; TLS 1.3: OFF (Plaintext!)';
+  document.getElementById('btn-fec').className = 'btn ' + (sim.fecOn ? 'active' : '');
+  document.getElementById('btn-fec').innerHTML = sim.fecOn ? '&#128737; FEC (Hamming): ON' : '&#128737; FEC: OFF';
+  document.getElementById('btn-flip').className = 'btn danger ' + (sim.bitFlip ? 'on' : '');
+  document.getElementById('btn-drop').className = 'btn danger ' + (sim.dropSeg2 ? 'on' : '');
+  document.getElementById('btn-tamper').className = 'btn danger ' + (sim.tamper ? 'on' : '');
+
+  document.getElementById('topo-badge').textContent = `Stage ${st + 1} / 9 — ${STAGES[st].loc}`;
+  document.getElementById('phy-badge').textContent =
+    sim.phyMode === 'manchester' ? 'Manchester IEEE 802.3 (1 bit/sym)' :
+    (sim.phyMode === 'pam4' ? 'PAM-4 Multi-Level (2 bits/sym)' : 'Fiber Optic OOK Laser Pulses');
+  document.getElementById('stage-title').textContent = STAGES[st].title;
+
+  // Status banner
+  const sb = document.getElementById('status-banner');
+  if (h.aeadFailed) {
+    sb.className = 'status-banner st-err';
+    sb.textContent = '🚨 TLS 1.3 AEAD AUTHENTICATION FAILED! Attacker tampered with payload & forged CRC-32, but 128-bit GHASH Tag caught it — Packet REJECTED!';
+  } else if (h.crcMismatch) {
+    sb.className = 'status-banner st-err';
+    sb.textContent = `⚠️ CRC-32 MISMATCH AT SERVER NIC! (Expected ${hex32(h.expectedCRC)} vs Got ${hex32(h.receivedCRC)}). Frame DROPPED → TCP sends Dup-ACK to trigger Retransmission!`;
+  } else if (h.segDropped && st === 6) {
+    sb.className = 'status-banner st-err';
+    sb.textContent = '💥 CONGESTION DROP AT ISP CORE! Segment #2 vanished in router queue — advance to Stage 8 to watch TCP Fast Retransmit recover it!';
+  } else if (h.segDropped && st >= 7) {
+    sb.className = 'status-banner st-warn';
+    sb.textContent = '♻️ TCP FAST RETRANSMIT TRIGGERED: Server buffered Seg #1 & #3, fired 3× Dup-ACKs for Seq #' + h.seg.seq + ', and healed missing Seg #2 seamlessly!';
+  } else if (h.fecHealed) {
+    sb.className = 'status-banner st-ok';
+    sb.textContent = '🛡️ HAMMING FEC AUTO-HEALED BIT ERROR! Physical layer parity syndrome located flipped bit 2 in Byte 0 and repaired it before CRC-32 even ran!';
+  } else if (sim.tamper && !sim.tlsOn && st >= 8) {
+    sb.className = 'status-banner st-err';
+    sb.textContent = '🔓 UNDETECTED TAMPERING! Because TLS was OFF, the ISP attacker altered your plaintext AND recomputed a valid CRC-32 — corrupted data reached the App!';
+  } else if (st === 8) {
+    sb.className = 'status-banner st-ok';
+    sb.textContent = `✅ END-TO-END DELIVERY COMPLETE! Server B verified AEAD Tag, decrypted & reassembled exact message: "${sim.message}"`;
+  } else {
+    sb.className = 'status-banner st-ok';
+    sb.textContent = `📡 Tracking TCP Segment #${sim.segIdx + 1} ("${h.seg.text}") — ${sim.tlsOn ? 'Encrypted with TLS 1.3 AEAD' : 'WARNING: Unencrypted Plaintext!'}`;
+  }
+
+  // Encapsulation Strip visibility by stage!
+  const hasTLS = sim.tlsOn && st >= 1 && st <= 7;
+  const hasTCP = st >= 2 && st <= 7;
+  const hasIP  = st >= 3 && st <= 7;
+  const hasEth = st >= 3 && st <= 7;
+  const hasPhy = st >= 4 && st <= 7;
+
+  const blocks = [
+    { id: 'phy', cls: 'b-phy', show: hasPhy, label: 'PHY PRE', sz: '8 B + FEC', mut: st === 4 || st === 5 || st === 6 },
+    { id: 'eth', cls: 'b-eth', show: hasEth, label: 'ETH L2',  sz: '14 B MAC',  mut: st === 5 || st === 6 },
+    { id: 'ip',  cls: 'b-ip',  show: hasIP,  label: 'IPv4 L3', sz: `20 B (TTL ${h.ttl})`, mut: st === 5 || st === 6 },
+    { id: 'tcp', cls: 'b-tcp', show: hasTCP, label: `TCP #${sim.segIdx+1}`, sz: `20 B (Seq ${h.seg.seq})`, mut: st === 5 },
+    { id: 'tls', cls: 'b-tls', show: hasTLS, label: 'TLS Hdr', sz: '5 B Rec',   mut: st === 1 },
+    { id: 'app', cls: 'b-app', show: true,   label: (hasTLS ? '🔒 CIPHERTEXT' : 'PLAINTEXT'), sz: `${h.payload.length} B`, mut: h.bitFlippedHere || h.tamperedHere },
+    { id: 'tag', cls: 'b-tls', show: hasTLS, label: 'AEAD TAG', sz: '16 B MAC', mut: h.aeadFailed },
+    { id: 'crc', cls: 'b-crc', show: hasEth, label: 'FCS CRC-32', sz: '4 B Check', mut: st === 5 || st === 6 || h.crcMismatch }
+  ];
+
+  const encEl = document.getElementById('encap-bar');
+  encEl.innerHTML = blocks.map(b =>
+    `<div class="pkt-block ${b.cls} ${!b.show ? 'dimmed' : ''} ${b.mut && b.show ? 'mutated' : ''} ${sim.selectedBlock === b.id ? 'selected' : ''}" data-blk="${b.id}">
+       <div class="tag">${b.label}</div><div class="sz">${b.show ? b.sz : '(Not Wrapped)'}</div>
+     </div>`
+  ).join('');
+  encEl.querySelectorAll('.pkt-block').forEach(el => el.onclick = () => {
+    sim.selectedBlock = el.dataset.blk;
+    renderUI();
+  });
+
+  // Narrative per stage
+  const narratives = [
+    `Your application creates a <strong>${sim.packetModel.raw.length}-byte UTF-8 message</strong> (<code>"${sim.message}"</code>) and hands it to the OS socket API. No encryption, sequence numbers, or network addresses exist yet.`,
+    sim.tlsOn
+      ? `<strong>TLS 1.3 (AES-256-GCM)</strong> XORs your plaintext with a unique ephemeral keystream derived from X25519 Diffie-Hellman, turning readable ASCII into random-looking ciphertext, and appends a <strong>16-byte AEAD authentication tag</strong>.`
+      : `<strong>TLS is turned OFF!</strong> Your raw plaintext passes straight through untouched. Every router and eavesdropper on the Internet will be able to read <code>"${h.seg.text}"</code> directly off the wire!`,
+    `<strong>TCP (Layer 4)</strong> slices your stream into <strong>3 numbered segments</strong> (currently inspecting <strong>Seg #${sim.segIdx + 1}</strong>, Seq <code>${h.seg.seq}</code>) to respect the 1,500-byte MTU, adds Ports (<code>51422 → 443</code>), Receive Window, and a 16-bit checksum.`,
+    `<strong>IPv4 (Layer 3)</strong> adds global routing addresses (<code>192.168.1.42 → 93.184.216.34</code>) and <code>TTL=64</code>. Then <strong>Ethernet (Layer 2)</strong> wraps it with your next-hop MAC (<code>BB:22</code>, Home Router) and appends a 4-byte <strong>CRC-32 FCS</strong> check trailer.`,
+    `Your NIC's <strong>Physical Layer (L1)</strong> serializes every bit into real physical energy — look at the live Oscilloscope above! Try clicking <strong>⚡ Flip Wire Bit</strong> to simulate electromagnetic noise corrupting a symbol mid-flight.`,
+    `<strong>Home NAT Router (Hop 1):</strong> Checks CRC-32, strips LAN Ethernet, rewrites your private LAN IP/port (<code>192.168.1.42:51422</code>) to your public WAN IP (<code>73.15.8.2:40118</code>), decrements <strong>TTL 64 → 63</strong>, wraps in a brand-new WAN MAC header, and recomputes CRC-32!`,
+    `<strong>ISP Core Router (Hop 2):</strong> Performs a nanosecond BGP longest-prefix lookup for <code>93.184.216.34</code>, decrements <strong>TTL 63 → 62</strong>, swaps L2 MACs for the final datacenter link, and recomputes CRC-32. Notice the ISP <em>cannot</em> read your TLS ciphertext!`,
+    `<strong>Server B NIC &amp; TCP Stack:</strong> Physical layer runs <strong>Hamming FEC</strong> (healing single-bit flips if enabled), NIC verifies <strong>CRC-32</strong>, IP checks destination match, and TCP buffers out-of-order segments (triggering Fast Retransmit if Seg #2 dropped!) to rebuild the exact byte stream.`,
+    `<strong>Server B TLS &amp; App:</strong> TLS recomputes the <strong>128-bit AEAD Tag FIRST</strong> (instantly rejecting tampered packets!), XORs the ciphertext with the shared keystream to recover the exact original UTF-8 bytes, and delivers <code>"${sim.message}"</code> to the server application!`
+  ];
+  document.getElementById('narrative-box').innerHTML = narratives[st];
+
+  // Fields & Hex Inspector for selectedBlock
+  renderBlockDetails(h);
+}
+
+function autoSelectBlock() {
+  const map = ['app', 'tls', 'tcp', 'eth', 'phy', 'ip', 'ip', 'crc', 'app'];
+  sim.selectedBlock = map[sim.stage] || 'app';
+}
+
+function renderBlockDetails(h) {
+  const fEl = document.getElementById('fields-box');
+  const hEl = document.getElementById('hex-box');
+  const ft = document.getElementById('fields-title');
+  const ht = document.getElementById('hex-title');
+  const blk = sim.selectedBlock;
+  let rows = [];
+  let bytes = [];
+
+  if (blk === 'eth') {
+    ft.textContent = 'Ethernet II Header (Layer 2 — Rewritten Every Hop!)';
+    ht.textContent = 'Ethernet Header (14 Bytes)';
+    rows = [
+      ['Dest MAC (Next Hop)', h.dstMAC, h.postNAT ? 'changed' : ''],
+      ['Source MAC (This NIC)', h.srcMAC, h.postNAT ? 'changed' : ''],
+      ['EtherType', '0x0800 (IPv4)', ''],
+      ['Scope', 'Local Link Only (stripped at next router)', '']
+    ];
+    bytes = [0xFF, 0x66, 0x00, 0xD4, 0x91, 0x77, 0xEE, 0x55, 0x90, 0x12, 0x4A, 0x01, 0x08, 0x00];
+  } else if (blk === 'ip') {
+    ft.textContent = 'IPv4 Packet Header (Layer 3 — Global Routing)';
+    ht.textContent = 'IPv4 Header (20 Bytes)';
+    rows = [
+      ['Source IP', h.srcIP + (h.postNAT ? ' (NAT Public!)' : ' (Private LAN)'), h.postNAT ? 'changed' : ''],
+      ['Destination IP', h.dstIP + ' (Preserved End-to-End)', 'ok'],
+      ['TTL (Hop Counter)', String(h.ttl) + (h.ttl < 64 ? ' (Decremented!)' : ''), h.ttl < 64 ? 'changed' : ''],
+      ['Protocol', '6 (TCP)', ''],
+      ['Header Checksum', hex8((h.ttl * 17) & 255) + hex8((h.srcPort) & 255) + ' (Updated/Hop)', h.postNAT ? 'changed' : '']
+    ];
+    bytes = [0x45, 0x00, 0x00, 40 + h.payload.length, 0x1C, 0x46, 0x40, 0x00, h.ttl, 0x06, 0xB1, 0xE6,
+             h.postNAT ? 73 : 192, h.postNAT ? 15 : 168, h.postNAT ? 8 : 1, h.postNAT ? 2 : 42, 93, 184, 216, 34];
+  } else if (blk === 'tcp') {
+    ft.textContent = `TCP Header — Segment #${sim.segIdx + 1} of 3 (Layer 4)`;
+    ht.textContent = 'TCP Header (20 Bytes)';
+    rows = [
+      ['Source → Dest Port', `${h.srcPort} → ${h.dstPort} (HTTPS)`, h.postNAT ? 'changed' : ''],
+      ['Sequence Number', `Seq = ${h.seg.seq} (Byte offset)`, ''],
+      ['Flags', 'PSH, ACK (0x18)', ''],
+      ['Receive Window', '65,535 bytes (Flow Control)', ''],
+      ['Reliability State', h.segDropped ? 'DROPPED → Fast Retransmit!' : 'In-Order Verified', h.segDropped ? 'error' : 'ok']
+    ];
+    bytes = [(h.srcPort>>8)&255, h.srcPort&255, 0x01, 0xBB, 0x00, 0x00, (h.seg.seq>>8)&255, h.seg.seq&255, 0,0,0,1, 0x50, 0x18, 0xFF, 0xFF, 0x3A, 0x91, 0, 0];
+  } else if (blk === 'tls' || blk === 'tag') {
+    ft.textContent = 'TLS 1.3 AEAD Record & 128-Bit Auth Tag (Layer 6)';
+    ht.textContent = 'TLS Header (5B) + Auth Tag Sample';
+    rows = [
+      ['Cipher Suite', sim.tlsOn ? 'TLS_AES_256_GCM_SHA384' : 'DISABLED (Plaintext!)', sim.tlsOn ? 'ok' : 'error'],
+      ['Key Exchange', 'X25519 ECDHE (Forward Secret)', ''],
+      ['AEAD Integrity Tag', sim.tlsOn ? h.seg.tag.slice(0,4).map(hex8).join('') + '...' : 'NONE', h.aeadFailed ? 'error' : 'ok'],
+      ['Tamper Verification', h.aeadFailed ? 'FAILED! Tampering Caught!' : (sim.tlsOn ? 'Cryptographically Sealed' : 'EXPOSED!'), h.aeadFailed ? 'error' : (sim.tlsOn ? 'ok' : 'error')]
+    ];
+    bytes = [0x17, 0x03, 0x03, 0x00, h.payload.length + 16, ...h.seg.tag];
+  } else if (blk === 'crc') {
+    ft.textContent = 'Ethernet FCS CRC-32 Check Trailer (4 Bytes)';
+    ht.textContent = 'Computed IEEE 802.3 CRC-32';
+    rows = [
+      ['Transmitted CRC-32', hex32(h.expectedCRC), ''],
+      ['Receiver Recomputed', hex32(h.receivedCRC), h.crcMismatch ? 'error' : 'ok'],
+      ['Hamming FEC Status', h.fecHealed ? 'Single-Bit Error AUTO-HEALED!' : (sim.fecOn ? 'Armed (Active)' : 'Disabled'), h.fecHealed ? 'ok' : ''],
+      ['Frame Integrity', h.crcMismatch ? 'CORRUPT → DROP FRAME!' : 'VALID (Zero Bit Errors)', h.crcMismatch ? 'error' : 'ok']
+    ];
+    bytes = [(h.receivedCRC>>>24)&255, (h.receivedCRC>>>16)&255, (h.receivedCRC>>>8)&255, h.receivedCRC&255];
+  } else if (blk === 'phy') {
+    ft.textContent = 'Physical Layer Preamble, Encoding & FEC (Layer 1)';
+    ht.textContent = 'Ethernet Preamble (7× 0x55) + SFD (0xD5)';
+    rows = [
+      ['Preamble + SFD', '10101010 ... 10101011 (Clock Lock)', ''],
+      ['Line Coding', sim.phyMode.toUpperCase(), ''],
+      ['Forward Error Corr.', sim.fecOn ? 'Hamming/LDPC Parity Enabled' : 'OFF (Uncoded)', sim.fecOn ? 'ok' : 'changed'],
+      ['Wire Bit-Flip Noise', sim.bitFlip ? (h.fecHealed ? 'Injected → HEALED by FEC' : 'ACTIVE BIT ERROR!') : 'Clean Channel', sim.bitFlip && !h.fecHealed ? 'error' : 'ok']
+    ];
+    bytes = [0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0xD5];
+  } else {
+    const showCipher = sim.tlsOn && sim.stage >= 1 && sim.stage <= 7;
+    ft.textContent = showCipher ? `Encrypted Payload — Seg #${sim.segIdx + 1}` : `Application Plaintext — Seg #${sim.segIdx + 1}`;
+    ht.textContent = showCipher ? 'Ciphertext Bytes on Wire (Unreadable to Routers!)' : 'UTF-8 Plaintext Bytes';
+    const shown = showCipher ? h.payload : (sim.stage === 8 && !sim.tlsOn && h.tamperedHere ? h.payload : h.seg.plain);
+    rows = [
+      ['Segment Chunk', `Seg #${sim.segIdx + 1} of 3 (${shown.length} bytes)`, ''],
+      ['Visible ASCII', showCipher ? '<Indistinguishable Random Ciphertext>' : `"${new TextDecoder().decode(new Uint8Array(shown))}"`, showCipher ? 'changed' : 'ok'],
+      ['Eavesdropper View', showCipher ? '🔒 Safe (AES-256-GCM)' : '👁️ READABLE PLAINTEXT!', showCipher ? 'ok' : 'error'],
+      ['Integrity State', h.bitFlippedHere ? 'Bit #2 Flipped!' : (h.tamperedHere ? 'Last Byte Tampered!' : 'Clean'), (h.bitFlippedHere || h.tamperedHere) ? 'error' : 'ok']
+    ];
+    bytes = shown;
+  }
+
+  fEl.innerHTML = rows.map(([k, v, cls]) => `<div class="kv-row ${cls}"><span class="k">${k}</span><span class="v">${v}</span></div>`).join('');
+  // Format Hex + first 4 bytes in binary!
+  const hexParts = bytes.map((b, idx) => {
+    const isErr = (blk === 'app' && ((h.bitFlippedHere && idx === 0) || (h.tamperedHere && idx === bytes.length - 1)));
+    return isErr ? `<span class="err-bit">${hex8(b)}</span>` : hex8(b);
+  }).join(' ');
+  const binParts = bytes.slice(0, 4).map((b, idx) => {
+    const isErr = (blk === 'app' && h.bitFlippedHere && idx === 0);
+    return isErr ? `<span class="err-bit">${bin8(b)}</span>` : bin8(b);
+  }).join(' ');
+  hEl.innerHTML = `<strong>HEX:</strong> ${hexParts}<br><br><strong>BIN (first 4 B):</strong><br>${binParts}`;
+}
+
+// =====================================================================
+// CANVAS 1: LIVE INTERACTIVE NETWORK TOPOLOGY + ANIMATED PACKETS
+// =====================================================================
+const topoCanvas = document.getElementById('topo-canvas');
+const tCtx = topoCanvas.getContext('2d');
+const phyCanvas = document.getElementById('phy-canvas');
+const pCtx = phyCanvas.getContext('2d');
+
+function resizeCanvases() {
+  [topoCanvas, phyCanvas].forEach(c => {
+    const r = c.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    c.width = Math.max(360, Math.floor(r.width * dpr));
+    c.height = Math.max(200, Math.floor(r.height * dpr));
+    c.getContext('2d').setTransform(dpr, 0, 0, dpr, 0, 0);
+  });
+}
+window.addEventListener('resize', resizeCanvases);
+
+function drawTopology() {
+  const W = topoCanvas.clientWidth, H = topoCanvas.clientHeight;
+  tCtx.clearRect(0, 0, W, H);
+  const st = sim.stage;
+  const h = getHopState();
+
+  // 4 Major Nodes along horizontal axis
+  const xs = [W * 0.13, W * 0.39, W * 0.64, W * 0.87];
+  const ny = H * 0.54;
+
+  // Draw links (Copper LAN, Fiber WAN, Datacenter Link)
+  const linkDefs = [
+    { x1: xs[0] + 44, x2: xs[1] - 44, col: '#2dd4bf', lbl: 'LAN / Wi-Fi', active: st === 4 },
+    { x1: xs[1] + 44, x2: xs[2] - 44, col: '#38bdf8', lbl: 'ISP Fiber WAN', active: st === 5 },
+    { x1: xs[2] + 44, x2: xs[3] - 44, col: '#a78bfa', lbl: 'Backbone Link', active: st === 6 }
+  ];
+  linkDefs.forEach((lk, i) => {
+    tCtx.strokeStyle = lk.active ? lk.col : 'rgba(148,163,184,0.28)';
+    tCtx.lineWidth = lk.active ? 4.5 : 2.5;
+    tCtx.beginPath(); tCtx.moveTo(lk.x1, ny); tCtx.lineTo(lk.x2, ny); tCtx.stroke();
+    tCtx.fillStyle = lk.active ? lk.col : '#64748b';
+    tCtx.font = 'bold 10.5px ui-monospace'; tCtx.textAlign = 'center';
+    tCtx.fillText(lk.lbl, (lk.x1 + lk.x2) / 2, ny + 22);
+    // Show noise bolt or eavesdropper icon!
+    if (i === 0 && sim.bitFlip) {
+      tCtx.fillStyle = '#f87171'; tCtx.font = 'bold 11px system-ui';
+      tCtx.fillText('⚡ Noise Bit-Flip!', (lk.x1 + lk.x2) / 2, ny - 16);
+    }
+    if (i === 1 && sim.tamper) {
+      tCtx.fillStyle = '#fbbf24'; tCtx.font = 'bold 11px system-ui';
+      tCtx.fillText('🕵️ Active Tamper!', (lk.x1 + lk.x2) / 2, ny - 16);
+    }
+  });
+
+  // Draw Host A & Server B Mini Protocol Stack Elevators!
+  const nodes = [
+    { x: xs[0], name: 'HOST A', sub: '192.168.1.42', col: '#34d399', hi: st <= 3 },
+    { x: xs[1], name: 'NAT ROUTER', sub: '→ 73.15.8.2', col: '#fbbf24', hi: st === 5 },
+    { x: xs[2], name: 'ISP CORE', sub: 'BGP TTL-1', col: '#38bdf8', hi: st === 6 },
+    { x: xs[3], name: 'SERVER B', sub: '93.184.216.34', col: '#a78bfa', hi: st >= 7 }
+  ];
+  nodes.forEach(n => {
+    tCtx.fillStyle = n.hi ? 'rgba(56,189,248,0.14)' : '#111a2e';
+    tCtx.strokeStyle = n.hi ? n.col : 'rgba(148,179,255,0.25)';
+    tCtx.lineWidth = n.hi ? 3 : 1.5;
+    tCtx.beginPath(); tCtx.roundRect(n.x - 44, ny - 34, 88, 68, 10); tCtx.fill(); tCtx.stroke();
+    tCtx.fillStyle = n.hi ? n.col : '#e2e8f0'; tCtx.font = 'bold 11.5px system-ui'; tCtx.textAlign = 'center';
+    tCtx.fillText(n.name, n.x, ny - 6);
+    tCtx.fillStyle = '#94a3b8'; tCtx.font = '10px ui-monospace';
+    tCtx.fillText(n.sub, n.x, ny + 14);
+  });
+
+  // Animated Packet Capsule positioned accurately for each of the 9 stages!
+  const pulse = Math.sin(sim.t * 4) * 4;
+  let px, py;
+  if (st === 0)      { px = xs[0]; py = ny - 64; }
+  else if (st === 1) { px = xs[0]; py = ny - 52; }
+  else if (st === 2) { px = xs[0]; py = ny - 40; }
+  else if (st === 3) { px = xs[0]; py = ny; }
+  else if (st === 4) { const u = (sim.t * 0.45) % 1; px = (xs[0] + 44) + (xs[1] - xs[0] - 88) * u; py = ny; }
+  else if (st === 5) { px = xs[1]; py = ny - 48 + pulse * 0.4; }
+  else if (st === 6) { px = xs[2]; py = ny - 48 + pulse * 0.4; }
+  else if (st === 7) { px = xs[3]; py = ny - 44; }
+  else               { px = xs[3]; py = ny - 64; }
+
+  // Glowing packet capsule
+  const pCol = h.aeadFailed || h.crcMismatch || (h.segDropped && st === 6) ? '#f87171' : (sim.tlsOn && st >= 1 && st <= 7 ? '#fbbf24' : '#34d399');
+  tCtx.fillStyle = pCol;
+  tCtx.shadowColor = pCol; tCtx.shadowBlur = 14;
+  tCtx.beginPath(); tCtx.roundRect(px - 28, py - 12, 56, 24, 6); tCtx.fill();
+  tCtx.shadowBlur = 0;
+  tCtx.fillStyle = '#060a14'; tCtx.font = 'bold 10.5px ui-monospace'; tCtx.textAlign = 'center';
+  tCtx.fillText(`SEG #${sim.segIdx + 1}`, px, py + 4);
+
+  // Stack direction labels
+  tCtx.fillStyle = '#64748b'; tCtx.font = 'bold 10px ui-monospace'; tCtx.textAlign = 'center';
+  tCtx.fillText('↓ ENCAPSULATE', xs[0], 22);
+  tCtx.fillText('PACKET SWITCHING & ROUTING →', (xs[1] + xs[2]) / 2, 22);
+  tCtx.fillText('↑ DECAPSULATE', xs[3], 22);
+}
+
+// =====================================================================
+// CANVAS 2: LIVE PHYSICAL SIGNAL OSCILLOSCOPE (Encodes ACTUAL Frame Bits!)
+// =====================================================================
+function drawOscilloscope() {
+  const W = phyCanvas.clientWidth, H = phyCanvas.clientHeight;
+  pCtx.clearRect(0, 0, W, H);
+  const h = getHopState();
+  // Take first 2 bytes (16 bits) of live payload!
+  const b0 = h.payload[0] ?? 0x48;
+  const b1 = h.payload[1] ?? 0x69;
+  const bits = [];
+  for (let i = 7; i >= 0; i--) bits.push((b0 >> i) & 1);
+  for (let i = 7; i >= 0; i--) bits.push((b1 >> i) & 1);
+
+  const padL = 42, padR = 16, padT = 32, padB = 28;
+  const gW = W - padL - padR, gH = H - padT - padB;
+  const midY = padT + gH / 2;
+
+  // Grid
+  pCtx.strokeStyle = 'rgba(148,163,184,0.12)'; pCtx.lineWidth = 1;
+  for (let k = 0; k <= 4; k++) {
+    const yy = padT + (k / 4) * gH;
+    pCtx.beginPath(); pCtx.moveTo(padL, yy); pCtx.lineTo(W - padR, yy); pCtx.stroke();
+  }
+
+  if (sim.phyMode === 'manchester') {
+    const bw = gW / bits.length;
+    pCtx.strokeStyle = '#2dd4bf'; pCtx.lineWidth = 2.8;
+    pCtx.beginPath();
+    bits.forEach((bit, i) => {
+      const xa = padL + i * bw, xm = xa + bw / 2, xb = xa + bw;
+      const y1 = bit === 1 ? padT + gH * 0.80 : padT + gH * 0.20;
+      const y2 = bit === 1 ? padT + gH * 0.20 : padT + gH * 0.80;
+      if (i === 0) pCtx.moveTo(xa, y1); else pCtx.lineTo(xa, y1);
+      pCtx.lineTo(xm, y1); pCtx.lineTo(xm, y2); pCtx.lineTo(xb, y2);
+
+      // Highlight flipped bit #5 (mask 0x04 -> index 5 of byte 0)!
+      const isErr = h.bitFlippedHere && i === 5;
+      pCtx.fillStyle = isErr ? '#f87171' : '#94a3b8';
+      pCtx.font = isErr ? 'bold 12px ui-monospace' : '10.5px ui-monospace';
+      pCtx.textAlign = 'center';
+      pCtx.fillText(String(bit), xm, padT - 10);
+    });
+    pCtx.stroke();
+    pCtx.fillStyle = '#64748b'; pCtx.font = '10px ui-monospace'; pCtx.textAlign = 'right';
+    pCtx.fillText('+2.5V', padL - 6, padT + gH * 0.22);
+    pCtx.fillText('-2.5V', padL - 6, padT + gH * 0.82);
+  }
+  else if (sim.phyMode === 'pam4') {
+    // 8 2-bit symbols!
+    const pairs = [];
+    for (let i = 0; i < 16; i += 2) pairs.push(`${bits[i]}${bits[i+1]}`);
+    const mapY = { '10': 0.14, '11': 0.38, '01': 0.62, '00': 0.86 };
+    const sw = gW / pairs.length;
+    pCtx.strokeStyle = '#a78bfa'; pCtx.lineWidth = 3;
+    pCtx.beginPath();
+    for (let px = 0; px <= gW; px += 2) {
+      const u = (px / gW) * pairs.length;
+      const idx = Math.min(pairs.length - 1, Math.floor(u));
+      const frac = u - idx;
+      const yCur = mapY[pairs[idx]];
+      const yPrev = mapY[pairs[Math.max(0, idx - 1)]];
+      const blend = 1 / (1 + Math.exp(-14 * (frac - 0.14)));
+      const noise = Math.sin(px * 0.7 + sim.t * 10) * (sim.bitFlip ? 0.035 : 0.01);
+      const yy = padT + (yPrev + (yCur - yPrev) * blend + noise) * gH;
+      if (px === 0) pCtx.moveTo(padL + px, yy); else pCtx.lineTo(padL + px, yy);
+    }
+    pCtx.stroke();
+    pairs.forEach((pr, i) => {
+      const xc = padL + (i + 0.55) * sw;
+      const yc = padT + mapY[pr] * gH;
+      pCtx.fillStyle = '#fbbf24'; pCtx.beginPath(); pCtx.arc(xc, yc, 4, 0, Math.PI * 2); pCtx.fill();
+      pCtx.fillStyle = (h.bitFlippedHere && i === 2) ? '#f87171' : '#cbd5e1';
+      pCtx.font = 'bold 10.5px ui-monospace'; pCtx.textAlign = 'center';
+      pCtx.fillText(pr, xc, padT - 10);
+    });
+    pCtx.fillStyle = '#64748b'; pCtx.font = '9.5px ui-monospace'; pCtx.textAlign = 'right';
+    ['+3V', '+1V', '-1V', '-3V'].forEach((l, k) => pCtx.fillText(l, padL - 6, padT + (0.14 + k * 0.24) * gH + 3));
+  }
+  else {
+    // Fiber Optic Laser OOK Pulses (1550 nm infrared carrier envelopes!)
+    const bw = gW / bits.length;
+    for (let i = 0; i < bits.length; i++) {
+      const xa = padL + i * bw;
+      if (bits[i] === 1) {
+        const grad = pCtx.createLinearGradient(xa, padT, xa, H - padB);
+        grad.addColorStop(0, 'rgba(56,189,248,0.55)');
+        grad.addColorStop(1, 'rgba(56,189,248,0.05)');
+        pCtx.fillStyle = grad;
+        pCtx.fillRect(xa + 2, padT + gH * 0.16, bw - 4, gH * 0.72);
+        // Carrier ripple inside light pulse
+        pCtx.strokeStyle = '#38bdf8'; pCtx.lineWidth = 2;
+        pCtx.beginPath();
+        for (let k = 0; k <= bw - 4; k += 2) {
+          const yy = midY + Math.sin(k * 1.1 - sim.t * 14) * gH * 0.28;
+          if (k === 0) pCtx.moveTo(xa + 2 + k, yy); else pCtx.lineTo(xa + 2 + k, yy);
+        }
+        pCtx.stroke();
+      } else {
+        pCtx.strokeStyle = 'rgba(148,163,184,0.35)'; pCtx.lineWidth = 1.5;
+        pCtx.beginPath(); pCtx.moveTo(xa, padT + gH * 0.86); pCtx.lineTo(xa + bw, padT + gH * 0.86); pCtx.stroke();
+      }
+      pCtx.fillStyle = (h.bitFlippedHere && i === 5) ? '#f87171' : '#94a3b8';
+      pCtx.font = '10.5px ui-monospace'; pCtx.textAlign = 'center';
+      pCtx.fillText(String(bits[i]), xa + bw / 2, padT - 10);
+    }
+    pCtx.fillStyle = '#38bdf8'; pCtx.font = '9.5px ui-monospace'; pCtx.textAlign = 'right';
+    pCtx.fillText('LASER', padL - 5, padT + gH * 0.24);
+    pCtx.fillText('DARK', padL - 5, padT + gH * 0.86);
+  }
+
+  pCtx.fillStyle = '#64748b'; pCtx.font = '10px ui-monospace'; pCtx.textAlign = 'center';
+  pCtx.fillText(`Encoding Live Payload Bytes 0-1: 0x${hex8(b0)} 0x${hex8(b1)} (${sim.tlsOn && sim.stage >= 1 && sim.stage <= 7 ? 'Ciphertext' : 'Plaintext'})`, W / 2, H - 8);
+}
+
+// Click on topology canvas jumps straight to that stage!
+topoCanvas.addEventListener('click', (e) => {
+  const r = topoCanvas.getBoundingClientRect();
+  const x = (e.clientX - r.left) / r.width;
+  if (x < 0.24) sim.stage = (sim.stage < 3 ? sim.stage + 1 : 0);
+  else if (x < 0.34) sim.stage = 4;
+  else if (x < 0.52) sim.stage = 5;
+  else if (x < 0.76) sim.stage = 6;
+  else sim.stage = (sim.stage === 7 ? 8 : 7);
+  autoSelectBlock();
+  renderUI();
+});
+
+// Controls bindings
+document.getElementById('btn-send').onclick = () => {
+  sim.message = document.getElementById('msg-input').value || "Hello Network!";
+  sim.stage = 0; autoSelectBlock(); renderUI();
+};
+document.getElementById('btn-prev').onclick = () => { sim.stage = Math.max(0, sim.stage - 1); autoSelectBlock(); renderUI(); };
+document.getElementById('btn-next').onclick = () => { sim.stage = Math.min(8, sim.stage + 1); autoSelectBlock(); renderUI(); };
+document.getElementById('btn-play').onclick = () => {
+  sim.playing = !sim.playing;
+  document.getElementById('btn-play').innerHTML = sim.playing ? '&#10074;&#10074; Pause' : '&#9654; Auto-Play';
+};
+document.getElementById('seg-select').onchange = (e) => { sim.segIdx = parseInt(e.target.value); renderUI(); };
+document.getElementById('phy-select').onchange = (e) => { sim.phyMode = e.target.value; renderUI(); };
+document.getElementById('btn-tls').onclick = () => { sim.tlsOn = !sim.tlsOn; renderUI(); };
+document.getElementById('btn-fec').onclick = () => { sim.fecOn = !sim.fecOn; renderUI(); };
+document.getElementById('btn-flip').onclick = () => { sim.bitFlip = !sim.bitFlip; renderUI(); };
+document.getElementById('btn-drop').onclick = () => { sim.dropSeg2 = !sim.dropSeg2; if (sim.dropSeg2) { sim.segIdx = 1; document.getElementById('seg-select').value = '1'; } renderUI(); };
+document.getElementById('btn-tamper').onclick = () => { sim.tamper = !sim.tamper; renderUI(); };
+
+let lastStep = performance.now();
+function loop(now) {
+  sim.t += 0.016;
+  if (sim.playing && now - lastStep > 2400) {
+    lastStep = now;
+    sim.stage = (sim.stage + 1) % 9;
+    autoSelectBlock();
+    renderUI();
+  }
+  drawTopology();
+  drawOscilloscope();
+  requestAnimationFrame(loop);
+}
+
+resizeCanvases();
+renderUI();
+requestAnimationFrame(loop);
+</script>
+
+<section id="stem-doors" style="margin:34px 0 10px;border-top:1px solid #2a3a55;padding-top:18px">
+  <h2>References &amp; STEM Doors</h2>
+  <p>Every mechanism under the microscope, in the open literature — and the rest of the networking shelf in this collection.</p>
+  <h3>The stack</h3>
+  <ul>
+    <li><a href="https://en.wikipedia.org/wiki/OSI_model">OSI model</a></li><li><a href="https://en.wikipedia.org/wiki/Internet_protocol_suite">Internet protocol suite</a></li><li><a href="https://en.wikipedia.org/wiki/Encapsulation_(networking)">Encapsulation</a></li><li><a href="https://en.wikipedia.org/wiki/Packet_switching">Packet switching</a></li><li><a href="https://en.wikipedia.org/wiki/Physical_layer">Physical layer</a></li><li><a href="https://en.wikipedia.org/wiki/Manchester_code">Manchester code</a></li>
+  </ul>
+  <h3>The envelopes</h3>
+  <ul>
+    <li><a href="https://en.wikipedia.org/wiki/Ethernet_frame">Ethernet frame</a></li><li><a href="https://en.wikipedia.org/wiki/IPv4">IPv4</a></li><li><a href="https://en.wikipedia.org/wiki/Transmission_Control_Protocol">Transmission Control Protocol (TCP)</a></li><li><a href="https://en.wikipedia.org/wiki/User_Datagram_Protocol">User Datagram Protocol (UDP)</a></li><li><a href="https://en.wikipedia.org/wiki/Port_(computer_networking)">Port numbers</a></li><li><a href="https://en.wikipedia.org/wiki/Maximum_transmission_unit">Maximum transmission unit (MTU)</a></li><li><a href="https://en.wikipedia.org/wiki/Time_to_live">Time to live (TTL)</a></li>
+  </ul>
+  <h3>The guards — checks, correction, and encryption</h3>
+  <ul>
+    <li><a href="https://en.wikipedia.org/wiki/Transport_Layer_Security">Transport Layer Security (TLS)</a></li><li><a href="https://en.wikipedia.org/wiki/Authenticated_encryption">Authenticated encryption (AEAD)</a></li><li><a href="https://en.wikipedia.org/wiki/Checksum">Checksum</a></li><li><a href="https://en.wikipedia.org/wiki/Internet_checksum">Internet checksum</a></li><li><a href="https://en.wikipedia.org/wiki/Cyclic_redundancy_check">Cyclic redundancy check (CRC)</a></li><li><a href="https://en.wikipedia.org/wiki/Forward_error_correction">Forward error correction (FEC)</a></li><li><a href="https://en.wikipedia.org/wiki/Hamming_code">Hamming code</a></li>
+  </ul>
+  <h3>The road</h3>
+  <ul>
+    <li><a href="https://en.wikipedia.org/wiki/Router_(computing)">Router</a></li><li><a href="https://en.wikipedia.org/wiki/Network_switch">Network switch</a></li><li><a href="https://en.wikipedia.org/wiki/Network_address_translation">Network address translation (NAT)</a></li><li><a href="https://en.wikipedia.org/wiki/Border_Gateway_Protocol">Border Gateway Protocol (BGP)</a></li>
+  </ul>
+  <h3>Subnetting (for giggles — and because Stage 4 is where it lives)</h3>
+  <ul>
+    <li><a href="https://en.wikipedia.org/wiki/Subnetwork">Subnetwork — what a subnet actually is</a></li><li><a href="https://en.wikipedia.org/wiki/Classless_Inter-Domain_Routing">Classless Inter-Domain Routing (CIDR) — where the slash comes from</a></li><li><a href="https://en.wikipedia.org/wiki/IP_address">IP address</a></li>
+    <li><a href="index.html#subnets">The Neighborhood Bench — this room's own subnet calculator</a> (draw your own /24, then split it)</li>
+  </ul>
+  <h3>Elsewhere in the collection</h3>
+  <ul>
+    <li><a href="route-it.html">Route It</a> — be every router the packet meets, one next-hop decision at a time</li>
+    <li><a href="route-the-package.html">Route the Package</a> — the same journey in cardboard: depots, mis-sorts, and the last mile</li>
+    <li><a href="../nerd-heaven-tech-support/pack-002-the-network-card.html">Pack 002: The Network Card</a> — build this stack by hand under DOS, one driver at a time</li>
+    <li><a href="../nerd-heaven-tech-support/the-bbs-door.html">The BBS Door</a> — packets in the wild: real boards, reached the slow way</li>
+  </ul>
+</section>
+
+<style>
+  .szbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 10px}
+  .szbar button{background:#0d1522;color:#e8ecf4;border:1px solid #2a3a55;border-radius:8px;padding:5px 12px;font:inherit;font-size:.85rem;cursor:pointer}
+  .szbar button.on{color:#ffcf7d;border-color:#ffcf7d}
+  body.big .wrap{max-width:1560px}
+  body.pop .wrap{max-width:none;padding:10px 12px 20px}
+  body.pop header,body.pop footer,body.pop .crumb{display:none}
+</style>
+<script>
+/* screen size, full screen & pop-out (display only — the exhibit's own machinery is untouched) */
+(function () {
+  var pageKey = 'packet-journey-big';
+  var styled = [];
+  function allCanvases() { return Array.prototype.slice.call(document.querySelectorAll('canvas')).filter(function (c) { return getComputedStyle(c).position !== 'fixed'; }); }
+  function biggestCanvas() {
+    var best = null, ba = 0;
+    allCanvases().forEach(function (c) { var a = (c.width || 0) * (c.height || 0); if (a > ba) { ba = a; best = c; } });
+    return best;
+  }
+  function sizeTargets() {
+    var maxA = 0;
+    allCanvases().forEach(function (c) { var a = (c.width || 0) * (c.height || 0); if (a > maxA) maxA = a; });
+    return allCanvases().filter(function (c) { return (c.width || 0) * (c.height || 0) >= maxA * 0.25; });
+  }
+  function setBig(on) {
+    document.body.classList.toggle('big', on);
+    var b = document.querySelector('.sz-size');
+    if (b) { b.textContent = on ? 'SIZE: BIG' : 'SIZE: NORMAL'; b.classList.toggle('on', on); }
+    styled.forEach(function (c) { c.style.removeProperty('width'); c.style.removeProperty('height'); });
+    styled = [];
+    if (on) sizeTargets().forEach(function (c) {
+      c.style.width = 'min(1480px,96vw)'; c.style.height = 'auto'; styled.push(c);
+      var r = c.getBoundingClientRect();
+      if (r.height > window.innerHeight * 0.94 && c.width && c.height) {
+        c.style.width = Math.floor(window.innerHeight * 0.94 * (c.width / c.height)) + 'px';
+      }
+    });
+    try { localStorage.setItem(pageKey, on ? '1' : ''); } catch (e) {}
+  }
+  function mkBtn(label, cls) { var b = document.createElement('button'); b.type = 'button'; b.textContent = label; if (cls) b.className = cls; return b; }
+  function buildBar() {
+    var bc = biggestCanvas();
+    if (!bc) return;
+    var first = allCanvases()[0];
+    var bar = document.createElement('div'); bar.className = 'szbar';
+    if (bc.getBoundingClientRect().width < window.innerWidth * 0.97) {
+      var sb = mkBtn('SIZE: NORMAL', 'sz-size');
+      sb.addEventListener('click', function () { setBig(!document.body.classList.contains('big')); });
+      bar.appendChild(sb);
+    }
+    var fb = mkBtn('FULL SCREEN');
+    fb.addEventListener('click', function () {
+      var t = bc.parentElement || bc;
+      if (document.fullscreenElement) document.exitFullscreen();
+      else if (t.requestFullscreen) t.requestFullscreen();
+    });
+    bar.appendChild(fb);
+    var pb = mkBtn('POP OUT');
+    pb.addEventListener('click', function () { window.open(location.pathname + '?pop=1', 'sz-pop', 'width=1240,height=940'); });
+    bar.appendChild(pb);
+    first.parentNode.insertBefore(bar, first);
+    try { if (localStorage.getItem(pageKey)) setBig(true); } catch (e) {}
+  }
+  if (document.readyState === 'complete') buildBar(); else window.addEventListener('load', buildBar);
+  if (new URLSearchParams(location.search).get('pop') === '1') document.body.classList.add('pop');
+})();
+</script>
+</body>
+</html>

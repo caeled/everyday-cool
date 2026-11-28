@@ -11,3 +11,8 @@ Original code, diagrams, and explanations. No copied media or libraries. Sources
 - https://www.rfc-editor.org/rfc/rfc3021
 
 IPv4 arithmetic is exact for 0–32 prefixes. Capacity is address slots, not an allocation promise. OSI is a conceptual map. Simulations send no packets. Browser estimates are not RSSI or an Internet connectivity verdict. Real readings come only from optional local Windows snapshots, not the simulator.
+
+## Network Packet Journey (2026-11-27)
+
+`network-packet-journey.html` was built by Antigravity (the science division) and delivered as a single self-contained HTML file: no third-party code, no CDN loads, no external requests — it runs whole offline. Integrated byte-for-byte apart from the sanctioned additions recorded in COLLECTION.md (banner figure, reference shelf, screen-size block). `packet-journey-banner.jpg` is AI-generated watercolor (Muse, at Steven's direction).
+
