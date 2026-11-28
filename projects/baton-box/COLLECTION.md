@@ -100,3 +100,7 @@ Forum link (26 November 2026): `index.html` gained the collection's Join our For
 
 
 Collection sweep (26 November 2026): `selftest.py` gained the UTF-8 stdout/stderr guard (the server already had it) — the cp1252 class that crashed the server on its own banner.
+
+## CRT frame on the passenger DOS console (2026-11-28)
+
+`games/the-dos-console/the-dos-console.html` received the same CRT monitor dressing as the Nerd Heaven DOS benches (bezel, scanlines, LED chin) so the console looks the same wherever the box serves it.

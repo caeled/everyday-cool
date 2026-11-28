@@ -478,3 +478,7 @@ click at BIG and the board changed, the Dash Builder painted a block at BIG and 
 cell, both Feedback Bench canvases grow together, and the Vectrex sits alive on its Mine Storm title card.
 Full-screen buttons call the standard API; Steven's click is their receipt. Service worker cache bumped in
 `sw.js`.
+
+## CRT monitor frames on the DOS benches (2026-11-28)
+
+At Steven's direction, the four DOS screens — `the-dos-workbench.html`, `the-dos-console.html`, `pack-002-the-network-card.html`, and `the-bbs-door.html` — were dressed as CRT monitors: the `.screenbox` gains a 16px charcoal bezel, rounded corners, an inset shadow, and a faint scanline-and-sheen overlay that passes clicks through (`pointer-events: none`), and a script-set chin under each screen carries a green power LED and the bench's name. The picture itself is NOT tinted — DOS colour stays true; the frame dresses the monitor, not the display. The same treatment was applied to the Baton Box passenger copy of the console (`../baton-box/games/the-dos-console/the-dos-console.html`) and to Steven's standalone box copy outside this repo. Audit (headless, 2026-11-28): all four pages boot DOS as before (Workbench at its Z: prompt, Pack 002 and the Door at C:\\NET, the Console waiting for a mount by design), chin present on all four, zero page exceptions. Service worker cache `nerd-heaven-v84`.
