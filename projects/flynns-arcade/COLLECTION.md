@@ -78,3 +78,19 @@ Forum link (26 November 2026): `index.html` gained the collection's Join our For
 
 
 Collection sweep (26 November 2026): `sw.js` cache bumped flynns-arcade-v1 -> flynns-arcade-v2. The v1 cache predated the Breakout pick landing, so returning visitors could be served the pre-pick room — the stale-room class.
+
+## Screen sizes in every cabinet (2026-11-27 evening)
+
+At Steven's direction (size options "across the board" for everything playable), every Flynn's Arcade cabinet
+page gained a display-only control block: `games/ai-karts.html`, `games/asteroids.html`, `games/breakout.html`, `games/bulletin-board.html`, `games/crossroads.html`, `games/defender.html`, `games/frogger.html`, `games/gin-rummy.html`, `games/gravity-golf.html`, `games/infinity-complex.html`, `games/invaders.html`, `games/paper-airplane.html`, `games/pinball.html`, `games/primordial-soup.html`, `games/robot-daemon-scroller.html`, `games/solitaire.html`, `games/tarot.html`, `games/tempest.html`, `games/tron.html`, `games/wandering-hub.html`.
+Canvas cabinets get SIZE (the stage canvas grows to a 1,480 px working width, choice remembered per cabinet),
+FULL SCREEN per stage, and POP OUT (the cabinet in its own window, the room's prose left behind). The two
+full-viewport cabinets (Asteroids, Wandering Hub) honestly omit SIZE — they already fill the screen — and the
+DOM cabinets (Bulletin Board, Crossroads, Gin Rummy, Solitaire, Tarot) get FULL SCREEN and POP OUT. The block
+sizes only canvases at least a quarter the area of the page's largest, so AI Karts' kart-preview minis are never
+blown up; its hidden race canvas is pre-sized and opens big. Audited before shipping: a 20-page sweep found the
+bar on every page and zero page exceptions; SIZE growth measured on every canvas cabinet (x1.34 to x6.17);
+Defender played live at BIG on real keys; Breakout's paddle tracked the mouse at BIG with pixel readback exact
+(centroid 210 at 25% across the field, 630 at 75%, on the 840-wide internal field — the same as at normal size).
+Full-screen buttons call the standard API; Steven's click is their receipt. Service worker cache bumped in
+`sw.js`.

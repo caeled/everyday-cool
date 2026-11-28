@@ -1,5 +1,5 @@
 /* Flynn's Arcade service worker — assembled package, cache-first for the room itself. */
-var CACHE = 'flynns-arcade-v2';
+var CACHE = 'flynns-arcade-v3';
 var PRECACHE = [
  "./",
  "index.html",
