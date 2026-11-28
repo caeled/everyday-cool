@@ -448,3 +448,19 @@ Bug Hunt firing fix, 27 November 2026 (Steven's field report on the graphics bui
 Bug Hunt screen sizes + pop-out, 27 November 2026 (Steven's request on the fixed build): three HUD buttons — SIZE: BIG (body.big widens .wrap to 1560px; choice kept in localStorage `bughunt-big`), FULL SCREEN (stage.requestFullscreen with a :fullscreen fit rule), POP OUT (window.open ?pop=1; body.pop hides crumb/title/lede/keys/details/footer, wrap unconstrained). Display-only; internal field unchanged at 960x680 and canvasPos rect-mapping keeps aim true at any scale. Audited on the lone local file with real mouse clicks: normal 950px duck 100/1; BIG 1490px duck hit (fixed incremented, pierce carried the score); pop-out 1631px duck 100/1, prose hidden; zero exceptions. Fullscreen itself not bench-provable (headless-shell grants no fullscreen element) — Steven's click is its receipt. `bughunt.html` sha256 -> ce2aca9f3646dd0a…; keys table documents the buttons; shelf cache to nerd-heaven-v81.
 
 Recorder seam sweep, 27 November 2026 (Steven's call after the Bug Hunt firing fix: check every game that carries the flight recorder for the same bug). Census: exactly four carriers — `bughunt.html`, `shardstorm.html`, `shadowline.html`, `xray-time-machine.html`. The Bug Hunt fault was a shape mismatch at the mouse seam (clicks queued as {x, y}, applied as [0]/[1]); the other three are keyboard machines whose sampler and apply steps were read line by line and are symmetric (Shardstorm {left, right, up, fire}, Shadowline {l, r, u, d, f}, the exhibit {left, right, thrust, fire} by construction). Reading was not treated as the receipt: each was then driven on the human path with real key events on the lone local file — Shadowline flew (distance 49.5 -> 264.9, score 12 -> 66, verify 290/290), Shardstorm thrust, turned, and cut a rock for 10 points (verify ok, 300 checks), the exhibit's lander climbed under held thrust with fuel burning (verifyRecord PASS, 182 transitions). No code changed in the three; Bug Hunt was the only carrier of the bug. (One harness note: the exhibit's Play button sits ~1,120 px down the page — the first drive missed it below the fold and recorded nothing; scrolled into view, it flew. A miss of the bench, not the page.)
+
+## Screen sizes across the recorder games (2026-11-27 evening)
+
+At Steven's direction ("Shardstorm needs video size options — in fact we should add that across the board"), the
+three remaining flight-recorder carriers gained the display controls Bug Hunt received earlier that evening.
+`shardstorm.html` and `shadowline.html` took the transplant whole: SIZE (page widens, field scales, choice kept
+in localStorage), FULL SCREEN (the stage fills the monitor), POP OUT (`?pop=1` in its own window, prose hidden) —
+display only, the 960 by 680 field and both games untouched; their lessons (`shardstorm-lesson.html`,
+`shadowline-lesson.html`) carry the audit receipts (Shardstorm: canvas 950 to 1,490 px on a real click, ship flown
+on real keys, recorder verify ok 286 checks; Shadowline: same widths, a real flight of 226.4 distance and 56
+points, verify ok 248 of 248). `xray-time-machine.html` (the X-Ray Time Machine exhibit, ChatGPT's build) took an
+adapted set fitted to its own layout, at the same direction: Size raises the viewport height clamp (430 to 682 px
+on the bench), Full screen gives the console the monitor, Pop out hides the masthead and footer prose; a Help
+paragraph documents them. Its audit: a real flight recorded 2.30 s and Verify reported PASS over 162 transitions,
+no page exceptions. Full-screen buttons call the standard API everywhere and remain Steven's click to prove.
+Service worker cache bumped in `sw.js` (nerd-heaven-v82).
