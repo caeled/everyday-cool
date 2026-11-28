@@ -9,3 +9,8 @@ Audit (Muse, 27 November 2026): the page's engines were driven headlessly and ev
 Shelf links: eight Wikipedia articles and one internal door (Everyday Light), each external link curl-verified live on the day (title checked). A Cambridge in Colour card was drafted and then NOT shelved — the site answers a bot check instead of its title from this bench, so it could not be verified; a verified Golden ratio card stands in its place.
 
 Placement: the fourteenth workshop of the STEM Room (`hubParent: stem-room`); its card stands first on the STEM Room's page, and the room's counts moved thirteen -> fourteen.
+
+## Screen sizes (2026-11-27 evening)
+
+The across-the-board rollout reached this room: `index.html` gained the display-only screen controls (SIZE / FULL SCREEN / POP OUT above the stage, the choice remembered per page). Full-viewport exhibits whose canvas already fills the screen honestly carry only FULL SCREEN and POP OUT; DOM and SVG stages take the same bar fitted to their stage element. Audited page by page with zero page errors. No page machinery was touched — the controls are appended display blocks only.
+

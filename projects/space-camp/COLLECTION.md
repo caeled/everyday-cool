@@ -15,3 +15,8 @@ Staleness fix, 22 November 2026: `space-camp.html` — the "still ahead" sentenc
 ## Radio telescope plan link · 25 November 2026
 
 The sister-room paragraph in `space-camp.html` now links the Backyard Radio Telescope Plan's own page (Tonight's Sky, Rev 2) instead of the Rev 1 PDF directly. Changed files: `space-camp.html`, `COLLECTION.md`.
+
+## Screen sizes (2026-11-27 evening)
+
+The across-the-board rollout reached this room: `space-camp.html` gained the display-only screen controls (SIZE / FULL SCREEN / POP OUT above the stage, the choice remembered per page). Full-viewport exhibits whose canvas already fills the screen honestly carry only FULL SCREEN and POP OUT; DOM and SVG stages take the same bar fitted to their stage element. Audited page by page with zero page errors. No page machinery was touched — the controls are appended display blocks only.
+

@@ -81,3 +81,7 @@ Forum link (26 November 2026): `index.html` gained the collection's Join our For
 
 `tai-chi-forms.html` gained through the across-the-board rollout: Tai Chi Forms gained SIZE / FULL SCREEN / POP OUT (display only). Audited: all three form canvases grow together to 1,480 px with zero page errors.. The choice is remembered per page; full-screen buttons call the standard API and Steven's click is their receipt.
 
+## Screen sizes (2026-11-27 evening)
+
+The across-the-board rollout reached this room: `lenia-automata-zoo.html` gained the display-only screen controls (SIZE / FULL SCREEN / POP OUT above the stage, the choice remembered per page). Full-viewport exhibits whose canvas already fills the screen honestly carry only FULL SCREEN and POP OUT; DOM and SVG stages take the same bar fitted to their stage element. Audited page by page with zero page errors. No page machinery was touched — the controls are appended display blocks only.
+

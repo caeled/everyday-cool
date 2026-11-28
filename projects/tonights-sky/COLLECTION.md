@@ -68,3 +68,7 @@ Forum link (26 November 2026): `index.html` gained the collection's Join our For
 
 `is-the-earth-flat.html` gained through the across-the-board rollout: Is the Earth Flat? gained SIZE / FULL SCREEN / POP OUT (display only). Audited: the bench grows 934 to 1,480 px with zero page errors; the benches are button-and-slider driven, so nothing about the experiments changes at scale.. The choice is remembered per page; full-screen buttons call the standard API and Steven's click is their receipt.
 
+## Screen sizes (2026-11-27 evening)
+
+The across-the-board rollout reached this room: `gravitational-lensing.html`, `hydrogen-line.html`, `index.html`, `solar-orrery.html`, `starfield-atlas.html` gained the display-only screen controls (SIZE / FULL SCREEN / POP OUT above the stage, the choice remembered per page). Full-viewport exhibits whose canvas already fills the screen honestly carry only FULL SCREEN and POP OUT; DOM and SVG stages take the same bar fitted to their stage element. Audited page by page with zero page errors. No page machinery was touched — the controls are appended display blocks only.
+

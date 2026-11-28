@@ -23,3 +23,8 @@ Wiring in this pass: `index.html` gained the Earth Science Wave section at the t
 
 
 Forum link (26 November 2026): `index.html` gained the collection's Join our Forum line (Steven's Google Group — anyone may ask to join, members post), the feedback door he asked to have everywhere.
+
+## Screen sizes (2026-11-27 evening)
+
+The across-the-board rollout reached this room: `atmosphere-coriolis.html`, `climate-radiative-lab.html`, `earthquake-seismology.html`, `glacier-isostasy.html`, `index.html`, `plate-tectonics.html`, `river-erosion-delta.html`, `tsunami-shoaling.html`, `volcano-magma-lab.html` gained the display-only screen controls (SIZE / FULL SCREEN / POP OUT above the stage, the choice remembered per page). Full-viewport exhibits whose canvas already fills the screen honestly carry only FULL SCREEN and POP OUT; DOM and SVG stages take the same bar fitted to their stage element. Audited page by page with zero page errors. No page machinery was touched — the controls are appended display blocks only.
+

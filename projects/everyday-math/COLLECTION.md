@@ -98,3 +98,8 @@ the Java back door 166 (see those projects' notes); the GaussLab files themselve
 
 
 Forum link (26 November 2026): `index.html` gained the collection's Join our Forum line (Steven's Google Group — anyone may ask to join, members post), the feedback door he asked to have everywhere.
+
+## Screen sizes (2026-11-27 evening)
+
+The across-the-board rollout reached this room: `algebra-deep-dive.html`, `calculus-without-fear.html`, `deep-zoom.html`, `fourier-epicycles.html`, `fractal.html`, `gausslab.html`, `geometry-deep-dive.html`, `graph-pathfinding-arena.html`, `hyperbolic-geometry.html`, `linear-algebra-eigen.html`, `probability-markov-lab.html`, `sphere-bench.html`, `strange-attractors-3d.html`, `trigonometry-deep-dive.html`, `vector-calculus-fields.html`, `warp.html` gained the display-only screen controls (SIZE / FULL SCREEN / POP OUT above the stage, the choice remembered per page). Full-viewport exhibits whose canvas already fills the screen honestly carry only FULL SCREEN and POP OUT; DOM and SVG stages take the same bar fitted to their stage element. Audited page by page with zero page errors. No page machinery was touched — the controls are appended display blocks only.
+
