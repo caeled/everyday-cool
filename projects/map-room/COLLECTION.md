@@ -20,3 +20,8 @@ Game (21 November 2026): at Steven Powell's direction, the room gained its first
 
 
 Forum link (26 November 2026): `index.html` gained the collection's Join our Forum line (Steven's Google Group — anyone may ask to join, members post), the feedback door he asked to have everywhere.
+
+## Screen sizes (2026-11-27 evening)
+
+`go-thataway.html` gained through the across-the-board rollout: Go Thataway gained SIZE / FULL SCREEN / POP OUT (display only). Audited: the map grows 950 to 1,480 px with zero page errors; its pointer mapping is rect-based, so halves stay honest at scale.. The choice is remembered per page; full-screen buttons call the standard API and Steven's click is their receipt.
+

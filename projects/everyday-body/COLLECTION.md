@@ -76,3 +76,8 @@ guard), both documented in the lesson. `index.html` gained the exhibit's section
 
 
 Forum link (26 November 2026): `index.html` gained the collection's Join our Forum line (Steven's Google Group — anyone may ask to join, members post), the feedback door he asked to have everywhere.
+
+## Screen sizes (2026-11-27 evening)
+
+`tai-chi-forms.html` gained through the across-the-board rollout: Tai Chi Forms gained SIZE / FULL SCREEN / POP OUT (display only). Audited: all three form canvases grow together to 1,480 px with zero page errors.. The choice is remembered per page; full-screen buttons call the standard API and Steven's click is their receipt.
+

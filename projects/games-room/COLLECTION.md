@@ -30,3 +30,8 @@ Adjustment, 21 November 2026: `zenith-chess.html`, `zenith-chess-lesson.html`, `
 
 
 Forum link (26 November 2026): `index.html` gained the collection's Join our Forum line (Steven's Google Group — anyone may ask to join, members post), the feedback door he asked to have everywhere.
+
+## Screen sizes (2026-11-27 evening)
+
+`tensor-tris.html`, `zenith-chess.html`, `zenith-othello.html` gained through the across-the-board rollout: Tensor-Tris, Zenith Chess, and Zenith Othello gained SIZE / FULL SCREEN / POP OUT (display only). Chess and Othello's square boards grow to the height guard (1,034 px); Tensor-Tris grows only its well (517 x 1,034, side panels untouched) and its sizing ignores the page's fixed full-screen background canvas. Audited: a real click at BIG changed the chess board; zero page errors.. The choice is remembered per page; full-screen buttons call the standard API and Steven's click is their receipt.
+

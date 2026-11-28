@@ -20,3 +20,8 @@ section 08; Dad's Arcade gained its card beside Route It's (192 games / 192 less
 
 
 Forum link (26 November 2026): `index.html` gained the collection's Join our Forum line (Steven's Google Group — anyone may ask to join, members post), the feedback door he asked to have everywhere.
+
+## Screen sizes (2026-11-27 evening)
+
+`route-the-package.html` gained through the across-the-board rollout: Route the Package gained SIZE / FULL SCREEN / POP OUT (display only). Audited: the map grows 632 to 1,480 px with zero page errors; routing is chosen with buttons, so nothing about play changes at scale.. The choice is remembered per page; full-screen buttons call the standard API and Steven's click is their receipt.
+
