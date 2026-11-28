@@ -25,4 +25,77 @@ function pause(){paused=!paused;accumulator=0;sync()}function step(){paused=true
 $('lander').onclick=()=>{kind='lander';reset()};$('asteroids').onclick=()=>{kind='asteroids';reset()};$('overlay').onclick=()=>{overlay=!overlay;sync();draw()};$('mode').onchange=e=>{mode=e.target.value;sync()};$('pause').onclick=pause;$('step').onclick=step;$('reset').onclick=reset;$('explain').onclick=()=>{$('explanation').textContent='At tick '+s.tick+', speed is '+Math.hypot(s.vx,s.vy).toFixed(2)+' px/s. '+(s.state!=='flying'?'The run has ended; contact velocity is preserved for inspection.':s.thrust?'Thrust is changing velocity; acceleration includes '+(kind==='lander'?'gravity.':'no gravity.') :kind==='lander'?'Without thrust, gravity adds 0.50 px/s downward each tick.':'Without thrust, velocity stays constant until a collision.')};
 window.addEventListener('keydown',e=>{if(e.target.tagName==='SELECT')return;if(['ArrowLeft','ArrowRight','ArrowUp','Space','F2','KeyP','KeyN','KeyR'].includes(e.code)){e.preventDefault();if(['ArrowLeft','ArrowRight','ArrowUp','Space'].includes(e.code))keys.add(e.code);if(!e.repeat){if(e.code==='F2')$('overlay').click();if(e.code==='KeyP')pause();if(e.code==='KeyN')step();if(e.code==='KeyR')reset()}}});window.addEventListener('keyup',e=>keys.delete(e.code));window.addEventListener('blur',()=>{keys.clear();paused=true;accumulator=0;sync()});document.addEventListener('visibilitychange',()=>{if(document.hidden){keys.clear();paused=true;accumulator=0;sync()}});document.querySelectorAll('[data-key]').forEach(b=>{b.addEventListener('pointerdown',e=>{e.preventDefault();b.setPointerCapture(e.pointerId);keys.add(b.dataset.key)});['pointerup','pointercancel','lostpointercapture'].forEach(t=>b.addEventListener(t,()=>keys.delete(b.dataset.key)))});
 function frame(time){renderMs=lastTime?time-lastTime:0;lastTime=time;if(!paused&&s.state==='flying'){let elapsed=renderMs/1000;dropped+=Math.max(0,elapsed-.1);accumulator+=Math.min(elapsed,.1);while(accumulator>=DT){tick();accumulator-=DT}}draw();requestAnimationFrame(frame)}reset();requestAnimationFrame(frame);
-</script></body></html>
+</script>
+<style>
+  .szbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 10px}
+  .szbar button{background:#0d1522;color:#e8ecf4;border:1px solid #2a3a55;border-radius:8px;padding:5px 12px;font:inherit;font-size:.85rem;cursor:pointer}
+  .szbar button.on{color:#ffcf7d;border-color:#ffcf7d}
+  body.big .wrap{max-width:1560px}
+  body.pop .wrap{max-width:none;padding:10px 12px 20px}
+  body.big main{max-width:1760px}
+  body.pop header,body.pop .below,body.pop .footer{display:none}
+</style>
+<script>
+/* screen size, full screen & pop-out (display only — the page's own machinery is untouched) */
+(function () {
+  var pageKey = 'nh-xray-big';
+  var styled = [];
+  function allCanvases() { return Array.prototype.slice.call(document.querySelectorAll('canvas')); }
+  function biggestCanvas() {
+    var best = null, ba = 0;
+    allCanvases().forEach(function (c) { var a = (c.width || 0) * (c.height || 0); if (a > ba) { ba = a; best = c; } });
+    return best;
+  }
+  function sizeTargets() {
+    var maxA = 0;
+    allCanvases().forEach(function (c) { var a = (c.width || 0) * (c.height || 0); if (a > maxA) maxA = a; });
+    return allCanvases().filter(function (c) { return (c.width || 0) * (c.height || 0) >= maxA * 0.25; });
+  }
+  var bc = biggestCanvas();
+  var sizeUseful = !!bc && bc.getBoundingClientRect().width < window.innerWidth * 0.97;
+  function setBig(on) {
+    document.body.classList.toggle('big', on);
+    var b = document.querySelector('.sz-size');
+    if (b) { b.textContent = on ? 'SIZE: BIG' : 'SIZE: NORMAL'; b.classList.toggle('on', on); }
+    styled.forEach(function (c) { c.style.removeProperty('width'); c.style.removeProperty('height'); });
+    styled = [];
+    if (on && !true) sizeTargets().forEach(function (c) {
+      c.style.width = 'min(1480px,96vw)'; c.style.height = 'auto'; styled.push(c);
+      var r = c.getBoundingClientRect();
+      if (r.height > window.innerHeight * 0.94 && c.width && c.height) {
+        c.style.width = Math.floor(window.innerHeight * 0.94 * (c.width / c.height)) + 'px';
+      }
+    });
+    try { localStorage.setItem(pageKey, on ? '1' : ''); } catch (e) {}
+  }
+  function fsOn(el) {
+    if (document.fullscreenElement) document.exitFullscreen();
+    else if (el && el.requestFullscreen) el.requestFullscreen();
+  }
+  document.addEventListener('fullscreenchange', function () {
+    var fs = document.fullscreenElement;
+    allCanvases().forEach(function (cv) { if (styled.indexOf(cv) === -1) cv.style.removeProperty('width'); });
+    var c = fs && fs.querySelector ? fs.querySelector('canvas') : null;
+    if (c && c.width && styled.indexOf(c) === -1) {
+      var sc = Math.min((window.innerHeight - 70) / c.height, (window.innerWidth - 30) / c.width);
+      if (sc > 0) c.style.width = Math.floor(c.width * sc) + 'px';
+    }
+  });
+  function mkBtn(label, cls) { var b = document.createElement('button'); b.type = 'button'; b.textContent = label; if (cls) b.className = cls; return b; }
+  var anchor = document.querySelector('.screen');
+  if (anchor) {
+    var bar = document.createElement('div'); bar.className = 'szbar';
+    if (sizeUseful) { var sb = mkBtn('SIZE: NORMAL', 'sz-size'); sb.addEventListener('click', function () { setBig(!document.body.classList.contains('big')); }); bar.appendChild(sb); }
+    var fb = mkBtn('FULL SCREEN');
+    fb.addEventListener('click', function () { var t = document.querySelector('.screen'); fsOn(t || anchor); });
+    bar.appendChild(fb);
+    var pb = mkBtn('POP OUT');
+    pb.addEventListener('click', function () { window.open(location.pathname + '?pop=1', 'emuxray-pop', 'width=1240,height=940'); });
+    bar.appendChild(pb);
+    anchor.parentNode.insertBefore(bar, anchor);
+  }
+  try { if (localStorage.getItem(pageKey)) requestAnimationFrame(function () { setBig(true); }); } catch (e) {}
+  if (new URLSearchParams(location.search).get('pop') === '1') document.body.classList.add('pop');
+})();
+</script>
+</body></html>

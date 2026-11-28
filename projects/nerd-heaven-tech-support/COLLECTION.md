@@ -464,3 +464,17 @@ on the bench), Full screen gives the console the monitor, Pop out hides the mast
 paragraph documents them. Its audit: a real flight recorded 2.30 s and Verify reported PASS over 162 transitions,
 no page exceptions. Full-screen buttons call the standard API everywhere and remain Steven's click to prove.
 Service worker cache bumped in `sw.js` (nerd-heaven-v82).
+
+## Screen sizes on the remaining Nerd Heaven stages (2026-11-27 evening)
+
+The across-the-board rollout reached the five Nerd Heaven stages the recorder family does not cover:
+`corrected-by-halves.html`, `dash-builder.html`, `feedback-bench.html`, `the-emulator-xray.html`, `the-vectrex-console.html`. Each gained the same display-only block (SIZE / FULL SCREEN / POP OUT, choice remembered per page):
+the stage canvas grows to a 1,480 px working width, with a height guard that caps tall screens at 94% of the
+viewport height — the Vectrex's portrait screen lands at 832 x 1,034 instead of running off the monitor.
+The Emulator X-Ray exhibit sizes by its container instead (its canvas is CSS width:100%), its page widening
+from 1,440 to 1,760 px. Every page's own pointer mapping is rect-based, so play stays honest at scale; audited
+on the human path before shipping: growth measured on all five (x1.18 to x3.0), Corrected by Halves took a real
+click at BIG and the board changed, the Dash Builder painted a block at BIG and the paint landed in the probed
+cell, both Feedback Bench canvases grow together, and the Vectrex sits alive on its Mine Storm title card.
+Full-screen buttons call the standard API; Steven's click is their receipt. Service worker cache bumped in
+`sw.js`.
